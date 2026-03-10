@@ -1,0 +1,9 @@
+Thumbs.db
+desktop.ini
+vendor/
+node_modules/
+*.log
+*.cache
+*.tmp
+.idea/
+.vscode/
