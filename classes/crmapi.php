@@ -6,27 +6,39 @@ defined('MOODLE_INTERNAL') || die();
 class crmapi
 {
 
-    private $client_id = 'zoho-crm-client-id';
-    private $client_secret = 'zoho-crm-client-secret';
-    private $refresh_token = 'zoho-crm-refresh-token';
-    private $accounts_url = 'https://accounts.zoho.com';
-    private $api_base_url = 'https://www.zohoapis.com';
+    private $client_id;
+    private $client_secret;
+    private $refresh_token;
+    private $accounts_url;
+    private $api_base_url;
 
     public function __construct()
     {
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
+
+        $this->client_id = trim(get_config('local_batchanalytics', 'zoho_client_id') ?: '');
+        $this->client_secret = trim(get_config('local_batchanalytics', 'zoho_client_secret') ?: '');
+        $this->refresh_token = trim(get_config('local_batchanalytics', 'zoho_refresh_token') ?: '');
+        $this->accounts_url = trim(get_config('local_batchanalytics', 'zoho_accounts_url') ?: 'https://accounts.zoho.com');
+        $this->api_base_url = trim(get_config('local_batchanalytics', 'zoho_api_base_url') ?: 'https://www.zohoapis.com');
     }
 
     private function get_access_token()
     {
         global $SESSION;
+
+        if (empty($this->client_id) || empty($this->client_secret) || empty($this->refresh_token)) {
+            debugging('Zoho CRM credentials not configured for local_batchanalytics', DEBUG_DEVELOPER);
+            return null;
+        }
+
         if (!empty($SESSION->zoho_access_token) && !empty($SESSION->zoho_token_expires) && $SESSION->zoho_token_expires > time() + 60) {
             return $SESSION->zoho_access_token;
         }
 
         $curl = new \curl();
-        $url = $this->accounts_url . '/oauth/v2/token';
+        $url = rtrim($this->accounts_url, '/') . '/oauth/v2/token';
         $params = [
             'refresh_token' => $this->refresh_token,
             'client_id' => $this->client_id,
@@ -37,8 +49,10 @@ class crmapi
         $response = $curl->post($url, $params);
         $json = json_decode($response);
 
-        if (empty($json->access_token))
+        if (empty($json->access_token)) {
+            debugging('Zoho CRM token acquisition failed: ' . $response, DEBUG_DEVELOPER);
             return null;
+        }
 
         $SESSION->zoho_access_token = $json->access_token;
         $SESSION->zoho_token_expires = time() + ($json->expires_in ?? 3600);

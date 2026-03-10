@@ -1,0 +1,61 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+defined('MOODLE_INTERNAL') || die();
+
+if ($hassiteconfig) {
+    $settings = new admin_settingpage('local_batchanalytics', get_string('pluginname', 'local_batchanalytics'));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_client_id',
+        get_string('zoho_client_id', 'local_batchanalytics'),
+        get_string('zoho_client_id_desc', 'local_batchanalytics'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_batchanalytics/zoho_client_secret',
+        get_string('zoho_client_secret', 'local_batchanalytics'),
+        get_string('zoho_client_secret_desc', 'local_batchanalytics'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_batchanalytics/zoho_refresh_token',
+        get_string('zoho_refresh_token', 'local_batchanalytics'),
+        get_string('zoho_refresh_token_desc', 'local_batchanalytics'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_accounts_url',
+        get_string('zoho_accounts_url', 'local_batchanalytics'),
+        get_string('zoho_accounts_url_desc', 'local_batchanalytics'),
+        'https://accounts.zoho.com',
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_api_base_url',
+        get_string('zoho_api_base_url', 'local_batchanalytics'),
+        get_string('zoho_api_base_url_desc', 'local_batchanalytics'),
+        'https://www.zohoapis.com',
+        PARAM_URL
+    ));
+
+    $ADMIN->add('localplugins', $settings);
+}
