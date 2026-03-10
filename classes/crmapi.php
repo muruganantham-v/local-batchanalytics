@@ -5,12 +5,51 @@ defined('MOODLE_INTERNAL') || die();
 
 class crmapi
 {
-
     private $client_id;
     private $client_secret;
     private $refresh_token;
     private $accounts_url;
     private $api_base_url;
+
+    // 1. Centralized Field List
+    // We define these once so both batch and single queries return the exact same data structure.
+    private $crm_fields = [
+        'Username',
+        'Placement_Company',
+        'CTC',
+        'Class_X_Score',
+        'Class_XII_Score',
+        'BE_BTech_Branch',
+        'BE_BTech_Score',
+        'BE_BTech_YoP',
+        'College_Name',
+        'Other_College_Name',
+        'ME_MTech_Score',
+        'ME_MTech_Branch',
+        'ME_MTech_YoP',
+        'Home_State',
+        'Total_Applied',
+        'Last_Applied_Date',
+        'Total_Shortlisted',
+        'Last_Shortlisted_Date',
+        'Total_Technical_Interview_Cleared',
+        'Total_Written_Test_Cleared',
+        'Total_L1_Cleared',
+        'Total_L2_Cleared',
+        'Advanced_C_Score',
+        'Mentor_Name_C_Mock',
+        'C_Score',
+        'Mentor_Name_C_Mock1',
+        'DS_Score',
+        'Mentor_Name_DS',
+        'Linux_Internals_Score',
+        'Mentor_Name_LI',
+        'MC_Mock_Score3',
+        'Mentor_Name_MC_Mock',
+        'Coach_Rating',
+        'MAAC_Rating',
+        'Placement_Eli'
+    ];
 
     public function __construct()
     {
@@ -66,10 +105,10 @@ class crmapi
 
     private function escape_zoho_value($value)
     {
-        // Zoho requires values in search criteria to avoid problematic characters.
         return preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value);
     }
 
+    // --- UPGRADED BATCH FUNCTION USING COQL ---
     public function get_students_details(array $usernames)
     {
         $usernames = array_filter(array_map([$this, 'normalize_username'], $usernames));
@@ -83,16 +122,38 @@ class crmapi
         }
 
         $results = [];
-        $chunks = array_chunk($usernames, 20);
+        $select_str = implode(', ', $this->crm_fields);
 
-        foreach ($chunks as $chunk) {
-            $criteriaUsernames = array_map([$this, 'escape_zoho_value'], $chunk);
-            $criteria = '(Username:in:' . implode(',', $criteriaUsernames) . ')';
-            $searchUrl = $this->api_base_url . '/crm/v6/Contacts/search?criteria=' . urlencode($criteria);
+        // COQL allows 25 criteria blocks max. Each block gets 20 users. 25 * 20 = 500 max per call.
+        $super_chunks = array_chunk($usernames, 500);
+
+        foreach ($super_chunks as $super_chunk) {
+            $in_clauses = [];
+
+            // Break down the 500 into groups of 20 for the IN clauses
+            $chunks_of_20 = array_chunk($super_chunk, 20);
+
+            foreach ($chunks_of_20 as $chunk) {
+                $quoted_usernames = array_map(function ($u) {
+                    return "'" . $this->escape_zoho_value($u) . "'";
+                }, $chunk);
+                $in_clauses[] = "Username in (" . implode(',', $quoted_usernames) . ")";
+            }
+
+            // Combine them: Username in (1..20) or Username in (21..40) ...
+            $where_clause = implode(' or ', $in_clauses);
+            $select_query = "select {$select_str} from Contacts where {$where_clause}";
+
+            $coqlUrl = $this->api_base_url . '/crm/v6/coql';
+            $postData = json_encode(['select_query' => $select_query]);
 
             $curl = new \curl();
-            $curl->setHeader(["Authorization: Zoho-oauthtoken {$accessToken}"]);
-            $response = $curl->get($searchUrl);
+            $curl->setHeader([
+                "Authorization: Zoho-oauthtoken {$accessToken}",
+                "Content-Type: application/json"
+            ]);
+
+            $response = $curl->post($coqlUrl, $postData);
             $json = json_decode($response, true);
 
             if (!empty($json['data'])) {
@@ -107,77 +168,23 @@ class crmapi
         return $results;
     }
 
-    // --- ONE MASTER FUNCTION TO FETCH EVERYTHING ---
+    // --- REFACTORED SINGLE LOOKUP FUNCTION ---
     public function get_student_details($username)
     {
-        if (empty($username))
-            return null;
-        $accessToken = $this->get_access_token();
-        if (!$accessToken)
-            return null;
-
-        try {
-            // 1. Define ALL fields needed for BOTH Filter and PTF Tab
-            $fields = [
-                // Filter Field
-                'Placement_Company',
-                // PTF Data Fields
-                'Class_X_Score',
-                'Class_XII_Score',
-                'BE_BTech_Branch',
-                'BE_BTech_Score',
-                'BE_BTech_YoP',
-                'College_Name',
-                'Other_College_Name',
-                'ME_MTech_Score',
-                'ME_MTech_Branch',
-                'ME_MTech_YoP',
-                'Home_State',
-                'Total_Applied',
-                'Last_Applied_Date',
-                'Total_Shortlisted',
-                'Last_Shortlisted_Date',
-                'Total_Technical_Interview_Cleared',
-                'Total_Written_Test_Cleared',
-                'Total_L1_Cleared',
-                'Total_L2_Cleared',
-                'Advanced_C_Score',
-                'Mentor_Name_C_Mock',
-                'C_Score',
-                'Mentor_Name_C_Mock1',
-                'DS_Score',
-                'Mentor_Name_DS',
-                'Linux_Internals_Score',
-                'Mentor_Name_LI',
-                'MC_Mock_Score3',
-                'Mentor_Name_MC_Mock',
-                'Coach_Rating',
-                'MAAC_Rating',
-                'Placement_Eli',
-                'Placement_Company',
-                'CTC'
-            ];
-
-            $select_str = implode(',', $fields);
-
-            // 2. Build Query - use Contacts search by Username (in / matching style)
-            $safeusername = $this->escape_zoho_value($username);
-            $criteria = '(Admission_Number:in:' . $safeusername . ')';
-            $searchUrl = $this->api_base_url . '/crm/v6/Contacts/search?criteria=' . urlencode($criteria);
-            // If you need to select specific fields via COQL, use that method in future.
-
-            $curl = new \curl();
-            $curl->setHeader(["Authorization: Zoho-oauthtoken {$accessToken}"]);
-            $response = $curl->get($searchUrl);
-            $json = json_decode($response, true); // Return as Array
-
-            if (!empty($json['data']) && count($json['data']) > 0) {
-                return $json['data'][0];
-            }
-            return null;
-
-        } catch (\Exception $e) {
+        if (empty($username)) {
             return null;
         }
+
+        // Instead of writing a separate API call, we route the single request 
+        // through the batch method. This keeps your code DRY (Don't Repeat Yourself) 
+        // and ensures the exact same fields are returned.
+        $results = $this->get_students_details([$username]);
+
+        $key = strtolower($this->normalize_username($username));
+        if (isset($results[$key])) {
+            return $results[$key];
+        }
+
+        return null;
     }
 }
