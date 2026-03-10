@@ -108,7 +108,7 @@ class crmapi
         return preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value);
     }
 
-    // --- UPGRADED BATCH FUNCTION USING COQL ---
+    // --- UPGRADED BATCH FUNCTION USING SEARCH API ---
     public function get_students_details(array $usernames)
     {
         $usernames = array_filter(array_map([$this, 'normalize_username'], $usernames));
@@ -122,44 +122,38 @@ class crmapi
         }
 
         $results = [];
-        $select_str = implode(', ', $this->crm_fields);
+        
+        // Ensure Admission_Numbar is fetched
+        $fields_to_fetch = $this->crm_fields;
+        if (!in_array('Admission_Numbar', $fields_to_fetch)) {
+            $fields_to_fetch[] = 'Admission_Numbar';
+        }
+        $fields_str = urlencode(implode(',', $fields_to_fetch));
 
-        // COQL allows 25 criteria blocks max. Each block gets 20 users. 25 * 20 = 500 max per call.
-        $super_chunks = array_chunk($usernames, 500);
+        // Search API "in" criteria supports up to 10 values per request
+        $chunks = array_chunk($usernames, 10);
 
-        foreach ($super_chunks as $super_chunk) {
-            $in_clauses = [];
+        foreach ($chunks as $chunk) {
+            $escaped_usernames = array_map(function ($u) {
+                return str_replace(',', '', $this->escape_zoho_value($u));
+            }, $chunk);
 
-            // Break down the 500 into groups of 20 for the IN clauses
-            $chunks_of_20 = array_chunk($super_chunk, 20);
-
-            foreach ($chunks_of_20 as $chunk) {
-                $quoted_usernames = array_map(function ($u) {
-                    return "'" . $this->escape_zoho_value($u) . "'";
-                }, $chunk);
-                $in_clauses[] = "Username in (" . implode(',', $quoted_usernames) . ")";
-            }
-
-            // Combine them: Username in (1..20) or Username in (21..40) ...
-            $where_clause = implode(' or ', $in_clauses);
-            $select_query = "select {$select_str} from Contacts where {$where_clause}";
-
-            $coqlUrl = $this->api_base_url . '/crm/v6/coql';
-            $postData = json_encode(['select_query' => $select_query]);
+            $criteria = "(Admission_Numbar:in:" . implode(',', $escaped_usernames) . ")";
+            $searchUrl = $this->api_base_url . '/crm/v6/Child_Admission/search?criteria=' . urlencode($criteria) . '&fields=' . $fields_str;
 
             $curl = new \curl();
             $curl->setHeader([
-                "Authorization: Zoho-oauthtoken {$accessToken}",
-                "Content-Type: application/json"
+                "Authorization: Zoho-oauthtoken {$accessToken}"
             ]);
 
-            $response = $curl->post($coqlUrl, $postData);
+            $response = $curl->get($searchUrl);
             $json = json_decode($response, true);
 
             if (!empty($json['data'])) {
                 foreach ($json['data'] as $record) {
-                    if (!empty($record['Username'])) {
-                        $results[strtolower($record['Username'])] = $record;
+                    $keyField = !empty($record['Admission_Numbar']) ? $record['Admission_Numbar'] : ($record['Username'] ?? '');
+                    if (!empty($keyField)) {
+                        $results[strtolower($keyField)] = $record;
                     }
                 }
             }
