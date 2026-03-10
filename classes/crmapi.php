@@ -160,15 +160,12 @@ class crmapi
 
             $select_str = implode(',', $fields);
 
-            // 2. Build Query
-            $searchUrl = $this->api_base_url . "/crm/v2/Child_Admission/search?criteria=(Admission_Number:equals:{$username})";
-            // If you need to select specific fields via COQL, use that method. 
-            // The standard search endpoint returns all fields by default, which is easier.
-            // If you MUST use COQL for field selection, uncomment below:
-            // $query = "select " . $select_str . " from Child_Admission where Admission_Number = '" . $username . "' limit 1";
-            // And use your COQL execution logic.
+            // 2. Build Query - use Contacts search by Username (in / matching style)
+            $safeusername = $this->escape_zoho_value($username);
+            $criteria = '(Admission_Number:in:' . $safeusername . ')';
+            $searchUrl = $this->api_base_url . '/crm/v6/Contacts/search?criteria=' . urlencode($criteria);
+            // If you need to select specific fields via COQL, use that method in future.
 
-            // For standard search (easiest):
             $curl = new \curl();
             $curl->setHeader(["Authorization: Zoho-oauthtoken {$accessToken}"]);
             $response = $curl->get($searchUrl);

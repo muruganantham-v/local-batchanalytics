@@ -98,7 +98,8 @@ if ($action === 'getptfdata') {
 
             $output = [];
             foreach ($usernameList as $u) {
-                $record = $records[$u] ?? null;
+                $lookup = strtolower($u);
+                $record = $records[$lookup] ?? null;
                 $company = 'Not Placed';
                 if (!empty($record['Placement_Company'])) {
                     if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
