@@ -59,6 +59,54 @@ class crmapi
         return $json->access_token;
     }
 
+    private function normalize_username($username)
+    {
+        return trim((string) $username);
+    }
+
+    private function escape_zoho_value($value)
+    {
+        // Zoho requires values in search criteria to avoid problematic characters.
+        return preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value);
+    }
+
+    public function get_students_details(array $usernames)
+    {
+        $usernames = array_filter(array_map([$this, 'normalize_username'], $usernames));
+        if (empty($usernames)) {
+            return [];
+        }
+
+        $accessToken = $this->get_access_token();
+        if (!$accessToken) {
+            return [];
+        }
+
+        $results = [];
+        $chunks = array_chunk($usernames, 20);
+
+        foreach ($chunks as $chunk) {
+            $criteriaUsernames = array_map([$this, 'escape_zoho_value'], $chunk);
+            $criteria = '(Username:in:' . implode(',', $criteriaUsernames) . ')';
+            $searchUrl = $this->api_base_url . '/crm/v6/Contacts/search?criteria=' . urlencode($criteria);
+
+            $curl = new \curl();
+            $curl->setHeader(["Authorization: Zoho-oauthtoken {$accessToken}"]);
+            $response = $curl->get($searchUrl);
+            $json = json_decode($response, true);
+
+            if (!empty($json['data'])) {
+                foreach ($json['data'] as $record) {
+                    if (!empty($record['Username'])) {
+                        $results[strtolower($record['Username'])] = $record;
+                    }
+                }
+            }
+        }
+
+        return $results;
+    }
+
     // --- ONE MASTER FUNCTION TO FETCH EVERYTHING ---
     public function get_student_details($username)
     {

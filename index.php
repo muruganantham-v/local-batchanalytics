@@ -17,29 +17,9 @@ require_login();
 
 $context = context_system::instance();
 $USER_ID = $USER->id;
-$is_admin = is_siteadmin($USER_ID);
 
-// Permission Check
-if (!$is_admin && !has_capability('local/batchanalytics:view', $context)) {
-    // Fallback role check
-    $role_names = [];
-    $user_roles = get_user_roles($context, $USER_ID, true);
-    foreach ($user_roles as $role) {
-        $role_names[] = $role->shortname;
-    }
-
-    $allowed = false;
-    foreach ($role_names as $rn) {
-        if (in_array($rn, ['manager', 'editingteacher', 'teacher'])) {
-            $allowed = true;
-            break;
-        }
-    }
-
-    if (!$allowed) {
-        print_error('nopermissions', 'error', '', 'access batch analytics');
-    }
-}
+// Capability-based permission check. Assign 'local/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
+require_capability('local/batchanalytics:view', $context);
 
 $action = optional_param('action', '', PARAM_ALPHA);
 
@@ -100,16 +80,56 @@ if ($action === 'getcrmdata') {
 }
 
 if ($action === 'getptfdata') {
-    while (ob_get_level()) ob_end_clean();
+    while (ob_get_level())
+        ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     $username = optional_param('username', '', PARAM_TEXT);
-    
+    $usernames = optional_param('usernames', '', PARAM_TEXT);
+
     try {
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
-        
+
         $crm = new \local_batchanalytics\crmapi();
-        $record = $crm->get_student_details($username); 
+
+        if (!empty($usernames)) {
+            $usernameList = array_filter(array_map('trim', explode(',', $usernames)));
+            $records = $crm->get_students_details($usernameList);
+
+            $output = [];
+            foreach ($usernameList as $u) {
+                $record = $records[$u] ?? null;
+                $company = 'Not Placed';
+                if (!empty($record['Placement_Company'])) {
+                    if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
+                        $company = $record['Placement_Company']['name'];
+                    } elseif (is_string($record['Placement_Company'])) {
+                        $company = $record['Placement_Company'];
+                    }
+                }
+                $output[] = [
+                    'username' => $u,
+                    'placed_company' => $company,
+                    'CTC' => $record['CTC'] ?? '-',
+                    'data' => $record
+                ];
+            }
+
+            echo json_encode(['students' => $output]);
+            die();
+        }
+
+        $record = $crm->get_student_details($username);
+
+        if (empty($record) || !is_array($record)) {
+            echo json_encode([
+                'username' => $username,
+                'placed_company' => 'Not Placed',
+                'CTC' => '-',
+                'error' => get_string('crmconfigmissing', 'local_batchanalytics')
+            ]);
+            die();
+        }
 
         // Handle Placement Company (Extract name if it's an object)
         $company = 'Not Placed';
@@ -124,9 +144,9 @@ if ($action === 'getptfdata') {
         // Prepare JSON Response
         $data = [
             'username' => $username,
-            'placed_company' => $company, 
+            'placed_company' => $company,
             'CTC' => $record['CTC'] ?? '-', // <--- Added CTC here
-            
+
             // ... Keep all other existing fields ...
             'Class_X_Score' => $record['Class_X_Score'] ?? '-',
             'Class_XII_Score' => $record['Class_XII_Score'] ?? '-',
@@ -157,7 +177,7 @@ if ($action === 'getptfdata') {
             'MC_Mock_Score3' => $record['MC_Mock_Score3'] ?? '-',
             'Mentor_Name_MC_Mock' => $record['Mentor_Name_MC_Mock'] ?? '-',
             'Coach_Rating' => $record['Coach_Rating'] ?? '-',
-            'MAAC_Rating' => $record['MAAC_Rating'] ?? '-', 
+            'MAAC_Rating' => $record['MAAC_Rating'] ?? '-',
             'Placement_Eli' => $record['Placement_Eli'] ?? '-'
         ];
 
@@ -245,6 +265,27 @@ if ($action === 'getbatchfulldata') {
             ];
         }
 
+        // 3.5. CRM Batch lookup by up to 20 usernames at a time
+        $students_usernames = array_map(function ($s) {
+            return $s->username;
+        }, $students);
+
+        $crm_data_map = [];
+        if (!empty($students_usernames)) {
+            $crmapi = new \local_batchanalytics\crmapi();
+            $crm_data_map = $crmapi->get_students_details($students_usernames);
+
+            // Make lookup case-insensitive by keying lowercase username.
+            $crm_data_map = array_change_key_case($crm_data_map, CASE_LOWER);
+        }
+
+        // merge CRM response back to the uniqueStudents list
+        foreach ($result['uniqueStudents'] as &$stud) {
+            $key = strtolower($stud['username']);
+            $stud['crm'] = array_key_exists($key, $crm_data_map) ? $crm_data_map[$key] : null;
+        }
+        unset($stud);
+
         // 4. Organize Data
 // 4. Organize Data
         // NEW: Fetch all categories to resolve parent/child relationships
@@ -252,21 +293,21 @@ if ($action === 'getbatchfulldata') {
 
         $categories_data = [];
         foreach ($grade_items as $item) {
-            
+
             if ($item->itemtype === 'course') {
                 $cat_name = 'MAAC Ratings';
             } else {
                 $cat_id = $item->categoryid;
                 $cat_name = 'Uncategorized';
-                
+
                 if ($cat_id && isset($all_cats[$cat_id])) {
                     $c = $all_cats[$cat_id];
-                    
+
                     // NEW: If it's a sub-category (Depth 3+), climb up the tree until we hit the Main Category (Depth 2)
                     while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
                         $c = $all_cats[$c->parent];
                     }
-                    
+
                     // Apply the Main Category name
                     if ($c->depth == 2) {
                         $cat_name = $c->fullname;
@@ -276,7 +317,7 @@ if ($action === 'getbatchfulldata') {
 
             // Skip unwanted, empty, or uncategorized items completely
             if (trim($cat_name) === '' || $cat_name === '?' || $cat_name === 'Uncategorized') {
-                continue; 
+                continue;
             }
 
             if (!isset($categories_data[$cat_name])) {
@@ -327,17 +368,20 @@ if ($action === 'getbatchfulldata') {
                 // Completion %: Items Completed / Total Items in Category (e.g., 10/27 = 37.04%)
                 $comp_rate = $total_items_in_cat > 0 ? round(($items_completed / $total_items_in_cat) * 100, 2) : 0;
 
+                $studentcrm = $crm_data_map[strtolower($student->username)] ?? null;
+
                 $cat_data['studentGrades'][] = [
                     'userid' => $student->userid,
                     'fullname' => $student->fullname,
                     'username' => $student->username,
                     'percentage' => $percentage,
                     'completionRate' => $comp_rate, // NEW: Pass the true completion metric to JS
-                    'totalEarned' => $total_earned
+                    'totalEarned' => $total_earned,
+                    'crm' => $studentcrm
                 ];
             }
         }
-        
+
         $result['courses'][] = [
             'courseid' => $courseid,
             'coursename' => $course['fullname'],

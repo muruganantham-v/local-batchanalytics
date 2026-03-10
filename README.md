@@ -66,6 +66,13 @@ Fields:
 
 Use `get_config('local_batchanalytics', 'zoho_client_id')` etc.
 
+## Permissions
+
+This plugin uses Moodle capability `local/batchanalytics:view` for access control.
+
+Grant permission to a role via:
+- Site administration > Users > Permissions > Define roles > select role > "Allow" for Local > Batch Analytics: View
+
 ## Git Workflow
 
 ```bash
