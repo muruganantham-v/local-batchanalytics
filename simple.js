@@ -74,16 +74,73 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     showToast("Loading Data...", "info");
+    
+    // Show Loading Skeleton immediately while waiting for network
+    tabsWrapper.style.display = "block";
+    batchTabs.innerHTML = `<li class="active ba-skeleton-pulse" style="width:150px; height:20px; border:none; margin-top:2px;"></li>`;
+    batchTabsContent.innerHTML = `
+      <div class="ba-skeleton-wrapper">
+        <div class="ba-skeleton-pulse ba-skel-header"></div>
+        <div class="ba-skel-grid">
+          <div class="ba-skeleton-pulse ba-skel-card"></div>
+          <div class="ba-skeleton-pulse ba-skel-card"></div>
+          <div class="ba-skeleton-pulse ba-skel-card"></div>
+          <div class="ba-skeleton-pulse ba-skel-card"></div>
+        </div>
+        <div class="ba-skeleton-pulse ba-skel-header" style="width:180px; margin-top:20px;"></div>
+        <div class="ba-skel-grid">
+          <div class="ba-skeleton-pulse ba-skel-card" style="height:250px;"></div>
+          <div class="ba-skeleton-pulse ba-skel-card" style="height:250px;"></div>
+        </div>
+      </div>
+    `;
+
     try {
       const baseUrl = window.location.href.split("?")[0];
       const res = await fetch(
         baseUrl +
-          "?action=getbatchfulldata&batchcode=" +
-          encodeURIComponent(this.value),
+        "?action=getbatchfulldata&batchcode=" +
+        encodeURIComponent(this.value),
       );
       if (!res.ok) throw new Error("Network error");
 
       BATCH_DATA = await res.json();
+
+      // Log Initial Batch Pull CRM API Data
+      if (BATCH_DATA && BATCH_DATA.uniqueStudents) {
+        BATCH_DATA.uniqueStudents.forEach(s => {
+          if (s.crm && s._debug_api_url && s._debug_api_response) {
+            // Prevent duplicate logs if same url is used for multiple students in one chunk
+            if (!window.__logged_crm_urls) window.__logged_crm_urls = new Set();
+            if (!window.__logged_crm_urls.has(s._debug_api_url)) {
+              console.log("Batch Pull Request to Zoho CRM: ", s._debug_api_url);
+
+              let parsedRes = s._debug_api_response;
+              try { parsedRes = JSON.parse(s._debug_api_response); } catch (e) { }
+
+              console.log("Batch Pull Response from Zoho CRM: ", parsedRes);
+              window.__logged_crm_urls.add(s._debug_api_url);
+            }
+          }
+
+          // Pre-populate Cache to avoid fetching one-by-one!
+          // Always create a cache entry even if CRM data is missing, otherwise they disappear from the table!
+          let company = "Not Placed";
+          if (s.crm && s.crm.Placement_Company) {
+            company = typeof s.crm.Placement_Company === 'object' && s.crm.Placement_Company.name
+              ? s.crm.Placement_Company.name
+              : String(s.crm.Placement_Company);
+          }
+          const ptfData = {
+            username: s.username,
+            placed_company: company,
+            ...(s.crm || {})
+          };
+          PTF_CACHE[s.username] = ptfData;
+          CRM_CACHE[s.username] = company;
+        });
+      }
+
       OVERVIEW_SELECTED_COURSES = BATCH_DATA.courses.map((c) => c.courseid);
       buildTabs();
       renderOverview();
@@ -190,6 +247,17 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = await res.json();
 
         if (data && !data.error) {
+
+          // Log the Debug API Info to the Console!
+          if (data._debug_api_url) {
+            console.log("Sending Request to Zoho CRM: ", data._debug_api_url);
+          }
+          if (data._debug_api_response) {
+            let parsedRes = data._debug_api_response;
+            try { parsedRes = JSON.parse(data._debug_api_response); } catch (e) { }
+            console.log("Received Response from Zoho CRM: ", parsedRes);
+          }
+
           PTF_CACHE[u] = data;
           CRM_CACHE[u] = data.placed_company || "Not Placed";
 
@@ -209,6 +277,8 @@ document.addEventListener("DOMContentLoaded", function () {
             const statusFilter = document.getElementById("f-status");
             if (statusFilter && statusFilter.value) applyFilters();
           }
+        } else if (data && data.error) {
+          console.error("CRM Error for " + u + ": ", data.error);
         }
       } catch (e) {
         console.error("Fetch error for " + u, e);
@@ -562,6 +632,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .querySelectorAll(".cb-yop, .cb-state")
       .forEach((cb) => (cb.checked = false));
     window.applyPtfFilters();
+    showToast("Filters reset", "info");
   };
 
   // ==================== OVERVIEW TAB ====================
@@ -599,15 +670,15 @@ document.addEventListener("DOMContentLoaded", function () {
               
               <div style="max-height: 200px; overflow-y:auto; margin-bottom:10px; padding-right:5px; display: flex; flex-direction: column; gap: 8px;">
                   ${BATCH_DATA.courses
-                    .map(
-                      (c) => `
+        .map(
+          (c) => `
                       <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer; font-size: 13px; color: #1e293b;">
                           <input type="checkbox" class="ov-course-cb" value="${c.courseid}" ${OVERVIEW_SELECTED_COURSES.includes(c.courseid) ? "checked" : ""}>
                           ${c.coursename}
                       </label>
                   `,
-                    )
-                    .join("")}
+        )
+        .join("")}
               </div>
               
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
@@ -1524,9 +1595,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     return validStudents.length > 0
       ? (
-          validStudents.reduce((a, b) => a + parseFloat(b.percentage || 0), 0) /
-          validStudents.length
-        ).toFixed(2)
+        validStudents.reduce((a, b) => a + parseFloat(b.percentage || 0), 0) /
+        validStudents.length
+      ).toFixed(2)
       : "0.00";
   }
 
@@ -1851,4 +1922,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Re-append rows to tbody in sorted order
     rows.forEach((row) => tbody.appendChild(row));
   };
+
+  window.resetPtfFilters();
+  
 });

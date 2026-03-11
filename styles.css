@@ -1393,3 +1393,36 @@ input:checked + .ba-slider:before {
   color: var(--primary);
   font-size: 12px;
 }
+
+/* ==================== 14. LOADING SKELETON ==================== */
+.ba-skeleton-wrapper {
+  padding: 20px 0;
+}
+.ba-skeleton-pulse {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoad 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes skeletonLoad {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.ba-skel-header {
+  height: 32px;
+  width: 250px;
+  margin-bottom: 25px;
+}
+.ba-skel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+.ba-skel-card {
+  height: 120px;
+}

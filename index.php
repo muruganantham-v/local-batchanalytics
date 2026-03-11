@@ -266,26 +266,7 @@ if ($action === 'getbatchfulldata') {
             ];
         }
 
-        // 3.5. CRM Batch lookup by up to 20 usernames at a time
-        $students_usernames = array_map(function ($s) {
-            return $s->username;
-        }, $students);
-
-        $crm_data_map = [];
-        if (!empty($students_usernames)) {
-            $crmapi = new \local_batchanalytics\crmapi();
-            $crm_data_map = $crmapi->get_students_details($students_usernames);
-
-            // Make lookup case-insensitive by keying lowercase username.
-            $crm_data_map = array_change_key_case($crm_data_map, CASE_LOWER);
-        }
-
-        // merge CRM response back to the uniqueStudents list
-        foreach ($result['uniqueStudents'] as &$stud) {
-            $key = strtolower($stud['username']);
-            $stud['crm'] = array_key_exists($key, $crm_data_map) ? $crm_data_map[$key] : null;
-        }
-        unset($stud);
+        // Note: CRM data fetching has been moved outside this course loop to prevent cross-course overwriting
 
         // 4. Organize Data
 // 4. Organize Data
@@ -334,7 +315,27 @@ if ($action === 'getbatchfulldata') {
             ];
         }
 
-        // 5. Calculate Grades
+        // 5. Pre-fetch ALL grades for this course in a single query to prevent N+1 DB lookups!
+        $all_grades_sql = "
+            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade 
+            FROM {grade_grades} gg
+            JOIN {grade_items} gi ON gi.id = gg.itemid
+            WHERE gi.courseid = :courseid AND gg.finalgrade IS NOT NULL
+        ";
+        
+        $grades_map = []; // structure: $grades_map[userid][itemid] = finalgrade
+        
+        // Use a recordset instead of get_records_sql because get_records_sql uses the first column 
+        // as the array key, which means it would overwrite all but the last grade per user!
+        $rs = $DB->get_recordset_sql($all_grades_sql, ['courseid' => $courseid]);
+        if ($rs->valid()) {
+            foreach ($rs as $rec) {
+                 $grades_map[$rec->userid][$rec->itemid] = $rec->finalgrade;
+            }
+        }
+        $rs->close();
+
+        // 6. Calculate Grades
         foreach ($categories_data as $cat_name => &$cat_data) {
             $total_items_in_cat = count($cat_data['items']); // NEW: Get total assignments (e.g. 27)
 
@@ -344,14 +345,14 @@ if ($action === 'getbatchfulldata') {
                 $items_completed = 0; // NEW: Track how many they actually did
 
                 foreach ($cat_data['items'] as $item) {
-                    $grade_rec = $DB->get_record_sql(
-                        "SELECT finalgrade FROM {grade_grades} WHERE itemid = ? AND userid = ?",
-                        [$item['itemid'], $student->userid]
-                    );
-                    $finalgrade = $grade_rec ? $grade_rec->finalgrade : null;
+                    $itemid = $item['itemid'];
+                    $userid = $student->userid;
 
-                    if ($finalgrade !== null) {
+                    // Fetch grade instantly from memory instead of hitting the DB!
+                    if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
+                        $finalgrade = $grades_map[$userid][$itemid];
                         $items_completed++; // Student submitted this item
+                        
                         if ($item['grademax'] > 0) {
                             $total_earned += $finalgrade;
                             $total_max += $item['grademax'];
@@ -369,16 +370,14 @@ if ($action === 'getbatchfulldata') {
                 // Completion %: Items Completed / Total Items in Category (e.g., 10/27 = 37.04%)
                 $comp_rate = $total_items_in_cat > 0 ? round(($items_completed / $total_items_in_cat) * 100, 2) : 0;
 
-                $studentcrm = $crm_data_map[strtolower($student->username)] ?? null;
-
+                // Remove individual student CRM appendage, it's not needed for the Moodle Grades API
                 $cat_data['studentGrades'][] = [
                     'userid' => $student->userid,
                     'fullname' => $student->fullname,
                     'username' => $student->username,
                     'percentage' => $percentage,
                     'completionRate' => $comp_rate, // NEW: Pass the true completion metric to JS
-                    'totalEarned' => $total_earned,
-                    'crm' => $studentcrm
+                    'totalEarned' => $total_earned
                 ];
             }
         }
@@ -395,6 +394,30 @@ if ($action === 'getbatchfulldata') {
 
     $result['totalStudents'] = count($result['uniqueStudents']);
     $result['totalTeachers'] = count($result['uniqueTeachers']);
+
+    // 7. Fetch CRM details for ALL students in the batch at once!
+    // We do this here to avoid cross-course overwriting where a student not taking course 5 loses their CRM data.
+    $all_usernames = array_column($result['uniqueStudents'], 'username');
+    $crm_data_map = [];
+    if (!empty($all_usernames)) {
+        $crmapi = new \local_batchanalytics\crmapi();
+        $crm_data_map = $crmapi->get_students_details($all_usernames);
+        $crm_data_map = array_change_key_case($crm_data_map, CASE_LOWER);
+    }
+
+    foreach ($result['uniqueStudents'] as &$stud) {
+        $key = strtolower($stud['username']);
+        if (array_key_exists($key, $crm_data_map)) {
+             $stud['crm'] = $crm_data_map[$key];
+             if (isset($crm_data_map[$key]['_debug_api_url'])) {
+                 $stud['_debug_api_url'] = $crm_data_map[$key]['_debug_api_url'];
+                 $stud['_debug_api_response'] = $crm_data_map[$key]['_debug_api_response'];
+             }
+        } else {
+             $stud['crm'] = null;
+        }
+    }
+    unset($stud);
 
     // FIX: Convert uniqueStudents to a clean array of objects instead of unsetting
     $result['uniqueStudents'] = array_values($result['uniqueStudents']);

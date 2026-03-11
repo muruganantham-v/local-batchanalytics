@@ -123,10 +123,10 @@ class crmapi
 
         $results = [];
         
-        // Ensure Admission_Numbar is fetched
+        // Ensure Admission_Number is fetched
         $fields_to_fetch = $this->crm_fields;
-        if (!in_array('Admission_Numbar', $fields_to_fetch)) {
-            $fields_to_fetch[] = 'Admission_Numbar';
+        if (!in_array('Admission_Number', $fields_to_fetch)) {
+            $fields_to_fetch[] = 'Admission_Number';
         }
         $fields_str = urlencode(implode(',', $fields_to_fetch));
 
@@ -134,11 +134,11 @@ class crmapi
         $chunks = array_chunk($usernames, 10);
 
         foreach ($chunks as $chunk) {
-            $escaped_usernames = array_map(function ($u) {
-                return str_replace(',', '', $this->escape_zoho_value($u));
+            $or_conditions = array_map(function($u) {
+                return "(Admission_Number:equals:" . str_replace(',', '', $this->escape_zoho_value($u)) . ")";
             }, $chunk);
 
-            $criteria = "(Admission_Numbar:in:" . implode(',', $escaped_usernames) . ")";
+            $criteria = "(" . implode("or", $or_conditions) . ")";
             $searchUrl = $this->api_base_url . '/crm/v6/Child_Admission/search?criteria=' . urlencode($criteria) . '&fields=' . $fields_str;
 
             $curl = new \curl();
@@ -151,11 +151,21 @@ class crmapi
 
             if (!empty($json['data'])) {
                 foreach ($json['data'] as $record) {
-                    $keyField = !empty($record['Admission_Numbar']) ? $record['Admission_Numbar'] : ($record['Username'] ?? '');
+                    $keyField = !empty($record['Admission_Number']) ? $record['Admission_Number'] : '';
                     if (!empty($keyField)) {
+                        // Inject debug information into each record so the frontend can read it!
+                        $record['_debug_api_url'] = $searchUrl;
+                        $record['_debug_api_response'] = $response;
                         $results[strtolower($keyField)] = $record;
                     }
                 }
+            } else {
+                 // Even if it failed, attach debug info to the first username in the chunk so we can see it
+                 $firstUser = !empty($chunk[0]) ? $chunk[0] : 'failed_query';
+                 $results[strtolower($firstUser)] = [
+                     '_debug_api_url' => $searchUrl,
+                     '_debug_api_response' => $response
+                 ];
             }
         }
 
@@ -174,9 +184,10 @@ class crmapi
         // and ensures the exact same fields are returned.
         $results = $this->get_students_details([$username]);
 
-        $key = strtolower($this->normalize_username($username));
-        if (isset($results[$key])) {
-            return $results[$key];
+        if (!empty($results)) {
+            // Since we might get back data keyed by Admission_Number instead of Username, 
+            // just return the first (and only) result we got back.
+            return reset($results);
         }
 
         return null;
