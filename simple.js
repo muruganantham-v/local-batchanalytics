@@ -16,55 +16,110 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (!searchBox) return;
 
-  // ==================== SEARCH ====================
-  searchBtn.addEventListener("click", async () => {
-    const k = searchBox.value.trim();
-    if (k.length < 1) return showToast("Enter keyword", "warn");
+  const BASE_URL = window.location.href.split("?")[0];
 
-    showToast("Searching...", "info");
-    try {
-      const baseUrl = window.location.href.split("?")[0];
-      const res = await fetch(
-        baseUrl + "?action=getbatchcourses&batchcode=" + encodeURIComponent(k),
-      );
-      if (!res.ok) throw new Error("Network error");
+  // ==================== CAPABILITY FLAGS ====================
+  const wrapEl = document.querySelector(".local-batchanalytics-wrap");
+  const BA_CAN_MANAGE = wrapEl ? wrapEl.dataset.canManage === "1" : false;
+  const BA_CRM_FIELDS = wrapEl ? JSON.parse(wrapEl.dataset.crmFields || "[]") : [];
+  const BA_RESTRICTED = BA_CRM_FIELDS.filter((f) => f.restricted).map((f) => f.key);
 
-      const data = await res.json();
-      if (!data.courses || !data.courses.length) {
-        batchSelect.innerHTML =
-          '<option value="">-- No batches found --</option>';
-        return showToast("No batches found", "warn");
+  // ==================== BATCH LOADING ====================
+  let ALL_BATCHES = []; // [{code, count}, ...] — used for teacher client-side filtering
+
+  function populateDropdown(batches) {
+    batchSelect.innerHTML = '<option value="">-- Select a Batch --</option>';
+    batches.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b.code;
+      opt.textContent = `${b.code} (${b.count} courses)`;
+      batchSelect.appendChild(opt);
+    });
+  }
+
+  if (!BA_CAN_MANAGE) {
+    // Teachers: auto-populate dropdown on page load, search filters client-side.
+    (async function loadAllBatches() {
+      try {
+        const res = await fetch(BASE_URL + "?action=getallbatches");
+        if (!res.ok) throw new Error("Network error");
+        const data = await res.json();
+        ALL_BATCHES = data.batches || [];
+        populateDropdown(ALL_BATCHES);
+        if (ALL_BATCHES.length > 0) {
+          showToast(`${ALL_BATCHES.length} batch groups loaded`, "success");
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Failed to load batch groups", "error");
       }
+    })();
 
-      const batches = {};
-      data.courses.forEach((c) => {
-        const parts = (
-          c.fullname.includes(":") ? c.fullname : c.shortname
-        ).split(":");
-        const b = parts.length > 1 ? parts[1].trim() : parts[0].trim();
-        if (!batches[b]) batches[b] = { code: b, count: 0 };
-        batches[b].count++;
-      });
+    searchBtn.addEventListener("click", () => {
+      const k = searchBox.value.trim().toLowerCase();
+      if (k.length === 0) {
+        populateDropdown(ALL_BATCHES);
+        showToast(`Showing all ${ALL_BATCHES.length} batch groups`, "info");
+        return;
+      }
+      const filtered = ALL_BATCHES.filter((b) => String(b.code).toLowerCase().includes(k));
+      populateDropdown(filtered);
+      if (filtered.length === 0) {
+        showToast("No matching batches", "warn");
+      } else {
+        showToast(`Found ${filtered.length} batch groups`, "success");
+      }
+    });
 
-      batchSelect.innerHTML = '<option value="">-- Select a Batch --</option>';
-      Object.keys(batches)
-        .sort()
-        .forEach((b) => {
-          const opt = document.createElement("option");
-          opt.value = b;
-          opt.textContent = `${b} (${batches[b].count} courses)`;
-          batchSelect.appendChild(opt);
+    searchBox.addEventListener("keyup", (e) => {
+      const k = searchBox.value.trim().toLowerCase();
+      if (k.length === 0) return populateDropdown(ALL_BATCHES);
+      const filtered = ALL_BATCHES.filter((b) => String(b.code).toLowerCase().includes(k));
+      populateDropdown(filtered);
+    });
+  } else {
+    // Managers: search-based flow — type keyword, click search, populate dropdown from API.
+    searchBtn.addEventListener("click", async () => {
+      const k = searchBox.value.trim();
+      if (k.length < 1) return showToast("Enter keyword", "warn");
+
+      showToast("Searching...", "info");
+      try {
+        const res = await fetch(
+          BASE_URL + "?action=getbatchcourses&batchcode=" + encodeURIComponent(k),
+        );
+        if (!res.ok) throw new Error("Network error");
+
+        const data = await res.json();
+        if (!data.courses || !data.courses.length) {
+          batchSelect.innerHTML = '<option value="">-- No batches found --</option>';
+          return showToast("No batches found", "warn");
+        }
+
+        const batches = {};
+        data.courses.forEach((c) => {
+          const parts = (
+            c.fullname.includes(":") ? c.fullname : c.shortname
+          ).split(":");
+          const b = parts.length > 1 ? parts[1].trim() : parts[0].trim();
+          if (!batches[b]) batches[b] = { code: b, count: 0 };
+          batches[b].count++;
         });
-      showToast(`Found ${data.courses.length} courses`, "success");
-    } catch (e) {
-      console.error(e);
-      showToast("Error searching", "error");
-    }
-  });
 
-  searchBox.addEventListener("keyup", (e) => {
-    if (e.key === "Enter") searchBtn.click();
-  });
+        populateDropdown(
+          Object.values(batches).sort((a, b) => a.code.localeCompare(b.code))
+        );
+        showToast(`Found ${data.courses.length} courses`, "success");
+      } catch (e) {
+        console.error(e);
+        showToast("Error searching", "error");
+      }
+    });
+
+    searchBox.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") searchBtn.click();
+    });
+  }
 
   // ==================== BATCH SELECTION ====================
   batchSelect.addEventListener("change", async function () {
@@ -96,9 +151,8 @@ document.addEventListener("DOMContentLoaded", function () {
     `;
 
     try {
-      const baseUrl = window.location.href.split("?")[0];
       const res = await fetch(
-        baseUrl +
+        BASE_URL +
         "?action=getbatchfulldata&batchcode=" +
         encodeURIComponent(this.value),
       );
@@ -106,39 +160,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
       BATCH_DATA = await res.json();
 
-      // Log Initial Batch Pull CRM API Data
+      // CRM data is lazy-loaded via fetchUnifiedData when tabs are rendered.
+      // Kick off CRM fetch in the background so data is ready when user opens CRM tab.
       if (BATCH_DATA && BATCH_DATA.uniqueStudents) {
-        BATCH_DATA.uniqueStudents.forEach(s => {
-          if (s.crm && s._debug_api_url && s._debug_api_response) {
-            // Prevent duplicate logs if same url is used for multiple students in one chunk
-            if (!window.__logged_crm_urls) window.__logged_crm_urls = new Set();
-            if (!window.__logged_crm_urls.has(s._debug_api_url)) {
-              console.log("Batch Pull Request to Zoho CRM: ", s._debug_api_url);
-
-              let parsedRes = s._debug_api_response;
-              try { parsedRes = JSON.parse(s._debug_api_response); } catch (e) { }
-
-              console.log("Batch Pull Response from Zoho CRM: ", parsedRes);
-              window.__logged_crm_urls.add(s._debug_api_url);
-            }
-          }
-
-          // Pre-populate Cache to avoid fetching one-by-one!
-          // Always create a cache entry even if CRM data is missing, otherwise they disappear from the table!
-          let company = "Not Placed";
-          if (s.crm && s.crm.Placement_Company) {
-            company = typeof s.crm.Placement_Company === 'object' && s.crm.Placement_Company.name
-              ? s.crm.Placement_Company.name
-              : String(s.crm.Placement_Company);
-          }
-          const ptfData = {
-            username: s.username,
-            placed_company: company,
-            ...(s.crm || {})
-          };
-          PTF_CACHE[s.username] = ptfData;
-          CRM_CACHE[s.username] = company;
-        });
+        const allUsers = BATCH_DATA.uniqueStudents.map(s => s.username);
+        fetchUnifiedData(allUsers);
       }
 
       OVERVIEW_SELECTED_COURSES = BATCH_DATA.courses.map((c) => c.courseid);
@@ -188,100 +214,59 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   };
 
-  // ==================== UNIFIED DATA FETCHER ====================
   // ==================== GLOBAL CRM COLUMNS MAP ====================
-  // Added "num" flag to tell the sorting algorithm if it's a number or text
-  const PTF_COLS = [
-    { h: "Class X", k: "Class_X_Score", num: true },
-    { h: "Class XII", k: "Class_XII_Score", num: true },
-    { h: "BE Branch", k: "BE_BTech_Branch", num: false },
-    { h: "BE Score", k: "BE_BTech_Score", num: true },
-    { h: "BE YOP", k: "BE_BTech_YoP", num: false },
-    { h: "College Name", k: "College_Name", num: false },
-    { h: "ME Score", k: "ME_MTech_Score", num: true },
-    { h: "ME Branch", k: "ME_MTech_Branch", num: false },
-    { h: "ME YOP", k: "ME_MTech_YoP", num: false },
-    { h: "Home State", k: "Home_State", num: false },
-    { h: "Total Applied", k: "Total_Applied", num: true },
-    { h: "Last Applied Date", k: "Last_Applied_Date", num: false },
-    { h: "Total Shortlisted", k: "Total_Shortlisted", num: true },
-    { h: "Last Shortlisted Date", k: "Last_Shortlisted_Date", num: false },
-    {
-      h: "Tech Int Cleared",
-      k: "Total_Technical_Interview_Cleared",
-      num: true,
-    },
-    { h: "Written Tests Cleared", k: "Total_Written_Test_Cleared", num: true },
-    { h: "Total L1 Cleared", k: "Total_L1_Cleared", num: true },
-    { h: "Total L2 Cleared", k: "Total_L2_Cleared", num: true },
-    { h: "Adv C Score", k: "Advanced_C_Score", num: true },
-    { h: "C Mentor", k: "Mentor_Name_C_Mock", num: false },
-    { h: "C++ Score", k: "C_Score", num: true },
-    { h: "C++ Mentor", k: "Mentor_Name_C_Mock1", num: false },
-    { h: "DS Score", k: "DS_Score", num: true },
-    { h: "DS Mentor", k: "Mentor_Name_DS", num: false },
-    { h: "Linux Score", k: "Linux_Internals_Score", num: true },
-    { h: "Linux Mentor", k: "Mentor_Name_LI", num: false },
-    { h: "MC Score", k: "MC_Mock_Score3", num: true },
-    { h: "MC Mentor", k: "Mentor_Name_MC_Mock", num: false },
-    { h: "Coach Rating", k: "Coach_Rating", num: true },
-    { h: "MAAC Rating (Moodle)", k: "CALC_MAAC", num: true },
-    { h: "PET Status", k: "Placement_Eli", num: false },
-    { h: "Placement Status", k: "CALC_STATUS", num: false },
-    { h: "Placed Company", k: "placed_company", num: false },
-    { h: "Placed Package", k: "CTC", num: true },
-  ];
+  // Built dynamically from admin config (data-crm-fields attribute).
+  const PTF_COLS_ALL = BA_CRM_FIELDS.map((f) => ({
+    h: f.label,
+    k: f.key,
+    num: f.numeric,
+    type: f.type || "text",
+  }));
+
+  // Filter columns based on user capability — restricted fields are hidden for view-only users.
+  const PTF_COLS = BA_CAN_MANAGE
+    ? PTF_COLS_ALL
+    : PTF_COLS_ALL.filter((c) => !BA_RESTRICTED.includes(c.k));
 
   // ==================== UNIFIED DATA FETCHER ====================
+
   async function fetchUnifiedData(users) {
-    const uniqueUsers = [...new Set(users)];
+    const uncached = [...new Set(users)].filter((u) => !PTF_CACHE[u]);
+    if (uncached.length === 0) return;
 
-    for (const u of uniqueUsers) {
-      if (PTF_CACHE[u]) continue;
-
+    // Batch fetch in chunks of 20
+    const chunkSize = 20;
+    for (let i = 0; i < uncached.length; i += chunkSize) {
+      const chunk = uncached.slice(i, i + chunkSize);
       try {
-        const baseUrl = window.location.href.split("?")[0];
         const res = await fetch(
-          baseUrl + "?action=getptfdata&username=" + encodeURIComponent(u),
+          BASE_URL + "?action=getptfdata&usernames=" + encodeURIComponent(chunk.join(",")),
         );
-        const data = await res.json();
+        const result = await res.json();
 
-        if (data && !data.error) {
+        if (result && result.students) {
+          result.students.forEach((data) => {
+            const u = data.username;
+            PTF_CACHE[u] = data.data ? { ...data.data, placed_company: data.placed_company, CTC: data.CTC } : data;
+            CRM_CACHE[u] = data.placed_company || "Not Placed";
 
-          // Log the Debug API Info to the Console!
-          if (data._debug_api_url) {
-            console.log("Sending Request to Zoho CRM: ", data._debug_api_url);
-          }
-          if (data._debug_api_response) {
-            let parsedRes = data._debug_api_response;
-            try { parsedRes = JSON.parse(data._debug_api_response); } catch (e) { }
-            console.log("Received Response from Zoho CRM: ", parsedRes);
-          }
+            const uid = u.replace(/[^a-z0-9]/gi, "");
+            const ptfRow = document.getElementById(`tr-${uid}`);
+            if (ptfRow) renderPtfRowContent(ptfRow, PTF_CACHE[u]);
+          });
 
-          PTF_CACHE[u] = data;
-          CRM_CACHE[u] = data.placed_company || "Not Placed";
-
-          const uid = u.replace(/[^a-z0-9]/gi, "");
-          const ptfRow = document.getElementById(`tr-${uid}`);
-          if (ptfRow) renderPtfRowContent(ptfRow, data);
-
-          // Trigger Live Filter Updates as data streams in
+          // Update filters once per chunk, not per user
           if (window.updatePtfFilterOptions) window.updatePtfFilterOptions();
-          if (
-            window.applyPtfFilters &&
-            document.getElementById("ptf-f-placement")
-          )
+          if (window.applyPtfFilters && document.getElementById("ptf-f-search"))
             window.applyPtfFilters();
 
           if (CURRENT_COURSE) {
             const statusFilter = document.getElementById("f-status");
             if (statusFilter && statusFilter.value) applyFilters();
           }
-        } else if (data && data.error) {
-          console.error("CRM Error for " + u + ": ", data.error);
         }
       } catch (e) {
-        console.error("Fetch error for " + u, e);
+        console.error("Batch fetch error for chunk", chunk, e);
       }
     }
   }
@@ -342,14 +327,14 @@ document.addEventListener("DOMContentLoaded", function () {
                       <input type="text" id="ptf-f-search" class="ba-range-input" style="width:100%" placeholder="Search..." onkeyup="window.applyPtfFilters()">
                   </div>
 
-                  <div class="ba-filter-item-modern">
+                  ${BA_CAN_MANAGE ? `<div class="ba-filter-item-modern">
                       <div class="ba-filter-header-row"><span class="ba-filter-label">Placement Status</span></div>
                       <select id="ptf-f-placement" class="ba-select-small" style="width:100%" onchange="window.applyPtfFilters()">
                           <option value="">All</option>
                           <option value="Placed">Placed</option>
                           <option value="Not Placed">Not Placed</option>
                       </select>
-                  </div>
+                  </div>` : '<div id="ptf-f-placement-placeholder"></div>'}
 
                   <div class="ba-filter-item-modern">
                       <div class="ba-filter-header-row"><span class="ba-filter-label">PET Status</span></div>
@@ -361,22 +346,24 @@ document.addEventListener("DOMContentLoaded", function () {
                   ${rangeHtml("MAAC Rating", "maac", 0, 10, 0.1)}
                   ${rangeHtml("Adv C Mock Score", "advc", 0, 10, 1)}
                   ${rangeHtml("MC Mock Score", "mc", 0, 10, 1)}
-                  ${rangeHtml("Total Applied", "applied", 0, 20, 1)}
-                  ${rangeHtml("Total Shortlisted", "shortlisted", 0, 20, 1)}
+                  ${!BA_RESTRICTED.includes("Total_Applied") ? rangeHtml("Total Applied", "applied", 0, 20, 1) : ""}
+                  ${!BA_RESTRICTED.includes("Total_Shortlisted") ? rangeHtml("Total Shortlisted", "shortlisted", 0, 20, 1) : ""}
 
+                  ${!BA_RESTRICTED.includes("BE_BTech_YoP") && !BA_RESTRICTED.includes("ME_MTech_YoP") ? `
                   <div class="ba-filter-item-modern">
                       <div class="ba-filter-header-row"><span class="ba-filter-label">Year of Passing (YOP)</span></div>
                       <div id="ptf-f-yop-list" style="max-height:120px; overflow-y:auto; border:1px solid #eee; padding:8px; border-radius:4px; font-size:12px;">
                           <span style="color:#999">Loading CRM Data...</span>
                       </div>
-                  </div>
+                  </div>` : ""}
 
+                  ${!BA_RESTRICTED.includes("Home_State") ? `
                   <div class="ba-filter-item-modern">
                       <div class="ba-filter-header-row"><span class="ba-filter-label">Home State</span></div>
                       <div id="ptf-f-state-list" style="max-height:150px; overflow-y:auto; border:1px solid #eee; padding:8px; border-radius:4px; font-size:12px;">
                           <span style="color:#999">Loading CRM Data...</span>
                       </div>
-                  </div>
+                  </div>` : ""}
               </div>
 
               <div class="ba-filter-main">
@@ -412,6 +399,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (toFetch.length > 0) fetchUnifiedData(toFetch);
   }
 
+  // Format a Zoho date string (YYYY-MM-DD) to a readable local date.
+  function formatCrmDate(val) {
+    if (!val || val === "-") return "-";
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? val : d.toLocaleDateString();
+  }
+
   // Helper: Render Row Content
   window.renderPtfRowContent = function (tr, data) {
     const company = data.placed_company || "Not Placed";
@@ -424,8 +418,6 @@ document.addEventListener("DOMContentLoaded", function () {
       ? `<span class="ba-status-badge status-placed">Placed</span>`
       : `<span class="ba-status-badge status-not-placed">Not Placed</span>`;
 
-    const moodleMaac = getStudentMoodleMaac(data.username);
-
     // Keep Name Cell (First child), Remove the rest to refresh them cleanly
     while (tr.children.length > 1) tr.removeChild(tr.lastChild);
 
@@ -433,7 +425,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const td = document.createElement("td");
 
       if (c.k === "CALC_STATUS") td.innerHTML = statusHtml;
-      else if (c.k === "CALC_MAAC") td.textContent = moodleMaac;
+      else if (c.type === "lookup") td.textContent = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || "-");
+      else if (c.type === "date") td.textContent = data[c.k] ? formatCrmDate(data[c.k]) : "-";
       else td.textContent = data[c.k] || "-";
 
       tr.appendChild(td);
@@ -490,7 +483,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Applies the CRM Sidebar filters to hide/show rows dynamically
   window.applyPtfFilters = function () {
     const search = document.getElementById("ptf-f-search").value.toLowerCase();
-    const placement = document.getElementById("ptf-f-placement").value;
+    const placement = document.getElementById("ptf-f-placement")?.value || "";
     const pet = document.getElementById("ptf-f-pet").value;
 
     const maacMin =
@@ -503,14 +496,14 @@ document.addEventListener("DOMContentLoaded", function () {
       parseFloat(document.getElementById("f-advc-max").value) || 100;
     const mcMin = parseFloat(document.getElementById("f-mc-min").value) || 0;
     const mcMax = parseFloat(document.getElementById("f-mc-max").value) || 100;
-    const appMin =
-      parseFloat(document.getElementById("f-applied-min").value) || 0;
-    const appMax =
-      parseFloat(document.getElementById("f-applied-max").value) || 500;
-    const shortMin =
-      parseFloat(document.getElementById("f-shortlisted-min").value) || 0;
-    const shortMax =
-      parseFloat(document.getElementById("f-shortlisted-max").value) || 500;
+    const appMinEl = document.getElementById("f-applied-min");
+    const appMin = appMinEl ? parseFloat(appMinEl.value) || 0 : 0;
+    const appMaxEl = document.getElementById("f-applied-max");
+    const appMax = appMaxEl ? parseFloat(appMaxEl.value) || 500 : 999999;
+    const shortMinEl = document.getElementById("f-shortlisted-min");
+    const shortMin = shortMinEl ? parseFloat(shortMinEl.value) || 0 : 0;
+    const shortMaxEl = document.getElementById("f-shortlisted-max");
+    const shortMax = shortMaxEl ? parseFloat(shortMaxEl.value) || 500 : 999999;
 
     const yopChecked = Array.from(
       document.querySelectorAll(".cb-yop:checked"),
@@ -548,7 +541,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (show && pet && data.Placement_Eli !== pet) show = false;
 
-        const maac = parseFloat(getStudentMoodleMaac(s.username)) || 0;
+        const maac = parseFloat(data.MAAC_Rating) || 0;
         if (show && (maac < maacMin || maac > maacMax)) show = false;
 
         const advc = parseFloat(data.Advanced_C_Score) || 0;
@@ -609,7 +602,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   window.resetPtfFilters = function () {
     document.getElementById("ptf-f-search").value = "";
-    document.getElementById("ptf-f-placement").value = "";
+    const placementEl = document.getElementById("ptf-f-placement");
+    if (placementEl) placementEl.value = "";
 
     const petEl = document.getElementById("ptf-f-pet");
     if (petEl) petEl.value = "";
@@ -1242,17 +1236,17 @@ document.addEventListener("DOMContentLoaded", function () {
       isAtt: isAttendance(c.categoryname),
     }));
 
-    // 2. Re-run Filtering (Using updated logic)
+    // 2. Re-run Filtering (Using same logic as applyFilters)
     const filtered = window.filterData.filter((s) => {
       if (search && !s.fullname.toLowerCase().includes(search)) return false;
 
       for (let r of ranges) {
-        const data = s.cats[r.name] || { pct: 0, earned: 0 };
+        const data = s.cats[r.name] || { pct: 0, comp: 0, earned: 0 };
         let valToCheck;
 
-        if (r.isMaac) valToCheck = data.pct;
-        else if (r.isAtt) valToCheck = data.pct;
-        else valToCheck = isCompMode ? (data.earned > 0 ? 100 : 0) : data.pct;
+        if (r.isMaac) valToCheck = data.pct || 0;
+        else if (r.isAtt) valToCheck = data.pct || 0;
+        else valToCheck = isCompMode ? data.comp || 0 : data.pct || 0;
 
         if (valToCheck < r.min || valToCheck > r.max) return false;
       }
@@ -1623,7 +1617,7 @@ document.addEventListener("DOMContentLoaded", function () {
     setTimeout(() => d.remove(), 3000);
   }
   function escapeHtml(t) {
-    return t.replace(/'/g, "\\'");
+    return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function getCategoryIconAndColor(name, index) {
     const n = name.toLowerCase();
@@ -1833,58 +1827,7 @@ document.addEventListener("DOMContentLoaded", function () {
     downloadCSV(csv.join("\n"), filename + ".csv");
   };
 
-  // Helper: Calculate Student's Average MAAC Rating from Moodle Data
-  function getStudentMoodleMaac(username) {
-    if (!BATCH_DATA || !BATCH_DATA.courses) return "-";
-
-    let total = 0;
-    let count = 0;
-
-    BATCH_DATA.courses.forEach((c) => {
-      c.categories.forEach((cat) => {
-        if (cat.categoryname === "MAAC Ratings") {
-          const student = cat.studentGrades.find(
-            (s) => s.username === username,
-          );
-          if (student && student.percentage !== null) {
-            total += student.percentage;
-            count++;
-          }
-        }
-      });
-    });
-
-    // Return average to 1 decimal place (e.g., 8.5)
-    return count > 0 ? (total / count).toFixed(1) : "-";
-  }
-
-  // Helper: Calculate Student's Average MAAC Rating from Moodle Data
-  function getStudentMoodleMaac(username) {
-    if (!BATCH_DATA || !BATCH_DATA.courses) return "-";
-
-    let total = 0;
-    let count = 0;
-
-    // Loop through all courses in the batch
-    BATCH_DATA.courses.forEach((c) => {
-      c.categories.forEach((cat) => {
-        if (cat.categoryname === "MAAC Ratings") {
-          const student = cat.studentGrades.find(
-            (s) => s.username === username,
-          );
-          // Check if student has a valid rating (not null)
-          if (student && student.percentage !== null) {
-            total += student.percentage;
-            count++;
-          }
-        }
-      });
-    });
-
-    // Return average rounded to 1 decimal (e.g., 8.5)
-    return count > 0 ? (total / count).toFixed(1) : "-";
-  }
-
+  // Helper: Build a lookup map of MAAC ratings per username (computed once, invalidated on new batch load)
   // Helper: Sort Table Columns
   window.sortTable = function (th, colIndex, isNumber) {
     const table = th.closest("table");
@@ -1923,6 +1866,4 @@ document.addEventListener("DOMContentLoaded", function () {
     rows.forEach((row) => tbody.appendChild(row));
   };
 
-  window.resetPtfFilters();
-  
 });

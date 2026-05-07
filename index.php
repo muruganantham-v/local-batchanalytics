@@ -16,14 +16,50 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
-$USER_ID = $USER->id;
+$userid = $USER->id;
 
 // Capability-based permission check. Assign 'local/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
 require_capability('local/batchanalytics:view', $context);
 
+$can_manage = has_capability('local/batchanalytics:manage', $context);
+
+// Load restricted CRM fields for view-only users.
+$restricted_crm_fields = [];
+if (!$can_manage) {
+    $restricted_crm_fields = \local_batchanalytics\crm_fields_helper::get_restricted_keys();
+}
+
+/**
+ * Strip restricted CRM fields from a data array.
+ */
+function filter_crm_fields($data, $restricted_fields) {
+    if (empty($data) || !is_array($data)) {
+        return $data;
+    }
+    foreach ($restricted_fields as $field) {
+        unset($data[$field]);
+    }
+    // Always strip debug fields for non-managers.
+    unset($data['_debug_api_url']);
+    unset($data['_debug_api_response']);
+    return $data;
+}
+
 $action = optional_param('action', '', PARAM_ALPHA);
 
 // ==================== API ENDPOINTS ====================
+
+if ($action === 'getallbatches') {
+    while (ob_get_level())
+        ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    $mdata = new \local_batchanalytics\moodledata();
+    $batches = $mdata->get_all_batches($userid);
+
+    echo json_encode(['batches' => $batches]);
+    die();
+}
 
 if ($action === 'searchcourses') {
     while (ob_get_level())
@@ -32,7 +68,7 @@ if ($action === 'searchcourses') {
     $keyword = optional_param('keyword', '', PARAM_TEXT);
 
     $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->search_courses($keyword, $USER_ID);
+    $courses = $mdata->search_courses($keyword, $userid);
 
     echo json_encode(['courses' => $courses]);
     die();
@@ -45,7 +81,7 @@ if ($action === 'getbatchcourses') {
     $batchcode = optional_param('batchcode', '', PARAM_TEXT);
 
     $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->get_courses_by_batch($batchcode, $USER_ID);
+    $courses = $mdata->get_courses_by_batch($batchcode, $userid);
 
     echo json_encode(['courses' => $courses]);
     die();
@@ -59,11 +95,16 @@ if ($action === 'getcrmdata') {
     $username = optional_param('username', '', PARAM_TEXT);
 
     try {
-        global $CFG;
-        require_once($CFG->libdir . '/filelib.php');
-
         $crm = new \local_batchanalytics\crmapi();
-        $placement_status = $crm->search_student_placement($username);
+        $record = $crm->get_student_details($username);
+        $placement_status = 'Not Placed';
+        if (!empty($record['Placement_Company'])) {
+            if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
+                $placement_status = $record['Placement_Company']['name'];
+            } elseif (is_string($record['Placement_Company'])) {
+                $placement_status = $record['Placement_Company'];
+            }
+        }
 
         echo json_encode([
             'username' => $username,
@@ -87,9 +128,6 @@ if ($action === 'getptfdata') {
     $usernames = optional_param('usernames', '', PARAM_TEXT);
 
     try {
-        global $CFG;
-        require_once($CFG->libdir . '/filelib.php');
-
         $crm = new \local_batchanalytics\crmapi();
 
         if (!empty($usernames)) {
@@ -108,11 +146,19 @@ if ($action === 'getptfdata') {
                         $company = $record['Placement_Company'];
                     }
                 }
+                $rec_data = $record;
+                $rec_ctc = $rec_data['CTC'] ?? '-';
+                if (!$can_manage && !empty($restricted_crm_fields)) {
+                    $rec_data = filter_crm_fields($rec_data, $restricted_crm_fields);
+                    if (in_array('CTC', $restricted_crm_fields)) {
+                        $rec_ctc = null;
+                    }
+                }
                 $output[] = [
                     'username' => $u,
                     'placed_company' => $company,
-                    'CTC' => $record['CTC'] ?? '-',
-                    'data' => $record
+                    'CTC' => $rec_ctc,
+                    'data' => $rec_data
                 ];
             }
 
@@ -142,45 +188,19 @@ if ($action === 'getptfdata') {
             }
         }
 
-        // Prepare JSON Response
-        $data = [
-            'username' => $username,
-            'placed_company' => $company,
-            'CTC' => $record['CTC'] ?? '-', // <--- Added CTC here
+        // Build response dynamically from configured API fields.
+        $data = ['username' => $username, 'placed_company' => $company];
+        foreach (\local_batchanalytics\crm_fields_helper::get_api_field_keys() as $field_key) {
+            if ($field_key === 'College_Name') {
+                $data[$field_key] = $record['College_Name'] ?? ($record['Other_College_Name'] ?? '-');
+            } else {
+                $data[$field_key] = $record[$field_key] ?? '-';
+            }
+        }
 
-            // ... Keep all other existing fields ...
-            'Class_X_Score' => $record['Class_X_Score'] ?? '-',
-            'Class_XII_Score' => $record['Class_XII_Score'] ?? '-',
-            'BE_BTech_Branch' => $record['BE_BTech_Branch'] ?? '-',
-            'BE_BTech_Score' => $record['BE_BTech_Score'] ?? '-',
-            'BE_BTech_YoP' => $record['BE_BTech_YoP'] ?? '-',
-            'College_Name' => $record['College_Name'] ?? ($record['Other_College_Name'] ?? '-'),
-            'ME_MTech_Score' => $record['ME_MTech_Score'] ?? '-',
-            'ME_MTech_Branch' => $record['ME_MTech_Branch'] ?? '-',
-            'ME_MTech_YoP' => $record['ME_MTech_YoP'] ?? '-',
-            'Home_State' => $record['Home_State'] ?? '-',
-            'Total_Applied' => $record['Total_Applied'] ?? '-',
-            'Last_Applied_Date' => $record['Last_Applied_Date'] ?? '-',
-            'Total_Shortlisted' => $record['Total_Shortlisted'] ?? '-',
-            'Last_Shortlisted_Date' => $record['Last_Shortlisted_Date'] ?? '-',
-            'Total_Technical_Interview_Cleared' => $record['Total_Technical_Interview_Cleared'] ?? '-',
-            'Total_Written_Test_Cleared' => $record['Total_Written_Test_Cleared'] ?? '-',
-            'Total_L1_Cleared' => $record['Total_L1_Cleared'] ?? '-',
-            'Total_L2_Cleared' => $record['Total_L2_Cleared'] ?? '-',
-            'Advanced_C_Score' => $record['Advanced_C_Score'] ?? '-',
-            'Mentor_Name_C_Mock' => $record['Mentor_Name_C_Mock'] ?? '-',
-            'C_Score' => $record['C_Score'] ?? '-',
-            'Mentor_Name_C_Mock1' => $record['Mentor_Name_C_Mock1'] ?? '-',
-            'DS_Score' => $record['DS_Score'] ?? '-',
-            'Mentor_Name_DS' => $record['Mentor_Name_DS'] ?? '-',
-            'Linux_Internals_Score' => $record['Linux_Internals_Score'] ?? '-',
-            'Mentor_Name_LI' => $record['Mentor_Name_LI'] ?? '-',
-            'MC_Mock_Score3' => $record['MC_Mock_Score3'] ?? '-',
-            'Mentor_Name_MC_Mock' => $record['Mentor_Name_MC_Mock'] ?? '-',
-            'Coach_Rating' => $record['Coach_Rating'] ?? '-',
-            'MAAC_Rating' => $record['MAAC_Rating'] ?? '-',
-            'Placement_Eli' => $record['Placement_Eli'] ?? '-'
-        ];
+        if (!$can_manage && !empty($restricted_crm_fields)) {
+            $data = filter_crm_fields($data, $restricted_crm_fields);
+        }
 
         echo json_encode($data);
     } catch (Exception $e) {
@@ -193,12 +213,10 @@ if ($action === 'getbatchfulldata') {
     while (ob_get_level())
         ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
-    global $DB;
-
     $batchcode = optional_param('batchcode', '', PARAM_TEXT);
 
     $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->get_courses_by_batch($batchcode, $USER_ID);
+    $courses = $mdata->get_courses_by_batch($batchcode, $userid);
 
     $result = [
         'batchcode' => $batchcode,
@@ -209,6 +227,10 @@ if ($action === 'getbatchfulldata') {
         'uniqueStudents' => [], // Will hold list of {name, username}
         'uniqueTeachers' => []
     ];
+
+    // Get student role ID once before the loop
+    $student_role = $DB->get_record('role', ['shortname' => 'student']);
+    $student_role_id = $student_role ? $student_role->id : 5;
 
     foreach ($courses as $course) {
         $courseid = $course['courseid'];
@@ -226,20 +248,18 @@ if ($action === 'getbatchfulldata') {
 
         // 2. Get Grade Items (Including Course Total)
         $items_sql = "
-            SELECT 
+            SELECT
                 gi.id as itemid, gi.itemname, gi.itemtype, gi.itemmodule, gi.grademax,
                 gc.id as categoryid, gc.fullname as categoryname
             FROM {grade_items} gi
             LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
-            WHERE gi.courseid = :courseid 
+            WHERE gi.courseid = :courseid
               AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
             ORDER BY gc.fullname, gi.itemname
         ";
         $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
 
         // 3. Get Students
-        $student_role = $DB->get_record('role', ['shortname' => 'student']);
-        $student_role_id = $student_role ? $student_role->id : 5;
 
         $students_sql = "
             SELECT DISTINCT
@@ -268,9 +288,7 @@ if ($action === 'getbatchfulldata') {
 
         // Note: CRM data fetching has been moved outside this course loop to prevent cross-course overwriting
 
-        // 4. Organize Data
-// 4. Organize Data
-        // NEW: Fetch all categories to resolve parent/child relationships
+        // 4. Organize Data — Fetch all categories to resolve parent/child relationships
         $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
 
         $categories_data = [];
@@ -395,29 +413,8 @@ if ($action === 'getbatchfulldata') {
     $result['totalStudents'] = count($result['uniqueStudents']);
     $result['totalTeachers'] = count($result['uniqueTeachers']);
 
-    // 7. Fetch CRM details for ALL students in the batch at once!
-    // We do this here to avoid cross-course overwriting where a student not taking course 5 loses their CRM data.
-    $all_usernames = array_column($result['uniqueStudents'], 'username');
-    $crm_data_map = [];
-    if (!empty($all_usernames)) {
-        $crmapi = new \local_batchanalytics\crmapi();
-        $crm_data_map = $crmapi->get_students_details($all_usernames);
-        $crm_data_map = array_change_key_case($crm_data_map, CASE_LOWER);
-    }
-
-    foreach ($result['uniqueStudents'] as &$stud) {
-        $key = strtolower($stud['username']);
-        if (array_key_exists($key, $crm_data_map)) {
-             $stud['crm'] = $crm_data_map[$key];
-             if (isset($crm_data_map[$key]['_debug_api_url'])) {
-                 $stud['_debug_api_url'] = $crm_data_map[$key]['_debug_api_url'];
-                 $stud['_debug_api_response'] = $crm_data_map[$key]['_debug_api_response'];
-             }
-        } else {
-             $stud['crm'] = null;
-        }
-    }
-    unset($stud);
+    // CRM data is NOT fetched here — it's lazy-loaded by the frontend via getptfdata
+    // when the user opens the CRM Data tab. This keeps the initial response fast.
 
     // FIX: Convert uniqueStudents to a clean array of objects instead of unsetting
     $result['uniqueStudents'] = array_values($result['uniqueStudents']);
@@ -439,13 +436,15 @@ $PAGE->requires->js('/local/batchanalytics/simple.js');
 
 echo $OUTPUT->header();
 
-echo '<div class="local-batchanalytics-wrap">';
+$crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '">';
 // echo '<h2 class="ba-page-title">' . get_string('pluginname', 'local_batchanalytics') . '</h2>';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 echo '<div class="ba-top-row">';
 echo '<div class="ba-search-row">';
-echo '<input id="ba-search" type="text" placeholder="Search batch code (e.g., 21, 22)...">';
+$search_placeholder = $can_manage ? 'Search batch code (e.g., 21, 22)...' : 'Filter batch groups...';
+echo '<input id="ba-search" type="text" placeholder="' . $search_placeholder . '">';
 echo '<button id="ba-search-btn" class="ba-btn">Search</button>';
 echo '</div>';
 echo '</div>';

@@ -34,4 +34,11 @@ $capabilities = array(
             'teacher' => CAP_ALLOW
         )
     ),
+    'local/batchanalytics:manage' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+        )
+    ),
 );

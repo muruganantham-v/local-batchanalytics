@@ -30,6 +30,60 @@ class moodledata
 {
 
     /**
+     * Get allowed course keywords from settings.
+     * @return array Array of lowercase keyword strings, empty if no filter configured.
+     */
+    private function get_allowed_keywords() {
+        $config = get_config('local_batchanalytics', 'allowed_course_keywords');
+        if (empty($config)) {
+            return [];
+        }
+        return array_filter(array_map(function($k) {
+            return strtolower(trim($k));
+        }, explode(',', $config)));
+    }
+
+    /**
+     * Check if a course name matches any of the allowed keywords.
+     * @param string $fullname
+     * @param array $keywords
+     * @return bool
+     */
+    private function course_matches_keywords($fullname, $keywords) {
+        if (empty($keywords)) {
+            return true;
+        }
+        $lower = strtolower($fullname);
+        foreach ($keywords as $kw) {
+            if (stripos($lower, $kw) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Build SQL WHERE clause and params for allowed course keywords.
+     * @param array $keywords
+     * @param string $prefix Unique param prefix to avoid collisions.
+     * @return array [$sql_fragment, $params] — empty string if no filter.
+     */
+    private function build_keywords_sql($keywords, $prefix = 'kw') {
+        global $DB;
+        if (empty($keywords)) {
+            return ['', []];
+        }
+        $conditions = [];
+        $params = [];
+        foreach ($keywords as $i => $kw) {
+            $paramname = $prefix . $i;
+            $conditions[] = $DB->sql_like('fullname', ':' . $paramname, false);
+            $params[$paramname] = '%' . $DB->sql_like_escape($kw) . '%';
+        }
+        return ['AND (' . implode(' OR ', $conditions) . ')', $params];
+    }
+
+    /**
      * Search courses by keyword with role-based filtering
      *
      * @param string $keyword
@@ -45,33 +99,28 @@ class moodledata
             return [];
         }
 
-        $is_admin = is_siteadmin($userid);
         $context = \context_system::instance();
-        $has_manager_cap = has_capability('moodle/site:config', $context, $userid);
+        $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
+        $allowed_keywords = $this->get_allowed_keywords();
 
-        $user_roles = get_user_roles($context, $userid, true);
-        $role_names = [];
-        foreach ($user_roles as $role) {
-            $role_names[] = $role->shortname;
-        }
+        if ($can_manage) {
+            list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'skw');
 
-        $is_manager = in_array('manager', $role_names) || $has_manager_cap;
-
-        if ($is_admin || $is_manager) {
             $sql = "SELECT id, fullname, shortname
                     FROM {course}
                     WHERE (fullname LIKE :keyword1 OR shortname LIKE :keyword2)
                     AND visible = 1
                     AND id > 1
-                    ORDER BY fullname
-                    LIMIT 200";
+                    $kw_sql
+                    ORDER BY fullname";
 
             $params = [
                 'keyword1' => '%' . $DB->sql_like_escape($keyword) . '%',
                 'keyword2' => '%' . $DB->sql_like_escape($keyword) . '%'
             ];
+            $params = array_merge($params, $kw_params);
 
-            $records = $DB->get_records_sql($sql, $params);
+            $records = $DB->get_records_sql($sql, $params, 0, 200);
             $courses = [];
             foreach ($records as $record) {
                 $courses[] = [
@@ -86,6 +135,9 @@ class moodledata
             $courses = [];
             foreach ($enrolled_courses as $course) {
                 if ($course->id <= 1) {
+                    continue;
+                }
+                if (!$this->course_matches_keywords($course->fullname, $allowed_keywords)) {
                     continue;
                 }
                 $fullname_match = stripos($course->fullname, $keyword) !== false;
@@ -109,6 +161,79 @@ class moodledata
     }
 
     /**
+     * Get all unique batch groups the user can access.
+     * Extracts batch codes from course names using the "Batch XX:" or shortname pattern.
+     *
+     * @param int $userid
+     * @return array Array of ['code' => string, 'count' => int]
+     */
+    public function get_all_batches($userid)
+    {
+        global $DB;
+
+        $context = \context_system::instance();
+        $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
+        $allowed_keywords = $this->get_allowed_keywords();
+
+        if ($can_manage) {
+            list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'bkw');
+
+            $sql = "SELECT id, fullname, shortname
+                    FROM {course}
+                    WHERE visible = 1 AND id > 1
+                    $kw_sql
+                    ORDER BY fullname";
+            $records = $DB->get_records_sql($sql, $kw_params);
+            $courses = [];
+            foreach ($records as $record) {
+                $courses[] = [
+                    'fullname' => $record->fullname,
+                    'shortname' => $record->shortname
+                ];
+            }
+        } else {
+            $enrolled_courses = enrol_get_users_courses($userid, true, ['id', 'fullname', 'shortname']);
+            $courses = [];
+            foreach ($enrolled_courses as $course) {
+                if ($course->id <= 1) {
+                    continue;
+                }
+                if (!$this->course_matches_keywords($course->fullname, $allowed_keywords)) {
+                    continue;
+                }
+                $courses[] = [
+                    'fullname' => $course->fullname,
+                    'shortname' => $course->shortname
+                ];
+            }
+        }
+
+        // Extract unique batch codes from course names.
+        $batches = [];
+        foreach ($courses as $c) {
+            $name = strpos($c['fullname'], ':') !== false ? $c['fullname'] : $c['shortname'];
+            $parts = explode(':', $name);
+            $code = count($parts) > 1 ? trim($parts[1]) : trim($parts[0]);
+            if ($code === '') {
+                continue;
+            }
+            if (!isset($batches[$code])) {
+                $batches[$code] = 0;
+            }
+            $batches[$code]++;
+        }
+
+        ksort($batches);
+
+        $result = [];
+        foreach ($batches as $code => $count) {
+            $result[] = ['code' => (string) $code, 'count' => $count];
+        }
+
+        return $result;
+    }
+
+    /**
      * Get courses by batch code with role-based filtering
      *
      * @param string $batchcode
@@ -124,33 +249,28 @@ class moodledata
             return [];
         }
 
-        $is_admin = is_siteadmin($userid);
         $context = \context_system::instance();
-        $has_manager_cap = has_capability('moodle/site:config', $context, $userid);
+        $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
+        $allowed_keywords = $this->get_allowed_keywords();
 
-        $user_roles = get_user_roles($context, $userid, true);
-        $role_names = [];
-        foreach ($user_roles as $role) {
-            $role_names[] = $role->shortname;
-        }
+        if ($can_manage) {
+            list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'ckw');
 
-        $is_manager = in_array('manager', $role_names) || $has_manager_cap;
-
-        if ($is_admin || $is_manager) {
             $sql = "SELECT id, fullname, shortname
                     FROM {course}
                     WHERE (fullname LIKE :batchcode1 OR shortname LIKE :batchcode2)
                     AND visible = 1
                     AND id > 1
-                    ORDER BY fullname
-                    LIMIT 200";
+                    $kw_sql
+                    ORDER BY fullname";
 
             $params = [
                 'batchcode1' => '%' . $DB->sql_like_escape($batchcode) . '%',
                 'batchcode2' => '%' . $DB->sql_like_escape($batchcode) . '%'
             ];
+            $params = array_merge($params, $kw_params);
 
-            $records = $DB->get_records_sql($sql, $params);
+            $records = $DB->get_records_sql($sql, $params, 0, 200);
             $courses = [];
             foreach ($records as $record) {
                 $courses[] = [
@@ -165,6 +285,9 @@ class moodledata
             $courses = [];
             foreach ($enrolled_courses as $course) {
                 if ($course->id <= 1) {
+                    continue;
+                }
+                if (!$this->course_matches_keywords($course->fullname, $allowed_keywords)) {
                     continue;
                 }
                 $fullname_match = stripos($course->fullname, $batchcode) !== false;
@@ -185,41 +308,6 @@ class moodledata
 
             return array_slice($courses, 0, 200);
         }
-    }
-    public static function get_course_gradebook_raw($courseid)
-    {
-        global $DB;
-
-        $sql = "
-        SELECT 
-            u.id AS userid,
-            u.username,
-            u.firstname,
-            u.lastname,
-            gc.fullname AS categoryname,
-            gi.id AS gradeitemid,
-            gi.itemname AS gradeitemname,
-            gg.finalgrade,
-            gi.grademax
-        FROM {grade_items} gi
-        JOIN {grade_categories} gc ON gc.id = gi.categoryid
-        JOIN {grade_grades} gg ON gg.itemid = gi.id
-        JOIN {user} u ON u.id = gg.userid
-        WHERE gi.courseid = :courseid
-          AND gi.itemtype = 'mod'
-    ";
-
-        return $DB->get_records_sql($sql, [
-            'courseid' => $courseid
-        ]);
-    }
-
-
-    public function get_student_username($userid)
-    {
-        global $DB;
-        $user = $DB->get_record('user', ['id' => $userid], 'username');
-        return $user ? $user->username : null;
     }
 
 }

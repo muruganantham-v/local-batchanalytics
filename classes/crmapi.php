@@ -11,45 +11,9 @@ class crmapi
     private $accounts_url;
     private $api_base_url;
 
-    // 1. Centralized Field List
-    // We define these once so both batch and single queries return the exact same data structure.
-    private $crm_fields = [
-        'Username',
-        'Placement_Company',
-        'CTC',
-        'Class_X_Score',
-        'Class_XII_Score',
-        'BE_BTech_Branch',
-        'BE_BTech_Score',
-        'BE_BTech_YoP',
-        'College_Name',
-        'Other_College_Name',
-        'ME_MTech_Score',
-        'ME_MTech_Branch',
-        'ME_MTech_YoP',
-        'Home_State',
-        'Total_Applied',
-        'Last_Applied_Date',
-        'Total_Shortlisted',
-        'Last_Shortlisted_Date',
-        'Total_Technical_Interview_Cleared',
-        'Total_Written_Test_Cleared',
-        'Total_L1_Cleared',
-        'Total_L2_Cleared',
-        'Advanced_C_Score',
-        'Mentor_Name_C_Mock',
-        'C_Score',
-        'Mentor_Name_C_Mock1',
-        'DS_Score',
-        'Mentor_Name_DS',
-        'Linux_Internals_Score',
-        'Mentor_Name_LI',
-        'MC_Mock_Score3',
-        'Mentor_Name_MC_Mock',
-        'Coach_Rating',
-        'MAAC_Rating',
-        'Placement_Eli'
-    ];
+    // Field list is loaded from admin config (local_batchanalytics/crm_fields_config).
+    // Falls back to the defaults defined in crm_fields_helper if not yet configured.
+    private $crm_fields = [];
 
     public function __construct()
     {
@@ -61,6 +25,9 @@ class crmapi
         $this->refresh_token = trim(get_config('local_batchanalytics', 'zoho_refresh_token') ?: '');
         $this->accounts_url = trim(get_config('local_batchanalytics', 'zoho_accounts_url') ?: 'https://accounts.zoho.com');
         $this->api_base_url = trim(get_config('local_batchanalytics', 'zoho_api_base_url') ?: 'https://www.zohoapis.com');
+
+        // Load API field keys from admin config (excludes computed CALC_* / placed_company).
+        $this->crm_fields = crm_fields_helper::get_api_field_keys();
     }
 
     private function get_access_token()
