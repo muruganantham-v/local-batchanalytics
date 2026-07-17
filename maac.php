@@ -11,10 +11,18 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
-require_capability('local/batchanalytics:view', $context);
 
 $courseid = optional_param('courseid', 0, PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
+
+if ($courseid <= 0) {
+    if ($action !== '') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Invalid course ID']);
+        die();
+    }
+    throw new moodle_exception('invalidcourseid');
+}
 
 $service = new \local_batchanalytics\maac_service();
 
@@ -26,11 +34,19 @@ if ($action !== '') {
 
     try {
         if ($action === 'summary') {
+            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new moodle_exception('invalidrequest');
+            }
+            require_sesskey();
             echo json_encode($service->get_course_summary($courseid, $USER->id));
             die();
         }
 
         if ($action === 'getdata') {
+            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new moodle_exception('invalidrequest');
+            }
+            require_sesskey();
             echo json_encode($service->get_course_data($courseid, $USER->id));
             die();
         }
@@ -41,6 +57,10 @@ if ($action !== '') {
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -58,6 +78,10 @@ if ($action !== '') {
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -77,6 +101,10 @@ if ($action !== '') {
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -97,6 +125,10 @@ if ($action !== '') {
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -116,10 +148,6 @@ if ($action !== '') {
         echo json_encode(['error' => 'An error occurred processing your request.']);
     }
     die();
-}
-
-if ($courseid <= 0) {
-    throw new moodle_exception('invalidcourseid');
 }
 
 $courseinfo = $service->get_course_summary($courseid, $USER->id);

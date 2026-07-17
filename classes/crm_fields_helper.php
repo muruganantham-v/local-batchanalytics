@@ -118,4 +118,141 @@ class crm_fields_helper {
         unset($data['_debug_api_response']);
         return $data;
     }
+    /**
+     * Return the configured student CRM module API name.
+     */
+    public static function get_student_module_api_name(): string {
+        $module = trim((string)get_config('local_batchanalytics', 'student_crm_module_api_name'));
+        return $module !== '' ? $module : 'Child_Admission';
+    }
+
+    /**
+     * Return the configured mentor CRM module API name.
+     */
+    public static function get_mentor_module_api_name(): string {
+        return trim((string)get_config('local_batchanalytics', 'mentor_crm_module_api_name'));
+    }
+
+    /**
+     * Return the CRM field used to find a mentor record by batch group name.
+     */
+    public static function get_mentor_batch_field_key(): string {
+        return trim((string)get_config('local_batchanalytics', 'mentor_crm_batch_field_key'));
+    }
+
+    /**
+     * Return mentor field definitions from config.
+     */
+    public static function get_mentor_fields(): array {
+        $raw = get_config('local_batchanalytics', 'mentor_crm_fields_config');
+        if (!empty($raw)) {
+            $parsed = json_decode($raw, true);
+            if (is_array($parsed)) {
+                return $parsed;
+            }
+        }
+        return [];
+    }
+
+    /**
+     * Return mentor Zoho API field keys.
+     */
+    public static function get_mentor_api_field_keys(): array {
+        $keys = [];
+        foreach (self::get_mentor_fields() as $field) {
+            $key = trim((string)($field['key'] ?? ''));
+            if ($key !== '') {
+                $keys[] = $key;
+            }
+        }
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * Normalize mentor CRM field groups from JSON setting rows.
+     *
+     * @param array $groups
+     * @return array
+     */
+    public static function normalise_mentor_field_groups(array $groups): array {
+        $available = array_fill_keys(self::get_mentor_api_field_keys(), true);
+        $normalised = [];
+
+        foreach ($groups as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $name = trim((string)($group['name'] ?? $group['title'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $fields = $group['fields'] ?? $group['columns'] ?? [];
+            if (!is_array($fields)) {
+                $fields = [];
+            }
+
+            $cleanfields = [];
+            foreach ($fields as $field) {
+                $field = trim((string)$field);
+                if ($field !== '' && isset($available[$field])) {
+                    $cleanfields[] = $field;
+                }
+            }
+
+            if (empty($cleanfields)) {
+                continue;
+            }
+
+            $normalised[] = [
+                'name' => $name,
+                'fields' => array_values(array_unique($cleanfields)),
+            ];
+        }
+
+        return $normalised;
+    }
+
+    /**
+     * Return mentor groups for the frontend. Supports the old line format as a fallback.
+     */
+    public static function get_mentor_field_groups(): array {
+        $raw = (string)get_config('local_batchanalytics', 'mentor_crm_field_groups');
+        if ($raw === '') {
+            return [];
+        }
+
+        $parsed = json_decode($raw, true);
+        if (is_array($parsed)) {
+            return array_map(static function(array $group): array {
+                return [
+                    'title' => $group['name'],
+                    'fields' => $group['fields'],
+                ];
+            }, self::normalise_mentor_field_groups($parsed));
+        }
+
+        $groups = [];
+        foreach (preg_split('/\r\n|\r|\n/', $raw) as $line) {
+            $line = trim($line);
+            if ($line === '' || strpos($line, '|') === false) {
+                continue;
+            }
+            [$title, $fields] = array_map('trim', explode('|', $line, 2));
+            $groups[] = [
+                'name' => $title,
+                'fields' => array_values(array_filter(array_map(static function($field): string {
+                    return trim((string)$field);
+                }, explode(',', $fields)))),
+            ];
+        }
+
+        return array_map(static function(array $group): array {
+            return [
+                'title' => $group['name'],
+                'fields' => $group['fields'],
+            ];
+        }, self::normalise_mentor_field_groups($groups));
+    }
 }

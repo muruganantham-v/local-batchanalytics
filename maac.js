@@ -11,6 +11,8 @@ document.addEventListener("DOMContentLoaded", function () {
     data: null,
     filtered: [],
     editMode: false,
+    hasUnsavedChanges: false,
+    unsavedChangesModal: false,
     customDraft: {},
     collapsedGroups: { module: false },
     filtersHidden: false,
@@ -128,6 +130,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   window.addEventListener("resize", scheduleMaacLayoutSync);
+  window.addEventListener("beforeunload", (event) => {
+    if (!state.editMode || !state.hasUnsavedChanges) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  });
 
   function getColumnWidth(key, fallback = 170) {
     return clampResizableColumnWidth(state.columnWidths[key] || fallback);
@@ -270,6 +279,9 @@ document.addEventListener("DOMContentLoaded", function () {
       const latestTicket = Array.isArray(student.tickets) && student.tickets.length ? student.tickets[0] : null;
       return normalizeSortValue(latestTicket?.resolutionfeedback || "", sortType);
     }
+    if (sortKey === "module:overall_performance") {
+      return normalizeSortValue(student.performance_rating, "number");
+    }
     if (sortKey === "module:maac_rating") {
       return normalizeSortValue(student.maac_rating, "number");
     }
@@ -332,12 +344,18 @@ document.addEventListener("DOMContentLoaded", function () {
     const previousFilters = state.filterValues;
     const previousEditMode = state.editMode;
     const previousDraft = state.customDraft;
+    const previousDirty = state.hasUnsavedChanges;
 
     if (!preserveDraft) {
       app.innerHTML = `<div class="ba-maac-loading">Loading MAAC data...</div>`;
     }
     const res = await fetch(
       `${baseUrl}?action=getdata&courseid=${encodeURIComponent(courseId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "sesskey=" + encodeURIComponent(sesskey)
+      }
     );
     const json = await res.json();
     if (json.error) {
@@ -350,6 +368,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (preserveDraft) {
       state.editMode = previousEditMode;
+      state.hasUnsavedChanges = previousDirty;
       const newDraft = buildDraft(json.students || []);
       if (previousDraft) {
         for (const userid in previousDraft) {
@@ -361,6 +380,8 @@ document.addEventListener("DOMContentLoaded", function () {
       state.customDraft = newDraft;
     } else {
       state.editMode = false;
+      state.hasUnsavedChanges = false;
+      state.unsavedChangesModal = false;
       state.customDraft = buildDraft(json.students || []);
     }
 
@@ -1167,7 +1188,7 @@ document.addEventListener("DOMContentLoaded", function () {
         renderGroupHeader({
           label: "Module Performance",
           groupKey: "module",
-          colSpan: Math.max((showMaacRatingColumn ? 1 : 0) + moduleColumnsVisible.length, 1),
+          colSpan: Math.max(1 + (showMaacRatingColumn ? 1 : 0) + moduleColumnsVisible.length, 1),
         }),
       );
       if (showMaacRatingColumn) {
@@ -1196,6 +1217,17 @@ document.addEventListener("DOMContentLoaded", function () {
           }),
         );
       });
+      secondHeaderCells.push(
+        renderResizableHeader({
+          label: "Overall Performance",
+          columnKey: "module:overall_performance",
+          columnIndex: addLeafColumn("module:overall_performance", 180),
+          sortable: true,
+          sortKey: "module:overall_performance",
+          sortType: "number",
+          className: "ba-maac-col-head",
+        }),
+      );
     }
 
     customGroups.forEach((group) => {
@@ -1256,7 +1288,7 @@ document.addEventListener("DOMContentLoaded", function () {
     );
     topHeaderCells.push(
       renderResizableHeader({
-        label: "Latest Feedback",
+        label: "Latest Ticket Feedback",
         columnKey: "latest_feedback",
         columnIndex: addLeafColumn("latest_feedback", 220),
         sortable: true,
@@ -1296,9 +1328,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const latestStatus = String(displayTicket?.status || "").toLowerCase();
+        const isEscalatedResolved = latestStatus === "resolved" && !!displayTicket?.escalatedtopm;
         let latestFeedbackHtml = escapeHtml("-");
         if (displayTicket) {
-          const ticketTitle = `T${displayTicketIndex} - ${displayTicket.title || "Ticket"}`;
+          const ticketTitle = `T${displayTicketIndex} - ${displayTicket.tickettitle || displayTicket.title || "Ticket"}`;
           const ticketDate = new Date(displayTicket.timecreated * 1000).toLocaleDateString();
           const feedbackText = displayTicket.resolutionfeedback || "No feedback yet";
 
@@ -1312,11 +1345,13 @@ document.addEventListener("DOMContentLoaded", function () {
             </div>`;
         }
         const rowClass =
-          latestStatus === "resolved"
-            ? "ba-maac-ticket-row-resolved"
-            : latestStatus
-              ? "ba-maac-ticket-row-open"
-              : "";
+          isEscalatedResolved
+            ? "ba-maac-ticket-row-escalated-resolved"
+            : latestStatus === "resolved"
+              ? "ba-maac-ticket-row-resolved"
+              : latestStatus
+                ? "ba-maac-ticket-row-open"
+                : "";
         const studentDetailCells = [
           `<td class="ba-maac-sticky-col ba-maac-student-cell ba-maac-front-cell"><strong>${escapeHtml(student.fullname)}</strong></td>`,
           `<td>${escapeHtml(student.username)}</td>`,
@@ -1331,6 +1366,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const metric = getModuleMetricValue(student, column);
                 return `<td>${renderScoreBadge(metric.value, { scale: 100, suffix: "%" })}</td>`;
               }),
+              `<td>${renderScoreBadge(student.performance_rating, { scale: 100, suffix: "%", decimals: 2, extraClass: "ba-overall-performance" })}</td>`,
             ];
 
         const customCells = customGroups
@@ -1371,6 +1407,170 @@ document.addEventListener("DOMContentLoaded", function () {
       </div>`;
   }
 
+  function renderTicketActionCell(student) {
+    const tickets = Array.isArray(student.tickets) ? student.tickets : [];
+    const ticketCount = Number(student.ticket_count ?? tickets.length) || 0;
+    const hasTickets = ticketCount > 0;
+    const action = state.editMode && state.data?.canraise ? "raise" : "view";
+    const label = action === "raise" ? "Raise Ticket" : "View Ticket";
+    const countLabel = hasTickets ? ` (${ticketCount})` : "";
+    const status = hasTickets ? String(tickets[0]?.status || tickets[0]?.statuskey || "open") : "";
+    const statusClass = status.toLowerCase().replace(/\s+/g, "-");
+
+    return `<td class="ba-maac-ticket-cell">
+      <button type="button" class="ba-btn ba-btn-sm ba-maac-ticket-action ba-maac-ticket-action-${action}" data-studentid="${escapeHtml(String(student.userid))}" data-ticket-action="${action}">${escapeHtml(label + countLabel)}</button>
+      ${hasTickets ? `<span class="ba-maac-ticket-status ba-maac-ticket-status-${escapeHtml(statusClass)}">${escapeHtml(status || "open")}</span>` : ""}
+    </td>`;
+  }
+
+  function getTicketMeta() {
+    return state.data?.ticket_meta || {
+      ss_team_role: { id: 0, label: "SS Team" },
+      ss_team_users: [],
+      batch_manager_role: { id: 0, label: "Batch Manager" },
+      batch_manager_users: [],
+    };
+  }
+
+  function renderTicketInfoRows(rows) {
+    return rows
+      .map(
+        (row) => `<div class="ba-maac-ticket-info-row">
+          <div class="ba-maac-ticket-info-label">${escapeHtml(row.label)}</div>
+          <div class="ba-maac-ticket-info-value">${escapeHtml(row.value || "-")}</div>
+        </div>`,
+      )
+      .join("");
+  }
+
+  function formatTicketTimestamp(timestamp) {
+    const value = Number(timestamp || 0);
+    if (!value) {
+      return "-";
+    }
+
+    try {
+      return new Date(value * 1000).toLocaleString();
+    } catch (error) {
+      return "-";
+    }
+  }
+
+  function getTicketTitle(ticket) {
+    return ticket?.tickettitle || ticket?.title || "";
+  }
+
+  function getTicketReason(ticket) {
+    return ticket?.ticketreason || ticket?.reason || "";
+  }
+
+  function renderTicketHistory(tickets) {
+    if (!Array.isArray(tickets) || !tickets.length) {
+      return `<div class="ba-maac-ticket-empty">No tickets available</div>`;
+    }
+
+    const renderTimeline = (timeline) => {
+      if (!Array.isArray(timeline) || !timeline.length) {
+        return "";
+      }
+
+      return `<div class="ba-maac-ticket-timeline">
+        <div class="ba-maac-ticket-timeline-bar">
+          <div class="ba-maac-ticket-timeline-title">Ticket Timeline</div>
+          <button type="button" class="ba-btn ba-maac-ticket-timeline-toggle" aria-expanded="false">Show Timeline</button>
+        </div>
+        <div class="ba-maac-ticket-timeline-list is-hidden">
+          ${timeline
+            .map(
+              (event) => `<div class="ba-maac-ticket-timeline-item">
+                <div class="ba-maac-ticket-timeline-dot" aria-hidden="true"></div>
+                <div class="ba-maac-ticket-timeline-content">
+                  <div class="ba-maac-ticket-timeline-head">
+                    <span class="ba-maac-ticket-timeline-label">${escapeHtml(event.title || "Update")}</span>
+                    <span class="ba-maac-ticket-timeline-time">${escapeHtml(formatTicketTimestamp(event.timecreated))}</span>
+                  </div>
+                  <div class="ba-maac-ticket-timeline-actor">${escapeHtml(event.actorname || "-")}</div>
+                  ${
+                    Array.isArray(event.details) && event.details.length
+                      ? `<ul class="ba-maac-ticket-timeline-details">${event.details
+                          .map((detail) => `<li>${escapeHtml(detail)}</li>`)
+                          .join("")}</ul>`
+                      : ""
+                  }
+                </div>
+              </div>`,
+            )
+            .join("")}
+        </div>
+      </div>`;
+    };
+
+    return `<div class="ba-maac-ticket-history">
+      ${tickets
+        .map((ticket) => {
+          const ticketid = Number(ticket.id);
+          const isEditing = state.ticketEdit && Number(state.ticketEdit.ticketid) === ticketid;
+          const title = getTicketTitle(ticket);
+          const reason = getTicketReason(ticket);
+          const editTitle = isEditing ? state.ticketEdit.tickettitle : title;
+          const editReason = isEditing ? state.ticketEdit.ticketreason : reason;
+          const resolutionBlock =
+            ticket.statuskey === "resolved" || ticket.resolutionfeedback
+              ? `<div class="ba-maac-ticket-history-update">
+                  ${
+                    ticket.resolvedbyfullname
+                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Resolved By:</strong> ${escapeHtml(ticket.resolvedbyfullname)}</div>`
+                      : ""
+                  }
+                  ${
+                    ticket.resolutionfeedback
+                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Feedback:</strong> ${escapeHtml(ticket.resolutionfeedback)}</div>`
+                      : ""
+                  }
+                </div>`
+              : "";
+
+          const statusClass = [
+            "ba-maac-ticket-history-status",
+            ticket.statuskey ? `ba-maac-ticket-history-status-${String(ticket.statuskey).replace(/_/g, "-")}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          return `<div class="ba-maac-ticket-history-item" data-ticket-id="${ticketid}">
+            <div class="ba-maac-ticket-history-head">
+              <div class="ba-maac-ticket-history-title">${escapeHtml(title || "-")}</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div class="${statusClass}">${escapeHtml(ticket.status || "Open")}</div>
+                ${ticket.canedit ? `<button type="button" class="ba-btn ba-btn-sm ba-btn-view" data-maac-ticket-edit="${ticketid}">Edit</button>` : ""}
+              </div>
+            </div>
+            ${isEditing
+              ? `<div class="ba-maac-ticket-grid" style="margin-top:10px;">
+                  <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
+                    <label>Ticket Title <span class="ba-maac-ticket-required">*</span></label>
+                    <input type="text" class="ba-range-input" data-ticket-edit-title="${ticketid}" value="${escapeHtml(editTitle)}">
+                  </div>
+                  <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
+                    <label>Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
+                    <textarea class="ba-maac-ticket-textarea" rows="4" data-ticket-edit-reason="${ticketid}">${escapeHtml(editReason)}</textarea>
+                  </div>
+                  <div class="ba-feedback-form-actions" style="justify-content:flex-end;">
+                    <button type="button" class="ba-btn ba-btn-sm" data-maac-ticket-edit-cancel="${ticketid}">Cancel</button>
+                    <button type="button" class="ba-btn ba-btn-sm ba-btn-primary" data-maac-ticket-edit-save="${ticketid}">Save</button>
+                  </div>
+                </div>`
+              : `<div class="ba-maac-ticket-history-reason-block">
+                  <div class="ba-maac-ticket-history-label">Description</div>
+                  <div class="ba-maac-ticket-history-reason">${escapeHtml(reason || "-")}</div>
+                </div>`}
+            ${resolutionBlock}
+            ${renderTimeline(ticket.timeline)}
+          </div>`;
+        })
+        .join("")}
+    </div>`;
+  }
   function renderCustomCell(student, column, value) {
     if (column.key === "trend") {
       return renderTrendCell(student, value);
@@ -1457,6 +1657,15 @@ document.addEventListener("DOMContentLoaded", function () {
     return `<td><input type="${type}" class="ba-maac-input ba-maac-input-text" data-userid="${student.userid}" data-key="${escapeHtml(
       column.key,
     )}" value="${escapeHtml(safeValue)}"></td>`;
+  }
+
+  function renderReadOnlyCustomValue(value, column) {
+    if (column.type === "number") {
+      const displayValue = value === null || value === undefined || value === "" ? "-" : value;
+      return `<span class="ba-filter-percentage medium">${escapeHtml(String(displayValue))}</span>`;
+    }
+
+    return formatDisplayValue(value, column.type);
   }
 
   function normalizeDisplayList(value) {
@@ -1555,13 +1764,14 @@ document.addEventListener("DOMContentLoaded", function () {
     return "low";
   }
 
-  function renderScoreBadge(value, { scale = 100, suffix = "", decimals = 0 } = {}) {
+  function renderScoreBadge(value, { scale = 100, suffix = "", decimals = 0, extraClass = "" } = {}) {
     if (value === "" || value === null || value === undefined || isNaN(parseFloat(value))) {
       return `<span class="ba-filter-percentage loading">-</span>`;
     }
 
     const formatted = parseFloat(value).toFixed(decimals);
-    return `<span class="ba-filter-percentage ${getScoreClass(value, scale)}">${escapeHtml(formatted + suffix)}</span>`;
+    const className = ["ba-filter-percentage", extraClass, getScoreClass(value, scale)].filter(Boolean).join(" ");
+    return `<span class="${className}">${escapeHtml(formatted + suffix)}</span>`;
   }
 
   function renderTrendBadge(value) {
@@ -1571,14 +1781,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (normalized === "improving") {
-      return `<span class="ba-trend-badge ba-trend-badge-up">ðŸ“ˆ ${escapeHtml(String(value))}</span>`;
+      return `<span class="ba-trend-badge ba-trend-badge-up">Up ${escapeHtml(String(value))}</span>`;
     }
 
     if (normalized === "declining") {
-      return `<span class="ba-trend-badge ba-trend-badge-down">ðŸ“‰ ${escapeHtml(String(value))}</span>`;
+      return `<span class="ba-trend-badge ba-trend-badge-down">Down ${escapeHtml(String(value))}</span>`;
     }
 
-    return `<span class="ba-trend-badge ba-trend-badge-stable">âž¡ï¸ ${escapeHtml(String(value))}</span>`;
+    return `<span class="ba-trend-badge ba-trend-badge-stable">Stable ${escapeHtml(String(value))}</span>`;
   }
 
   function normalizeTrendKey(value) {
@@ -1608,7 +1818,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return {
         key,
         label: "Improving",
-        emoji: "ðŸ“ˆ",
+        emoji: "Up",
         className: "ba-trend-badge-up",
       };
     }
@@ -1617,7 +1827,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return {
         key,
         label: "Declining",
-        emoji: "ðŸ“‰",
+        emoji: "Down",
         className: "ba-trend-badge-down",
       };
     }
@@ -1625,7 +1835,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return {
       key: "stable",
       label: "Stable",
-      emoji: "âž¡ï¸",
+      emoji: "Stable",
       className: "ba-trend-badge-stable",
     };
   }
@@ -2048,7 +2258,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const present = Number(point.present) === 1;
         const label = String(point.status || (present ? "P" : "A")).toUpperCase();
         return `<span class="ba-trend-attendance-dot ${present ? "is-present" : "is-absent"}" title="${escapeHtml(
-          `${label} â€¢ ${formatTrendDate(point.date)}`,
+          `${label} - ${formatTrendDate(point.date)}`,
         )}">${escapeHtml(label)}</span>`;
       })
       .join("")}</div>`;
@@ -2084,30 +2294,14 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function renderTrendAttendanceCard(details) {
-    const trendWindow = Math.max(1, Number(details?.trend_window) || 20);
-    const attendanceWindow = Math.max(
-      2,
-      Math.min(Number(details?.attendance_window) || 5, trendWindow),
-    );
-    const attendancePoints = Array.isArray(details?.attendance) ? details.attendance.slice(-trendWindow) : [];
+    const attendancePoints = Array.isArray(details.attendance) ? details.attendance : [];
     if (!attendancePoints.length) {
       return "";
     }
 
-    const summary = calculateAttendanceSummary(attendancePoints, attendanceWindow);
-    if (!summary) {
-      return "";
-    }
-
-    let deltaClass = "is-stable";
-    let deltaText = summary.comparisonLabel || "Need more sessions for comparison";
-    if (summary.delta !== null) {
-      if (summary.delta > 0) {
-        deltaClass = "is-up";
-      } else if (summary.delta < 0) {
-        deltaClass = "is-down";
-      }
-
+    const summary = calculateAttendanceSummary(attendancePoints, details.attendance_window);
+    let deltaText = "No previous attendance window";
+    if (summary.previousWindowSize > 0) {
       deltaText =
         summary.comparisonMode === "adaptive-half"
           ? `${summary.delta > 0 ? "+" : ""}${summary.delta} vs earlier ${summary.previousWindowSize}`
@@ -2115,7 +2309,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return `<div class="ba-trend-card">
-      <div class="ba-trend-card-title">ðŸ‘¥ Attendance</div>
+      <div class="ba-trend-card-title">Attendance</div>
       ${renderAttendanceStatusStrip(attendancePoints)}
       <div class="ba-trend-stat-row">
         <span>Last ${summary.windowSize}</span>
@@ -2126,75 +2320,122 @@ document.addEventListener("DOMContentLoaded", function () {
         <strong>${summary.currentRate}%</strong>
       </div>
       ${summary.previousWindowSize > 0
-        ? `<div class="ba-trend-stat-row">
-            <span>Previous rate</span>
-            <strong>${summary.previousRate}%</strong>
-          </div>`
-        : ""}
-      <div class="ba-trend-change ${deltaClass}">${escapeHtml(deltaText)}</div>
+        ? `<div class="ba-trend-stat-row"><span>${deltaText}</span><strong>${summary.previousRate}%</strong></div>`
+        : `<div class="ba-trend-stat-row"><span>${deltaText}</span><strong>-</strong></div>`}
     </div>`;
   }
 
-  function renderTrendAttendanceCardFixed(details) {
-    const trendWindow = Math.max(1, Number(details?.trend_window) || 20);
-    const attendanceWindow = Math.max(
-      2,
-      Math.min(Number(details?.attendance_window) || 5, trendWindow),
-    );
-    const attendancePoints = Array.isArray(details?.attendance) ? details.attendance.slice(-trendWindow) : [];
-    if (!attendancePoints.length) {
+  function renderTicketModal() {
+    if (!state.ticketModal) {
       return "";
     }
 
-    const summary = calculateAttendanceSummary(attendancePoints, attendanceWindow);
-    if (!summary) {
+    const student = state.ticketModal.student;
+    const isViewMode = state.ticketModal.mode === "view";
+    const ticketMeta = getTicketMeta();
+    const ssTeamMissing = !ticketMeta.ss_team_role?.id || !(ticketMeta.ss_team_users || []).length;
+    const saveDisabled = ssTeamMissing;
+
+    return `<div class="ba-modal-overlay ba-maac-ticket-modal" id="ba-maac-ticket-modal">
+      <div class="ba-modal-container ba-maac-ticket-dialog">
+        <div class="ba-modal-header">
+          <h3>${isViewMode ? "View Ticket" : "Raise Ticket"}</h3>
+          <button type="button" class="ba-modal-close" id="ba-maac-ticket-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="ba-modal-body ba-maac-ticket-body">
+          <div class="ba-maac-ticket-sections">
+            <div class="ba-maac-ticket-panel">
+              <div class="ba-maac-ticket-panel-title">Student Details</div>
+              <div class="ba-maac-ticket-profile">
+                <div class="ba-maac-ticket-avatar" aria-hidden="true">
+                  <span>${escapeHtml((student.fullname || student.username || "?").trim().charAt(0).toUpperCase() || "?")}</span>
+                </div>
+                <div class="ba-maac-ticket-profile-details">
+                  ${renderTicketInfoRows([
+                    { label: "Admission ID", value: student.username || "-" },
+                    { label: "Student Name", value: student.fullname || "-" },
+                    { label: "Email", value: student.email || "-" },
+                    { label: "Course", value: state.data?.course?.fullname || "-" },
+                  ])}
+                </div>
+              </div>
+            </div>
+
+            ${isViewMode
+              ? `<div class="ba-maac-ticket-panel">
+                  <div class="ba-maac-ticket-panel-title">Ticket Details & Timeline</div>
+                  <div class="ba-maac-ticket-history-wrap">
+                    ${renderTicketHistory(student.tickets || [])}
+                  </div>
+                </div>`
+              : `<div class="ba-maac-ticket-panel">
+                  <div class="ba-maac-ticket-panel-title">Ticket Details</div>
+                  <div class="ba-maac-ticket-grid">
+                    <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
+                      <label for="ba-maac-ticket-title">Ticket Title <span class="ba-maac-ticket-required">*</span></label>
+                      <input type="text" id="ba-maac-ticket-title" class="ba-range-input" value="${escapeHtml(state.ticketModal.tickettitle || "")}" placeholder="Ticket Title">
+                    </div>
+                    <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
+                      <label for="ba-maac-ticket-reason">Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
+                      <textarea id="ba-maac-ticket-reason" class="ba-maac-ticket-textarea" rows="5" placeholder="Describe the issue or reason for raising this support ticket...">${escapeHtml(state.ticketModal.ticketreason || "")}</textarea>
+                    </div>
+                  </div>
+                  ${saveDisabled ? `<div class="ba-maac-ticket-warning">Ticket roles are not fully configured for this course.</div>` : ""}
+                </div>`}
+          </div>
+        </div>
+        <div class="ba-maac-ticket-footer">
+          <button type="button" class="ba-btn" id="ba-maac-ticket-cancel">${isViewMode ? "Close" : "Cancel"}</button>
+          ${isViewMode ? "" : `<button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-maac-ticket-submit"${saveDisabled ? " disabled" : ""}>Raise Ticket</button>`}
+        </div>
+      </div>
+    </div>`;
+  }
+  function renderTrendModal() {
+    if (!state.trendModal) {
       return "";
     }
 
-    let deltaClass = "is-stable";
-    let deltaText = summary.comparisonLabel || "Need more sessions for comparison";
-    if (summary.delta !== null) {
-      if (summary.delta > 0) {
-        deltaClass = "is-up";
-      } else if (summary.delta < 0) {
-        deltaClass = "is-down";
-      }
+    const student = state.trendModal.student;
+    const details = getStudentTrendDetails(student);
+    const trendWindow = details.trend_window;
+    const visual = getTrendVisual(calculateOverallTrendFromDetails(details)) || getTrendVisual("stable");
+    const currentLevel = calculateCurrentLevelFromDetails(details);
+    const cards = [
+      renderTrendComponentCard("Assignments", "Assignments", details.assignments, trendWindow),
+      renderTrendComponentCard("Quizzes", "Quizzes", details.quizzes, trendWindow),
+      renderTrendComponentCard("Projects", "Projects", details.projects, trendWindow),
+      renderTrendAttendanceCard(details),
+    ]
+      .filter(Boolean)
+      .join("");
 
-      deltaText =
-        summary.comparisonMode === "adaptive-half"
-          ? `${summary.delta > 0 ? "+" : ""}${summary.delta} vs earlier ${summary.previousWindowSize}`
-          : `${summary.delta > 0 ? "+" : ""}${summary.delta} vs previous ${summary.previousWindowSize}`;
-    }
-
-    const strip = `<div class="ba-trend-attendance-strip">${attendancePoints
-      .slice(-10)
-      .map((point) => {
-        const present = Number(point.present) === 1;
-        const label = String(point.status || (present ? "P" : "A")).toUpperCase();
-        return `<span class="ba-trend-attendance-dot ${present ? "is-present" : "is-absent"}" title="${escapeHtml(
-          `${label} - ${formatTrendDate(point.date)}`,
-        )}">${escapeHtml(label)}</span>`;
-      })
-      .join("")}</div>`;
-
-    return `<div class="ba-trend-card">
-      <div class="ba-trend-card-title">\uD83D\uDC65 Attendance</div>
-      ${strip}
-      <div class="ba-trend-stat-row">
-        <span>Last ${summary.windowSize}</span>
-        <strong>${summary.currentCount} attended</strong>
+    return `<div class="ba-modal-overlay ba-trend-modal" id="ba-trend-modal">
+      <div class="ba-modal-container ba-trend-modal-dialog">
+        <div class="ba-modal-header">
+          <h3>Trend Details: ${escapeHtml(student.fullname || student.username || "Student")}</h3>
+          <button type="button" class="ba-modal-close" id="ba-trend-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="ba-modal-body ba-trend-modal-body">
+          <div class="ba-trend-overview ba-trend-overview-${visual.key}">
+            <div class="ba-trend-overview-icon">${visual.emoji}</div>
+            <div>
+              <div class="ba-trend-overview-eyebrow">Overall Trend (last ${trendWindow})</div>
+              <div class="ba-trend-overview-title">${escapeHtml(visual.label)} (${escapeHtml(currentLevel.label)})</div>
+              ${currentLevel.score !== null
+                ? `<div class="ba-trend-overview-subtitle">Current level score: ${escapeHtml(String(currentLevel.score))}%</div>`
+                : ""}
+            </div>
+          </div>
+          <div class="ba-trend-grid">
+            ${cards || '<div class="ba-trend-empty">No trend detail is available for this student yet.</div>'}
+          </div>
+        </div>
       </div>
-      <div class="ba-trend-stat-row">
-        <span>Recent rate</span>
-        <strong>${summary.currentRate}%</strong>
-      </div>
-      ${summary.previousWindowSize > 0
-        ? `<div class="ba-trend-stat-row">
-            <span>Previous rate</span>
-            <strong>${summary.previousRate}%</strong>
-          </div>`
-        : ""}
-      <div class="ba-trend-change ${deltaClass}">${escapeHtml(deltaText)}</div>
     </div>`;
   }
 
@@ -2266,14 +2507,12 @@ document.addEventListener("DOMContentLoaded", function () {
             } else if (status === "L") {
               color = "#f59e0b";
             }
-            return `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: ${color};">${escapeHtml(
-              status,
-            )}</span>`;
+            return `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: ${color};">${escapeHtml(status)}</span>`;
           })
           .join("")}</div>`;
 
         attendanceCard = `<div class="trend-card">
-          <div class="trend-title">\uD83D\uDC65 Attendance</div>
+          <div class="trend-title">Attendance</div>
           ${strip}
           <div class="trend-stats">
             <div><span style="color: #6b7280;">Last ${summary.windowSize}:</span> <strong>${summary.currentCount} attended</strong></div>
@@ -2290,358 +2529,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return [
-      renderComponentCard("Assignments", "\uD83D\uDCDD", details.assignments),
-      renderComponentCard("Quizzes", "\uD83E\uDDE0", details.quizzes),
-      renderComponentCard("Projects", "\uD83D\uDCCA", details.projects),
+      renderComponentCard("Assignments", "Assignments", details.assignments),
+      renderComponentCard("Quizzes", "Quizzes", details.quizzes),
+      renderComponentCard("Projects", "Projects", details.projects),
       attendanceCard,
     ]
       .filter(Boolean)
       .join("");
   }
-
-  function renderReadOnlyCustomValue(value, column) {
-    if (column.key === "trend") {
-      return renderTrendDisplayBadgeFixed(value);
-    }
-
-    if (column.type === "number") {
-      if (value === "" || value === null || value === undefined) {
-        return `<span class="ba-maac-inline-empty">-</span>`;
-      }
-      return `<span>${escapeHtml(parseFloat(value).toFixed(2))}</span>`;
-    }
-
-    if (column.type === "boolean") {
-      return `<span>${value ? "Yes" : "No"}</span>`;
-    }
-
-    if (column.type === "dropdown" || column.type === "list") {
-      const list = normalizeDisplayList(value);
-      if (list) {
-        return list.length
-          ? `<ul class="ba-maac-bullet-list">${list
-              .map((item) => `<li>${escapeHtml(item)}</li>`)
-              .join("")}</ul>`
-          : `<span class="ba-maac-inline-empty">-</span>`;
-      }
-      return `<span>${escapeHtml(value || "-")}</span>`;
-    }
-
-
-
-    return formatDisplayValue(value, column.type);
-  }
-
-  function getTicketMeta() {
-    return state.data?.ticket_meta || {
-      ss_team_role: { id: 0, label: "SS Team" },
-      ss_team_users: [],
-    };
-  }
-
-  function renderTicketActionCell(student) {
-    const count = Number(student.ticket_count || 0);
-    const canRaise = !!state.data?.canraise;
-
-    if (state.editMode) {
-      if (!canRaise) {
-        return `<td class="ba-maac-ticket-cell"></td>`;
-      }
-
-      return `<td class="ba-maac-ticket-cell">
-        <button type="button" class="ba-btn ba-btn-sm ba-maac-ticket-btn" data-ticket-action="raise" data-studentid="${student.userid}">
-          Raise Ticket
-        </button>
-      </td>`;
-    }
-
-    if (count <= 0) {
-      return `<td class="ba-maac-ticket-cell"></td>`;
-    }
-
-    return `<td class="ba-maac-ticket-cell">
-      <button type="button" class="ba-btn ba-btn-sm ba-maac-ticket-btn ba-maac-ticket-btn-view" data-ticket-action="view" data-studentid="${student.userid}">
-        ${escapeHtml(`View Ticket (${count})`)}
-      </button>
-    </td>`;
-  }
-
-  function getTicketAssignee(users, selected) {
-    if (!users || !users.length) {
-      return null;
-    }
-    return (
-      users.find((user) => String(user.id) === String(selected || "")) ||
-      users[0] ||
-      null
-    );
-  }
-
-  function renderTicketInfoRows(rows) {
-    return rows
-      .map(
-        (row) => `<div class="ba-maac-ticket-info-row">
-          <div class="ba-maac-ticket-info-label">${escapeHtml(row.label)}</div>
-          <div class="ba-maac-ticket-info-value">${escapeHtml(row.value || "-")}</div>
-        </div>`,
-      )
-      .join("");
-  }
-
-  function formatTicketTimestamp(timestamp) {
-    const value = Number(timestamp || 0);
-    if (!value) {
-      return "-";
-    }
-
-    try {
-      return new Date(value * 1000).toLocaleString();
-    } catch (error) {
-      return "-";
-    }
-  }
-
-  function renderTicketHistory(tickets) {
-    if (!tickets || !tickets.length) {
-      return `<div class="ba-maac-ticket-empty">No tickets available</div>`;
-    }
-
-    const renderTimeline = (timeline) => {
-      if (!Array.isArray(timeline) || !timeline.length) {
-        return "";
-      }
-
-      return `<div class="ba-maac-ticket-timeline">
-        <div class="ba-maac-ticket-timeline-bar">
-          <div class="ba-maac-ticket-timeline-title">Ticket Timeline</div>
-          <button type="button" class="ba-btn ba-maac-ticket-timeline-toggle" aria-expanded="false">Show Timeline</button>
-        </div>
-        <div class="ba-maac-ticket-timeline-list is-hidden">
-          ${timeline
-            .map(
-              (event) => `<div class="ba-maac-ticket-timeline-item">
-                <div class="ba-maac-ticket-timeline-dot" aria-hidden="true"></div>
-                <div class="ba-maac-ticket-timeline-content">
-                  <div class="ba-maac-ticket-timeline-head">
-                    <span class="ba-maac-ticket-timeline-label">${escapeHtml(event.title || "Update")}</span>
-                    <span class="ba-maac-ticket-timeline-time">${escapeHtml(formatTicketTimestamp(event.timecreated))}</span>
-                  </div>
-                  <div class="ba-maac-ticket-timeline-actor">${escapeHtml(event.actorname || "-")}</div>
-                  ${
-                    Array.isArray(event.details) && event.details.length
-                      ? `<ul class="ba-maac-ticket-timeline-details">${event.details
-                          .map((detail) => `<li>${escapeHtml(detail)}</li>`)
-                          .join("")}</ul>`
-                      : ""
-                  }
-                </div>
-              </div>`,
-            )
-            .join("")}
-        </div>
-      </div>`;
-    };
-
-    return `<div class="ba-maac-ticket-history">
-      ${tickets
-        .map((ticket) => {
-          const isEditing = state.ticketEdit && Number(state.ticketEdit.ticketid) === Number(ticket.id);
-          const editTitle = isEditing ? state.ticketEdit.tickettitle : ticket.title || "";
-          const editReason = isEditing ? state.ticketEdit.ticketreason : ticket.reason || "";
-          const resolutionBlock =
-            ticket.statuskey === "resolved" || ticket.resolutionfeedback
-              ? `<div class="ba-maac-ticket-history-update">
-                  ${
-                    ticket.resolvedbyfullname
-                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Resolved By:</strong> ${escapeHtml(ticket.resolvedbyfullname)}</div>`
-                      : ""
-                  }
-                  ${
-                    ticket.resolutionfeedback
-                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Feedback:</strong> ${escapeHtml(ticket.resolutionfeedback)}</div>`
-                      : ""
-                  }
-                </div>`
-              : "";
-
-          const statusClass = [
-            "ba-maac-ticket-history-status",
-            ticket.statuskey ? `ba-maac-ticket-history-status-${String(ticket.statuskey).replace(/_/g, "-")}` : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-
-          return `<div class="ba-maac-ticket-history-item" data-ticket-id="${Number(ticket.id)}">
-            <div class="ba-maac-ticket-history-head">
-              <div class="ba-maac-ticket-history-title">${escapeHtml(ticket.title || "-")}</div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div class="${statusClass}">${escapeHtml(ticket.status || "Open")}</div>
-                ${ticket.canedit ? `<button type="button" class="ba-btn ba-btn-sm ba-btn-view" data-maac-ticket-edit="${Number(ticket.id)}">Edit</button>` : ""}
-              </div>
-            </div>
-            ${isEditing
-              ? `<div class="ba-maac-ticket-grid" style="margin-top:10px;">
-                  <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
-                    <label>Ticket Title <span class="ba-maac-ticket-required">*</span></label>
-                    <input type="text" class="ba-range-input" data-ticket-edit-title="${Number(ticket.id)}" value="${escapeHtml(editTitle)}">
-                  </div>
-                  <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
-                    <label>Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
-                    <textarea class="ba-maac-ticket-textarea" rows="4" data-ticket-edit-reason="${Number(ticket.id)}">${escapeHtml(editReason)}</textarea>
-                  </div>
-                  <div class="ba-feedback-form-actions" style="justify-content:flex-end;">
-                    <button type="button" class="ba-btn ba-btn-sm" data-maac-ticket-edit-cancel="${Number(ticket.id)}">Cancel</button>
-                    <button type="button" class="ba-btn ba-btn-sm ba-btn-primary" data-maac-ticket-edit-save="${Number(ticket.id)}">Save</button>
-                  </div>
-                </div>`
-              : `<div class="ba-maac-ticket-history-reason-block">
-                  <div class="ba-maac-ticket-history-label">Description</div>
-                  <div class="ba-maac-ticket-history-reason">${escapeHtml(ticket.reason || "-")}</div>
-                </div>`}
-            ${resolutionBlock}
-            ${renderTimeline(ticket.timeline)}
-          </div>`;
-        })
-        .join("")}
-    </div>`;
-  }
-
-  function renderTicketModal() {
-    if (!state.ticketModal) {
-      return "";
-    }
-
-    const student = state.ticketModal.student;
-    const isViewMode = state.ticketModal.mode === "view";
-    const isSuccess = state.ticketModal.success === true;
-    const ticketMeta = getTicketMeta();
-    const ssTeamMissing = !ticketMeta.ss_team_role?.id || !(ticketMeta.ss_team_users || []).length;
-    const saveDisabled = ssTeamMissing;
-
-    if (isSuccess) {
-      return `<div class="ba-modal-overlay ba-maac-ticket-modal" id="ba-maac-ticket-modal">
-        <div class="ba-modal-container ba-maac-ticket-dialog">
-          <div class="ba-modal-header">
-            <h3>Raise Ticket</h3>
-            <button type="button" class="ba-modal-close" id="ba-maac-ticket-close" aria-label="Close">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </button>
-          </div>
-          <div class="ba-modal-body ba-maac-ticket-body">
-            <div class="ba-maac-ticket-success-panel">
-              <div class="ba-maac-ticket-success-icon" aria-hidden="true">&#10003;</div>
-              <div class="ba-maac-ticket-success-title">Ticket Raised Successfully!</div>
-              <div class="ba-maac-ticket-success-msg">The support ticket has been raised for <strong>${escapeHtml(student.fullname || student.username || "this student")}</strong>. This window will close automatically.</div>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    return `<div class="ba-modal-overlay ba-maac-ticket-modal" id="ba-maac-ticket-modal">
-      <div class="ba-modal-container ba-maac-ticket-dialog">
-        <div class="ba-modal-header">
-          <h3>${isViewMode ? "View Ticket" : "Raise Ticket"}</h3>
-          <button type="button" class="ba-modal-close" id="ba-maac-ticket-close" aria-label="Close">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-        <div class="ba-modal-body ba-maac-ticket-body">
-          <div class="ba-maac-ticket-sections">
-            <div class="ba-maac-ticket-panel">
-              <div class="ba-maac-ticket-panel-title">Student Details</div>
-              <div class="ba-maac-ticket-profile">
-                <div class="ba-maac-ticket-avatar" aria-hidden="true">
-                  <span>${escapeHtml((student.fullname || student.username || "?").trim().charAt(0).toUpperCase() || "?")}</span>
-                </div>
-                <div class="ba-maac-ticket-profile-details">
-                  ${renderTicketInfoRows([
-                    { label: "Admission ID", value: student.username || "-" },
-                    { label: "Student Name", value: student.fullname || "-" },
-                    { label: "Email", value: student.email || "-" },
-                    { label: "Course", value: state.data?.course?.fullname || "-" },
-                  ])}
-                </div>
-              </div>
-            </div>
-
-            ${isViewMode
-              ? `<div class="ba-maac-ticket-panel">
-                  <div class="ba-maac-ticket-panel-title">Ticket Details & Timeline</div>
-                  <div class="ba-maac-ticket-history-wrap">
-                    ${renderTicketHistory(student.tickets || [])}
-                  </div>
-                </div>`
-              : `<div class="ba-maac-ticket-panel">
-                  <div class="ba-maac-ticket-panel-title">Ticket Details</div>
-                  <div class="ba-maac-ticket-grid">
-                    <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
-                      <label for="ba-maac-ticket-title">Ticket Title <span class="ba-maac-ticket-required">*</span></label>
-                      <input type="text" id="ba-maac-ticket-title" class="ba-range-input" value="${escapeHtml(state.ticketModal.tickettitle || "")}" placeholder="Ticket Title">
-                    </div>
-                    <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
-                      <label for="ba-maac-ticket-reason">Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
-                      <textarea id="ba-maac-ticket-reason" class="ba-maac-ticket-textarea" rows="5" placeholder="Describe the issue or reason for raising this support ticket...">${escapeHtml(state.ticketModal.ticketreason || "")}</textarea>
-                    </div>
-                  </div>
-                  ${saveDisabled ? `<div class="ba-maac-ticket-warning">Ticket roles are not fully configured for this course.</div>` : ""}
-                </div>`}
-          </div>
-        </div>
-        <div class="ba-maac-ticket-footer">
-          <button type="button" class="ba-btn" id="ba-maac-ticket-cancel">${isViewMode ? "Close" : "Cancel"}</button>
-          ${isViewMode ? "" : `<button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-maac-ticket-submit"${saveDisabled ? " disabled" : ""}>Raise Ticket</button>`}
-        </div>
-      </div>
-    </div>`;
-  }
-
-  function renderTrendModal() {
-    if (!state.trendModal) {
-      return "";
-    }
-
-    const student = state.trendModal.student;
-    const details = getStudentTrendDetails(student);
-    const trendWindow = details.trend_window;
-    const visual = getTrendVisual(calculateOverallTrendFromDetails(details)) || getTrendVisual("stable");
-    const currentLevel = calculateCurrentLevelFromDetails(details);
-    const cards = [
-      renderTrendComponentCard("Assignments", "ðŸ“", details.assignments, trendWindow),
-      renderTrendComponentCard("Quizzes", "ðŸ§ ", details.quizzes, trendWindow),
-      renderTrendComponentCard("Projects", "ðŸ“Š", details.projects, trendWindow),
-      renderTrendAttendanceCard(details),
-    ]
-      .filter(Boolean)
-      .join("");
-
-    return `<div class="ba-modal-overlay ba-trend-modal" id="ba-trend-modal">
-      <div class="ba-modal-container ba-trend-modal-dialog">
-        <div class="ba-modal-header">
-          <h3>Trend Details: ${escapeHtml(student.fullname || student.username || "Student")}</h3>
-          <button type="button" class="ba-modal-close" id="ba-trend-close" aria-label="Close">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-        <div class="ba-modal-body ba-trend-modal-body">
-          <div class="ba-trend-overview ba-trend-overview-${visual.key}">
-            <div class="ba-trend-overview-icon">${visual.emoji}</div>
-            <div>
-              <div class="ba-trend-overview-eyebrow">Overall Trend (last ${trendWindow})</div>
-              <div class="ba-trend-overview-title">${escapeHtml(visual.label)} (${escapeHtml(currentLevel.label)})</div>
-              ${currentLevel.score !== null
-                ? `<div class="ba-trend-overview-subtitle">Current level score: ${escapeHtml(String(currentLevel.score))}%</div>`
-                : ""}
-            </div>
-          </div>
-          <div class="ba-trend-grid">
-            ${cards || '<div class="ba-trend-empty">No trend detail is available for this student yet.</div>'}
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-
   function renderTrendModalFixed() {
     if (!state.trendModal) {
       return "";
@@ -2660,7 +2555,7 @@ document.addEventListener("DOMContentLoaded", function () {
       <div class="trends-content">
         <div class="trends-header">
           <h3>${escapeHtml(course.shortname || course.fullname || "Course")} - Grade Trends</h3>
-          <button type="button" class="close-trends" id="ba-trend-close" aria-label="Close">âœ•</button>
+          <button type="button" class="close-trends" id="ba-trend-close" aria-label="Close">x</button>
         </div>
         <div class="trends-indicator" style="background: ${trendColor}20; border-left: 4px solid ${trendColor}; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
           <div style="display: flex; align-items: center; gap: 12px;">
@@ -2682,6 +2577,27 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>`;
   }
 
+  function renderUnsavedChangesModal() {
+    if (!state.unsavedChangesModal) {
+      return "";
+    }
+
+    return `
+      <div class="ba-modal-backdrop ba-maac-unsaved-modal" id="ba-maac-unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="ba-maac-unsaved-title">
+        <div class="ba-modal ba-maac-unsaved-dialog">
+          <div class="ba-modal-header">
+            <h3 id="ba-maac-unsaved-title">You have unsaved changes</h3>
+          </div>
+          <div class="ba-modal-body">
+            <p class="ba-maac-unsaved-text">Save your MAAC changes before leaving edit mode, or cancel to discard them.</p>
+          </div>
+          <div class="ba-modal-footer ba-maac-unsaved-actions">
+            <button type="button" class="ba-btn" id="ba-maac-unsaved-discard">Yes, Cancel</button>
+            <button type="button" class="ba-btn ba-btn-success" id="ba-maac-unsaved-save">Save</button>
+          </div>
+        </div>
+      </div>`;
+  }
   function renderPage() {
     const course = state.data.course || {};
 
@@ -2722,7 +2638,7 @@ document.addEventListener("DOMContentLoaded", function () {
           .replace(/\s+/g, "_");
         if (status === "resolved" || status === "closed") {
           ticketCounts.closed++;
-        } else if (status === "in_progress" || status === "pending") {
+        } else if (["ss_in_progress", "pm_in_progress", "in_progress", "pending"].includes(status)) {
           ticketCounts.pending++;
         } else {
           ticketCounts.open++;
@@ -2776,7 +2692,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div id="ba-maac-table-section">${renderTable()}</div>
           </div>
         </div>
-      </div>${renderTrendModalFixed()}${renderTicketModal()}
+      </div>${renderTrendModalFixed()}${renderTicketModal()}${renderUnsavedChangesModal()}
     `;
 
     bindEvents();
@@ -2940,6 +2856,30 @@ document.addEventListener("DOMContentLoaded", function () {
     renderPage();
   }
 
+  function markMaacDraftChanged() {
+    if (state.editMode) {
+      state.hasUnsavedChanges = true;
+    }
+  }
+
+  function discardMaacDraftChanges() {
+    state.editMode = false;
+    state.hasUnsavedChanges = false;
+    state.unsavedChangesModal = false;
+    state.customDraft = buildDraft(state.data?.students || []);
+    renderPage();
+  }
+
+  function openUnsavedChangesModal() {
+    state.unsavedChangesModal = true;
+    renderPage();
+  }
+
+  function closeUnsavedChangesModal() {
+    state.unsavedChangesModal = false;
+    renderPage();
+  }
+
   function bindEvents() {
     const search = document.getElementById("ba-maac-search");
     const courseGroup = document.getElementById("ba-maac-course-group");
@@ -3070,6 +3010,20 @@ document.addEventListener("DOMContentLoaded", function () {
       trendCloseBtn.addEventListener("click", closeTrendModal);
     }
 
+    const unsavedDiscardBtn = document.getElementById("ba-maac-unsaved-discard");
+    if (unsavedDiscardBtn) {
+      unsavedDiscardBtn.addEventListener("click", discardMaacDraftChanges);
+    }
+
+    const unsavedSaveBtn = document.getElementById("ba-maac-unsaved-save");
+    if (unsavedSaveBtn) {
+      unsavedSaveBtn.addEventListener("click", () => {
+        saveData({ source: "unsaved-modal" }).catch((error) => {
+          showMessage(error.message || "Unable to save MAAC values", "error");
+        });
+      });
+    }
+
     bindTableEvents();
   }
 
@@ -3087,6 +3041,9 @@ document.addEventListener("DOMContentLoaded", function () {
       editBtn.dataset.bound = "1";
       editBtn.addEventListener("click", () => {
         state.editMode = true;
+        state.hasUnsavedChanges = false;
+        state.unsavedChangesModal = false;
+        state.customDraft = buildDraft(state.data.students || []);
         renderPage();
       });
     }
@@ -3095,9 +3052,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (cancelBtn && cancelBtn.dataset.bound !== "1") {
       cancelBtn.dataset.bound = "1";
       cancelBtn.addEventListener("click", () => {
-        state.editMode = false;
-        state.customDraft = buildDraft(state.data.students || []);
-        renderPage();
+        if (state.hasUnsavedChanges) {
+          openUnsavedChangesModal();
+          return;
+        }
+        discardMaacDraftChanges();
       });
     }
 
@@ -3147,8 +3106,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         state.ticketEdit = {
           ticketid,
-          tickettitle: ticket.title || "",
-          ticketreason: ticket.reason || "",
+          tickettitle: ticket.tickettitle || "",
+          ticketreason: ticket.ticketreason || "",
         };
         renderPage();
       });
@@ -3212,6 +3171,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (input.dataset.multiEntry !== undefined) {
       state.customDraft[userid][key] = getMultiSelectValues(userid, key);
+      markMaacDraftChanged();
       return;
     }
 
@@ -3219,15 +3179,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (input.type === "checkbox") {
       state.customDraft[userid][key] = input.checked ? 1 : 0;
+      markMaacDraftChanged();
       return;
     }
 
     if (input.multiple) {
       state.customDraft[userid][key] = getSelectedValues(input);
+      markMaacDraftChanged();
       return;
     }
 
     state.customDraft[userid][key] = input.value;
+    markMaacDraftChanged();
   }
 
 
@@ -3919,7 +3882,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  async function saveData() {
+  async function saveData(options = {}) {
     syncDraftFromInputs();
     const rows = (state.data.students || []).map((student) => ({
       userid: student.userid,
@@ -3933,31 +3896,52 @@ document.addEventListener("DOMContentLoaded", function () {
     body.set("payload", JSON.stringify({ rows }));
 
     const saveBtn = document.getElementById("ba-maac-save");
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Saving...";
+    const unsavedSaveBtn = document.getElementById("ba-maac-unsaved-save");
+    const activeSaveBtn = options.source === "unsaved-modal" ? unsavedSaveBtn : saveBtn;
+    [saveBtn, unsavedSaveBtn].forEach((button) => {
+      if (button) {
+        button.disabled = true;
+      }
+    });
+    if (activeSaveBtn) {
+      activeSaveBtn.textContent = "Saving...";
     }
 
-    const res = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
-    });
-    const json = await res.json();
+    try {
+      const res = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      });
+      const text = await res.text();
+      const json = parseTicketActionResponse(text);
 
-    if (json.error) {
-      showMessage(json.error, "error");
+      if (!res.ok || json.error) {
+        throw new Error(json.error || "Unable to save MAAC values.");
+      }
+
+      state.hasUnsavedChanges = false;
+      state.unsavedChangesModal = false;
+      showMessage("MAAC values updated", "success");
+      await loadData();
+      return true;
+    } catch (error) {
+      showMessage(error.message || "Unable to save MAAC values", "error");
+      [saveBtn, unsavedSaveBtn].forEach((button) => {
+        if (button) {
+          button.disabled = false;
+        }
+      });
       if (saveBtn) {
-        saveBtn.disabled = false;
         saveBtn.textContent = "Save";
       }
-      return;
+      if (unsavedSaveBtn) {
+        unsavedSaveBtn.textContent = "Save";
+      }
+      return false;
     }
-
-    showMessage("MAAC values updated", "success");
-    await loadData();
   }
 
   async function saveTicketEdit(ticketid) {
@@ -4033,9 +4017,8 @@ document.addEventListener("DOMContentLoaded", function () {
       showMessage("Ticket title and reason are required", "error");
       return;
     }
-
-    // â”€â”€ Lock the entire modal while the request is in flight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Disable Submit, Cancel, and the Ã— close button so the user cannot
+    // Prevent duplicate ticket submissions and premature close.
+    // Prevent duplicate ticket submissions and premature close.
     // click any of them (avoids duplicate submissions or premature close).
     state.ticketSaving = true;
     [submitBtn,
@@ -4054,8 +4037,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (json.ticket?.ticket) {
         upsertStudentTicket(payload.studentuserid, json.ticket.ticket, json.ticket.ticketcount);
       }
-
-      // â”€â”€ GUARANTEED MODAL CLOSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Prevent duplicate ticket submissions and premature close.
       // Using modalEl.remove() is the ONLY reliable way to close the modal.
       // Relying solely on renderPage() to wipe the modal fails when any
       // function called inside the app.innerHTML template literal throws an
@@ -4067,7 +4049,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const modalEl = document.getElementById("ba-maac-ticket-modal");
       if (modalEl) {
-        modalEl.remove();          // â† always works, no renderPage() dependency
+        modalEl.remove();
       }
 
       // Show the success message immediately (before the table re-renders).
@@ -4079,12 +4061,12 @@ document.addEventListener("DOMContentLoaded", function () {
       try {
         renderPage();
       } catch (renderError) {
-        // Render failed but the modal is already closed â€“ user is unblocked.
+    // Prevent duplicate ticket submissions and premature close.
         // Silently swallow; the page will recover on the next interaction.
       }
 
     } catch (error) {
-      // â”€â”€ Request failed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Prevent duplicate ticket submissions and premature close.
       state.ticketSaving = false;
       showMessage(error.message || "Unable to raise ticket", "error");
 

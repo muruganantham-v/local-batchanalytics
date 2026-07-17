@@ -5,6 +5,8 @@ let CURRENT_COURSE = null;
 let CRM_CACHE = {};
 let PTF_CACHE = {};
 let PTF_PENDING = {};
+let MENTOR_DETAILS_CACHE = {};
+let MENTOR_DETAILS_PENDING = {};
 let OVERVIEW_SELECTED_COURSES = [];
 let MAAC_SUMMARY_CACHE = {};
 let MAAC_SUMMARY_PENDING = {};
@@ -181,7 +183,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const BA_CAN_MANAGE = wrapEl ? wrapEl.dataset.canManage === "1" : false;
   const BA_CAN_VIEW_ALL_COURSES = wrapEl ? wrapEl.dataset.canViewAllCourses === "1" : false;
   const BA_CRM_FIELDS = wrapEl ? JSON.parse(wrapEl.dataset.crmFields || "[]") : [];
+  const BA_MENTOR_CRM_FIELDS = wrapEl ? JSON.parse(wrapEl.dataset.mentorCrmFields || "[]") : [];
+  const BA_MENTOR_CRM_GROUPS = wrapEl ? JSON.parse(wrapEl.dataset.mentorCrmGroups || "[]") : [];
   const BA_RESTRICTED = BA_CRM_FIELDS.filter((f) => f.restricted).map((f) => f.key);
+  const BA_SESSKEY = wrapEl ? (wrapEl.dataset.sesskey || "") : "";
 
   // ==================== BATCH LOADING ====================
   let ALL_BATCHES = []; // [{code, count}, ...] - used for teacher client-side filtering
@@ -368,6 +373,7 @@ document.addEventListener("DOMContentLoaded", function () {
     batchTabs.innerHTML = `
         <li class="active" onclick="switchTab('overview', this)">Batch Overview</li>
         <li onclick="switchTab('ptf', this)">CRM Data</li>
+        <li data-tab="mentor" onclick="switchTab('mentor', this)">Mentor Details</li>
     `;
     BATCH_DATA.courses.forEach((c) => {
       const li = document.createElement("li");
@@ -387,6 +393,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (id === "overview") renderOverview();
     else if (id === "ptf") renderPtf();
+    else if (id === "mentor") renderMentorDetails();
     else renderCourse(id);
   };
 
@@ -424,9 +431,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const chunkSize = 20;
     for (let i = 0; i < uncached.length; i += chunkSize) {
       const chunk = uncached.slice(i, i + chunkSize);
-      const request = fetch(
-        BASE_URL + "?action=getptfdata&usernames=" + encodeURIComponent(chunk.join(",")),
-      )
+      const request = fetch(BASE_URL + "?action=getptfdata", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "sesskey=" + encodeURIComponent(BA_SESSKEY) + "&payload=" + encodeURIComponent(JSON.stringify({ usernames: chunk }))
+      })
         .then((res) => res.json())
         .then((result) => {
           if (!(result && result.students)) {
@@ -466,6 +475,142 @@ document.addEventListener("DOMContentLoaded", function () {
         PTF_PENDING[username] = request;
       });
       await request;
+    }
+  }
+
+
+  // ==================== MENTOR DETAILS TAB ====================
+  function getMentorFieldMap(mentorfields) {
+    const map = {};
+    (mentorfields || []).forEach((field) => {
+      if (field && field.key) {
+        map[field.key] = field;
+      }
+    });
+    return map;
+  }
+
+  function normaliseMentorGroups(mentorfields, mentorgroups) {
+    const availableKeys = new Set((mentorfields || []).map((field) => field.key).filter(Boolean));
+    const validGroups = (mentorgroups || [])
+      .map((group) => ({
+        title: group.title || "Mentor Details",
+        fields: (group.fields || []).filter((key) => availableKeys.has(key)),
+      }))
+      .filter((group) => group.fields.length > 0);
+
+    if (validGroups.length > 0) {
+      return validGroups;
+    }
+
+    const fieldKeys = Array.from(availableKeys);
+    return fieldKeys.length ? [{ title: "Mentor Details", fields: fieldKeys }] : [];
+  }
+
+  function formatMentorValue(value, field) {
+    if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    if (field && field.type === "lookup" && typeof value === "object") {
+      return value.name || value.full_name || value.id || "-";
+    }
+    if (field && field.type === "date") {
+      return formatCrmDate(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => formatMentorValue(item, field)).join(", ");
+    }
+    if (typeof value === "object") {
+      return value.name || value.full_name || JSON.stringify(value);
+    }
+    return String(value);
+  }
+
+  async function fetchMentorDetails(batchgroup) {
+    if (!batchgroup) {
+      return null;
+    }
+    if (MENTOR_DETAILS_CACHE[batchgroup]) {
+      return MENTOR_DETAILS_CACHE[batchgroup];
+    }
+    if (MENTOR_DETAILS_PENDING[batchgroup]) {
+      return MENTOR_DETAILS_PENDING[batchgroup];
+    }
+
+    const request = fetch(BASE_URL + "?action=getmentordetails", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "sesskey=" + encodeURIComponent(BA_SESSKEY) + "&batchgroup=" + encodeURIComponent(batchgroup),
+    })
+      .then((res) => res.json())
+      .then((mentorresponse) => {
+        MENTOR_DETAILS_CACHE[batchgroup] = mentorresponse;
+        return mentorresponse;
+      })
+      .catch((error) => {
+        console.error("Mentor CRM fetch error", error);
+        return { error: "Unable to fetch mentor details" };
+      })
+      .finally(() => {
+        delete MENTOR_DETAILS_PENDING[batchgroup];
+      });
+
+    MENTOR_DETAILS_PENDING[batchgroup] = request;
+    return request;
+  }
+
+  function renderMentorDetails() {
+    const batchgroup = BATCH_DATA?.batchcode || batchSelect.value || "";
+    const cached = batchgroup ? MENTOR_DETAILS_CACHE[batchgroup] : null;
+    const mentorfields = cached?.mentorfields || cached?.fields || BA_MENTOR_CRM_FIELDS || [];
+    const mentorgroups = cached?.mentorgroups || cached?.groups || BA_MENTOR_CRM_GROUPS || [];
+    const mentorrecord = cached?.mentorrecord || cached?.data || {};
+    const mentorfieldmap = getMentorFieldMap(mentorfields);
+    const displayGroups = normaliseMentorGroups(mentorfields, mentorgroups);
+
+    let bodyHtml = "";
+    if (!mentorfields.length) {
+      bodyHtml = `<div class="ba-empty-state">Mentor CRM fields are not configured.</div>`;
+    } else if (cached?.error) {
+      bodyHtml = `<div class="ba-empty-state">${escapeHtml(cached.error)}</div>`;
+    } else if (!cached) {
+      bodyHtml = `<div class="ba-empty-state">Loading mentor details...</div>`;
+    } else if (!Object.keys(mentorrecord).length) {
+      bodyHtml = `<div class="ba-empty-state">No mentor details found for batch ${escapeHtml(batchgroup)}.</div>`;
+    } else {
+      bodyHtml = displayGroups.map((group) => {
+        const rows = group.fields.map((key) => {
+          const mentorfield = mentorfieldmap[key] || { key, label: key, type: "text" };
+          return `<div class="ba-mentor-field-row">
+            <div class="ba-mentor-field-label">${escapeHtml(mentorfield.label || key)}</div>
+            <div class="ba-mentor-field-value">${escapeHtml(formatMentorValue(mentorrecord[key], mentorfield))}</div>
+          </div>`;
+        }).join("");
+        return `<section class="ba-mentor-group">
+          <h4>${escapeHtml(group.title)}</h4>
+          <div class="ba-mentor-grid">${rows}</div>
+        </section>`;
+      }).join("");
+    }
+
+    batchTabsContent.innerHTML = `
+      <div class="ba-mentor-details-section">
+        <div class="ba-filter-header">
+          <div>
+            <h3>Mentor Details</h3>
+            <p class="ba-mentor-subtitle">Batch Group: ${escapeHtml(batchgroup || "-")}</p>
+          </div>
+        </div>
+        ${bodyHtml}
+      </div>`;
+
+    if (batchgroup && !cached) {
+      fetchMentorDetails(batchgroup).then(() => {
+        const activeTab = document.querySelector('.ba-tabs-nav li.active');
+        if (activeTab && activeTab.dataset.tab === "mentor") {
+          renderMentorDetails();
+        }
+      });
     }
   }
 
@@ -2429,6 +2574,58 @@ document.addEventListener("DOMContentLoaded", function () {
     };
   }
 
+  function formatCourseOverallPerformance(value) {
+    if (!Number.isFinite(value)) {
+      return "-";
+    }
+    return `${parseFloat(value.toFixed(2))}%`;
+  }
+
+  function getCourseOverallPerformanceValue(student, categories, isCompMode) {
+    const values = (categories || [])
+      .filter((category) => category.categoryname !== "MAAC Ratings")
+      .map((category) => {
+        const data = student.cats?.[category.categoryname];
+        if (!data) {
+          return null;
+        }
+        const value = getCourseMetricValue(
+          data,
+          {
+            isMaac: false,
+            isAtt: isAttendance(category.categoryname),
+          },
+          isCompMode,
+        );
+        const numeric = parseFloat(value);
+        return Number.isFinite(numeric) ? numeric : null;
+      })
+      .filter((value) => value !== null);
+
+    if (!values.length) {
+      return null;
+    }
+
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+
+  function getCourseOverallPerformanceDisplay(student, categories, isCompMode) {
+    const value = getCourseOverallPerformanceValue(student, categories, isCompMode);
+    if (value === null) {
+      return {
+        label: "-",
+        className: "loading",
+        exportValue: "-",
+      };
+    }
+
+    return {
+      label: formatCourseOverallPerformance(value),
+      className: value >= 75 ? "high" : value >= 50 ? "medium" : "low",
+      exportValue: formatCourseOverallPerformance(value),
+    };
+  }
+
   function getFilteredCourseStudents() {
     const filterState = getCourseAdvancedFilterState();
     const moduleCollapsed = !!COURSE_FILTER_COLLAPSED_GROUPS[`${CURRENT_COURSE.courseid}:module`];
@@ -2575,7 +2772,7 @@ document.addEventListener("DOMContentLoaded", function () {
           label: "Module Performance",
           courseId: c.courseid,
           groupKey: "module",
-          colSpan: Math.max(visibleCategories.length, 1),
+          colSpan: Math.max(visibleCategories.length + 1, 1),
         }),
       );
       visibleCategories.forEach((cat) => {
@@ -2592,6 +2789,18 @@ document.addEventListener("DOMContentLoaded", function () {
           }),
         );
       });
+      subHeaders.push(
+        renderResizableColumnHeader({
+          label: "Overall Performance",
+          columnKey: "category:overall_performance",
+          columnIndex: addLeafColumn("category:overall_performance", 180),
+          courseId: c.courseid,
+          sortable: true,
+          sortIndex: sortIndex++,
+          numericSort: true,
+          className: "ba-maac-col-head",
+        }),
+      );
     }
 
     visibleGroups.forEach((group) => {
@@ -2801,6 +3010,8 @@ document.addEventListener("DOMContentLoaded", function () {
             const metric = getCourseMetricDisplay(data, c.categoryname, isCompMode);
             cols += `<td><span class="ba-filter-percentage ${metric.className}">${metric.label}</span></td>`;
           });
+          const overall = getCourseOverallPerformanceDisplay(s, visibleCategories, isCompMode);
+          cols += `<td><span class="ba-filter-percentage ba-overall-performance ${overall.className}">${overall.label}</span></td>`;
         }
 
         groupedMaacColumns.forEach((group) => {
@@ -2853,6 +3064,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 3. Build CSV
     let csv = "Username,Name,";
     visibleCategories.forEach((c) => (csv += `"${c.categoryname}",`));
+    csv += `"Overall Performance",`;
     visibleMaacColumns.forEach((column) => (csv += `"${column.label}",`));
     csv += "\n";
 
@@ -2864,6 +3076,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const metric = getCourseMetricDisplay(data, c.categoryname, isCompMode);
         csv += `"${metric.exportValue}",`;
       });
+
+      const overall = getCourseOverallPerformanceDisplay(s, visibleCategories, isCompMode);
+      csv += `"${overall.exportValue}",`;
 
       visibleMaacColumns.forEach((column) => {
         const value = getCourseStudentCustomValue(s, column);
@@ -3341,6 +3556,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     MAAC_SUMMARY_PENDING[courseId] = fetch(
       `maac.php?action=summary&courseid=${encodeURIComponent(courseId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "sesskey=" + encodeURIComponent(BA_SESSKEY)
+      }
     )
       .then((res) => res.json())
       .then((data) => {
@@ -3375,6 +3595,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     MAAC_COURSE_PENDING[courseId] = fetch(
       `maac.php?action=getdata&courseid=${encodeURIComponent(courseId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "sesskey=" + encodeURIComponent(BA_SESSKEY)
+      }
     )
       .then((res) => res.json())
       .then((data) => {

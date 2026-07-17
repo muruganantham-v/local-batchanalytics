@@ -20,6 +20,8 @@ require_capability('local/batchanalytics:view', $context);
  * @return bool
  */
 function local_batchanalytics_can_access_tickets(int $userid): bool {
+    global $DB;
+
     $systemcontext = context_system::instance();
     if (is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $systemcontext, $userid)) {
         return true;
@@ -33,13 +35,41 @@ function local_batchanalytics_can_access_tickets(int $userid): bool {
         }
         if (
             has_capability('local/batchanalytics:viewtickets', $coursecontext, $userid) ||
-            has_capability('local/batchanalytics:managetickets', $coursecontext, $userid)
+            has_capability('local/batchanalytics:managetickets', $coursecontext, $userid) ||
+            has_capability('local/batchanalytics:manageescalatedtickets', $coursecontext, $userid)
         ) {
             return true;
         }
     }
 
-    return false;
+    $escalatedcourses = get_user_capability_course('local/batchanalytics:manageescalatedtickets', $userid, true, 'c.id');
+    if (!empty($escalatedcourses)) {
+        return true;
+    }
+
+    $roleids = array_filter([
+        (int)get_config('local_batchanalytics', 'ss_team_role'),
+        (int)get_config('local_batchanalytics', 'batch_manager_role'),
+    ]);
+    if (empty($roleids)) {
+        return false;
+    }
+
+    list($roleinsql, $roleparams) = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'ticketrole');
+    $sql = "SELECT 1
+              FROM {role_assignments} ra
+              JOIN {context} ctx ON ctx.id = ra.contextid
+              JOIN {course} c ON c.id = ctx.instanceid
+             WHERE ra.userid = :userid
+               AND ra.roleid $roleinsql
+               AND ctx.contextlevel = :coursecontextlevel
+               AND c.visible = 1";
+    $params = [
+        'userid' => $userid,
+        'coursecontextlevel' => CONTEXT_COURSE,
+    ] + $roleparams;
+
+    return $DB->record_exists_sql($sql, $params);
 }
 
 if (!local_batchanalytics_can_access_tickets($USER->id)) {
@@ -57,29 +87,11 @@ if ($action !== '') {
 
     try {
         if ($action === 'gettickets') {
-            echo json_encode($service->get_ticket_dashboard_data($USER->id));
-            die();
-        }
-
-        if ($action === 'resolveticket') {
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
                 throw new moodle_exception('invalidrequest');
             }
             require_sesskey();
-            $payload = optional_param('payload', '', PARAM_RAW);
-            $decoded = json_decode($payload, true);
-            if (!is_array($decoded)) {
-                echo json_encode(['error' => 'Invalid JSON payload']);
-                die();
-            }
-            $ticketid = (int)($decoded['ticketid'] ?? 0);
-            $feedback = (string)($decoded['feedback'] ?? '');
-            $result = $service->resolve_ticket($ticketid, $USER->id, $feedback);
-            echo json_encode([
-                'status' => 'ok',
-                'message' => get_string('ticket_resolve_success', 'local_batchanalytics'),
-                'ticket' => $result,
-            ]);
+            echo json_encode($service->get_ticket_dashboard_data($USER->id));
             die();
         }
 
@@ -89,6 +101,10 @@ if ($action !== '') {
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -102,12 +118,40 @@ if ($action !== '') {
             ]);
             die();
         }
+        if ($action === 'escalateticket') {
+            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+                throw new moodle_exception('invalidrequest');
+            }
+            require_sesskey();
+            $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
+            $decoded = json_decode($payload, true);
+            if (!is_array($decoded)) {
+                echo json_encode(['error' => 'Invalid JSON payload']);
+                die();
+            }
+            $ticketid = (int)($decoded['ticketid'] ?? 0);
+            $result = $service->escalate_ticket_to_pm($ticketid, $USER->id);
+            echo json_encode([
+                'status' => 'ok',
+                'message' => 'Ticket escalated to PM successfully',
+                'ticket' => $result,
+            ]);
+            die();
+        }
         if ($action === 'updateticket') {
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
                 throw new moodle_exception('invalidrequest');
             }
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
+            if (strlen($payload) > 1048576) {
+                echo json_encode(['error' => 'Payload too large']);
+                die();
+            }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
                 echo json_encode(['error' => 'Invalid JSON payload']);
@@ -125,8 +169,14 @@ if ($action !== '') {
 
         echo json_encode(['error' => 'Unknown action']);
     } catch (\Throwable $e) {
-        debugging('Ticket API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        echo json_encode(['error' => 'An error occurred processing your request.']);
+        global $CFG;
+
+        error_log('Ticket API Error: ' . $e->getMessage());
+        $message = 'An error occurred processing your request.';
+        if (!empty($CFG->debug) && $CFG->debug >= DEBUG_DEVELOPER) {
+            $message .= ' ' . $e->getMessage();
+        }
+        echo json_encode(['error' => $message]);
     }
     die();
 }

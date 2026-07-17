@@ -173,6 +173,9 @@ class maac_service {
         }
 
         $ticketmeta = $dataset['ticket_meta'] ?? [];
+        $batchmanagerroleid = (int)($ticketmeta['batch_manager_role']['id'] ?? 0);
+        $batchmanagerusers = array_values($ticketmeta['batch_manager_users'] ?? []);
+        $batchmanageruserid = !empty($batchmanagerusers) ? (int)($batchmanagerusers[0]['id'] ?? 0) : 0;
         $ssteamroleid = (int)($ticketmeta['ss_team_role']['id'] ?? 0);
         if ($ssteamroleid <= 0) {
             throw new \moodle_exception('ticket_role_not_configured', 'local_batchanalytics');
@@ -207,8 +210,9 @@ class maac_service {
             'studentuserid' => $studentuserid,
             'ssteamroleid' => $ssteamroleid,
             'ssteamuserid' => $ssteamuserid,
-            'batchmanagerroleid' => 0,
-            'batchmanageruserid' => 0,
+            'batchmanagerroleid' => $batchmanagerroleid,
+            'batchmanageruserid' => $batchmanageruserid,
+            'escalatedtopm' => 0,
             'tickettitle' => $tickettitle,
             'ticketreason' => $ticketreason,
             'status' => 'open',
@@ -233,7 +237,7 @@ class maac_service {
         try {
             $userfrom = \core_user::get_user($userid);
             $ssteamuser = \core_user::get_user($ssteamuserid);
-            
+
             $msg = new \core\message\message();
             $msg->component = 'local_batchanalytics';
             $msg->name = 'ticket_update';
@@ -243,7 +247,7 @@ class maac_service {
             $msg->fullmessageformat = FORMAT_PLAIN;
             $msg->fullmessagehtml = "<p>A new ticket has been raised.</p><p><strong>Title:</strong> " . s($tickettitle) . "</p><p><strong>Reason:</strong> " . s($ticketreason) . "</p>";
             $msg->smallmessage = "New ticket raised: " . $tickettitle;
-            
+
             if ($ssteamuser && $ssteamuser->id != $userid) {
                 $msg->userto = $ssteamuser;
                 message_send($msg);
@@ -264,6 +268,8 @@ class maac_service {
             'createdby' => $userid,
             'resolvedby' => 0,
             'ssteamuserid' => $ssteamuserid,
+            'batchmanageruserid' => $batchmanageruserid,
+            'escalatedtopm' => 0,
             'timemodified' => $now,
             'timeresolved' => 0,
             'timecreated' => $now,
@@ -271,6 +277,7 @@ class maac_service {
             'batchmanagerfullname' => '',
             'resolvedbyfullname' => '',
         ];
+        $this->send_ticket_raise_cliq_notification($record, $ticketmeta);
 
         return [
             'ticketid' => $ticketid,
@@ -348,13 +355,13 @@ class maac_service {
         }
 
         $changed = false;
-        if (((int)$ticket->ssteamuserid === $userid || $this->can_manage_tickets_for_course((int)$ticket->courseid, $userid)) && $this->normalise_ticket_status((string)$ticket->status) === 'open') {
-            $ticket->status = 'in_progress';
+        if ($this->can_ss_team_handle_ticket_record($ticket, $userid) && $this->normalise_ticket_status((string)$ticket->status) === 'open') {
+            $ticket->status = 'ss_in_progress';
             $ticket->timemodified = time();
             $DB->update_record('local_batchanalytics_ticket', $ticket);
             $this->log_ticket_event($ticketid, $userid, 'updated', [
                 'fromstatus' => 'open',
-                'tostatus' => 'in_progress',
+                'tostatus' => 'ss_in_progress',
             ]);
             $changed = true;
         }
@@ -385,17 +392,10 @@ class maac_service {
             throw new \moodle_exception('ticket_invalid', 'local_batchanalytics');
         }
 
-        $changed = false;
-        if (((int)$ticket->ssteamuserid === $userid || $this->can_manage_tickets_for_course((int)$ticket->courseid, $userid)) && $this->normalise_ticket_status((string)$ticket->status) === 'open') {
-            $ticket->status = 'in_progress';
-            $ticket->timemodified = time();
-            $DB->update_record('local_batchanalytics_ticket', $ticket);
-            $this->log_ticket_event($ticketid, $userid, 'updated', [
-                'fromstatus' => 'open',
-                'tostatus' => 'in_progress',
-            ]);
-            $changed = true;
-        }
+        $result = $this->mark_ticket_viewed($ticketid, $userid);
+
+        // mark_ticket_viewed updates the DB. We just fetch the updated record to format.
+        $ticket = $DB->get_record('local_batchanalytics_ticket', ['id' => $ticketid, 'courseid' => $courseid]);
 
         $ticket->ssteamfullname = '';
         $ticket->batchmanagerfullname = '';
@@ -404,8 +404,83 @@ class maac_service {
 
         return [
             'ticketid' => $ticketid,
-            'changed' => $changed,
+            'changed' => $result['changed'],
             'ticket' => $this->format_maac_ticket_record($ticket, $userid, $timeline[$ticketid] ?? []),
+        ];
+    }
+
+    /**
+     * Escalate a ticket to the configured batch manager/PM.
+     *
+     * @param int $ticketid
+     * @param int $userid
+     * @return array
+     */
+    public function escalate_ticket_to_pm(int $ticketid, int $userid): array {
+        global $DB;
+
+        $ticket = $DB->get_record('local_batchanalytics_ticket', ['id' => $ticketid]);
+        if (!$ticket) {
+            throw new \moodle_exception('ticket_invalid', 'local_batchanalytics');
+        }
+
+        if ($this->normalise_ticket_status((string)$ticket->status) === 'resolved') {
+            throw new \moodle_exception('ticket_already_resolved', 'local_batchanalytics');
+        }
+
+        if (!$this->can_escalate_ticket_record($ticket, $userid)) {
+            throw new \moodle_exception('nopermissions', 'error', '', 'escalate ticket');
+        }
+
+        if (!empty($ticket->escalatedtopm)) {
+            $access = $this->build_ticket_access_scope($userid);
+            $formatted = $this->get_formatted_ticket_dashboard_record((int)$ticket->id, $userid, $access);
+            if (empty($formatted)) {
+                $formatted = $this->build_escalated_ticket_fallback($ticket);
+            }
+            return [
+                'ticketid' => $ticketid,
+                'ticket' => $formatted,
+                'alreadyescalated' => true,
+            ];
+        }
+
+        $ticketmeta = $this->build_ticket_meta((int)$ticket->courseid);
+        $batchmanagerusers = array_values($ticketmeta['batch_manager_users'] ?? []);
+
+        $batchmanagerroleid = (int)($ticketmeta['batch_manager_role']['id'] ?? 0);
+        $batchmanageruserid = (int)($ticket->batchmanageruserid ?? 0);
+        if ($batchmanageruserid <= 0 && !empty($batchmanagerusers)) {
+            $batchmanageruserid = (int)($batchmanagerusers[0]['id'] ?? 0);
+        }
+
+        $previousstatuskey = $this->normalise_ticket_status((string)$ticket->status);
+        $now = time();
+        $ticket->batchmanagerroleid = $batchmanagerroleid;
+        $ticket->batchmanageruserid = $batchmanageruserid;
+        $ticket->escalatedtopm = 1;
+        $ticket->status = 'pm_in_progress';
+        $ticket->timemodified = $now;
+        $DB->update_record('local_batchanalytics_ticket', $ticket);
+
+        $batchmanager = $batchmanageruserid > 0
+            ? \core_user::get_user($batchmanageruserid, 'id, firstname, lastname, username, email', IGNORE_MISSING)
+            : null;
+        $this->log_ticket_event($ticketid, $userid, 'escalated', [
+            'fromstatus' => $previousstatuskey,
+            'tostatus' => $this->normalise_ticket_status((string)$ticket->status),
+            'feedback' => 'Escalated to PM' . ($batchmanager ? ': ' . fullname($batchmanager) : ''),
+        ]);
+        $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, $userid);
+
+        $access = $this->build_ticket_access_scope($userid);
+        $formatted = $this->get_formatted_ticket_dashboard_record($ticketid, $userid, $access);
+        if (empty($formatted)) {
+            $formatted = $this->build_escalated_ticket_fallback($ticket);
+        }
+        return [
+            'ticketid' => $ticketid,
+            'ticket' => $formatted,
         ];
     }
 
@@ -489,7 +564,17 @@ class maac_service {
         $previousstatuskey = $this->normalise_ticket_status((string)$ticket->status);
         $previousprioritykey = $this->normalise_ticket_priority((string)($ticket->priority ?? 'low'));
         $previousfeedback = trim((string)($ticket->resolutionfeedback ?? ''));
-        $statuskey = $this->normalise_ticket_status((string)($payload['status'] ?? $ticket->status));
+        $mode = clean_param((string)($payload['mode'] ?? ''), PARAM_ALPHA);
+        if ($mode === '' && $this->normalise_ticket_status((string)($payload['status'] ?? '')) === 'resolved') {
+            $mode = 'resolve';
+        }
+        if ($mode === '') {
+            $mode = 'update';
+        }
+        $statuskey = $mode === 'resolve' ? 'resolved' : $previousstatuskey;
+        if ($statuskey === 'open') {
+            $statuskey = !empty($ticket->escalatedtopm) ? 'pm_in_progress' : 'ss_in_progress';
+        }
         $prioritykey = $this->normalise_ticket_priority((string)($payload['priority'] ?? ($ticket->priority ?? 'low')));
         $now = time();
         $ticket->status = $statuskey;
@@ -528,7 +613,7 @@ class maac_service {
                 try {
                     $userfrom = \core_user::get_user($userid);
                     $userto = \core_user::get_user($ticket->createdby);
-                    
+
                     if ($userfrom && $userto) {
                         $msg = new \core\message\message();
                         $msg->component = 'local_batchanalytics';
@@ -546,6 +631,7 @@ class maac_service {
                     // Ignore messaging errors
                 }
             }
+            $this->send_ticket_update_cliq_notification($ticket, $userid);
         }
 
         return [
@@ -566,6 +652,7 @@ class maac_service {
     public function resolve_ticket(int $ticketid, int $userid, string $feedback): array {
         return $this->update_ticket($ticketid, $userid, [
             'status' => 'resolved',
+            'mode' => 'resolve',
             'priority' => 'low',
             'feedback' => $feedback,
         ]);
@@ -588,7 +675,10 @@ class maac_service {
         }
 
         $studentrole = $DB->get_record('role', ['shortname' => 'student']);
-        $studentroleid = $studentrole ? (int)$studentrole->id : 5;
+        if (!$studentrole) {
+            throw new \moodle_exception('error_student_role_missing', 'local_batchanalytics');
+        }
+        $studentroleid = (int)$studentrole->id;
 
         $studentssql = "
             SELECT DISTINCT
@@ -735,12 +825,9 @@ class maac_service {
             $customvalues[$studentid]['spot_awards_nomination'] = $value;
         }
 
-        $trenddetailsbyuser = [];
-        if ($surface !== 'summary' || $hastrendcolumn) {
-            $trenddetailsbyuser = $this->get_course_trend_values($courseid, array_keys($students));
-            foreach ($trenddetailsbyuser as $studentid => $trendvalue) {
-                $customvalues[$studentid]['trend'] = $trendvalue['label'] ?? 'Stable';
-            }
+        $trenddetailsbyuser = $this->get_course_trend_values($courseid, array_keys($students));
+        foreach ($trenddetailsbyuser as $studentid => $trendvalue) {
+            $customvalues[$studentid]['trend'] = $trendvalue['label'] ?? 'Stable';
         }
 
         if ($surface !== 'summary') {
@@ -1400,6 +1487,42 @@ class maac_service {
     }
 
     /**
+     * @param int $ticketid
+     * @param int $userid
+     * @param array $access
+     * @return array
+     */
+    private function get_formatted_ticket_dashboard_record(int $ticketid, int $userid, array $access): array {
+        $records = $this->get_ticket_dashboard_records($userid, $access);
+        foreach ($records as $record) {
+            if ((int)$record->id === $ticketid) {
+                $formatted = $this->format_ticket_dashboard_record($record, $userid, $access);
+                $timeline = $this->get_ticket_timeline_events([$ticketid]);
+                $formatted['timeline'] = $timeline[$ticketid] ?? [];
+                return $formatted;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param \stdClass $ticket
+     * @return array
+     */
+    private function build_escalated_ticket_fallback(\stdClass $ticket): array {
+        $statuskey = $this->normalise_ticket_status((string)($ticket->status ?? 'pm_in_progress'));
+        return [
+            'id' => (int)($ticket->id ?? 0),
+            'status' => $this->get_ticket_status_label($statuskey),
+            'statuskey' => $statuskey,
+            'canescalate' => false,
+            'escalatedtopm' => !empty($ticket->escalatedtopm),
+            'timemodified' => (int)($ticket->timemodified ?? time()),
+        ];
+    }
+
+    /**
      * @param int $userid
      * @return array
      */
@@ -1452,7 +1575,9 @@ class maac_service {
         $courseid = (int)$record->courseid;
         $isassigned = (int)$record->ssteamuserid === $userid;
         $canmanagecourse = !empty($access['canmanage']) || !empty($access['manageablecourseids'][$courseid]);
-        $canupdate = $statuskey !== 'resolved' && $canmanagecourse;
+        $canssteamhandle = $this->can_ss_team_handle_ticket_record($record, $userid);
+        $canbatchmanagerresolve = $this->can_batch_manager_resolve_ticket_record($record, $userid);
+        $canupdate = $statuskey !== 'resolved' && ($canssteamhandle || $canbatchmanagerresolve);
         $prioritykey = $this->normalise_ticket_priority((string)($record->priority ?? 'low'));
 
         $accessrole = 'Viewer';
@@ -1460,8 +1585,10 @@ class maac_service {
             $accessrole = 'Admin / Manager';
         } else if (!empty($access['manageablecourseids'][$courseid])) {
             $accessrole = 'Ticket Manager';
-        } else if ($isassigned) {
-            $accessrole = 'Assigned SS Team';
+        } else if ($canssteamhandle) {
+            $accessrole = $isassigned ? 'Assigned SS Team' : 'SS Team';
+        } else if ($canbatchmanagerresolve) {
+            $accessrole = 'Escalated Batch Manager';
         }
 
         $actionlabel = 'View';
@@ -1484,7 +1611,7 @@ class maac_service {
             'studentemail' => trim((string)($record->studentemail ?? '')),
             'raisedby' => trim((string)$record->createdbyfullname),
             'raisedbyemail' => trim((string)($record->createdbyemail ?? '')),
-            'raisedto' => $this->build_raised_to_label((string)$record->ssteamfullname, ''),
+            'raisedto' => $this->build_raised_to_label((string)$record->ssteamfullname, (string)$record->batchmanagerfullname),
             'tickettitle' => (string)$record->tickettitle,
             'ticketreason' => (string)$record->ticketreason,
             'status' => $this->get_ticket_status_label($statuskey),
@@ -1495,9 +1622,11 @@ class maac_service {
             'timemodified' => (int)$record->timemodified,
             'ismine' => $isassigned,
             'isassigned' => $isassigned,
-            'isinrolecourse' => $canmanagecourse || $isassigned,
+            'isinrolecourse' => $canmanagecourse || $canssteamhandle,
             'canresolve' => $canupdate,
             'canedit' => $canupdate,
+            'canescalate' => $statuskey !== 'resolved' && $this->can_escalate_ticket_record($record, $userid) && empty($record->escalatedtopm),
+            'escalatedtopm' => !empty($record->escalatedtopm),
             'actionlabel' => $actionlabel,
             'accessrole' => $accessrole,
             'ssteamfullname' => trim((string)$record->ssteamfullname),
@@ -1571,7 +1700,8 @@ class maac_service {
         $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
         return $coursecontext && (
             has_capability('local/batchanalytics:viewtickets', $coursecontext, $userid) ||
-            has_capability('local/batchanalytics:managetickets', $coursecontext, $userid)
+            has_capability('local/batchanalytics:managetickets', $coursecontext, $userid) ||
+            has_capability('local/batchanalytics:manageescalatedtickets', $coursecontext, $userid)
         );
     }
 
@@ -1587,6 +1717,19 @@ class maac_service {
 
         $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
         return $coursecontext && has_capability('local/batchanalytics:managetickets', $coursecontext, $userid);
+    }
+    /**
+     * @param int $courseid
+     * @param int $userid
+     * @return bool
+     */
+    private function can_manage_escalated_tickets_for_course(int $courseid, int $userid): bool {
+        if ($this->can_manage_all($userid)) {
+            return true;
+        }
+
+        $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
+        return $coursecontext && has_capability('local/batchanalytics:manageescalatedtickets', $coursecontext, $userid);
     }
 
     /**
@@ -1634,6 +1777,19 @@ class maac_service {
         $canmanageall = $this->can_manage_all($userid);
         $visiblecourseids = $this->get_accessible_ticket_course_ids($userid, false);
         $manageablecourseids = $this->get_accessible_ticket_course_ids($userid, true);
+        $escalatedmanagercourseids = $this->get_accessible_escalated_ticket_course_ids($userid);
+        $ssteamcourseids = $this->get_user_role_course_ids(
+            $userid,
+            (int)get_config('local_batchanalytics', 'ss_team_role')
+        );
+        $batchmanagercourseids = $this->get_user_role_course_ids(
+            $userid,
+            (int)get_config('local_batchanalytics', 'batch_manager_role')
+        );
+
+        if (!$canmanageall) {
+            $visiblecourseids = $visiblecourseids + $ssteamcourseids + $batchmanagercourseids + $escalatedmanagercourseids;
+        }
 
         $rolekey = 'viewer';
         $rolelabel = 'View Access';
@@ -1643,6 +1799,15 @@ class maac_service {
         } else if (!empty($manageablecourseids)) {
             $rolekey = 'ticket_manager';
             $rolelabel = 'Ticket Manager';
+        } else if (!empty($ssteamcourseids)) {
+            $rolekey = 'ss_team';
+            $rolelabel = 'SS Team';
+        } else if (!empty($batchmanagercourseids)) {
+            $rolekey = 'batch_manager';
+            $rolelabel = 'Batch Manager';
+        } else if (!empty($escalatedmanagercourseids)) {
+            $rolekey = 'pm_ticket_manager';
+            $rolelabel = 'PM Ticket Manager';
         } else if (!empty($visiblecourseids)) {
             $rolekey = 'ticket_viewer';
             $rolelabel = 'Ticket Viewer';
@@ -1653,7 +1818,7 @@ class maac_service {
             $scopelabel = 'Showing all tickets.';
         } else if (!empty($visiblecourseids)) {
             $scopekey = 'enrolled';
-            $scopelabel = 'Showing tickets for your permitted enrolled courses.';
+            $scopelabel = 'Showing tickets for your permitted courses.';
         } else {
             $scopekey = 'none';
             $scopelabel = 'Ticket dashboard access is limited by ticket permissions.';
@@ -1662,15 +1827,16 @@ class maac_service {
         return [
             'canmanage' => $canmanageall,
             'canviewall' => $canmanageall,
-            'canresolve' => $canmanageall || !empty($manageablecourseids),
+            'canresolve' => $canmanageall || !empty($manageablecourseids) || !empty($ssteamcourseids) || !empty($escalatedmanagercourseids),
             'rolekey' => $rolekey,
             'rolelabel' => $rolelabel,
             'scopekey' => $scopekey,
             'scopelabel' => $scopelabel,
             'visiblecourseids' => $canmanageall ? [] : $visiblecourseids,
             'manageablecourseids' => $canmanageall ? [] : $manageablecourseids,
-            'batchmanagercourseids' => [],
-            'ssteamcourseids' => [],
+            'escalatedmanagercourseids' => $canmanageall ? [] : $escalatedmanagercourseids,
+            'batchmanagercourseids' => $canmanageall ? [] : $batchmanagercourseids,
+            'ssteamcourseids' => $canmanageall ? [] : $ssteamcourseids,
         ];
     }
 
@@ -1692,13 +1858,16 @@ class maac_service {
         }
 
         $moodledata = new moodledata();
+        $allowedkeywords = $moodledata->get_allowed_keywords();
 
-        $sql = "SELECT DISTINCT ctx.instanceid AS courseid
+        $sql = "SELECT DISTINCT c.id AS courseid, c.fullname, c.shortname
                   FROM {role_assignments} ra
                   JOIN {context} ctx ON ctx.id = ra.contextid
+                  JOIN {course} c ON c.id = ctx.instanceid
                  WHERE ra.userid = :userid
                    AND ra.roleid = :roleid
-                   AND ctx.contextlevel = 50";
+                   AND ctx.contextlevel = 50
+                   AND c.visible = 1";
 
         $records = $DB->get_records_sql($sql, [
             'userid' => $userid,
@@ -1707,9 +1876,13 @@ class maac_service {
         $courseids = [];
         foreach ($records as $record) {
             $courseid = (int)$record->courseid;
-            if ($courseid > 0 && $moodledata->get_accessible_course($courseid, $userid)) {
-                $courseids[$courseid] = true;
+            if ($courseid <= 1) {
+                continue;
             }
+            if (!$moodledata->course_matches_keywords($record->fullname, $allowedkeywords)) {
+                continue;
+            }
+            $courseids[$courseid] = true;
         }
 
         $this->cached_role_course_ids[$cachekey] = $courseids;
@@ -1727,12 +1900,21 @@ class maac_service {
         }
 
         $moodledata = new moodledata();
+        $allowedkeywords = $moodledata->get_allowed_keywords();
         $courses = enrol_get_users_courses($userid, true, ['id', 'fullname', 'shortname']);
         $courseids = [];
 
         foreach ($courses as $course) {
             $courseid = (int)$course->id;
-            if (!$moodledata->get_accessible_course($courseid, $userid)) {
+            if ($courseid <= 1) {
+                continue;
+            }
+
+            if (!$moodledata->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                continue;
+            }
+
+            if (!$moodledata->can_view_enrolled_course($courseid, $userid)) {
                 continue;
             }
 
@@ -1748,12 +1930,110 @@ class maac_service {
     }
 
     /**
+     * @param int $userid
+     * @return array
+     */
+    private function get_accessible_escalated_ticket_course_ids(int $userid): array {
+        if ($this->can_manage_all($userid)) {
+            return [];
+        }
+
+        $moodledata = new moodledata();
+        $allowedkeywords = $moodledata->get_allowed_keywords();
+        $courses = get_user_capability_course('local/batchanalytics:manageescalatedtickets', $userid, true, 'c.id, c.fullname, c.shortname');
+        $courseids = [];
+
+        foreach ($courses as $course) {
+            $courseid = (int)$course->id;
+            if ($courseid <= 1) {
+                continue;
+            }
+
+            if (!$moodledata->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                continue;
+            }
+
+            $courseids[$courseid] = true;
+        }
+
+        return $courseids;
+    }
+
+    /**
      * @param \stdClass $ticket
      * @param int $userid
      * @return bool
      */
     private function can_update_ticket_record(\stdClass $ticket, int $userid): bool {
-        return $this->can_manage_tickets_for_course((int)($ticket->courseid ?? 0), $userid);
+        return $this->can_ss_team_handle_ticket_record($ticket, $userid)
+            || $this->can_batch_manager_resolve_ticket_record($ticket, $userid);
+    }
+    /**
+     * @param \stdClass $ticket
+     * @param int $userid
+     * @return bool
+     */
+    private function can_escalate_ticket_record(\stdClass $ticket, int $userid): bool {
+        return $this->can_ss_team_handle_ticket_record($ticket, $userid);
+    }
+
+    /**
+     * @param \stdClass $ticket
+     * @param int $userid
+     * @return bool
+     */
+    private function can_ss_team_handle_ticket_record(\stdClass $ticket, int $userid): bool {
+        $courseid = (int)($ticket->courseid ?? 0);
+        if ($this->can_manage_tickets_for_course($courseid, $userid)) {
+            return true;
+        }
+
+        if ((int)($ticket->ssteamuserid ?? 0) === $userid) {
+            return true;
+        }
+
+        $ssteamroleid = (int)get_config('local_batchanalytics', 'ss_team_role');
+        if ($ssteamroleid <= 0 || $courseid <= 0) {
+            return false;
+        }
+
+        $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
+        if (!$coursecontext) {
+            return false;
+        }
+
+        return user_has_role_assignment($userid, $ssteamroleid, $coursecontext->id);
+    }
+
+    /**
+     * @param \stdClass $ticket
+     * @param int $userid
+     * @return bool
+     */
+    private function can_batch_manager_resolve_ticket_record(\stdClass $ticket, int $userid): bool {
+        if (empty($ticket->escalatedtopm)) {
+            return false;
+        }
+
+        if ((int)($ticket->batchmanageruserid ?? 0) === $userid) {
+            return true;
+        }
+
+        if ($this->can_manage_escalated_tickets_for_course((int)($ticket->courseid ?? 0), $userid)) {
+            return true;
+        }
+
+        $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
+        if ($batchmanagerroleid <= 0) {
+            return false;
+        }
+
+        $coursecontext = \context_course::instance((int)($ticket->courseid ?? 0), IGNORE_MISSING);
+        if (!$coursecontext) {
+            return false;
+        }
+
+        return user_has_role_assignment($userid, $batchmanagerroleid, $coursecontext->id);
     }
 
     /**
@@ -1765,8 +2045,17 @@ class maac_service {
         if ($status === 'resolved') {
             return 'resolved';
         }
-        if ($status === 'in_progress' || $status === 'in progress') {
-            return 'in_progress';
+        if ($status === 'pm_in_progress' || $status === 'pm in progress' || $status === 'pm - in progress') {
+            return 'pm_in_progress';
+        }
+        if (
+            $status === 'ss_in_progress' ||
+            $status === 'ss in progress' ||
+            $status === 'ss - in progress' ||
+            $status === 'in_progress' ||
+            $status === 'in progress'
+        ) {
+            return 'ss_in_progress';
         }
 
         return 'open';
@@ -1780,8 +2069,11 @@ class maac_service {
         if ($statuskey === 'resolved') {
             return 'Resolved';
         }
-        if ($statuskey === 'in_progress') {
-            return 'In Progress';
+        if ($statuskey === 'pm_in_progress') {
+            return 'PM - In Progress';
+        }
+        if ($statuskey === 'ss_in_progress') {
+            return 'SS - In Progress';
         }
 
         return 'Open';
@@ -1855,24 +2147,29 @@ class maac_service {
             return [];
         }
 
-        list($insql, $params) = $DB->get_in_or_equal(array_values(array_unique(array_map('intval', $ticketids))), SQL_PARAMS_NAMED);
-        $sql = "SELECT e.*,
-                       CONCAT(u.firstname, ' ', u.lastname) AS actorfullname
-                  FROM {local_batchanalytics_ticket_event} e
-             LEFT JOIN {user} u ON u.id = e.userid
-                 WHERE e.ticketid $insql
-              ORDER BY e.timecreated ASC, e.id ASC";
-
-        $records = $DB->get_recordset_sql($sql, $params);
+        $ticketids = array_values(array_unique(array_map('intval', $ticketids)));
         $events = [];
-        foreach ($records as $record) {
-            $ticketid = (int)$record->ticketid;
-            if (!isset($events[$ticketid])) {
-                $events[$ticketid] = [];
+
+        $chunks = array_chunk($ticketids, 500);
+        foreach ($chunks as $chunk) {
+            list($insql, $params) = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
+            $sql = "SELECT e.*,
+                           CONCAT(u.firstname, ' ', u.lastname) AS actorfullname
+                      FROM {local_batchanalytics_ticket_event} e
+                 LEFT JOIN {user} u ON u.id = e.userid
+                     WHERE e.ticketid $insql
+                  ORDER BY e.timecreated ASC, e.id ASC";
+
+            $records = $DB->get_recordset_sql($sql, $params);
+            foreach ($records as $record) {
+                $ticketid = (int)$record->ticketid;
+                if (!isset($events[$ticketid])) {
+                    $events[$ticketid] = [];
+                }
+                $events[$ticketid][] = $this->format_ticket_timeline_event($record);
             }
-            $events[$ticketid][] = $this->format_ticket_timeline_event($record);
+            $records->close();
         }
-        $records->close();
 
         return $events;
     }
@@ -1891,6 +2188,8 @@ class maac_service {
             $title = 'Ticket resolved';
         } else if ($eventtype === 'reopened') {
             $title = 'Ticket reopened';
+        } else if ($eventtype === 'escalated') {
+            $title = 'Ticket escalated to PM';
         }
 
         $details = [];
@@ -1984,8 +2283,8 @@ class maac_service {
 
         return [
             'id' => (int)$record->id,
-            'title' => $record->tickettitle,
-            'reason' => $record->ticketreason,
+            'tickettitle' => $record->tickettitle,
+            'ticketreason' => $record->ticketreason,
             'status' => $this->get_ticket_status_label($statuskey),
             'statuskey' => $statuskey,
             'priority' => ucfirst($prioritykey),
@@ -1994,6 +2293,8 @@ class maac_service {
             'createdby' => (int)($record->createdby ?? 0),
             'resolvedby' => (int)($record->resolvedby ?? 0),
             'ssteamuserid' => (int)($record->ssteamuserid ?? 0),
+            'batchmanageruserid' => (int)($record->batchmanageruserid ?? 0),
+            'escalatedtopm' => !empty($record->escalatedtopm),
             'canedit' => $this->can_edit_own_ticket_from_maac($record, $userid),
             'timemodified' => (int)($record->timemodified ?? 0),
             'timeresolved' => (int)($record->timeresolved ?? 0),
@@ -2055,6 +2356,8 @@ class maac_service {
                        t.createdby,
                        t.resolvedby,
                        t.ssteamuserid,
+                       t.batchmanageruserid,
+                       t.escalatedtopm,
                        t.timemodified,
                        t.timeresolved,
                        t.timecreated,
@@ -2098,15 +2401,86 @@ class maac_service {
     }
 
     /**
+     * @param \stdClass $ticket
+     * @param array $ticketmeta
+     * @return void
+     */
+    private function send_ticket_raise_cliq_notification(\stdClass $ticket, array $ticketmeta): void {
+        try {
+            $recipients = [];
+            foreach ($ticketmeta['ss_team_users'] ?? [] as $user) {
+                if ((int)($user['id'] ?? 0) === (int)$ticket->ssteamuserid) {
+                    $recipients[] = $user;
+                }
+            }
+            foreach ($ticketmeta['batch_manager_users'] ?? [] as $user) {
+                $recipients[] = $user;
+            }
+            if (empty($recipients)) {
+                return;
+            }
+            $service = new cliq_service();
+            $service->send_ticket_message('raise', $ticket, $recipients);
+        } catch (\Throwable $e) {
+            // Cliq delivery must not block ticket creation.
+        }
+    }
+
+    /**
+     * @param \stdClass $ticket
+     * @param int $updatedby
+     * @return void
+     */
+    private function send_ticket_update_cliq_notification(\stdClass $ticket, int $updatedby): void {
+        try {
+            $createdby = (int)($ticket->createdby ?? 0);
+            if ($createdby <= 0 || $createdby === $updatedby) {
+                return;
+            }
+            $recipient = \core_user::get_user($createdby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
+            if (!$recipient || empty($recipient->email)) {
+                return;
+            }
+            $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
+            $service = new cliq_service();
+            $service->send_ticket_message('update', $ticket, [$recipient], ['updatedby' => $updatedbyuser ?: null]);
+        } catch (\Throwable $e) {
+            // Cliq delivery must not block ticket updates.
+        }
+    }
+
+    /**
+     * @param \stdClass $ticket
+     * @param array $recipients
+     * @param int $updatedby
+     * @return void
+     */
+    private function send_ticket_escalation_cliq_notification(\stdClass $ticket, array $recipients, int $updatedby): void {
+        try {
+            if (empty($recipients)) {
+                return;
+            }
+            $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
+            $service = new cliq_service();
+            $service->send_ticket_message('update', $ticket, $recipients, ['updatedby' => $updatedbyuser ?: null]);
+        } catch (\Throwable $e) {
+            // Cliq delivery must not block ticket escalation.
+        }
+    }
+
+    /**
      * @param int $courseid
      * @return array
      */
     private function build_ticket_meta(int $courseid): array {
         $ssteamroleid = (int)get_config('local_batchanalytics', 'ss_team_role');
+        $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
 
         return [
             'ss_team_role' => $this->get_role_descriptor($ssteamroleid, 'SS Team'),
             'ss_team_users' => $this->get_course_role_users($courseid, $ssteamroleid),
+            'batch_manager_role' => $this->get_role_descriptor($batchmanagerroleid, 'Batch Manager'),
+            'batch_manager_users' => $this->get_course_role_users($courseid, $batchmanagerroleid),
         ];
     }
 

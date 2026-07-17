@@ -58,6 +58,57 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 3000);
   }
 
+  function parseTicketJsonResponse(text) {
+    if (!text) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch (_directError) {
+      const starts = ['{"dashboard"', '{"status"', '{"error"'];
+      const start = starts
+        .map((needle) => text.lastIndexOf(needle))
+        .filter((index) => index >= 0)
+        .sort((a, b) => b - a)[0];
+
+      if (start !== undefined) {
+        try {
+          return JSON.parse(text.slice(start).trim());
+        } catch (_knownStartError) {
+          const end = text.lastIndexOf("}");
+          if (end > start) {
+            try {
+              return JSON.parse(text.slice(start, end + 1));
+            } catch (_knownBoundedError) {
+              // Fall through to the generic error below.
+            }
+          }
+        }
+      }
+
+      const firstBrace = text.indexOf("{");
+      const lastBrace = text.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        try {
+          return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+        } catch (_braceError) {
+          // Use the generic error below.
+        }
+      }
+    }
+
+    return { error: "Unable to process ticket response. Please check Moodle developer output or session access." };
+  }
+
+  async function readTicketJsonResponse(response) {
+    const text = await response.text();
+    const json = parseTicketJsonResponse(text);
+    if (!response.ok || json.error) {
+      throw new Error(json.error || `Ticket request failed with HTTP ${response.status}`);
+    }
+    return json;
+  }
   function formatTimestamp(timestamp) {
     const value = Number(timestamp || 0);
     if (!value) {
@@ -223,8 +274,9 @@ document.addEventListener("DOMContentLoaded", function () {
           <select id="filter-status" class="ba-select-small" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
             <option value="">All Statuses</option>
             <option value="open"${state.filters.status === "open" ? " selected" : ""}>Open</option>
-            <option value="in_progress"${state.filters.status === "in_progress" ? " selected" : ""}>Pending</option>
-            <option value="resolved"${state.filters.status === "resolved" ? " selected" : ""}>Closed</option>
+            <option value="ss_in_progress"${state.filters.status === "ss_in_progress" ? " selected" : ""}>SS - In Progress</option>
+            <option value="pm_in_progress"${state.filters.status === "pm_in_progress" ? " selected" : ""}>PM - In Progress</option>
+            <option value="resolved"${state.filters.status === "resolved" ? " selected" : ""}>Resolved</option>
           </select>
         </div>
         <div style="display: flex; align-items: flex-end;">
@@ -259,8 +311,9 @@ document.addEventListener("DOMContentLoaded", function () {
           <select id="ticket-filter-status" class="ba-select-small" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
             <option value="">All Statuses</option>
             <option value="open"${state.ticketFilters.status === "open" ? " selected" : ""}>Open</option>
-            <option value="in_progress"${state.ticketFilters.status === "in_progress" ? " selected" : ""}>Pending</option>
-            <option value="resolved"${state.ticketFilters.status === "resolved" ? " selected" : ""}>Closed</option>
+            <option value="ss_in_progress"${state.ticketFilters.status === "ss_in_progress" ? " selected" : ""}>SS - In Progress</option>
+            <option value="pm_in_progress"${state.ticketFilters.status === "pm_in_progress" ? " selected" : ""}>PM - In Progress</option>
+            <option value="resolved"${state.ticketFilters.status === "resolved" ? " selected" : ""}>Resolved</option>
           </select>
         </div>
         <div style="display: flex; align-items: flex-end;">
@@ -311,8 +364,9 @@ document.addEventListener("DOMContentLoaded", function () {
           <select id="list-filter-status" class="ba-select-small" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
             <option value="">All Statuses</option>
             <option value="open"${state.listFilters.status === "open" ? " selected" : ""}>Open</option>
-            <option value="in_progress"${state.listFilters.status === "in_progress" ? " selected" : ""}>Pending</option>
-            <option value="resolved"${state.listFilters.status === "resolved" ? " selected" : ""}>Closed</option>
+            <option value="ss_in_progress"${state.listFilters.status === "ss_in_progress" ? " selected" : ""}>SS - In Progress</option>
+            <option value="pm_in_progress"${state.listFilters.status === "pm_in_progress" ? " selected" : ""}>PM - In Progress</option>
+            <option value="resolved"${state.listFilters.status === "resolved" ? " selected" : ""}>Resolved</option>
           </select>
         </div>
         <div style="display: flex; align-items: flex-end;">
@@ -361,7 +415,8 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderStatusBadge(ticket) {
     const badgeMap = {
       open: "ba-ticket-status-badge ba-ticket-status-open",
-      in_progress: "ba-ticket-status-badge ba-ticket-status-in-progress",
+      ss_in_progress: "ba-ticket-status-badge ba-ticket-status-ss-in-progress",
+      pm_in_progress: "ba-ticket-status-badge ba-ticket-status-pm-in-progress",
       resolved: "ba-ticket-status-badge ba-ticket-status-resolved",
     };
     const badgeClass = badgeMap[ticket.statuskey] || badgeMap.open;
@@ -426,7 +481,7 @@ document.addEventListener("DOMContentLoaded", function () {
       row.ticketCount++;
       if (ticket.statuskey === "resolved") {
         row.counts.closed++;
-      } else if (ticket.statuskey === "in_progress") {
+      } else if (ticket.statuskey === "ss_in_progress" || ticket.statuskey === "pm_in_progress") {
         row.counts.pending++;
       } else {
         row.counts.open++;
@@ -696,8 +751,16 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>`;
   }
 
+  function renderEscalateButton(ticket) {
+    if (ticket.canescalate) {
+      return `<button type="button" class="ba-btn ba-ticket-escalate-btn" id="ba-ticket-escalate">Escalate to PM</button>`;
+    }
+    if (ticket.escalatedtopm && ticket.statuskey !== "resolved") {
+      return `<button type="button" class="ba-btn ba-ticket-escalate-btn" disabled>Escalated to PM</button>`;
+    }
+    return "";
+  }
   function renderEditPanel(ticket) {
-    const status = state.modal?.status || ticket.statuskey || "open";
     const priority = state.modal?.priority || ticket.prioritykey || "low";
     const heading = ticket.actionlabel === "Edit" ? "Update Ticket" : "Resolve Ticket";
     return `<div class="ba-ticket-edit-card">
@@ -705,12 +768,8 @@ document.addEventListener("DOMContentLoaded", function () {
       <div class="ba-ticket-edit-body">
         <div class="ba-ticket-edit-grid">
           <div class="ba-ticket-field">
-            <label for="ba-ticket-status">Status <span class="ba-maac-ticket-required">*</span></label>
-            <select id="ba-ticket-status" class="ba-range-input">
-              <option value="open"${status === "open" ? " selected" : ""}>Open</option>
-              <option value="in_progress"${status === "in_progress" ? " selected" : ""}>In Progress</option>
-              <option value="resolved"${status === "resolved" ? " selected" : ""}>Resolved</option>
-            </select>
+            <label>Status</label>
+            <div class="ba-ticket-readonly-status">${renderStatusBadge(ticket)}</div>
           </div>
           <div class="ba-ticket-field">
             <label for="ba-ticket-priority">Priority</label>
@@ -726,16 +785,19 @@ document.addEventListener("DOMContentLoaded", function () {
           <textarea id="ba-ticket-feedback" class="ba-maac-ticket-textarea" rows="5" placeholder="Please enter the feedback / resolution notes for this ticket.">${escapeHtml(
             state.modal?.feedback || "",
           )}</textarea>
-          <div class="ba-ticket-field-help">Please enter the feedback / resolution notes for this ticket.</div>
+          <div class="ba-ticket-field-help">Update saves feedback and keeps the ticket in progress. Resolve closes the ticket.</div>
         </div>
       </div>
-      <div class="ba-ticket-edit-footer">
+      <div class="ba-ticket-edit-footer ba-ticket-action-footer">
         <button type="button" class="ba-btn" id="ba-ticket-cancel">&#8592; Cancel</button>
-        <button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-submit">Update Ticket</button>
+        <div class="ba-ticket-right-actions">
+          ${renderEscalateButton(ticket)}
+          <button type="button" class="ba-btn ba-btn-view" id="ba-ticket-update">Update Ticket</button>
+          <button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-resolve">Resolve</button>
+        </div>
       </div>
     </div>`;
   }
-
   function renderResolvedDetails(ticket) {
     return `<div class="ba-ticket-note-card">
       <div class="ba-ticket-note-card-title">Resolution Details</div>
@@ -823,15 +885,18 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>
         ${
           !isEditMode
-            ? `<div class="ba-ticket-view-footer">
+            ? `<div class="ba-ticket-view-footer ba-ticket-action-footer">
                 <button type="button" class="ba-btn" id="ba-ticket-cancel">Close</button>
-                ${
-                  canSwitchToEdit
-                    ? `<button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-switch-edit">${escapeHtml(
-                        ticket.actionlabel || "Edit",
-                      )} Ticket</button>`
-                    : ""
-                }
+                <div class="ba-ticket-right-actions">
+                  ${renderEscalateButton(ticket)}
+                  ${
+                    canSwitchToEdit
+                      ? `<button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-switch-edit">${escapeHtml(
+                          ticket.actionlabel || "Edit",
+                        )} Ticket</button>`
+                      : ""
+                  }
+                </div>
               </div>`
             : ""
         }
@@ -888,14 +953,7 @@ document.addEventListener("DOMContentLoaded", function () {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: body.toString(),
       });
-      const text = await response.text();
-      let json = {};
-      try {
-        json = text ? JSON.parse(text) : {};
-      } catch (_firstError) {
-        const match = text.match(/\{[\s\S]*\}/);
-        json = match ? JSON.parse(match[0]) : {};
-      }
+      const json = await readTicketJsonResponse(response);
       if (json.ticket?.changed) {
         updateTicketInState(ticket.id, {
           status: json.ticket.status,
@@ -927,7 +985,6 @@ document.addEventListener("DOMContentLoaded", function () {
       mode,
       ticket,
       feedback: ticket.resolutionfeedback || "",
-      status: ticket.statuskey || "open",
       priority: ticket.prioritykey || "low",
     };
     renderPage();
@@ -941,11 +998,12 @@ document.addEventListener("DOMContentLoaded", function () {
   async function loadData(message = "") {
     app.innerHTML = `<div class="ba-maac-loading">Loading tickets...</div>`;
 
-    const response = await fetch(`${baseUrl}?action=gettickets`);
-    const json = await response.json();
-    if (json.error) {
-      throw new Error(json.error);
-    }
+    const response = await fetch(`${baseUrl}?action=gettickets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "sesskey=" + encodeURIComponent(window.BA_SESSKEY || document.querySelector('.local-batchanalytics-wrap').getAttribute('data-sesskey'))
+    });
+    const json = await readTicketJsonResponse(response);
 
     state.data = json;
     renderPage();
@@ -954,20 +1012,64 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  async function submitResolve() {
+  async function submitEscalate() {
+    if (!state.modal || !state.modal.ticket || !state.modal.ticket.canescalate) {
+      return;
+    }
+
+    const ticketid = state.modal.ticket.id;
+    const button = document.getElementById("ba-ticket-escalate");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Escalating...";
+    }
+
+    const body = new URLSearchParams();
+    body.set("action", "escalateticket");
+    body.set("sesskey", sesskey);
+    body.set("payload", JSON.stringify({ ticketid }));
+
+    try {
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      });
+      const json = await readTicketJsonResponse(response);
+      const responseTicket = json.ticket?.ticket || (json.ticket?.id ? json.ticket : null);
+      const updatedTicket = responseTicket && !Array.isArray(responseTicket) && Object.keys(responseTicket).length
+        ? responseTicket
+        : null;
+      const fallbackUpdate = {
+        status: "PM - In Progress",
+        statuskey: "pm_in_progress",
+        canescalate: false,
+        escalatedtopm: true,
+      };
+      updateTicketInState(ticketid, updatedTicket || fallbackUpdate);
+      state.modal = null;
+      renderPage();
+      showMessage(json.message || "Ticket escalated to PM successfully", "success");
+    } catch (error) {
+      showMessage(error.message || "Unable to escalate ticket", "error");
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Escalate to PM";
+      }
+    }
+  }
+  async function submitTicketAction(mode) {
     if (!state.modal || state.modal.mode !== "edit") {
       return;
     }
 
     const feedbackEl = document.getElementById("ba-ticket-feedback");
-    const statusEl = document.getElementById("ba-ticket-status");
     const priorityEl = document.getElementById("ba-ticket-priority");
-    const submitBtn = document.getElementById("ba-ticket-submit");
+    const updateBtn = document.getElementById("ba-ticket-update");
+    const resolveBtn = document.getElementById("ba-ticket-resolve");
     const feedback = feedbackEl?.value.trim() || "";
-    const status = statusEl?.value || "open";
     const priority = priorityEl?.value || "low";
     state.modal.feedback = feedback;
-    state.modal.status = status;
     state.modal.priority = priority;
 
     if (!feedback) {
@@ -975,9 +1077,14 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Updating...";
+    [updateBtn, resolveBtn].forEach((button) => {
+      if (button) {
+        button.disabled = true;
+      }
+    });
+    const activeBtn = mode === "resolve" ? resolveBtn : updateBtn;
+    if (activeBtn) {
+      activeBtn.textContent = mode === "resolve" ? "Resolving..." : "Updating...";
     }
 
     const body = new URLSearchParams();
@@ -988,8 +1095,8 @@ document.addEventListener("DOMContentLoaded", function () {
       JSON.stringify({
         ticketid: state.modal.ticket.id,
         feedback,
-        status,
         priority,
+        mode,
       }),
     );
 
@@ -1000,21 +1107,33 @@ document.addEventListener("DOMContentLoaded", function () {
       },
       body: body.toString(),
     });
-    const json = await response.json();
-    if (json.error) {
-      showMessage(json.error, "error");
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Update Ticket";
-      }
+    let json;
+    try {
+      json = await readTicketJsonResponse(response);
+    } catch (error) {
+      showMessage(error.message || "Unable to update ticket", "error");
+      [updateBtn, resolveBtn].forEach((button) => {
+        if (button) {
+          button.disabled = false;
+        }
+      });
+      if (updateBtn) updateBtn.textContent = "Update Ticket";
+      if (resolveBtn) resolveBtn.textContent = "Resolve";
       return;
     }
 
     state.modal = null;
-    state.activeTab = status === "resolved" ? "myresolved" : "mynew";
-    await loadData(json.message || "Ticket updated successfully");
+    state.activeTab = mode === "resolve" ? "myresolved" : "mynew";
+    await loadData(json.message || (mode === "resolve" ? "Ticket resolved successfully" : "Ticket updated successfully"));
   }
 
+  function submitUpdate() {
+    submitTicketAction("update").catch((error) => showMessage(error.message || "Unable to update ticket", "error"));
+  }
+
+  function submitResolve() {
+    submitTicketAction("resolve").catch((error) => showMessage(error.message || "Unable to resolve ticket", "error"));
+  }
   function bindEvents() {
     const updateMainFilters = () => {
       state.filters.batch = document.getElementById("filter-batch")?.value || "";
@@ -1152,10 +1271,11 @@ document.addEventListener("DOMContentLoaded", function () {
       cancelBtn.addEventListener("click", closeModal);
     }
 
-    const submitBtn = document.getElementById("ba-ticket-submit");
-    if (submitBtn) {
-      submitBtn.addEventListener("click", submitResolve);
+    const escalateBtn = document.getElementById("ba-ticket-escalate");
+    if (escalateBtn) {
+      escalateBtn.addEventListener("click", submitEscalate);
     }
+
 
     const switchEditBtn = document.getElementById("ba-ticket-switch-edit");
     if (switchEditBtn) {

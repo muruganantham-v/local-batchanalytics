@@ -82,9 +82,21 @@ $capabilities = array(
         'contextlevel' => CONTEXT_COURSE,
         'archetypes' => array(
             'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
         ),
     ),
     'local/batchanalytics:managetickets' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:manageescalatedtickets' => array(
         'captype' => 'write',
         'contextlevel' => CONTEXT_COURSE,
         'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,

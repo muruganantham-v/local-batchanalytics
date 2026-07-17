@@ -24,30 +24,7 @@ require_capability('local/batchanalytics:view', $context);
 $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context);
 $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);
 
-/**
- * Check whether a user has at least one enrolled-course capability instance.
- *
- * @param int $userid
- * @param array $capabilities
- * @return bool
- */
-function batchanalytics_has_any_course_capability(int $userid, array $capabilities): bool {
-    $courses = enrol_get_users_courses($userid, true, ['id']);
-    foreach ($courses as $course) {
-        $coursecontext = context_course::instance((int)$course->id, IGNORE_MISSING);
-        if (!$coursecontext) {
-            continue;
-        }
-        foreach ($capabilities as $capability) {
-            if (has_capability($capability, $coursecontext, $userid)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-$can_view_tickets = $can_manage || batchanalytics_has_any_course_capability($userid, [
+$can_view_tickets = $can_manage || \local_batchanalytics\util::has_any_course_capability($userid, [
     'local/batchanalytics:viewtickets',
     'local/batchanalytics:managetickets',
 ]);
@@ -56,71 +33,6 @@ $can_view_tickets = $can_manage || batchanalytics_has_any_course_capability($use
 $restricted_crm_fields = [];
 if (!$can_manage) {
     $restricted_crm_fields = \local_batchanalytics\crm_fields_helper::get_restricted_keys();
-}
-
-/**
- * Strip restricted CRM fields from a data array.
- */
-function filter_crm_fields($data, $restricted_fields) {
-    if (empty($data) || !is_array($data)) {
-        return $data;
-    }
-    foreach ($restricted_fields as $field) {
-        unset($data[$field]);
-    }
-    // Always strip debug fields for non-managers.
-    unset($data['_debug_api_url']);
-    unset($data['_debug_api_response']);
-    return $data;
-}
-
-/**
- * Build a short-lived session cache key for heavy batch responses.
- */
-function batchanalytics_batch_cache_key(int $userid, string $batchcode, bool $can_manage): string {
-    return sha1($userid . '|' . (int)$can_manage . '|' . trim($batchcode));
-}
-
-/**
- * Read a cached batch response from the current session.
- */
-function batchanalytics_read_cached_batch_response(string $cachekey): ?array {
-    global $SESSION;
-
-    $ttl = 300;
-    $now = time();
-    $cache = $SESSION->local_batchanalytics_batch_cache ?? [];
-    if (!is_array($cache)) {
-        return null;
-    }
-
-    if (empty($cache[$cachekey]['expires']) || $cache[$cachekey]['expires'] < $now) {
-        unset($cache[$cachekey]);
-        $SESSION->local_batchanalytics_batch_cache = $cache;
-        return null;
-    }
-
-    return !empty($cache[$cachekey]['payload']) && is_array($cache[$cachekey]['payload'])
-        ? $cache[$cachekey]['payload']
-        : null;
-}
-
-/**
- * Store a cached batch response in the current session.
- */
-function batchanalytics_write_cached_batch_response(string $cachekey, array $payload): void {
-    global $SESSION;
-
-    $cache = $SESSION->local_batchanalytics_batch_cache ?? [];
-    if (!is_array($cache)) {
-        $cache = [];
-    }
-
-    $cache[$cachekey] = [
-        'expires' => time() + 300,
-        'payload' => $payload,
-    ];
-    $SESSION->local_batchanalytics_batch_cache = $cache;
 }
 
 $action = optional_param('action', '', PARAM_ALPHA);
@@ -203,8 +115,32 @@ if ($action === 'getptfdata') {
     while (ob_get_level())
         ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        echo json_encode(['error' => 'Method not allowed. Please use POST.']);
+        die();
+    }
+    require_sesskey();
+
+    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
+        die();
+    }
+
     $username = optional_param('username', '', PARAM_TEXT);
-    $usernames = optional_param('usernames', '', PARAM_TEXT);
+    $payload = optional_param('payload', '', PARAM_RAW);
+    $usernames = '';
+
+    // Support JSON payload for usernames array
+    if ($payload !== '') {
+        $decoded = json_decode($payload, true);
+        if (is_array($decoded) && !empty($decoded['usernames'])) {
+            $usernames = implode(',', $decoded['usernames']);
+        }
+    } else {
+        $usernames = optional_param('usernames', '', PARAM_TEXT);
+    }
 
     try {
         $crm = new \local_batchanalytics\crmapi();
@@ -289,13 +225,57 @@ if ($action === 'getptfdata') {
     die();
 }
 
+if ($action === 'getmentordetails') {
+    while (ob_get_level())
+        ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        echo json_encode(['error' => 'Method not allowed. Please use POST.']);
+        die();
+    }
+    require_sesskey();
+
+    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
+        die();
+    }
+
+    $batchgroup = optional_param('batchgroup', '', PARAM_TEXT);
+    if ($batchgroup === '') {
+        $batchgroup = optional_param('batchcode', '', PARAM_TEXT);
+    }
+    $mentorfields = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
+    $mentorgroups = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
+
+    try {
+        $crm = new \local_batchanalytics\crmapi();
+        $mentorrecord = $crm->get_mentor_details_by_batch_group($batchgroup);
+        if (empty($mentorrecord) || !is_array($mentorrecord)) {
+            $mentorrecord = [];
+        }
+
+        echo json_encode([
+            'batchgroup' => $batchgroup,
+            'mentorfields' => $mentorfields,
+            'mentorgroups' => $mentorgroups,
+            'mentorrecord' => $mentorrecord,
+        ]);
+    } catch (\Throwable $e) {
+        debugging('Mentor CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        echo json_encode(['error' => 'An error occurred fetching mentor CRM data']);
+    }
+    die();
+}
+
 if ($action === 'getbatchfulldata') {
     while (ob_get_level())
         ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     $batchcode = optional_param('batchcode', '', PARAM_TEXT);
-    $cachekey = batchanalytics_batch_cache_key($userid, $batchcode, $can_manage);
-    $cachedpayload = batchanalytics_read_cached_batch_response($cachekey);
+    $cachekey = \local_batchanalytics\util::get_batch_cache_key($userid, $batchcode, $can_view_all_courses);
+    $cachedpayload = \local_batchanalytics\util::read_cached_batch_response($cachekey);
     if ($cachedpayload !== null) {
         echo json_encode($cachedpayload);
         die();
@@ -314,16 +294,42 @@ if ($action === 'getbatchfulldata') {
         'uniqueTeachers' => []
     ];
 
-    // Get student role ID once before the loop
     $student_role = $DB->get_record('role', ['shortname' => 'student']);
-    $student_role_id = $student_role ? $student_role->id : 5;
+    if (!$student_role) {
+        echo json_encode(['error' => 'Student role not found. Please verify role mappings.']);
+        die();
+    }
+    $student_role_id = $student_role->id;
+
+    // Pre-fetch all teachers for all batch courses to avoid N+1 queries
+    $teachers_by_course = [];
+    if (!empty($courses)) {
+        $courseids = array_column($courses, 'courseid');
+        list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'tid');
+        $teachers_sql = "
+            SELECT DISTINCT ctx.instanceid as courseid, u.id as userid, u.firstname, u.lastname
+            FROM {user} u
+            JOIN {role_assignments} ra ON ra.userid = u.id
+            JOIN {context} ctx ON ctx.id = ra.contextid
+            WHERE ctx.instanceid $insql
+              AND ctx.contextlevel = 50
+              AND ra.roleid IN (3, 4)
+              AND u.deleted = 0
+        ";
+        $teachers_rs = $DB->get_recordset_sql($teachers_sql, $inparams);
+        if ($teachers_rs->valid()) {
+            foreach ($teachers_rs as $t) {
+                $teachers_by_course[$t->courseid][] = $t;
+            }
+        }
+        $teachers_rs->close();
+    }
 
     foreach ($courses as $course) {
         $courseid = $course['courseid'];
 
-        // 1. Get Teachers
-        $course_context = context_course::instance($courseid);
-        $teachers_raw = get_role_users([3, 4], $course_context, true, 'ra.id, u.id as userid, u.firstname, u.lastname');
+        // 1. Get Teachers (From pre-fetched map)
+        $teachers_raw = $teachers_by_course[$courseid] ?? [];
 
         $course_unique_teachers = [];
         foreach ($teachers_raw as $t) {
@@ -355,9 +361,9 @@ if ($action === 'getbatchfulldata') {
             FROM {user} u
             JOIN {role_assignments} ra ON ra.userid = u.id
             JOIN {context} ctx ON ctx.id = ra.contextid
-            WHERE ctx.instanceid = :courseid 
-              AND ctx.contextlevel = 50 
-              AND ra.roleid = :roleid 
+            WHERE ctx.instanceid = :courseid
+              AND ctx.contextlevel = 50
+              AND ra.roleid = :roleid
               AND u.deleted = 0
             ORDER BY u.firstname, u.lastname
         ";
@@ -422,15 +428,15 @@ if ($action === 'getbatchfulldata') {
 
         // 5. Pre-fetch ALL grades for this course in a single query to prevent N+1 DB lookups!
         $all_grades_sql = "
-            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade 
+            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade
             FROM {grade_grades} gg
             JOIN {grade_items} gi ON gi.id = gg.itemid
             WHERE gi.courseid = :courseid AND gg.finalgrade IS NOT NULL
         ";
-        
+
         $grades_map = []; // structure: $grades_map[userid][itemid] = finalgrade
-        
-        // Use a recordset instead of get_records_sql because get_records_sql uses the first column 
+
+        // Use a recordset instead of get_records_sql because get_records_sql uses the first column
         // as the array key, which means it would overwrite all but the last grade per user!
         $rs = $DB->get_recordset_sql($all_grades_sql, ['courseid' => $courseid]);
         if ($rs->valid()) {
@@ -457,7 +463,7 @@ if ($action === 'getbatchfulldata') {
                     if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
                         $finalgrade = $grades_map[$userid][$itemid];
                         $items_completed++; // Student submitted this item
-                        
+
                         $gmax = $item['grademax'];
                         $gmin = $item['grademin'];
                         if ($gmax > $gmin) {
@@ -509,7 +515,7 @@ if ($action === 'getbatchfulldata') {
     $result['uniqueStudents'] = array_values($result['uniqueStudents']);
     unset($result['uniqueTeachers']);
 
-    batchanalytics_write_cached_batch_response($cachekey, $result);
+    \local_batchanalytics\util::write_cached_batch_response($cachekey, $result);
     echo json_encode($result);
     die();
 }
@@ -529,7 +535,9 @@ $PAGE->requires->js($scripturl);
 echo $OUTPUT->header();
 
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+$mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
+$mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 // echo '<h2 class="ba-page-title">' . get_string('pluginname', 'local_batchanalytics') . '</h2>';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 

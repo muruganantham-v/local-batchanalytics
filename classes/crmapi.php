@@ -10,6 +10,7 @@ class crmapi
     private $refresh_token;
     private $accounts_url;
     private $api_base_url;
+    private $student_module_api_name;
 
     /** @var array<string,mixed> */
     private static $student_cache = [];
@@ -32,6 +33,7 @@ class crmapi
         $this->refresh_token = trim(get_config('local_batchanalytics', 'zoho_refresh_token') ?: '');
         $this->accounts_url = trim(get_config('local_batchanalytics', 'zoho_accounts_url') ?: 'https://accounts.zoho.com');
         $this->api_base_url = trim(get_config('local_batchanalytics', 'zoho_api_base_url') ?: 'https://www.zohoapis.com');
+        $this->student_module_api_name = crm_fields_helper::get_student_module_api_name();
 
         // Load API field keys from admin config (excludes computed CALC_* / placed_company).
         $this->crm_fields = crm_fields_helper::get_api_field_keys();
@@ -48,12 +50,16 @@ class crmapi
             return null;
         }
 
-        $token = get_config('local_batchanalytics', 'zoho_access_token');
-        $expires = (int)get_config('local_batchanalytics', 'zoho_token_expires');
-        if (!empty($token) && $expires > time() + 60) {
-            self::$access_token_cache = $token;
-            self::$access_token_expires = $expires;
-            return $token;
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cached_token = $cache->get('zoho_access_token');
+            if (is_array($cached_token) && $cached_token['expires'] > time() + 60) {
+                self::$access_token_cache = $cached_token['token'];
+                self::$access_token_expires = $cached_token['expires'];
+                return $cached_token['token'];
+            }
+        } catch (\Exception $e) {
+            // Fallback if cache fails
         }
 
         $curl = new \curl();
@@ -74,8 +80,17 @@ class crmapi
         }
 
         $expiry = time() + (int)($json->expires_in ?? 3600);
-        set_config('zoho_access_token', $json->access_token, 'local_batchanalytics');
-        set_config('zoho_token_expires', $expiry, 'local_batchanalytics');
+
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache->set('zoho_access_token', [
+                'token' => $json->access_token,
+                'expires' => $expiry
+            ]);
+        } catch (\Exception $e) {
+            // Ignore cache failure
+        }
+
         self::$access_token_cache = $json->access_token;
         self::$access_token_expires = $expiry;
         return $json->access_token;
@@ -88,7 +103,7 @@ class crmapi
 
     private function escape_zoho_value($value)
     {
-        return preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value);
+        return substr(preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value), 0, 100);
     }
 
     // --- UPGRADED BATCH FUNCTION USING SEARCH API ---
@@ -125,7 +140,6 @@ class crmapi
         if (!in_array('Admission_Number', $fields_to_fetch, true)) {
             $fields_to_fetch[] = 'Admission_Number';
         }
-        $fields_str = urlencode(implode(',', $fields_to_fetch));
         $chunks = array_chunk($tofetch, 10);
 
         foreach ($chunks as $chunk) {
@@ -138,7 +152,7 @@ class crmapi
             }, $chunk);
 
             $criteria = '(' . implode('or', $or_conditions) . ')';
-            $searchUrl = $this->api_base_url . '/crm/v6/Child_Admission/search?criteria=' . urlencode($criteria) . '&fields=' . $fields_str;
+            $searchUrl = $this->build_search_url($this->student_module_api_name, $criteria, $fields_to_fetch);
 
             $curl = new \curl();
             $curl->setHeader([
@@ -172,6 +186,82 @@ class crmapi
         }
 
         return $results;
+    }
+    /**
+     * Fetch mentor CRM details by the Moodle batch group name.
+     *
+     * @param string $batchgroup
+     * @return array|null
+     */
+    public function get_mentor_details_by_batch_group(string $batchgroup): ?array {
+        $batchgroup = trim($batchgroup);
+        $module = crm_fields_helper::get_mentor_module_api_name();
+        $batchfield = preg_replace('/[^A-Za-z0-9_]/', '', crm_fields_helper::get_mentor_batch_field_key());
+        $fields = crm_fields_helper::get_mentor_api_field_keys();
+
+        if ($batchgroup === '' || $module === '' || $batchfield === '') {
+            return null;
+        }
+
+        if (!in_array($batchfield, $fields, true)) {
+            $fields[] = $batchfield;
+        }
+
+        $accessToken = $this->get_access_token();
+        if (!$accessToken) {
+            return null;
+        }
+
+        $criteria = '(' . $batchfield . ':equals:' . $this->escape_zoho_value($batchgroup) . ')';
+        $searchUrl = $this->build_search_url($module, $criteria, $fields);
+
+        $curl = new \curl();
+        $curl->setHeader([
+            "Authorization: Zoho-oauthtoken {$accessToken}"
+        ]);
+
+        $response = $curl->get($searchUrl);
+        $json = json_decode($response, true);
+
+        if (!empty($json['data']) && is_array($json['data'])) {
+            return reset($json['data']) ?: null;
+        }
+
+        if (!empty($json['message']) && strtolower((string)$json['message']) !== 'no records found') {
+            debugging('Zoho CRM mentor search request failed for local_batchanalytics', DEBUG_DEVELOPER);
+        }
+
+        return null;
+    }
+
+    /**
+     * Backward-compatible wrapper for older callers.
+     *
+     * @param string $batchname
+     * @return array|null
+     */
+    public function get_mentor_details_by_batch(string $batchname): ?array {
+        return $this->get_mentor_details_by_batch_group($batchname);
+    }
+    /**
+     * Build a Zoho CRM search URL.
+     *
+     * @param string $module
+     * @param string $criteria
+     * @param array $fields
+     * @return string
+     */
+    private function build_search_url(string $module, string $criteria, array $fields): string {
+        $module = preg_replace('/[^A-Za-z0-9_]/', '', $module);
+        $fieldkeys = array_values(array_unique(array_filter(array_map(static function($field): string {
+            return preg_replace('/[^A-Za-z0-9_]/', '', (string)$field);
+        }, $fields))));
+
+        $url = $this->api_base_url . '/crm/v6/' . $module . '/search?criteria=' . urlencode($criteria);
+        if (!empty($fieldkeys)) {
+            $url .= '&fields=' . urlencode(implode(',', $fieldkeys));
+        }
+        return $url;
     }
 
     // --- REFACTORED SINGLE LOOKUP FUNCTION ---

@@ -58,7 +58,7 @@ class moodledata
      * @param int $userid
      * @return bool
      */
-    private function can_view_enrolled_course(int $courseid, int $userid): bool {
+    public function can_view_enrolled_course(int $courseid, int $userid): bool {
         $context = \context_course::instance($courseid, IGNORE_MISSING);
         return $context && has_capability('local/batchanalytics:viewenrolledcourses', $context, $userid);
     }
@@ -66,7 +66,7 @@ class moodledata
      * Get allowed course keywords from settings.
      * @return array Array of lowercase keyword strings, empty if no filter configured.
      */
-    private function get_allowed_keywords() {
+    public function get_allowed_keywords() {
         $config = get_config('local_batchanalytics', 'allowed_course_keywords');
         if (empty($config)) {
             return [];
@@ -82,7 +82,7 @@ class moodledata
      * @param array $keywords
      * @return bool
      */
-    private function course_matches_keywords($fullname, $keywords) {
+    public function course_matches_keywords($fullname, $keywords) {
         if (empty($keywords)) {
             return true;
         }
@@ -231,6 +231,7 @@ class moodledata
 
         $can_manage = $this->can_view_all_courses((int)$userid);
         $allowed_keywords = $this->get_allowed_keywords();
+        $batches = [];
 
         if ($can_manage) {
             list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'bkw');
@@ -240,17 +241,27 @@ class moodledata
                     WHERE visible = 1 AND id > 1
                     $kw_sql
                     ORDER BY fullname";
-            $records = $DB->get_records_sql($sql, $kw_params);
-            $courses = [];
-            foreach ($records as $record) {
-                $courses[] = [
-                    'fullname' => $record->fullname,
-                    'shortname' => $record->shortname
-                ];
+            $rs = $DB->get_recordset_sql($sql, $kw_params);
+            if ($rs->valid()) {
+                foreach ($rs as $record) {
+                    $c = [
+                        'fullname' => $record->fullname,
+                        'shortname' => $record->shortname
+                    ];
+                    $code = $this->extract_course_group_label($c);
+                    if ($code === '') {
+                        continue;
+                    }
+                    if (!isset($batches[$code])) {
+                        $batches[$code] = ['count' => 0, 'searchtext' => ''];
+                    }
+                    $batches[$code]['count']++;
+                    $batches[$code]['searchtext'] .= ' ' . ($c['fullname'] ?? '') . ' ' . ($c['shortname'] ?? '');
+                }
             }
+            $rs->close();
         } else {
             $enrolled_courses = enrol_get_users_courses($userid, true, ['id', 'fullname', 'shortname']);
-            $courses = [];
             foreach ($enrolled_courses as $course) {
                 if ($course->id <= 1) {
                     continue;
@@ -261,25 +272,20 @@ class moodledata
                 if (!$this->course_matches_keywords($course->fullname, $allowed_keywords)) {
                     continue;
                 }
-                $courses[] = [
+                $c = [
                     'fullname' => $course->fullname,
                     'shortname' => $course->shortname
                 ];
+                $code = $this->extract_course_group_label($c);
+                if ($code === '') {
+                    continue;
+                }
+                if (!isset($batches[$code])) {
+                    $batches[$code] = ['count' => 0, 'searchtext' => ''];
+                }
+                $batches[$code]['count']++;
+                $batches[$code]['searchtext'] .= ' ' . ($c['fullname'] ?? '') . ' ' . ($c['shortname'] ?? '');
             }
-        }
-
-        // Extract unique batch/group codes from course names.
-        $batches = [];
-        foreach ($courses as $c) {
-            $code = $this->extract_course_group_label($c);
-            if ($code === '') {
-                continue;
-            }
-            if (!isset($batches[$code])) {
-                $batches[$code] = ['count' => 0, 'searchtext' => ''];
-            }
-            $batches[$code]['count']++;
-            $batches[$code]['searchtext'] .= ' ' . ($c['fullname'] ?? '') . ' ' . ($c['shortname'] ?? '');
         }
 
         ksort($batches);

@@ -803,6 +803,11 @@
   width: 55px;
 }
 
+
+.ba-filter-percentage.ba-overall-performance {
+  width: auto;
+  min-width: 72px;
+}
 .high {
   background: #e8f5e9;
   color: #2e7d32;
@@ -1465,38 +1470,12 @@ input:checked+.ba-slider:before {
 
 /* Styled Range Inputs (Mini Text Inputs) */
 .ba-range-input {
-  width: 50px;
-  padding: 4px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 12px;
-  text-align: center;
-  color: var(--text-gray);
-  transition: border-color 0.2s;
-}
-
-.ba-range-input:focus {
-  border-color: var(--primary);
-  outline: none;
-  color: var(--text-dark);
-}
-
-.ba-range-divider {
-  color: #cbd5e1;
-  font-weight: bold;
-}
-
-/* Remove the old placement dropdown style if present */
-#f-status {
-  display: none;
-}
-
-.ba-range-input {
-  width: 100px;
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 6px 10px;
   border: 1px solid #e2e8f0;
   border-radius: 7px;
-  /* Makes them rounded like the toggle */
   font-size: 12px;
   text-align: center;
   color: var(--text-dark);
@@ -1509,6 +1488,17 @@ input:checked+.ba-slider:before {
   background: #fff;
   outline: none;
   box-shadow: 0 0 0 2px rgba(15, 108, 191, 0.1);
+}
+
+.ba-range-divider {
+  color: #cbd5e1;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+/* Remove the old placement dropdown style if present */
+#f-status {
+  display: none;
 }
 
 /* ==================== 17. OVERVIEW FILTER DROPDOWN ==================== */
@@ -1590,7 +1580,7 @@ input:checked+.ba-slider:before {
 }
 
 .ba-table th.sortable::after {
-  content: '↕';
+  content: 'â†•';
   /* Default unsorted icon */
   position: absolute;
   right: 8px;
@@ -1602,7 +1592,7 @@ input:checked+.ba-slider:before {
 }
 
 .ba-table th.sortable.sort-asc::after {
-  content: '▲';
+  content: 'â–²';
   /* Ascending icon */
   opacity: 1;
   color: var(--primary);
@@ -1610,7 +1600,7 @@ input:checked+.ba-slider:before {
 }
 
 .ba-table th.sortable.sort-desc::after {
-  content: '▼';
+  content: 'â–¼';
   /* Descending icon */
   opacity: 1;
   color: var(--primary);
@@ -1934,7 +1924,7 @@ input:checked+.ba-slider:before {
   font-weight: 600;
 }
 
-.ba-maac-filter-item input {
+.ba-maac-filter-item input:not(.ba-range-input) {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -2215,7 +2205,6 @@ input:checked+.ba-slider:before {
   width: auto;
   min-width: 48px;
 }
-
 .ba-maac-ticket-cell {
   min-width: 140px;
 }
@@ -3174,8 +3163,14 @@ input:checked+.ba-slider:before {
   color: #fff;
 }
 
-.ba-ticket-status-in-progress {
+.ba-ticket-status-in-progress,
+.ba-ticket-status-ss-in-progress {
   background: #d97706;
+  color: #fff;
+}
+
+.ba-ticket-status-pm-in-progress {
+  background: #7c3aed;
   color: #fff;
 }
 
@@ -3422,6 +3417,25 @@ input:checked+.ba-slider:before {
   background: #fff;
 }
 
+
+.ba-ticket-action-footer {
+  align-items: center;
+}
+
+.ba-ticket-right-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.ba-ticket-readonly-status {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}
 .ba-maac-multi-summary {
   list-style: none;
   cursor: pointer;
@@ -4869,4 +4883,406 @@ input:checked+.ba-slider:before {
   color: #374151;
   max-width: 380px;
   line-height: 1.6;
+}
+
+/* ==================== CLIQ MESSAGE HISTORY ==================== */
+.ba-cliq-history-title {
+  margin: 0 0 18px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #132238;
+}
+
+.ba-cliq-history-app {
+  margin-bottom: 18px;
+}
+
+.ba-cliq-history-panel {
+  background: #fff;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.ba-cliq-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.ba-cliq-section-head h4 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #132238;
+}
+
+.ba-cliq-section-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.ba-cliq-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.ba-cliq-filter-grid-detail {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.ba-cliq-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.ba-cliq-filter-field span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.ba-cliq-filter-field input,
+.ba-cliq-filter-field select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.ba-cliq-filter-field input:focus,
+.ba-cliq-filter-field select:focus {
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+  outline: none;
+}
+
+.ba-cliq-table-wrap {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ba-cliq-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.ba-cliq-table th,
+.ba-cliq-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.ba-cliq-table th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 700;
+}
+
+.ba-cliq-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.ba-cliq-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ba-cliq-status-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.ba-cliq-success {
+  color: #15803d;
+}
+
+.ba-cliq-failed {
+  color: #b91c1c;
+}
+
+.ba-cliq-separator {
+  color: #94a3b8;
+}
+
+.ba-cliq-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ba-cliq-status-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ba-cliq-status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.ba-cliq-recipient {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ba-cliq-recipient strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.ba-cliq-recipient span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ba-cliq-empty {
+  padding: 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ba-cliq-modal {
+  width: 760px;
+}
+
+.ba-cliq-modal-body {
+  padding: 20px;
+}
+
+.ba-cliq-message-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ba-cliq-message-meta div,
+.ba-cliq-message-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.ba-cliq-message-meta span,
+.ba-cliq-message-section span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ba-cliq-message-meta strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.ba-cliq-message-section {
+  margin-bottom: 14px;
+}
+
+.ba-cliq-message-section:last-child {
+  margin-bottom: 0;
+}
+
+.ba-cliq-message-section h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.ba-cliq-message-section pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ba-cliq-back-settings {
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .ba-cliq-filter-grid,
+  .ba-cliq-filter-grid-detail {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .ba-cliq-history-panel {
+    padding: 14px;
+  }
+
+  .ba-cliq-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ba-cliq-filter-grid,
+  .ba-cliq-filter-grid-detail,
+  .ba-cliq-message-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .ba-cliq-modal {
+    width: 94%;
+  }
+}
+/* ==================== MENTOR DETAILS TAB ==================== */
+.ba-mentor-details-section {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.ba-mentor-details-section .ba-filter-header {
+  align-items: flex-start;
+}
+
+.ba-mentor-subtitle {
+  margin: 6px 0 0;
+  color: var(--text-gray);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ba-mentor-group {
+  margin: 18px;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ba-mentor-group h4 {
+  margin: 0;
+  padding: 14px 18px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: var(--text-dark);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.ba-mentor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+}
+
+.ba-mentor-field-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1.2fr);
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.ba-mentor-field-row:nth-child(odd) {
+  border-right: 1px solid #edf2f7;
+}
+
+.ba-mentor-field-label {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ba-mentor-field-value {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .ba-mentor-grid,
+  .ba-mentor-field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ba-mentor-field-row:nth-child(odd) {
+    border-right: 0;
+  }
+}
+.ba-empty-state {
+  margin: 18px;
+  padding: 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+.ba-maac-ticket-row-escalated-resolved td {
+  background: linear-gradient(0deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.14)), #fff;
+}
+
+.ba-maac-ticket-row-escalated-resolved .ba-maac-student-cell {
+  background: linear-gradient(0deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.14)), #fff;
+}
+
+.ba-ticket-escalate-btn {
+  border: 1px solid #f59e0b;
+  background: #fff7ed;
+  color: #b45309;
+  font-weight: 700;
+}
+
+.ba-ticket-escalate-btn:hover:not(:disabled) {
+  background: #ffedd5;
+  color: #92400e;
+}
+
+.ba-ticket-escalate-btn:disabled {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+  opacity: 0.75;
+  cursor: not-allowed;
 }

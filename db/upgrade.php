@@ -138,5 +138,44 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026052000, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026071600) {
+        $table = new xmldb_table('local_batchanalytics_cliq_history');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('ticketid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('recipientuserid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('recipientemail', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('messagetype', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('subject', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('messagebody', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'pending');
+        $table->add_field('responsebody', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('errormessage', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('ticketid_ix', XMLDB_INDEX_NOTUNIQUE, ['ticketid']);
+        $table->add_index('courseid_ix', XMLDB_INDEX_NOTUNIQUE, ['courseid']);
+        $table->add_index('recipientuserid_ix', XMLDB_INDEX_NOTUNIQUE, ['recipientuserid']);
+        $table->add_index('status_ix', XMLDB_INDEX_NOTUNIQUE, ['status']);
+        $table->add_index('timecreated_ix', XMLDB_INDEX_NOTUNIQUE, ['timecreated']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026071600, 'local', 'batchanalytics');
+    }
+    if ($oldversion < 2026071601) {
+        $table = new xmldb_table('local_batchanalytics_ticket');
+
+        $field = new xmldb_field('escalatedtopm', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'batchmanageruserid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026071601, 'local', 'batchanalytics');
+    }
     return true;
 }

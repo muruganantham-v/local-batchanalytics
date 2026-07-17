@@ -14,18 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Version information for local_batchanalytics
- *
- * @package    local_batchanalytics
- * @copyright  2026
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026071602;
-$plugin->requires  = 2022041900;
-$plugin->component = 'local_batchanalytics';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.5.0';
+$definitions = [
+    'batchdata' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => 300, // 5 minutes
+    ],
+    'crmratelimit' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => 60, // 1 minute window for rate limiting
+    ]
+];

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/batchanalytics/db" VERSION="2026051300" COMMENT="XMLDB file for local_batchanalytics"
+<XMLDB PATH="local/batchanalytics/db" VERSION="2026071601" COMMENT="XMLDB file for local_batchanalytics"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -32,6 +32,7 @@
         <FIELD NAME="ssteamuserid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="batchmanagerroleid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="batchmanageruserid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="escalatedtopm" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="tickettitle" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="ticketreason" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="status" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="open" SEQUENCE="false"/>
@@ -73,6 +74,32 @@
         <INDEX NAME="ticketid_ix" UNIQUE="false" FIELDS="ticketid"/>
         <INDEX NAME="userid_ix" UNIQUE="false" FIELDS="userid"/>
         <INDEX NAME="eventtype_ix" UNIQUE="false" FIELDS="eventtype"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_batchanalytics_cliq_history" COMMENT="Cliq message delivery history">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="ticketid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="recipientuserid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="recipientemail" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="messagetype" TYPE="char" LENGTH="30" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="subject" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="messagebody" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false"/>
+        <FIELD NAME="responsebody" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="errormessage" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="ticketid_ix" UNIQUE="false" FIELDS="ticketid"/>
+        <INDEX NAME="courseid_ix" UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="recipientuserid_ix" UNIQUE="false" FIELDS="recipientuserid"/>
+        <INDEX NAME="status_ix" UNIQUE="false" FIELDS="status"/>
+        <INDEX NAME="timecreated_ix" UNIQUE="false" FIELDS="timecreated"/>
       </INDEXES>
     </TABLE>
   </TABLES>
