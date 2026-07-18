@@ -233,12 +233,22 @@ class maac_columns_helper {
             $options = [];
         }
 
+        $type = (string)($column['type'] ?? 'multi_feedback');
+        $selection = strtolower(trim((string)($column['selection'] ?? 'single')));
+        if ($type === 'multi_feedback') {
+            $selection = in_array($selection, ['internal', 'external'], true) ? $selection : 'internal';
+        } else if ($type === 'dropdown') {
+            $selection = in_array($selection, ['single', 'multi'], true) ? $selection : 'single';
+        } else {
+            $selection = 'single';
+        }
+
         return [
             'key' => trim((string)($column['key'] ?? '')),
             'label' => trim((string)($column['label'] ?? '')),
-            'type' => (string)($column['type'] ?? 'multi_feedback'),
+            'type' => $type,
             'options' => array_values($options),
-            'selection' => (string)($column['selection'] ?? 'single'),
+            'selection' => $selection,
             'min' => array_key_exists('min', $column) ? $column['min'] : null,
             'max' => array_key_exists('max', $column) ? $column['max'] : null,
             'showinmaac' => !array_key_exists('showinmaac', $column) || !empty($column['showinmaac']),

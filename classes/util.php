@@ -79,6 +79,18 @@ class util {
     }
 
     /**
+     * Clear cached batch responses after course-level metadata changes.
+     */
+    public static function purge_batch_response_cache(): void {
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache->purge();
+        } catch (\Exception $e) {
+            // Ignore if cache is unavailable.
+        }
+    }
+
+    /**
      * Check if the user has exceeded CRM API rate limit.
      * Allows max 30 requests per minute per user.
      */

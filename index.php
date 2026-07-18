@@ -77,6 +77,60 @@ if ($action === 'getbatchcourses') {
     die();
 }
 
+if ($action === 'savecoursesummary') {
+    while (ob_get_level())
+        ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Method not allowed. Please use POST.']);
+            die();
+        }
+
+        if (!confirm_sesskey()) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Invalid session key. Please refresh the page and try again.']);
+            die();
+        }
+
+        $courseid = required_param('courseid', PARAM_INT);
+        $summary = optional_param('summary', '', PARAM_RAW_TRIMMED);
+        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
+        $caneditsummary = $can_manage || ($coursecontext && has_capability('local/batchanalytics:editmaac', $coursecontext, $userid));
+
+        if (!$coursecontext) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Course not found.']);
+            die();
+        }
+
+        if (!$caneditsummary) {
+            http_response_code(403);
+            echo json_encode(['error' => 'You do not have permission to edit this course summary.']);
+            die();
+        }
+
+        $summary = trim((string)$summary);
+        set_config('course_summary_' . $courseid, $summary, 'local_batchanalytics');
+        \local_batchanalytics\util::purge_batch_response_cache();
+
+        echo json_encode([
+            'success' => true,
+            'courseid' => $courseid,
+            'summary' => $summary,
+        ]);
+    } catch (\Throwable $e) {
+        while (ob_get_level())
+            ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+        error_log('Course summary save error: ' . $e->getMessage());
+        echo json_encode(['error' => 'Unable to save course summary. Please check the Moodle error log.']);
+    }
+    die();
+}
 // --- EXISTING CRM ENDPOINT (Simple Placement Status) ---
 if ($action === 'getcrmdata') {
     while (ob_get_level())
@@ -495,10 +549,13 @@ if ($action === 'getbatchfulldata') {
             }
         }
 
+        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
         $result['courses'][] = [
             'courseid' => $courseid,
             'coursename' => $course['fullname'],
             'shortname' => $course['shortname'],
+            'summary' => (string)get_config('local_batchanalytics', 'course_summary_' . $courseid),
+            'cansummaryedit' => $can_manage || ($coursecontext && has_capability('local/batchanalytics:editmaac', $coursecontext, $userid)),
             'categories' => array_values($categories_data),
             'studentCount' => count($students),
             'teacherCount' => $course_teacher_count

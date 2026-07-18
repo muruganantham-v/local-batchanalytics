@@ -729,21 +729,19 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>
       </div>
       <div class="ba-ticket-info-body">
-        <div class="ba-ticket-info-main-title">${escapeHtml(ticket.tickettitle || "-")}</div>
         <div class="ba-ticket-info-grid">
-          <div class="ba-ticket-info-label">Status</div>
-          <div class="ba-ticket-info-value">${renderStatusBadge(ticket)}</div>
-          <div class="ba-ticket-info-label">Priority</div>
-          <div class="ba-ticket-info-value">${renderPriorityBadge(ticket)}</div>
-          <div class="ba-ticket-info-label">Assigned To</div>
-          <div class="ba-ticket-info-value">${escapeHtml(ticket.raisedto || "-")}</div>
+          <div class="ba-ticket-info-label">MAAC Executive</div>
+          <div class="ba-ticket-info-value">${escapeHtml(ticket.ssteamfullname || "-")}</div>
+          <div class="ba-ticket-info-label">PM Manager</div>
+          <div class="ba-ticket-info-value">${escapeHtml(ticket.batchmanagerfullname || "-")}</div>
+          <div class="ba-ticket-info-label">Title</div>
+          <div class="ba-ticket-info-value">${escapeHtml(ticket.tickettitle || "-")}</div>
           <div class="ba-ticket-info-label">Description</div>
           <div class="ba-ticket-info-value">${escapeHtml(ticket.ticketreason || "-")}</div>
         </div>
       </div>
     </div>`;
   }
-
   function renderReadOnlyPanel(title, content) {
     return `<div class="ba-ticket-note-card">
       <div class="ba-ticket-note-card-title">${escapeHtml(title)}</div>
@@ -766,11 +764,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return `<div class="ba-ticket-edit-card">
       <div class="ba-ticket-edit-head">${escapeHtml(heading)}</div>
       <div class="ba-ticket-edit-body">
-        <div class="ba-ticket-edit-grid">
-          <div class="ba-ticket-field">
-            <label>Status</label>
-            <div class="ba-ticket-readonly-status">${renderStatusBadge(ticket)}</div>
-          </div>
+        <div class="ba-ticket-edit-grid ba-ticket-edit-grid-single">
           <div class="ba-ticket-field">
             <label for="ba-ticket-priority">Priority</label>
             <select id="ba-ticket-priority" class="ba-range-input">
@@ -1276,6 +1270,16 @@ document.addEventListener("DOMContentLoaded", function () {
       escalateBtn.addEventListener("click", submitEscalate);
     }
 
+
+    const updateTicketBtn = document.getElementById("ba-ticket-update");
+    if (updateTicketBtn) {
+      updateTicketBtn.addEventListener("click", submitUpdate);
+    }
+
+    const resolveTicketBtn = document.getElementById("ba-ticket-resolve");
+    if (resolveTicketBtn) {
+      resolveTicketBtn.addEventListener("click", submitResolve);
+    }
 
     const switchEditBtn = document.getElementById("ba-ticket-switch-edit");
     if (switchEditBtn) {

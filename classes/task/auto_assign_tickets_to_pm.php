@@ -14,18 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_batchanalytics\task;
+
+defined('MOODLE_INTERNAL') || die();
+
 /**
- * Version information for local_batchanalytics
+ * Auto assign overdue MAAC tickets to the configured PM/batch manager.
  *
  * @package    local_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class auto_assign_tickets_to_pm extends \core\task\scheduled_task {
 
-defined('MOODLE_INTERNAL') || die();
+    /**
+     * @return string
+     */
+    public function get_name(): string {
+        return get_string('task_auto_assign_tickets_to_pm', 'local_batchanalytics');
+    }
 
-$plugin->version   = 2026071700;
-$plugin->requires  = 2022041900;
-$plugin->component = 'local_batchanalytics';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.5.0';
+    /**
+     * @return void
+     */
+    public function execute(): void {
+        $service = new \local_batchanalytics\maac_service();
+        $result = $service->auto_assign_overdue_tickets_to_pm();
+        mtrace('Auto assigned overdue MAAC tickets to PM: ' . (int)($result['processed'] ?? 0));
+    }
+}

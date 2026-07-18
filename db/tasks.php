@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_batchanalytics
+ * Scheduled tasks for local_batchanalytics.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -24,8 +24,14 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026071700;
-$plugin->requires  = 2022041900;
-$plugin->component = 'local_batchanalytics';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.5.0';
+$tasks = [
+    [
+        'classname' => 'local_batchanalytics\task\auto_assign_tickets_to_pm',
+        'blocking' => 0,
+        'minute' => '*/30',
+        'hour' => '*',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
+];

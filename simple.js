@@ -12,6 +12,8 @@ let MAAC_SUMMARY_CACHE = {};
 let MAAC_SUMMARY_PENDING = {};
 let MAAC_COURSE_CACHE = {};
 let MAAC_COURSE_PENDING = {};
+let COURSE_SUMMARY_MODAL = null;
+let COURSE_SUMMARY_ESCAPE_HANDLER = null;
 let COURSE_FILTER_COLLAPSED_GROUPS = {};
 let COURSE_FILTER_COLUMN_WIDTHS = {};
 
@@ -51,6 +53,9 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/'/g, "&#039;");
   }
 
+  function renderTrophyIcon() {
+    return `<svg class="ba-trophy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>`;
+  }
   function extractCourseGroupLabel(fullname, shortname) {
     const source = (fullname && fullname.includes(":") ? fullname : shortname || fullname || "").trim();
     if (!source) {
@@ -226,6 +231,12 @@ document.addEventListener("DOMContentLoaded", function () {
         feedbackTrigger.dataset.studentId,
         feedbackTrigger.dataset.columnKey || "",
       );
+      return;
+    }
+
+    const summaryTrigger = event.target.closest("[data-course-summary]");
+    if (summaryTrigger) {
+      openCourseSummaryModal(summaryTrigger.dataset.courseId);
     }
   });
 
@@ -1056,7 +1067,7 @@ document.addEventListener("DOMContentLoaded", function () {
               : rank === 3
                 ? "bronze"
                 : "default";
-        html += `<div class="ba-performer-card ${medalClass}"><div class="ba-perf-rank">#${rank}</div><div class="ba-perf-info"><div class="ba-perf-name" title="${s.name}">${s.name}</div><div class="ba-perf-avg">${s.avg}% Avg</div></div>${rank === 1 ? '<div class="ba-crown">*</div>' : ""}</div>`;
+        html += `<div class="ba-performer-card ${medalClass}"><div class="ba-perf-rank">#${rank}</div><div class="ba-perf-info"><div class="ba-perf-name" title="${s.name}">${s.name}</div><div class="ba-perf-avg">${s.avg}% Avg</div></div>${rank === 1 ? `<div class="ba-crown">${renderTrophyIcon()}</div>` : ""}</div>`;
       });
       html += `</div>`;
     }
@@ -1208,6 +1219,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
                 <div class="ba-ch-right">
                     <a href="../../course/view.php?id=${c.courseid}" target="_blank" rel="noopener" class="ba-btn ba-btn-view">View Course <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>
+                    <button type="button" class="ba-btn ba-btn-view" data-course-summary="1" data-course-id="${c.courseid}">Summary <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
                     <a href="maac.php?courseid=${c.courseid}" target="_blank" rel="noopener" class="ba-btn ba-btn-view">MAAC sheet <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg></a>
                 </div>
             </div>
@@ -1227,7 +1239,7 @@ document.addEventListener("DOMContentLoaded", function () {
               : rank === 3
                 ? "bronze"
                 : "default";
-        html += `<div class="ba-performer-card ${medalClass}"><div class="ba-perf-rank">#${rank}</div><div class="ba-perf-info"><div class="ba-perf-name" title="${s.name}">${s.name}</div><div class="ba-perf-avg">${s.avg}% Avg</div></div>${rank === 1 ? '<div class="ba-crown">*</div>' : ""}</div>`;
+        html += `<div class="ba-performer-card ${medalClass}"><div class="ba-perf-rank">#${rank}</div><div class="ba-perf-info"><div class="ba-perf-name" title="${s.name}">${s.name}</div><div class="ba-perf-avg">${s.avg}% Avg</div></div>${rank === 1 ? `<div class="ba-crown">${renderTrophyIcon()}</div>` : ""}</div>`;
       });
       html += `</div>`;
     }
@@ -3138,6 +3150,174 @@ document.addEventListener("DOMContentLoaded", function () {
     showToast("Filters reset", "info");
   };
 
+  function getCourseById(courseId) {
+    return (BATCH_DATA?.courses || []).find((item) => Number(item.courseid) === Number(courseId));
+  }
+
+  function renderCourseSummaryModal() {
+    if (!COURSE_SUMMARY_MODAL) {
+      return;
+    }
+
+    const course = getCourseById(COURSE_SUMMARY_MODAL.courseid);
+    if (!course) {
+      return;
+    }
+
+    const summary = COURSE_SUMMARY_MODAL.summary ?? course.summary ?? "";
+    const canEdit = !!course.cansummaryedit;
+    const isEditing = COURSE_SUMMARY_MODAL.mode === "edit";
+    const existing = String(summary || "").trim();
+    const bodyHtml = isEditing
+      ? `<div class="ba-course-summary-form">
+          <label for="ba-course-summary-input">Summary</label>
+          <textarea id="ba-course-summary-input" class="ba-course-summary-textarea" rows="7">${escapeHtml(summary)}</textarea>
+        </div>`
+      : existing
+        ? `<div class="ba-course-summary-text">${escapeHtml(existing)}</div>`
+        : `<div class="ba-course-summary-empty">No summary given yet</div>`;
+    const footerHtml = isEditing
+      ? `<button type="button" class="ba-btn" id="ba-course-summary-cancel">Cancel</button>
+         <button type="button" class="ba-btn ba-btn-success" id="ba-course-summary-save">Save</button>`
+      : canEdit
+        ? `<button type="button" class="ba-btn ba-btn-view" id="ba-course-summary-edit">${existing ? "Edit" : "Add Summary"}</button>`
+        : "";
+
+    const modalHtml = `<div class="ba-modal-overlay ba-course-summary-modal" id="ba-course-summary-modal">
+      <div class="ba-modal-container ba-course-summary-dialog">
+        <div class="ba-modal-header">
+          <h3>${escapeHtml(course.coursename || course.shortname || "Course")} : Summary</h3>
+          <button type="button" class="ba-modal-close" id="ba-course-summary-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="ba-modal-body ba-course-summary-body">${bodyHtml}</div>
+        ${footerHtml ? `<div class="ba-course-summary-footer">${footerHtml}</div>` : ""}
+      </div>
+    </div>`;
+
+    document.getElementById("ba-course-summary-modal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
+    bindCourseSummaryModalEvents();
+  }
+
+  function closeCourseSummaryModal() {
+    if (COURSE_SUMMARY_ESCAPE_HANDLER) {
+      document.removeEventListener("keydown", COURSE_SUMMARY_ESCAPE_HANDLER);
+      COURSE_SUMMARY_ESCAPE_HANDLER = null;
+    }
+    COURSE_SUMMARY_MODAL = null;
+    document.getElementById("ba-course-summary-modal")?.remove();
+  }
+
+  function openCourseSummaryModal(courseId) {
+    const course = getCourseById(courseId);
+    if (!course) {
+      showToast("Unable to load course summary", "warn");
+      return;
+    }
+    COURSE_SUMMARY_MODAL = {
+      courseid: Number(course.courseid),
+      mode: "view",
+      summary: course.summary || "",
+    };
+    renderCourseSummaryModal();
+  }
+
+  function bindCourseSummaryModalEvents() {
+    const modal = document.getElementById("ba-course-summary-modal");
+    if (!modal || !COURSE_SUMMARY_MODAL) {
+      return;
+    }
+
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeCourseSummaryModal();
+      }
+    });
+
+    if (COURSE_SUMMARY_ESCAPE_HANDLER) {
+      document.removeEventListener("keydown", COURSE_SUMMARY_ESCAPE_HANDLER);
+    }
+    COURSE_SUMMARY_ESCAPE_HANDLER = (event) => {
+      if (event.key === "Escape") {
+        closeCourseSummaryModal();
+      }
+    };
+    document.addEventListener("keydown", COURSE_SUMMARY_ESCAPE_HANDLER);
+
+    document.getElementById("ba-course-summary-close")?.addEventListener("click", closeCourseSummaryModal);
+    document.getElementById("ba-course-summary-edit")?.addEventListener("click", () => {
+      COURSE_SUMMARY_MODAL.mode = "edit";
+      renderCourseSummaryModal();
+    });
+    document.getElementById("ba-course-summary-cancel")?.addEventListener("click", () => {
+      COURSE_SUMMARY_MODAL.mode = "view";
+      renderCourseSummaryModal();
+    });
+    document.getElementById("ba-course-summary-save")?.addEventListener("click", saveCourseSummary);
+  }
+
+  async function saveCourseSummary() {
+    if (!COURSE_SUMMARY_MODAL) {
+      return;
+    }
+
+    const course = getCourseById(COURSE_SUMMARY_MODAL.courseid);
+    const textarea = document.getElementById("ba-course-summary-input");
+    const saveBtn = document.getElementById("ba-course-summary-save");
+    const summary = textarea ? textarea.value.trim() : "";
+    if (!course) {
+      showToast("Unable to save course summary", "error");
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+    }
+
+    try {
+      const body = new URLSearchParams();
+      body.set("sesskey", BA_SESSKEY);
+      body.set("courseid", String(course.courseid));
+      body.set("summary", summary);
+      const summaryUrl = new URL(BASE_URL, window.location.href);
+      summaryUrl.searchParams.set("action", "savecoursesummary");
+      const response = await fetch(summaryUrl.toString(), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+      });
+      const responseText = await response.text();
+      let result = {};
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        const message = responseText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        throw new Error(message || "Server returned an invalid response while saving the summary");
+      }
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "Unable to save course summary");
+      }
+      course.summary = result.summary || "";
+      COURSE_SUMMARY_MODAL.summary = course.summary;
+      COURSE_SUMMARY_MODAL.mode = "view";
+      renderCourseSummaryModal();
+      showToast("Summary saved", "success");
+    } catch (error) {
+      showToast(error.message || "Unable to save course summary", "error");
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
+      }
+    }
+  }
   window.openCategoryModal = function (cid, cname) {
     const c = BATCH_DATA.courses.find((x) => x.courseid == cid);
     const cat = c.categories.find((x) => x.categoryname === cname);

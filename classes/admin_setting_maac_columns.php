@@ -31,7 +31,6 @@ class admin_setting_maac_columns extends \admin_setting {
         $clean = [];
         $usedkeys = [];
         $validtypes = ['number', 'dropdown', 'boolean', 'multi_feedback'];
-        $validselections = ['single', 'multi'];
 
         foreach ($decoded as $row) {
             $issystem = !empty($row['system']) || ($row['key'] ?? '') === 'maac_rating';
@@ -68,9 +67,7 @@ class admin_setting_maac_columns extends \admin_setting {
                 'label' => $issystem && $label === '' ? 'MAAC Rating' : $label,
                 'type' => $type,
                 'options' => $this->normalise_options($row['options'] ?? [], $type),
-                'selection' => $type === 'dropdown' && in_array($row['selection'] ?? '', $validselections, true)
-                    ? $row['selection']
-                    : 'single',
+                'selection' => $this->normalise_selection($row['selection'] ?? '', $type),
                 'min' => $min,
                 'max' => $max,
                 'showinmaac' => !empty($row['showinmaac']),
@@ -215,7 +212,8 @@ class admin_setting_maac_columns extends \admin_setting {
         $html .= '</td>';
         $html .= '<td style="text-align:center;padding:3px 4px">';
         $html .= '<select class="ba-maac-selection form-control form-control-sm" style="font-size:0.8em;padding:1px 2px"' . $disabled . '>';
-        foreach (['single', 'multi'] as $option) {
+        $selectionoptions = $type === 'multi_feedback' ? ['internal', 'external'] : ['single', 'multi'];
+        foreach ($selectionoptions as $option) {
             $selected = $selection === $option ? ' selected' : '';
             $html .= '<option value="' . $option . '"' . $selected . '>' . $option . '</option>';
         }
@@ -246,6 +244,22 @@ class admin_setting_maac_columns extends \admin_setting {
             'boolean' => 'Boolean',
             'multi_feedback' => 'Multi Feedback',
         ];
+    }
+
+    /**
+     * @param string $selection
+     * @param string $type
+     * @return string
+     */
+    private function normalise_selection(string $selection, string $type): string {
+        $selection = strtolower(trim($selection));
+        if ($type === 'multi_feedback') {
+            return in_array($selection, ['internal', 'external'], true) ? $selection : 'internal';
+        }
+        if ($type === 'dropdown') {
+            return in_array($selection, ['single', 'multi'], true) ? $selection : 'single';
+        }
+        return 'single';
     }
 
     /**
@@ -305,6 +319,13 @@ class admin_setting_maac_columns extends \admin_setting {
   var tbody = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
 
+  function setSelectOptions(select, options, value) {
+    var current = select.value;
+    select.innerHTML = options.map(function (option) {
+      return '<option value="' + option + '">' + option + '</option>';
+    }).join('');
+    select.value = options.indexOf(value) !== -1 ? value : (options.indexOf(current) !== -1 ? current : options[0]);
+  }
   function syncRowState(row) {
     var type = row.querySelector('.ba-maac-type').value;
     var isSystem = !!row.querySelector('.ba-maac-system');
@@ -314,7 +335,7 @@ class admin_setting_maac_columns extends \admin_setting {
     var maxField = row.querySelector('.ba-maac-max');
     var excludeMaac = row.querySelector('.ba-maac-exclude-maac');
 
-    selection.disabled = isSystem || type !== 'dropdown';
+    selection.disabled = isSystem || (type !== 'dropdown' && type !== 'multi_feedback');
     options.disabled = isSystem || type !== 'dropdown';
     minField.disabled = isSystem || type !== 'number';
     maxField.disabled = isSystem || type !== 'number';
@@ -322,11 +343,15 @@ class admin_setting_maac_columns extends \admin_setting {
       excludeMaac.disabled = isSystem || type !== 'number';
     }
 
-    if (type !== 'dropdown') {
-      selection.value = 'single';
+    if (type === 'dropdown') {
+      setSelectOptions(selection, ['single', 'multi'], selection.value === 'multi' ? 'multi' : 'single');
+    } else if (type === 'multi_feedback') {
+      setSelectOptions(selection, ['internal', 'external'], selection.value === 'external' ? 'external' : 'internal');
+      options.value = '';
+    } else {
+      setSelectOptions(selection, ['single'], 'single');
       options.value = '';
     }
-
     if (type !== 'number') {
       minField.value = '';
       maxField.value = '';

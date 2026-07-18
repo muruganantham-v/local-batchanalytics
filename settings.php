@@ -182,6 +182,31 @@ if ($hassiteconfig) {
         $roleoptions
     ));
 
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/ticket_configuration',
+        get_string('ticket_configuration', 'local_batchanalytics'),
+        html_writer::div(
+            html_writer::link(
+                new moodle_url('/local/batchanalytics/ticket_templates.php'),
+                get_string('add_ticket_template', 'local_batchanalytics'),
+                ['class' => 'btn btn-secondary']
+            ),
+            'local-batchanalytics-ticket-template-actions'
+        )
+    ));
+    // $settings->add(new admin_setting_heading(
+    //     'local_batchanalytics/auto_assign_ticket_to_pm_manager',
+    //     get_string('auto_assign_ticket_to_pm_manager', 'local_batchanalytics'),
+    //     ''
+    // ));
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/ticket_duration_days',
+        get_string('ticket_duration', 'local_batchanalytics'),
+        get_string('ticket_duration_desc', 'local_batchanalytics'),
+        '0',
+        PARAM_INT
+    ));
+
     $cliqtemplatelinks = html_writer::div(
         html_writer::link(
             new moodle_url('/local/batchanalytics/cliq_templates.php'),
@@ -214,6 +239,13 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('localplugins', $settings);
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_batchanalytics_ticket_templates',
+        get_string('manage_ticket_templates', 'local_batchanalytics'),
+        new moodle_url('/local/batchanalytics/ticket_templates.php'),
+        'moodle/site:config',
+        true
+    ));
     $ADMIN->add('localplugins', new admin_externalpage(
         'local_batchanalytics_cliq_templates',
         get_string('configure_cliq_templates', 'local_batchanalytics'),

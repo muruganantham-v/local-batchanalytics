@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", function () {
       left: 0,
       top: 0,
     },
+    pendingScrollRestore: null,
     sort: {
       key: "",
       direction: "asc",
@@ -84,14 +85,30 @@ document.addEventListener("DOMContentLoaded", function () {
     state.tableScroll.top = tableWrap.scrollTop;
   }
 
-  function restoreTableScroll() {
+  function restoreTableScroll(snapshot = null) {
     const tableWrap = document.querySelector("#ba-maac-table-section .ba-table-wrap");
-    if (!tableWrap) {
+    const scroll = snapshot || state.tableScroll;
+    if (!tableWrap || !scroll) {
       return;
     }
 
-    tableWrap.scrollLeft = state.tableScroll.left || 0;
-    tableWrap.scrollTop = state.tableScroll.top || 0;
+    tableWrap.scrollLeft = scroll.left || 0;
+    tableWrap.scrollTop = scroll.top || 0;
+  }
+
+  function captureScrollSnapshot() {
+    const tableWrap = document.querySelector("#ba-maac-table-section .ba-table-wrap");
+    return {
+      left: tableWrap ? tableWrap.scrollLeft : state.tableScroll.left || 0,
+      top: tableWrap ? tableWrap.scrollTop : state.tableScroll.top || 0,
+      windowX: window.scrollX || window.pageXOffset || 0,
+      windowY: window.scrollY || window.pageYOffset || 0,
+    };
+  }
+
+  function renderPagePreservingScroll() {
+    state.pendingScrollRestore = captureScrollSnapshot();
+    renderPage();
   }
 
   function syncMaacLayoutHeights() {
@@ -1414,12 +1431,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const action = state.editMode && state.data?.canraise ? "raise" : "view";
     const label = action === "raise" ? "Raise Ticket" : "View Ticket";
     const countLabel = hasTickets ? ` (${ticketCount})` : "";
-    const status = hasTickets ? String(tickets[0]?.status || tickets[0]?.statuskey || "open") : "";
-    const statusClass = status.toLowerCase().replace(/\s+/g, "-");
 
     return `<td class="ba-maac-ticket-cell">
       <button type="button" class="ba-btn ba-btn-sm ba-maac-ticket-action ba-maac-ticket-action-${action}" data-studentid="${escapeHtml(String(student.userid))}" data-ticket-action="${action}">${escapeHtml(label + countLabel)}</button>
-      ${hasTickets ? `<span class="ba-maac-ticket-status ba-maac-ticket-status-${escapeHtml(statusClass)}">${escapeHtml(status || "open")}</span>` : ""}
     </td>`;
   }
 
@@ -1430,6 +1444,10 @@ document.addEventListener("DOMContentLoaded", function () {
       batch_manager_role: { id: 0, label: "Batch Manager" },
       batch_manager_users: [],
     };
+  }
+
+  function getTicketTemplates() {
+    return Array.isArray(state.data?.ticket_templates) ? state.data.ticket_templates : [];
   }
 
   function renderTicketInfoRows(rows) {
@@ -2335,6 +2353,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const ticketMeta = getTicketMeta();
     const ssTeamMissing = !ticketMeta.ss_team_role?.id || !(ticketMeta.ss_team_users || []).length;
     const saveDisabled = ssTeamMissing;
+    const ticketTemplates = getTicketTemplates();
+    const ticketTemplateOptions = ticketTemplates.map((template, index) =>
+      `<option value="${index}">${escapeHtml(template.title || `Template ${index + 1}`)}</option>`,
+    ).join("");
 
     return `<div class="ba-modal-overlay ba-maac-ticket-modal" id="ba-maac-ticket-modal">
       <div class="ba-modal-container ba-maac-ticket-dialog">
@@ -2373,9 +2395,16 @@ document.addEventListener("DOMContentLoaded", function () {
               : `<div class="ba-maac-ticket-panel">
                   <div class="ba-maac-ticket-panel-title">Ticket Details</div>
                   <div class="ba-maac-ticket-grid">
-                    <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
+                    <div class="ba-maac-ticket-field">
                       <label for="ba-maac-ticket-title">Ticket Title <span class="ba-maac-ticket-required">*</span></label>
                       <input type="text" id="ba-maac-ticket-title" class="ba-range-input" value="${escapeHtml(state.ticketModal.tickettitle || "")}" placeholder="Ticket Title">
+                    </div>
+                    <div class="ba-maac-ticket-field ba-maac-ticket-template-field">
+                      <label for="ba-maac-ticket-template">Ticket Template</label>
+                      <select id="ba-maac-ticket-template" class="ba-range-input"${ticketTemplates.length ? "" : " disabled"}>
+                        <option value="">${ticketTemplates.length ? "Select template" : "No templates configured"}</option>
+                        ${ticketTemplateOptions}
+                      </select>
                     </div>
                     <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
                       <label for="ba-maac-ticket-reason">Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
@@ -2787,25 +2816,6 @@ document.addEventListener("DOMContentLoaded", function () {
     return { error: "Unable to process ticket request. Please try again." };
   }
 
-  async function markStudentTicketsViewed(student) {
-    if (!student || !Array.isArray(student.tickets) || !student.tickets.length) {
-      return;
-    }
-
-    for (const ticket of student.tickets) {
-      if (ticket.statuskey !== "open") {
-        continue;
-      }
-      try {
-        const json = await postTicketAction("viewticket", { ticketid: ticket.id });
-        if (json.ticket?.changed && json.ticket?.ticket) {
-          upsertStudentTicket(student.userid, json.ticket.ticket);
-        }
-      } catch (error) {
-        // Viewing should not block the modal if the user is not the assigned SS Team member.
-      }
-    }
-  }
   async function openTicketModal(studentUserid, mode = "raise") {
     const student = (state.data?.students || []).find((item) => Number(item.userid) === Number(studentUserid));
     if (!student) {
@@ -2818,10 +2828,6 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    if (mode === "view") {
-      await markStudentTicketsViewed(student);
-    }
-
     const ticketMeta = getTicketMeta();
     state.ticketModal = {
       mode,
@@ -2830,14 +2836,14 @@ document.addEventListener("DOMContentLoaded", function () {
       tickettitle: "",
       ticketreason: "",
     };
-    renderPage();
+    renderPagePreservingScroll();
   }
 
   function closeTicketModal() {
     state.ticketModal = null;
     state.ticketEdit = null;
     state.ticketSaving = false;
-    renderPage();
+    renderPagePreservingScroll();
   }
 
   function openTrendModal(studentUserid) {
@@ -2848,12 +2854,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     state.trendModal = { student };
-    renderPage();
+    renderPagePreservingScroll();
   }
 
   function closeTrendModal() {
     state.trendModal = null;
-    renderPage();
+    renderPagePreservingScroll();
   }
 
   function markMaacDraftChanged() {
@@ -2983,6 +2989,31 @@ document.addEventListener("DOMContentLoaded", function () {
       ticketCancelBtn.addEventListener("click", closeTicketModal);
     }
 
+    const ticketTemplateSelect = document.getElementById("ba-maac-ticket-template");
+    if (ticketTemplateSelect && ticketTemplateSelect.dataset.bound !== "1") {
+      ticketTemplateSelect.dataset.bound = "1";
+      ticketTemplateSelect.addEventListener("change", () => {
+        const index = parseInt(ticketTemplateSelect.value || "-1", 10);
+        const template = getTicketTemplates()[index];
+        if (!template) {
+          return;
+        }
+        const titleEl = document.getElementById("ba-maac-ticket-title");
+        const reasonEl = document.getElementById("ba-maac-ticket-reason");
+        if (titleEl) {
+          titleEl.value = template.title || "";
+        }
+        if (reasonEl) {
+          reasonEl.value = template.body || "";
+        }
+        state.ticketModal = {
+          ...state.ticketModal,
+          tickettitle: template.title || "",
+          ticketreason: template.body || "",
+        };
+      });
+    }
+
     // Use event delegation on the app container for the ticket submit button.
     // Delegated handlers survive DOM re-renders (unlike direct addEventListener
     // on the button element which is destroyed when app.innerHTML is rebuilt).
@@ -3109,14 +3140,14 @@ document.addEventListener("DOMContentLoaded", function () {
           tickettitle: ticket.tickettitle || "",
           ticketreason: ticket.ticketreason || "",
         };
-        renderPage();
+        renderPagePreservingScroll();
       });
     });
 
     document.querySelectorAll("[data-maac-ticket-edit-cancel]").forEach((button) => {
       button.addEventListener("click", () => {
         state.ticketEdit = null;
-        renderPage();
+        renderPagePreservingScroll();
       });
     });
 
@@ -3242,7 +3273,55 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const calendarIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>';
     const saveIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>';
+    const isInternalFeedbackColumn = String(column.selection || "").toLowerCase() === "internal";
+    const externalFeedbackColumn = isInternalFeedbackColumn ? findPairedExternalFeedbackColumn(column) : null;
 
+    function findPairedExternalFeedbackColumn(sourceColumn) {
+      const columns = getOrderedCustomColumns();
+      const externalColumns = columns.filter((candidate) =>
+        candidate &&
+        candidate.key !== sourceColumn.key &&
+        candidate.type === "multi_feedback" &&
+        String(candidate.selection || "").toLowerCase() === "external",
+      );
+      if (!externalColumns.length) {
+        return null;
+      }
+
+      const groups = state.data?.column_groups || [];
+      const sourceGroup = groups.find((group) => (group.columns || []).some((item) => item.key === sourceColumn.key));
+      if (sourceGroup) {
+        const groupMatch = externalColumns.find((candidate) =>
+          (sourceGroup.columns || []).some((item) => item.key === candidate.key),
+        );
+        if (groupMatch) {
+          return groupMatch;
+        }
+      }
+
+      return externalColumns[0];
+    }
+
+    function getFeedbacksForColumn(targetColumn) {
+      let current = state.customDraft[userid]?.[targetColumn.key];
+      if (current === undefined) {
+        current = getStudentCustomValue(student, targetColumn.key);
+      }
+      return normaliseFeedbacks(current);
+    }
+
+    function setFeedbacksForColumn(targetColumn, nextFeedbacks) {
+      const cleanFeedbacks = normaliseFeedbacks(nextFeedbacks);
+      if (!state.customDraft[userid]) {
+        state.customDraft[userid] = {};
+      }
+      state.customDraft[userid][targetColumn.key] = cleanFeedbacks;
+      if (!student.custom) {
+        student.custom = {};
+      }
+      student.custom[targetColumn.key] = cleanFeedbacks;
+      return cleanFeedbacks;
+    }
     function normaliseFeedbacks(source) {
       return normalizeFeedbackItems(source);
     }
@@ -3381,11 +3460,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
                   <div class="ba-feedback-form-main">
                     <textarea id="ba-feedback-modal-text-${userid}-${key}" class="ba-maac-input ba-feedback-textarea" placeholder="Enter feedback here..."></textarea>
-                    <div class="ba-feedback-form-actions">
-                      <button type="button" class="ba-btn ba-btn-sm ba-feedback-cancel-btn" id="ba-feedback-modal-cancel-btn-${userid}-${key}">Cancel</button>
-                      <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-save-btn" id="ba-feedback-modal-save-btn-${userid}-${key}">
-                        ${saveIcon} Save Feedback
-                      </button>
+                    <div class="ba-feedback-form-actions ba-feedback-add-actions">
+                      ${externalFeedbackColumn ? `<label class="ba-feedback-copy-external" id="ba-feedback-modal-copy-wrap-${userid}-${key}" hidden>
+                        <input type="checkbox" id="ba-feedback-modal-copy-external-${userid}-${key}">
+                        <span>Add the same feedback to External feedback</span>
+                      </label>` : ""}
+                      <div class="ba-feedback-action-buttons">
+                        <button type="button" class="ba-btn ba-btn-sm ba-feedback-cancel-btn" id="ba-feedback-modal-cancel-btn-${userid}-${key}">Cancel</button>
+                        <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-save-btn" id="ba-feedback-modal-save-btn-${userid}-${key}">
+                          ${saveIcon} Save Feedback
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3406,6 +3491,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusEl = modal.querySelector(".ba-feedback-modal-status");
     const dateInput = document.getElementById(`ba-feedback-modal-date-${userid}-${key}`);
     const textInput = document.getElementById(`ba-feedback-modal-text-${userid}-${key}`);
+    const copyExternalWrap = document.getElementById(`ba-feedback-modal-copy-wrap-${userid}-${key}`);
+    const copyExternalInput = document.getElementById(`ba-feedback-modal-copy-external-${userid}-${key}`);
     const addBtn = document.getElementById(`ba-feedback-modal-add-btn-${userid}-${key}`);
     const form = document.getElementById(`ba-feedback-modal-form-${userid}-${key}`);
     const formTitle = document.getElementById(`ba-feedback-modal-form-title-${userid}-${key}`);
@@ -3461,14 +3548,23 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
+    function updateCopyExternalVisibility() {
+      if (!copyExternalWrap || !copyExternalInput) {
+        return;
+      }
+      copyExternalWrap.hidden = false;
+    }
     function resetAddForm() {
       form.style.display = "none";
       addBtn.style.display = "inline-flex";
       dateInput.value = new Date().toISOString().split("T")[0];
       textInput.value = "";
+      if (copyExternalInput) {
+        copyExternalInput.checked = false;
+      }
+      updateCopyExternalVisibility();
       formTitle.textContent = `${column.label} - ${getCurrentFeedbacks().length + 1}`;
     }
-
     function renderCurrentFeedbacks() {
       const current = getCurrentFeedbacks();
       listEl.innerHTML = renderFeedbackList(current);
@@ -3476,7 +3572,7 @@ document.addEventListener("DOMContentLoaded", function () {
       bindFeedbackCardEvents();
     }
 
-    async function saveFeedbacksToBackend(nextFeedbacks) {
+    async function saveFeedbacksToBackend(valuesByKey) {
       const body = new URLSearchParams();
       body.set("courseid", String(courseId));
       body.set("action", "savedata");
@@ -3487,9 +3583,7 @@ document.addEventListener("DOMContentLoaded", function () {
           rows: [
             {
               userid: numericUserid,
-              values: {
-                [key]: normaliseFeedbacks(nextFeedbacks),
-              },
+              values: valuesByKey,
             },
           ],
         }),
@@ -3513,17 +3607,25 @@ document.addEventListener("DOMContentLoaded", function () {
         throw new Error(json.error || "Unable to save feedback.");
       }
     }
-
-    async function persistFeedbacks(nextFeedbacks, successMessage, button = null) {
+    async function persistFeedbacks(nextFeedbacks, successMessage, button = null, extraFeedbacksByKey = {}) {
       if (button) {
         button.disabled = true;
       }
       const cleanFeedbacks = setCurrentFeedbacks(nextFeedbacks);
+      const valuesByKey = {
+        [key]: cleanFeedbacks,
+      };
+      Object.entries(extraFeedbacksByKey).forEach(([targetKey, feedbacks]) => {
+        const targetColumn = getCustomColumnByKey(targetKey);
+        if (targetColumn) {
+          valuesByKey[targetKey] = setFeedbacksForColumn(targetColumn, feedbacks);
+        }
+      });
       renderCurrentFeedbacks();
       setFeedbackStatus("Saving...", "saving");
 
       try {
-        await saveFeedbacksToBackend(cleanFeedbacks);
+        await saveFeedbacksToBackend(valuesByKey);
         setFeedbackStatus(successMessage, "success");
       } catch (error) {
         setFeedbackStatus(error.message || "Unable to save feedback.", "error");
@@ -3534,7 +3636,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     }
-
     function bindFeedbackCardEvents() {
       listEl.querySelectorAll("[data-feedback-edit]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -3599,6 +3700,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     dateInput.value = new Date().toISOString().split("T")[0];
+    updateCopyExternalVisibility();
     bindFeedbackCardEvents();
 
     document.addEventListener("keydown", handleFeedbackModalKeydown);
@@ -3620,6 +3722,10 @@ document.addEventListener("DOMContentLoaded", function () {
       form.style.display = "flex";
       dateInput.value = new Date().toISOString().split("T")[0];
       textInput.value = "";
+      if (copyExternalInput) {
+        copyExternalInput.checked = false;
+      }
+      updateCopyExternalVisibility();
       textInput.focus();
       formTitle.textContent = `${column.label} - ${getCurrentFeedbacks().length + 1}`;
     });
@@ -3636,10 +3742,18 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
+      const addedAt = Date.now();
+      const feedbackEntry = { date, text, added_at: addedAt };
       const nextFeedbacks = getCurrentFeedbacks();
-      nextFeedbacks.push({ date, text, added_at: Date.now() });
+      nextFeedbacks.push(feedbackEntry);
+      const extraFeedbacksByKey = {};
+      if (copyExternalInput?.checked && externalFeedbackColumn) {
+        const externalFeedbacks = getFeedbacksForColumn(externalFeedbackColumn);
+        externalFeedbacks.push({ ...feedbackEntry });
+        extraFeedbacksByKey[externalFeedbackColumn.key] = externalFeedbacks;
+      }
       resetAddForm();
-      await persistFeedbacks(nextFeedbacks, "Feedback added", saveBtn);
+      await persistFeedbacks(nextFeedbacks, "Feedback added", saveBtn, extraFeedbacksByKey);
     });
   }
 
@@ -3872,13 +3986,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function renderMaacTableSection() {
     syncDraftFromInputs();
-    captureTableScroll();
+    const pendingScroll = state.pendingScrollRestore;
+    if (!pendingScroll) {
+      captureTableScroll();
+    }
     const tableSection = document.getElementById("ba-maac-table-section");
     if (tableSection) {
       tableSection.innerHTML = renderTable();
       bindTableEvents();
-      restoreTableScroll();
+      restoreTableScroll(pendingScroll);
       scheduleMaacLayoutSync();
+      if (pendingScroll) {
+        window.scrollTo(pendingScroll.windowX || 0, pendingScroll.windowY || 0);
+        requestAnimationFrame(() => {
+          restoreTableScroll(pendingScroll);
+          window.scrollTo(pendingScroll.windowX || 0, pendingScroll.windowY || 0);
+        });
+        state.tableScroll.left = pendingScroll.left || 0;
+        state.tableScroll.top = pendingScroll.top || 0;
+        state.pendingScrollRestore = null;
+      }
     }
   }
 
@@ -3977,7 +4104,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       state.ticketEdit = null;
       state.ticketSaving = false;
-      renderPage();
+      renderPagePreservingScroll();
       showMessage(json.message || "Ticket updated successfully", "success");
     } catch (error) {
       state.ticketSaving = false;
@@ -4059,7 +4186,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // the Raise Ticket / View Ticket button in the table row.
       // Wrapped in try/catch so a render error never leaves the user stuck.
       try {
-        renderPage();
+        renderPagePreservingScroll();
       } catch (renderError) {
     // Prevent duplicate ticket submissions and premature close.
         // Silently swallow; the page will recover on the next interaction.

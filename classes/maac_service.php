@@ -29,6 +29,7 @@ class maac_service {
             'moodle_groups' => $dataset['moodle_groups'],
             'module_columns' => $dataset['module_columns'],
             'ticket_meta' => $dataset['ticket_meta'],
+            'ticket_templates' => $dataset['ticket_templates'],
             'summary' => $dataset['summary'],
             'students' => $dataset['students'],
             'canedit' => $canedit,
@@ -481,6 +482,90 @@ class maac_service {
         return [
             'ticketid' => $ticketid,
             'ticket' => $formatted,
+        ];
+    }
+
+    /**
+     * Auto assign overdue unresolved tickets to the configured batch manager/PM.
+     *
+     * @return array
+     */
+    public function auto_assign_overdue_tickets_to_pm(): array {
+        global $DB;
+
+        $durationdays = (int)get_config('local_batchanalytics', 'ticket_duration_days');
+        if ($durationdays <= 0) {
+            return [
+                'processed' => 0,
+                'durationdays' => $durationdays,
+                'enabled' => false,
+            ];
+        }
+
+        $cutoff = time() - ($durationdays * DAYSECS);
+        $params = [
+            'cutoff' => $cutoff,
+            'openstatus' => 'open',
+            'ssstatus' => 'ss_in_progress',
+            'oldprogressstatus' => 'in_progress',
+        ];
+        $sql = "SELECT t.*
+                  FROM {local_batchanalytics_ticket} t
+                 WHERE t.escalatedtopm = 0
+                   AND t.timeresolved = 0
+                   AND t.resolvedby = 0
+                   AND t.timecreated <= :cutoff
+                   AND LOWER(t.status) IN (:openstatus, :ssstatus, :oldprogressstatus)
+              ORDER BY t.timecreated ASC";
+
+        $tickets = [];
+        $records = $DB->get_recordset_sql($sql, $params);
+        foreach ($records as $ticket) {
+            $tickets[] = clone $ticket;
+        }
+        $records->close();
+
+        $processed = 0;
+        $now = time();
+        foreach ($tickets as $ticket) {
+            if ($this->normalise_ticket_status((string)$ticket->status) === 'resolved') {
+                continue;
+            }
+
+            $ticketmeta = $this->build_ticket_meta((int)$ticket->courseid);
+            $batchmanagerusers = array_values($ticketmeta['batch_manager_users'] ?? []);
+            $batchmanagerroleid = (int)($ticketmeta['batch_manager_role']['id'] ?? 0);
+            $batchmanageruserid = (int)($ticket->batchmanageruserid ?? 0);
+            if ($batchmanageruserid <= 0 && !empty($batchmanagerusers)) {
+                $batchmanageruserid = (int)($batchmanagerusers[0]['id'] ?? 0);
+            }
+
+            $previousstatuskey = $this->normalise_ticket_status((string)$ticket->status);
+            $ticket->batchmanagerroleid = $batchmanagerroleid;
+            $ticket->batchmanageruserid = $batchmanageruserid;
+            $ticket->escalatedtopm = 1;
+            $ticket->status = 'pm_in_progress';
+            $ticket->timemodified = $now;
+            $DB->update_record('local_batchanalytics_ticket', $ticket);
+
+            $batchmanager = $batchmanageruserid > 0
+                ? \core_user::get_user($batchmanageruserid, 'id, firstname, lastname, username, email', IGNORE_MISSING)
+                : null;
+            $this->log_ticket_event((int)$ticket->id, 0, 'escalated', [
+                'fromstatus' => $previousstatuskey,
+                'tostatus' => $this->normalise_ticket_status((string)$ticket->status),
+                'feedback' => 'Auto assigned to PM after ' . $durationdays . ' day(s)' .
+                    ($batchmanager ? ': ' . fullname($batchmanager) : ''),
+            ]);
+            $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, 0, 'auto_pm');
+            $processed++;
+        }
+
+        return [
+            'processed' => $processed,
+            'durationdays' => $durationdays,
+            'cutoff' => $cutoff,
+            'enabled' => true,
         ];
     }
 
@@ -973,6 +1058,7 @@ class maac_service {
             'moodle_groups' => array_values($moodlegroups),
             'module_columns' => $modulecolumns,
             'ticket_meta' => $ticketmeta,
+            'ticket_templates' => $this->get_ticket_templates(),
             'summary' => $summary,
             'students' => $outputstudents,
         ];
@@ -2455,18 +2541,48 @@ class maac_service {
      * @param int $updatedby
      * @return void
      */
-    private function send_ticket_escalation_cliq_notification(\stdClass $ticket, array $recipients, int $updatedby): void {
+    private function send_ticket_escalation_cliq_notification(\stdClass $ticket, array $recipients, int $updatedby, string $messagetype = 'update'): void {
         try {
             if (empty($recipients)) {
                 return;
             }
             $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
             $service = new cliq_service();
-            $service->send_ticket_message('update', $ticket, $recipients, ['updatedby' => $updatedbyuser ?: null]);
+            $service->send_ticket_message($messagetype, $ticket, $recipients, ['updatedby' => $updatedbyuser ?: null]);
         } catch (\Throwable $e) {
             // Cliq delivery must not block ticket escalation.
         }
     }
+    /**
+     * @return array
+     */
+    private function get_ticket_templates(): array {
+        $raw = get_config('local_batchanalytics', 'ticket_templates');
+        $decoded = !empty($raw) ? json_decode($raw, true) : [];
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $templates = [];
+        foreach ($decoded as $index => $template) {
+            if (!is_array($template)) {
+                continue;
+            }
+            $title = trim((string)($template['title'] ?? ''));
+            $body = trim((string)($template['body'] ?? ''));
+            if ($title === '' && $body === '') {
+                continue;
+            }
+            $templates[] = [
+                'id' => 'template_' . ($index + 1),
+                'title' => $title,
+                'body' => $body,
+            ];
+        }
+
+        return $templates;
+    }
+
 
     /**
      * @param int $courseid

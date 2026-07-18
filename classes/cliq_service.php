@@ -86,6 +86,27 @@ class cliq_service {
     }
 
     /**
+     * @return string
+     */
+    public static function get_default_ticket_auto_pm_subject(): string {
+        return 'Notification: MAAC ticket auto assigned to PM - {{ticket_title}}';
+    }
+
+    /**
+     * @return string
+     */
+    public static function get_default_ticket_auto_pm_body(): string {
+        return "*A MAAC ticket has been auto assigned to PM manager.*\n\n"
+            . "- Batch: {{batch_name}}\n"
+            . "- Course: {{course_name}}\n"
+            . "- Student: {{student_name}}\n"
+            . "- Title: {{ticket_title}}\n"
+            . "- Status: {{ticket_status}}\n"
+            . "- Priority: {{ticket_priority}}\n"
+            . "- Batch manager: {{batch_manager_name}}";
+    }
+
+    /**
      * @param string $type
      * @param \stdClass $ticket
      * @param array $recipients
@@ -98,15 +119,11 @@ class cliq_service {
             return;
         }
 
-        $subjectkey = $type === 'raise' ? 'cliq_ticket_raise_subject' : 'cliq_ticket_update_subject';
-        $bodykey = $type === 'raise' ? 'cliq_ticket_raise_body' : 'cliq_ticket_update_body';
-        $defaultsubject = $type === 'raise'
-            ? self::get_default_ticket_raise_subject()
-            : self::get_default_ticket_update_subject();
-        $defaultbody = $type === 'raise'
-            ? self::get_default_ticket_raise_body()
-            : self::get_default_ticket_update_body();
-
+        $templateconfig = $this->get_ticket_template_config($type);
+        $subjectkey = $templateconfig['subjectkey'];
+        $bodykey = $templateconfig['bodykey'];
+        $defaultsubject = $templateconfig['defaultsubject'];
+        $defaultbody = $templateconfig['defaultbody'];
         $subjecttemplate = trim((string)get_config('local_batchanalytics', $subjectkey));
         $bodytemplate = trim((string)get_config('local_batchanalytics', $bodykey));
         if ($subjecttemplate === '') {
@@ -124,6 +141,36 @@ class cliq_service {
         foreach ($this->normalise_recipients($recipients) as $recipient) {
             $this->send_message($boturl, $type, $ticket, $recipient, $subject, $text);
         }
+    }
+
+    /**
+     * @param string $type
+     * @return array
+     */
+    private function get_ticket_template_config(string $type): array {
+        if ($type === 'raise') {
+            return [
+                'subjectkey' => 'cliq_ticket_raise_subject',
+                'bodykey' => 'cliq_ticket_raise_body',
+                'defaultsubject' => self::get_default_ticket_raise_subject(),
+                'defaultbody' => self::get_default_ticket_raise_body(),
+            ];
+        }
+        if ($type === 'auto_pm') {
+            return [
+                'subjectkey' => 'cliq_ticket_auto_pm_subject',
+                'bodykey' => 'cliq_ticket_auto_pm_body',
+                'defaultsubject' => self::get_default_ticket_auto_pm_subject(),
+                'defaultbody' => self::get_default_ticket_auto_pm_body(),
+            ];
+        }
+
+        return [
+            'subjectkey' => 'cliq_ticket_update_subject',
+            'bodykey' => 'cliq_ticket_update_body',
+            'defaultsubject' => self::get_default_ticket_update_subject(),
+            'defaultbody' => self::get_default_ticket_update_body(),
+        ];
     }
 
     /**
