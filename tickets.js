@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
     data: null,
     activeTab: "dashboard",
     modal: null,
+    escalationConfirm: null,
     selectedCourseKey: "",
     currentPage: 1,
     itemsPerPage: 10,
@@ -898,6 +899,32 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>`;
   }
 
+  function renderEscalationConfirmModal() {
+    if (!state.escalationConfirm) {
+      return "";
+    }
+
+    const targetName = state.escalationConfirm.batchManagerName || "Configured Batch Manager";
+    return `<div class="ba-modal-overlay" id="ba-ticket-escalation-confirm" role="dialog" aria-modal="true" aria-labelledby="ba-ticket-escalation-title">
+      <div class="ba-modal-container ba-maac-unsaved-dialog">
+        <div class="ba-modal-header">
+          <h3 id="ba-ticket-escalation-title">Escalate to Program Manager</h3>
+          <button type="button" class="ba-modal-close" id="ba-ticket-escalation-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="ba-modal-body">
+          <p class="ba-maac-unsaved-text">Are you sure you want to escalate this ticket to the Program Manager?</p>
+          <p class="ba-maac-unsaved-text" style="margin-top: 12px;"><strong>Escalate to:</strong> ${escapeHtml(targetName)}</p>
+        </div>
+        <div class="ba-modal-footer ba-maac-unsaved-actions">
+          <button type="button" class="ba-btn" id="ba-ticket-escalation-cancel">Cancel</button>
+          <button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-escalation-confirm">Confirm</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   function renderPage() {
     const access = getAccessData();
     const pageBody = state.activeTab === "dashboard" ? renderDashboardView() : renderListView();
@@ -916,6 +943,7 @@ document.addEventListener("DOMContentLoaded", function () {
         ${pageBody}
       </div>
       ${renderModal()}
+      ${renderEscalationConfirmModal()}
     `;
 
     bindEvents();
@@ -986,6 +1014,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function closeModal() {
     state.modal = null;
+    state.escalationConfirm = null;
+    renderPage();
+  }
+
+  function closeEscalationConfirm() {
+    state.escalationConfirm = null;
+    renderPage();
+  }
+
+  function openEscalationConfirm() {
+    const ticket = state.modal?.ticket;
+    if (!ticket || !ticket.canescalate) {
+      return;
+    }
+
+    state.escalationConfirm = {
+      ticketid: ticket.id,
+      batchManagerName: ticket.batchmanagerfullname || "Configured Batch Manager",
+    };
     renderPage();
   }
 
@@ -1007,12 +1054,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function submitEscalate() {
-    if (!state.modal || !state.modal.ticket || !state.modal.ticket.canescalate) {
+    if (!state.escalationConfirm || !state.modal || !state.modal.ticket || !state.modal.ticket.canescalate) {
       return;
     }
 
     const ticketid = state.modal.ticket.id;
-    const button = document.getElementById("ba-ticket-escalate");
+    const button = document.getElementById("ba-ticket-escalation-confirm");
     if (button) {
       button.disabled = true;
       button.textContent = "Escalating...";
@@ -1042,13 +1089,14 @@ document.addEventListener("DOMContentLoaded", function () {
       };
       updateTicketInState(ticketid, updatedTicket || fallbackUpdate);
       state.modal = null;
+      state.escalationConfirm = null;
       renderPage();
       showMessage(json.message || "Ticket escalated to PM successfully", "success");
     } catch (error) {
       showMessage(error.message || "Unable to escalate ticket", "error");
       if (button) {
         button.disabled = false;
-        button.textContent = "Escalate to PM";
+        button.textContent = "Confirm";
       }
     }
   }
@@ -1129,6 +1177,16 @@ document.addEventListener("DOMContentLoaded", function () {
     submitTicketAction("resolve").catch((error) => showMessage(error.message || "Unable to resolve ticket", "error"));
   }
   function bindEvents() {
+    if (!app._ticketEscalationConfirmKeyBound) {
+      app._ticketEscalationConfirmKeyBound = true;
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.escalationConfirm) {
+          event.preventDefault();
+          closeEscalationConfirm();
+        }
+      });
+    }
+
     const updateMainFilters = () => {
       state.filters.batch = document.getElementById("filter-batch")?.value || "";
       state.filters.course = document.getElementById("filter-course")?.value || "";
@@ -1267,7 +1325,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const escalateBtn = document.getElementById("ba-ticket-escalate");
     if (escalateBtn) {
-      escalateBtn.addEventListener("click", submitEscalate);
+      escalateBtn.addEventListener("click", openEscalationConfirm);
+    }
+
+    const escalationConfirmModal = document.getElementById("ba-ticket-escalation-confirm");
+    if (escalationConfirmModal) {
+      escalationConfirmModal.addEventListener("click", (event) => {
+        if (event.target === escalationConfirmModal) {
+          closeEscalationConfirm();
+        }
+      });
+    }
+
+    const escalationCloseBtn = document.getElementById("ba-ticket-escalation-close");
+    if (escalationCloseBtn) {
+      escalationCloseBtn.addEventListener("click", closeEscalationConfirm);
+    }
+
+    const escalationCancelBtn = document.getElementById("ba-ticket-escalation-cancel");
+    if (escalationCancelBtn) {
+      escalationCancelBtn.addEventListener("click", closeEscalationConfirm);
+    }
+
+    const escalationConfirmBtn = document.getElementById("ba-ticket-escalation-confirm");
+    if (escalationConfirmBtn) {
+      escalationConfirmBtn.addEventListener("click", submitEscalate);
     }
 
 

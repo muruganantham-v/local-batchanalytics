@@ -1145,9 +1145,7 @@ document.addEventListener("DOMContentLoaded", function () {
       let catCount = 0;
       c.categories.forEach((cat) => {
         if (cat.categoryname === "MAAC Ratings") return;
-        const val = isAttendance(cat.categoryname)
-          ? getAvgGrade(cat)
-          : getCompletionRate(cat);
+        const val = getCompletionRate(cat);
 
         // FIX: Parse string to float to prevent string concatenation
         totalPct += parseFloat(val);
@@ -1195,9 +1193,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let catCount = 0;
     c.categories.forEach((cat) => {
       if (cat.categoryname === "MAAC Ratings") return;
-      const val = isAttendance(cat.categoryname)
-        ? getAvgGrade(cat)
-        : getCompletionRate(cat);
+      const val = getCompletionRate(cat);
 
       // FIX: Parse string to float here too
       totalPct += parseFloat(val);
@@ -3107,22 +3103,30 @@ document.addEventListener("DOMContentLoaded", function () {
   window.resetFilter = function () {
     if (!CURRENT_COURSE) return;
 
-    // Reset Search & Toggle
-    document.getElementById("f-search").value = "";
+    // Reset the same controls and category set used to render this filter panel.
+    const search = document.getElementById("f-search");
+    if (search) {
+      search.value = "";
+    }
+
+    const status = document.getElementById("f-status");
+    if (status) {
+      status.value = "";
+    }
+
     const toggle = document.getElementById("f-metric-toggle");
     if (toggle) {
       toggle.checked = false;
-      toggle.dispatchEvent(new Event("change"));
-    } // Reset to Grade Mode
+    }
 
-    // Reset Ranges
-    CURRENT_COURSE.categories.forEach((c, i) => {
+    // The input IDs are based on the visible categories, not every raw course category.
+    getVisibleCourseCategories(CURRENT_COURSE).forEach((c, i) => {
       const minEl = document.getElementById(`f-${i}-min`);
       const maxEl = document.getElementById(`f-${i}-max`);
       const isMaac = c.categoryname === "MAAC Ratings";
 
       if (minEl) minEl.value = "0";
-      if (maxEl) maxEl.value = isMaac ? "10" : "100"; // Reset to 10 for MAAC, 100 for others
+      if (maxEl) maxEl.value = isMaac ? "10" : "100";
     });
 
     getCourseMaacColumns(CURRENT_COURSE.courseid).forEach((column) => {

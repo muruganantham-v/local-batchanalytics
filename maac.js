@@ -14,10 +14,10 @@ document.addEventListener("DOMContentLoaded", function () {
     hasUnsavedChanges: false,
     unsavedChangesModal: false,
     customDraft: {},
+    originalCustomDraft: {},
     collapsedGroups: { module: false },
     filtersHidden: false,
     filterValues: {},
-    activeFilters: [],
     trendModal: null,
     ticketModal: null,
     ticketSaving: false,
@@ -362,6 +362,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const previousEditMode = state.editMode;
     const previousDraft = state.customDraft;
     const previousDirty = state.hasUnsavedChanges;
+    const previousOriginalDraft = state.originalCustomDraft;
 
     if (!preserveDraft) {
       app.innerHTML = `<div class="ba-maac-loading">Loading MAAC data...</div>`;
@@ -395,18 +396,19 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
       state.customDraft = newDraft;
+      state.originalCustomDraft = cloneMaacDraft(previousOriginalDraft);
     } else {
       state.editMode = false;
       state.hasUnsavedChanges = false;
       state.unsavedChangesModal = false;
       state.customDraft = buildDraft(json.students || []);
+      state.originalCustomDraft = cloneMaacDraft(state.customDraft);
     }
 
     state.filterValues =
       previousFilters && Object.keys(previousFilters).length
         ? previousFilters
         : buildDefaultFilters(json);
-    state.activeFilters = Array.isArray(state.activeFilters) ? state.activeFilters : [];
     renderPage();
   }
 
@@ -463,6 +465,35 @@ document.addEventListener("DOMContentLoaded", function () {
       draft[student.userid] = { ...(student.custom || {}) };
     });
     return draft;
+  }
+
+  function normaliseDraftValue(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => normaliseDraftValue(item));
+    }
+    if (value && typeof value === "object") {
+      return Object.keys(value)
+        .sort()
+        .reduce((result, key) => {
+          result[key] = normaliseDraftValue(value[key]);
+          return result;
+        }, {});
+    }
+    return value;
+  }
+
+  function cloneMaacDraft(draft) {
+    return normaliseDraftValue(draft || {});
+  }
+
+  function refreshMaacDraftChanged() {
+    if (!state.editMode) {
+      state.hasUnsavedChanges = false;
+      return;
+    }
+    state.hasUnsavedChanges =
+      JSON.stringify(normaliseDraftValue(state.customDraft)) !==
+      JSON.stringify(state.originalCustomDraft);
   }
 
   function getStudentCustomValue(student, key) {
@@ -645,6 +676,7 @@ document.addEventListener("DOMContentLoaded", function () {
       state.customDraft[userid] = {};
     }
     state.customDraft[userid][key] = getMultiSelectValues(userid, key);
+    markMaacDraftChanged();
   }
 
   function bindMultiSelectRow(row) {
@@ -852,114 +884,66 @@ document.addEventListener("DOMContentLoaded", function () {
               <span class="ba-toggle-text ${state.filterValues.metricMode === "completion" ? "active" : ""}" id="ba-maac-mode-comp">Comp.</span>
             </div>
           </div>
-          <div class="ba-maac-dynamic-filter">
+          <div class="ba-filter-item-modern">
             <div class="ba-filter-header-row">
               <span class="ba-filter-label">Course Group</span>
             </div>
-            <div class="ba-maac-filter-item">
-              <select id="ba-maac-course-group" class="ba-select-small" style="width:100%; box-sizing: border-box;">
-                <option value="">All Groups</option>
-                ${(state.data.moodle_groups || [])
-                  .map(
-                    (group) =>
-                      `<option value="${group.id}"${String(state.filterValues.courseGroup || "") === String(group.id) ? " selected" : ""}>${escapeHtml(group.name)}</option>`,
-                  )
-                  .join("")}
-              </select>
-            </div>
+            <select id="ba-maac-course-group" class="ba-select-small" style="width:100%; box-sizing: border-box;">
+              <option value="">All Groups</option>
+              ${(state.data.moodle_groups || [])
+                .map(
+                  (group) =>
+                    `<option value="${group.id}"${String(state.filterValues.courseGroup || "") === String(group.id) ? " selected" : ""}>${escapeHtml(group.name)}</option>`,
+                )
+                .join("")}
+            </select>
           </div>
-          ${(state.data.column_groups || [])
-            .map((group) => renderCustomGroupFilterCard(group))
+          ${getOrderedCustomColumns()
+            .map((column) => renderCustomFilterControl(column))
             .join("")}
-          ${state.activeFilters.map((filterKey) => renderDynamicFilterControl(filterKey)).join("")}
-          <div class="ba-maac-dynamic-filter">
-            <div class="ba-filter-header-row">
-              <span class="ba-filter-label">Add Filter</span>
-            </div>
-            <div class="ba-maac-filter-item">
-              <div class="ba-range-wrapper">
-                <select id="ba-maac-add-filter" class="ba-select-small" style="width:100%; box-sizing: border-box;">
-                  <option value="">Select column</option>
-                  ${getAvailableDynamicFilters()
-                    .map(
-                      (item) =>
-                        `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`,
-                    )
-                    .join("")}
-                </select>
-                <button type="button" id="ba-maac-add-filter-btn" class="ba-btn ba-btn-sm">+</button>
-              </div>
-            </div>
-          </div>
+          ${renderStandardFilterControls()}
         </div>
       </div>`;
   }
 
-  function renderCustomGroupFilterCard(group) {
-    const columns = group.columns || [];
-    if (!columns.length) {
-      return "";
-    }
-
-    return `<div class="ba-maac-dynamic-filter">
-      <div class="ba-filter-header-row">
-        <span class="ba-filter-label">${escapeHtml(group.name)}</span>
-      </div>
-      ${columns.map((column) => renderCustomFilterControl(column)).join("")}
-    </div>`;
-  }
-
-  function getAvailableDynamicFilters() {
-    const active = new Set(state.activeFilters || []);
-    const builtins = [
-      { key: "builtin:performance", label: "Overall Performance" },
-      { key: "builtin:maac", label: "MAAC Ratings" },
+  function renderStandardFilterControls() {
+    const filterKeys = [
+      "builtin:performance",
+      "builtin:maac",
+      ...(state.data.module_columns || []).map((column) => `module:${column.key}`),
     ];
-    const moduleFilters = (state.data.module_columns || []).map((column) => ({
-      key: `module:${column.key}`,
-      label: column.label,
-    }));
 
-    return builtins.concat(moduleFilters).filter((item) => !active.has(item.key));
+    return filterKeys.map((filterKey) => renderDynamicFilterControl(filterKey)).join("");
   }
 
   function renderDynamicFilterControl(filterKey) {
     const [group, key] = filterKey.split(":");
-    const removeButton = `<button type="button" class="ba-btn ba-btn-sm" data-remove-filter="${escapeHtml(filterKey)}">x</button>`;
 
     if (group === "builtin") {
-        if (key === "performance") {
-        const hidden = !state.activeFilters.includes("builtin:performance");
+      if (key === "performance") {
         return `
-          <div class="ba-maac-dynamic-filter${hidden ? " is-filter-hidden" : ""}">
+          <div class="ba-filter-item-modern">
             <div class="ba-filter-header-row">
               <span class="ba-filter-label">Overall Performance</span>
-              ${removeButton}
             </div>
-            <div class="ba-maac-filter-item">
-              <div class="ba-range-wrapper">
-                <input type="number" id="ba-maac-performance-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.performanceMin || "0")}">
-                <span class="ba-range-divider">-</span>
-                <input type="number" id="ba-maac-performance-max" class="ba-range-input" step="0.1" placeholder="100" value="${escapeHtml(state.filterValues.performanceMax || "100")}">
-              </div>
+            <div class="ba-range-wrapper">
+              <input type="number" id="ba-maac-performance-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.performanceMin || "0")}">
+              <span class="ba-range-divider">-</span>
+              <input type="number" id="ba-maac-performance-max" class="ba-range-input" step="0.1" placeholder="100" value="${escapeHtml(state.filterValues.performanceMax || "100")}">
             </div>
           </div>`;
       }
 
       if (key === "maac") {
-        const hidden = !state.activeFilters.includes("builtin:maac");
         return `
-          <div class="ba-maac-dynamic-filter${hidden ? " is-filter-hidden" : ""}">
+          <div class="ba-filter-item-modern">
             <div class="ba-filter-header-row">
               <span class="ba-filter-label">MAAC Ratings</span>
-              ${removeButton}
             </div>
-            <div class="ba-maac-filter-item">
-              <div class="ba-range-wrapper">
-                <input type="number" id="ba-maac-rating-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.maacMin || "0")}">
-                <span class="ba-range-divider">-</span>
-                <input type="number" id="ba-maac-rating-max" class="ba-range-input" step="0.1" placeholder="10" value="${escapeHtml(state.filterValues.maacMax || "10")}">
-              </div>
+            <div class="ba-range-wrapper">
+              <input type="number" id="ba-maac-rating-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.maacMin || "0")}">
+              <span class="ba-range-divider">-</span>
+              <input type="number" id="ba-maac-rating-max" class="ba-range-input" step="0.1" placeholder="10" value="${escapeHtml(state.filterValues.maacMax || "10")}">
             </div>
           </div>`;
       }
@@ -972,28 +956,15 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       return `
-        <div class="ba-maac-dynamic-filter">
+        <div class="ba-filter-item-modern">
           <div class="ba-filter-header-row">
             <span class="ba-filter-label">${escapeHtml(column.label)}</span>
-            ${removeButton}
           </div>
           ${renderModuleFilterControl(column)}
         </div>`;
     }
 
-    const column = getOrderedCustomColumns().find((item) => item.key === key);
-    if (!column) {
-      return "";
-    }
-
-    return `
-      <div class="ba-maac-dynamic-filter">
-        <div class="ba-filter-header-row">
-          <span class="ba-filter-label">${escapeHtml(column.label)}</span>
-          ${removeButton}
-        </div>
-        ${renderCustomFilterControl(column)}
-      </div>`;
+    return "";
   }
 
   function renderMaacActionButtons() {
@@ -1002,9 +973,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return state.editMode
-      ? `<button id="ba-maac-save" class="ba-btn ba-btn-success">Save</button>
-         <button id="ba-maac-cancel" class="ba-btn">Cancel</button>`
-      : `<button id="ba-maac-edit" class="ba-btn ba-btn-view">Edit MAAC</button>`;
+      ? `<button type="button" id="ba-maac-save" class="ba-btn ba-btn-success">Save</button>
+         <button type="button" id="ba-maac-cancel" class="ba-btn">Cancel</button>`
+      : `<button type="button" id="ba-maac-edit" class="ba-btn ba-btn-view">Edit MAAC</button>`;
   }
 
   function renderTableControls() {
@@ -1024,16 +995,14 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderModuleFilterControl(column) {
     const filter = state.filterValues.modules?.[column.key] || {};
     return `
-      <div class="ba-maac-filter-item">
-        <div class="ba-range-wrapper">
-          <input type="number" class="ba-range-input" data-filter-key="${escapeHtml(
-            column.key,
-          )}" data-filter-group="module" data-filter-type="number" data-filter-bound="min" step="0.1" placeholder="0" value="${escapeHtml(filter.min ?? "")}">
-          <span class="ba-range-divider">-</span>
-          <input type="number" class="ba-range-input" data-filter-key="${escapeHtml(
-            column.key,
-          )}" data-filter-group="module" data-filter-type="number" data-filter-bound="max" step="0.1" placeholder="100" value="${escapeHtml(filter.max ?? "")}">
-        </div>
+      <div class="ba-range-wrapper">
+        <input type="number" class="ba-range-input" data-filter-key="${escapeHtml(
+          column.key,
+        )}" data-filter-group="module" data-filter-type="number" data-filter-bound="min" step="0.1" placeholder="0" value="${escapeHtml(filter.min ?? "")}">
+        <span class="ba-range-divider">-</span>
+        <input type="number" class="ba-range-input" data-filter-key="${escapeHtml(
+          column.key,
+        )}" data-filter-group="module" data-filter-type="number" data-filter-bound="max" step="0.1" placeholder="100" value="${escapeHtml(filter.max ?? "")}">
       </div>`;
   }
 
@@ -1048,8 +1017,8 @@ document.addEventListener("DOMContentLoaded", function () {
       ];
 
       return `
-      <div class="ba-maac-filter-item">
-        <label>${escapeHtml(column.label)}</label>
+      <div class="ba-filter-item-modern">
+        <div class="ba-filter-header-row"><span class="ba-filter-label">${escapeHtml(column.label)}</span></div>
         <select data-filter-key="${escapeHtml(column.key)}" data-filter-group="custom" data-filter-type="dropdown" class="ba-select-small" style="width:100%; box-sizing: border-box;">
           ${options
             .map(
@@ -1066,8 +1035,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const max = filter.max ?? "";
       const rangeAttrs = `${column.min !== null && column.min !== undefined ? ` min="${escapeHtml(String(column.min))}"` : ""}${column.max !== null && column.max !== undefined ? ` max="${escapeHtml(String(column.max))}"` : ""}`;
       return `
-      <div class="ba-maac-filter-item">
-        <label>${escapeHtml(column.label)}</label>
+      <div class="ba-filter-item-modern">
+        <div class="ba-filter-header-row"><span class="ba-filter-label">${escapeHtml(column.label)}</span></div>
         <div class="ba-range-wrapper">
           <input type="number" class="ba-range-input" data-filter-key="${escapeHtml(
             column.key,
@@ -1083,8 +1052,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (column.type === "dropdown" && column.selection === "multi") {
       const selectedValues = filter.values || [];
       return `
-      <div class="ba-maac-filter-item">
-        <label>${escapeHtml(column.label)}</label>
+      <div class="ba-filter-item-modern">
+        <div class="ba-filter-header-row"><span class="ba-filter-label">${escapeHtml(column.label)}</span></div>
         <div class="ba-maac-filter-checkbox-list">
           ${(column.options || [])
             .map(
@@ -1122,8 +1091,8 @@ document.addEventListener("DOMContentLoaded", function () {
             );
 
       return `
-      <div class="ba-maac-filter-item">
-        <label>${escapeHtml(column.label)}</label>
+      <div class="ba-filter-item-modern">
+        <div class="ba-filter-header-row"><span class="ba-filter-label">${escapeHtml(column.label)}</span></div>
         <select data-filter-key="${escapeHtml(column.key)}" data-filter-group="custom" data-filter-type="${column.type}" class="ba-select-small" style="width:100%; box-sizing: border-box;">
           ${options
             .map(
@@ -1136,8 +1105,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return `
-    <div class="ba-maac-filter-item">
-      <label>${escapeHtml(column.label)}</label>
+    <div class="ba-filter-item-modern">
+      <div class="ba-filter-header-row"><span class="ba-filter-label">${escapeHtml(column.label)}</span></div>
       <input type="text" data-filter-key="${escapeHtml(column.key)}" data-filter-group="custom" data-filter-type="${column.type}" placeholder="Search..." value="${escapeHtml(filter.value || "")}">
     </div>`;
   }
@@ -1325,23 +1294,10 @@ document.addEventListener("DOMContentLoaded", function () {
         let displayTicketIndex = 1;
 
         if (Array.isArray(student.tickets) && student.tickets.length > 0) {
-          let latestModifiedTime = -1;
-          for (let i = 0; i < student.tickets.length; i++) {
-            const t = student.tickets[i];
-            if (t.resolutionfeedback && t.resolutionfeedback.trim() !== "") {
-              const modifiedTime = Number(t.timemodified || t.timecreated || 0);
-              if (modifiedTime > latestModifiedTime) {
-                latestModifiedTime = modifiedTime;
-                displayTicket = t;
-                displayTicketIndex = student.tickets.length - i;
-              }
-            }
-          }
-
-          if (!displayTicket) {
-            displayTicket = student.tickets[0];
-            displayTicketIndex = student.tickets.length;
-          }
+          // Tickets are returned newest first. The row status and feedback must
+          // always follow the newest ticket, even when an older ticket was resolved.
+          displayTicket = student.tickets[0];
+          displayTicketIndex = student.tickets.length;
         }
 
         const latestStatus = String(displayTicket?.status || "").toLowerCase();
@@ -2612,17 +2568,20 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return `
-      <div class="ba-modal-backdrop ba-maac-unsaved-modal" id="ba-maac-unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="ba-maac-unsaved-title">
-        <div class="ba-modal ba-maac-unsaved-dialog">
+      <div class="ba-modal-overlay ba-maac-unsaved-modal" id="ba-maac-unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="ba-maac-unsaved-title">
+        <div class="ba-modal-container ba-maac-unsaved-dialog">
           <div class="ba-modal-header">
             <h3 id="ba-maac-unsaved-title">You have unsaved changes</h3>
+            <button type="button" class="ba-modal-close" id="ba-maac-unsaved-close" aria-label="Close">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
           </div>
           <div class="ba-modal-body">
-            <p class="ba-maac-unsaved-text">Save your MAAC changes before leaving edit mode, or cancel to discard them.</p>
+            <p class="ba-maac-unsaved-text">You have made changes that have not been saved. Do you want to discard the changes or save the draft?</p>
           </div>
           <div class="ba-modal-footer ba-maac-unsaved-actions">
-            <button type="button" class="ba-btn" id="ba-maac-unsaved-discard">Yes, Cancel</button>
-            <button type="button" class="ba-btn ba-btn-success" id="ba-maac-unsaved-save">Save</button>
+            <button type="button" class="ba-btn" id="ba-maac-unsaved-discard">Confirm Cancel</button>
+            <button type="button" class="ba-btn ba-btn-success" id="ba-maac-unsaved-save">Save Draft</button>
           </div>
         </div>
       </div>`;
@@ -2721,7 +2680,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div id="ba-maac-table-section">${renderTable()}</div>
           </div>
         </div>
-      </div>${renderTrendModalFixed()}${renderTicketModal()}${renderUnsavedChangesModal()}
+      </div>${renderTrendModalFixed()}${renderTicketModal()}
     `;
 
     bindEvents();
@@ -2863,27 +2822,62 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function markMaacDraftChanged() {
-    if (state.editMode) {
-      state.hasUnsavedChanges = true;
-    }
+    refreshMaacDraftChanged();
   }
 
   function discardMaacDraftChanges() {
     state.editMode = false;
     state.hasUnsavedChanges = false;
-    state.unsavedChangesModal = false;
+    closeUnsavedChangesModal();
     state.customDraft = buildDraft(state.data?.students || []);
-    renderPage();
+    state.originalCustomDraft = cloneMaacDraft(state.customDraft);
+    renderPagePreservingScroll();
   }
 
   function openUnsavedChangesModal() {
     state.unsavedChangesModal = true;
-    renderPage();
+    if (!document.getElementById("ba-maac-unsaved-modal")) {
+      document.body.insertAdjacentHTML("beforeend", renderUnsavedChangesModal());
+      const modal = document.getElementById("ba-maac-unsaved-modal");
+      const closeButton = document.getElementById("ba-maac-unsaved-close");
+
+      closeButton?.addEventListener("click", closeUnsavedChangesModal);
+      modal?.addEventListener("click", (event) => {
+        if (event.target === modal) {
+          closeUnsavedChangesModal();
+          return;
+        }
+
+        const button = event.target.closest("#ba-maac-unsaved-discard, #ba-maac-unsaved-save");
+        if (!button || button.disabled) {
+          return;
+        }
+
+        event.preventDefault();
+        if (button.id === "ba-maac-unsaved-discard") {
+          discardMaacDraftChanges();
+          return;
+        }
+
+        saveData({ source: "unsaved-modal" }).catch((error) => {
+          showMessage(error.message || "Unable to save MAAC values", "error");
+        });
+      });
+      document.addEventListener("keydown", handleUnsavedChangesModalKeydown);
+    }
+  }
+
+  function handleUnsavedChangesModalKeydown(event) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeUnsavedChangesModal();
+    }
   }
 
   function closeUnsavedChangesModal() {
     state.unsavedChangesModal = false;
-    renderPage();
+    document.getElementById("ba-maac-unsaved-modal")?.remove();
+    document.removeEventListener("keydown", handleUnsavedChangesModalKeydown);
   }
 
   function bindEvents() {
@@ -2915,29 +2909,6 @@ document.addEventListener("DOMContentLoaded", function () {
         renderPage();
       });
     }
-
-    const addFilterBtn = document.getElementById("ba-maac-add-filter-btn");
-    if (addFilterBtn) {
-      addFilterBtn.addEventListener("click", () => {
-        const select = document.getElementById("ba-maac-add-filter");
-        if (!select || !select.value) {
-          return;
-        }
-        if (!state.activeFilters.includes(select.value)) {
-          state.activeFilters.push(select.value);
-        }
-        renderPage();
-      });
-    }
-
-    document.querySelectorAll("[data-remove-filter]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.activeFilters = state.activeFilters.filter(
-          (item) => item !== button.dataset.removeFilter,
-        );
-        renderPage();
-      });
-    });
 
     document.querySelectorAll("[data-filter-key]").forEach((el) => {
       const eventName =
@@ -3027,6 +2998,55 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
+    // The MAAC action buttons are recreated whenever the table is rendered.
+    // Delegate their actions to the stable app container so Cancel always works.
+    if (!app._maacActionsBound) {
+      app._maacActionsBound = true;
+      app.addEventListener("click", (event) => {
+        const button = event.target.closest(
+          "#ba-maac-edit, #ba-maac-cancel, #ba-maac-save, #ba-maac-unsaved-discard, #ba-maac-unsaved-save",
+        );
+        if (!button || !app.contains(button) || button.disabled) {
+          return;
+        }
+
+        event.preventDefault();
+        if (button.id === "ba-maac-edit") {
+          state.editMode = true;
+          state.hasUnsavedChanges = false;
+          state.unsavedChangesModal = false;
+          state.customDraft = buildDraft(state.data.students || []);
+          renderPagePreservingScroll();
+          // The initial edit render adds empty values for unfilled columns.
+          // Capture that rendered state so Cancel only detects real user edits.
+          state.originalCustomDraft = cloneMaacDraft(state.customDraft);
+          return;
+        }
+
+        if (button.id === "ba-maac-cancel") {
+          syncDraftFromInputs();
+          refreshMaacDraftChanged();
+          if (state.hasUnsavedChanges) {
+            openUnsavedChangesModal();
+          } else {
+            discardMaacDraftChanges();
+          }
+          return;
+        }
+
+        if (button.id === "ba-maac-unsaved-discard") {
+          discardMaacDraftChanges();
+          return;
+        }
+
+        if (button.id === "ba-maac-save" || button.id === "ba-maac-unsaved-save") {
+          saveData({ source: button.id === "ba-maac-unsaved-save" ? "unsaved-modal" : "" }).catch((error) => {
+            showMessage(error.message || "Unable to save MAAC values", "error");
+          });
+        }
+      });
+    }
+
     const trendModal = document.getElementById("ba-trend-modal");
     if (trendModal) {
       trendModal.addEventListener("click", (event) => {
@@ -3041,20 +3061,6 @@ document.addEventListener("DOMContentLoaded", function () {
       trendCloseBtn.addEventListener("click", closeTrendModal);
     }
 
-    const unsavedDiscardBtn = document.getElementById("ba-maac-unsaved-discard");
-    if (unsavedDiscardBtn) {
-      unsavedDiscardBtn.addEventListener("click", discardMaacDraftChanges);
-    }
-
-    const unsavedSaveBtn = document.getElementById("ba-maac-unsaved-save");
-    if (unsavedSaveBtn) {
-      unsavedSaveBtn.addEventListener("click", () => {
-        saveData({ source: "unsaved-modal" }).catch((error) => {
-          showMessage(error.message || "Unable to save MAAC values", "error");
-        });
-      });
-    }
-
     bindTableEvents();
   }
 
@@ -3065,36 +3071,6 @@ document.addEventListener("DOMContentLoaded", function () {
         state.tableScroll.left = tableWrap.scrollLeft;
         state.tableScroll.top = tableWrap.scrollTop;
       });
-    }
-
-    const editBtn = document.getElementById("ba-maac-edit");
-    if (editBtn && editBtn.dataset.bound !== "1") {
-      editBtn.dataset.bound = "1";
-      editBtn.addEventListener("click", () => {
-        state.editMode = true;
-        state.hasUnsavedChanges = false;
-        state.unsavedChangesModal = false;
-        state.customDraft = buildDraft(state.data.students || []);
-        renderPage();
-      });
-    }
-
-    const cancelBtn = document.getElementById("ba-maac-cancel");
-    if (cancelBtn && cancelBtn.dataset.bound !== "1") {
-      cancelBtn.dataset.bound = "1";
-      cancelBtn.addEventListener("click", () => {
-        if (state.hasUnsavedChanges) {
-          openUnsavedChangesModal();
-          return;
-        }
-        discardMaacDraftChanges();
-      });
-    }
-
-    const saveBtn = document.getElementById("ba-maac-save");
-    if (saveBtn && saveBtn.dataset.bound !== "1") {
-      saveBtn.dataset.bound = "1";
-      saveBtn.addEventListener("click", saveData);
     }
 
     document.querySelectorAll(".ba-maac-input").forEach((input) => {
@@ -3944,7 +3920,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function resetFilters() {
     state.filterValues = buildDefaultFilters(state.data);
-    state.activeFilters = [];
     const search = document.getElementById("ba-maac-search");
     const courseGroup = document.getElementById("ba-maac-course-group");
     const metricToggle = document.getElementById("ba-maac-metric-toggle");
@@ -4050,8 +4025,9 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       state.hasUnsavedChanges = false;
-      state.unsavedChangesModal = false;
+      closeUnsavedChangesModal();
       showMessage("MAAC values updated", "success");
+      state.pendingScrollRestore = captureScrollSnapshot();
       await loadData();
       return true;
     } catch (error) {

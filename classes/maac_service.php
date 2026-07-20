@@ -472,7 +472,7 @@ class maac_service {
             'tostatus' => $this->normalise_ticket_status((string)$ticket->status),
             'feedback' => 'Escalated to PM' . ($batchmanager ? ': ' . fullname($batchmanager) : ''),
         ]);
-        $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, $userid);
+        $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, $userid, 'auto_pm');
 
         $access = $this->build_ticket_access_scope($userid);
         $formatted = $this->get_formatted_ticket_dashboard_record($ticketid, $userid, $access);
@@ -937,6 +937,8 @@ class maac_service {
             foreach ($categories as $categoryname => $categorydata) {
                 $totalearned = 0.0;
                 $totalmax = 0.0;
+                $itemscompleted = 0;
+                $totalitems = count($categorydata['items']);
 
                 foreach ($categorydata['items'] as $item) {
                     $itemid = $item['itemid'];
@@ -944,6 +946,7 @@ class maac_service {
                         continue;
                     }
 
+                    $itemscompleted++;
                     $totalearned += $gradesmap[$student->userid][$itemid];
                     if ($item['grademax'] > 0) {
                         $totalmax += $item['grademax'];
@@ -956,8 +959,8 @@ class maac_service {
                     continue;
                 }
 
-                if ($percentage !== null) {
-                    $performancevalues[] = $percentage;
+                if ($totalitems > 0) {
+                    $performancevalues[] = round(($itemscompleted / $totalitems) * 100, 2);
                 }
             }
 

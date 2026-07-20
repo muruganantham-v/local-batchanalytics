@@ -89,14 +89,14 @@ class cliq_service {
      * @return string
      */
     public static function get_default_ticket_auto_pm_subject(): string {
-        return 'Notification: MAAC ticket auto assigned to PM - {{ticket_title}}';
+        return 'Notification: MAAC ticket assigned to PM - {{ticket_title}}';
     }
 
     /**
      * @return string
      */
     public static function get_default_ticket_auto_pm_body(): string {
-        return "*A MAAC ticket has been auto assigned to PM manager.*\n\n"
+        return "*Assign ticket to PM manager.*\n\n"
             . "- Batch: {{batch_name}}\n"
             . "- Course: {{course_name}}\n"
             . "- Student: {{student_name}}\n"

@@ -968,6 +968,27 @@
   overflow-y: auto;
 }
 
+.ba-maac-unsaved-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.ba-maac-unsaved-dialog .ba-modal-body {
+  padding: 22px 24px 12px;
+  overflow: visible;
+}
+
+.ba-maac-unsaved-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ba-maac-unsaved-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px 24px;
+}
+
 /* ==================== 12. STICKY TABLES ==================== */
 .table-scroll {
   max-height: 500px;
@@ -1811,6 +1832,12 @@ input:checked+.ba-slider:before {
 .ba-maac-section .ba-maac-filter-sidebar {
   align-self: flex-start;
   box-sizing: border-box;
+  flex: 0 0 320px;
+  width: 320px;
+  min-width: 0;
+  padding: 16px;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
   display: flex;
   flex-direction: column;
   height: var(--ba-maac-performance-height);
@@ -1825,10 +1852,162 @@ input:checked+.ba-slider:before {
 
 .ba-maac-section .ba-maac-filter-grid {
   flex: 1 1 auto;
+  display: block;
+  min-width: 0;
+  width: 100%;
   min-height: 0;
   max-height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
+}
+
+.ba-maac-section .ba-maac-filter-grid > .ba-filter-item-modern {
+  box-sizing: border-box;
+  width: 100%;
+  overflow: visible;
+}
+
+.ba-maac-section .ba-maac-filter-grid > .ba-filter-toggle {
+  margin-bottom: 12px;
+}
+
+.ba-maac-section .ba-filter-item-modern input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  outline: none;
+}
+
+.ba-maac-section .ba-filter-item-modern input[type="text"]::placeholder {
+  color: #94a3b8;
+}
+
+.ba-maac-section .ba-filter-item-modern input[type="text"]:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.ba-maac-section .ba-maac-dynamic-filter,
+.ba-maac-section .ba-maac-filter-item,
+.ba-maac-section .ba-maac-filter-checkbox,
+.ba-maac-section .ba-maac-filter-checkbox span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ba-maac-section .ba-maac-dynamic-filter {
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ba-maac-section .ba-sidebar-head {
+  flex: 0 0 auto;
+  margin-bottom: 2px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ba-maac-section .ba-filter-toggle {
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ba-maac-section .ba-toggle-wrapper {
+  min-width: 0;
+  gap: 6px;
+}
+
+.ba-maac-section .ba-maac-filter-item {
+  margin: 0;
+}
+
+.ba-maac-section .ba-filter-header-row {
+  min-height: 16px;
+  margin-bottom: 7px;
+}
+
+.ba-maac-section .ba-filter-label {
+  font-size: 12px;
+}
+
+.ba-maac-section .ba-maac-filter-item label {
+  margin-bottom: 4px;
+}
+
+.ba-maac-section .ba-maac-filter-item input:not(.ba-range-input),
+.ba-maac-section .ba-maac-filter-item select {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.ba-maac-section .ba-maac-filter-checkbox span,
+.ba-maac-section .ba-filter-label,
+.ba-maac-section .ba-maac-filter-item label {
+  overflow-wrap: anywhere;
+}
+
+.ba-maac-section .ba-maac-filter-item input:not(.ba-range-input),
+.ba-maac-section .ba-maac-filter-item select {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.ba-maac-section .ba-maac-filter-item .ba-range-wrapper {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: 7px;
+}
+
+.ba-maac-section .ba-maac-filter-item .ba-range-input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+}
+
+.ba-maac-section .ba-maac-filter-item .ba-range-divider {
+  flex: 0 0 auto;
+  color: #94a3b8;
+}
+
+.ba-maac-section .ba-maac-filter-item .ba-range-wrapper > select {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto !important;
+}
+
+.ba-maac-section .ba-maac-filter-item .ba-range-wrapper > .ba-btn {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.ba-maac-section .ba-maac-filter-checkbox-list {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  max-height: 128px;
+  padding: 6px 8px;
+  border-radius: 6px;
 }
 
 @media (max-width: 1024px) {
@@ -1850,6 +2029,8 @@ input:checked+.ba-slider:before {
 
   .ba-maac-section .ba-maac-filter-sidebar {
     display: grid;
+    width: 100%;
+    flex-basis: auto;
     height: auto;
     max-height: none;
     overflow: visible;
