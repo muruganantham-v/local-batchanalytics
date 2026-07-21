@@ -5676,3 +5676,22 @@ input:checked+.ba-slider:before {
   border-top: 1px solid #e2e8f0;
   background: #fff;
 }
+
+/* Preserve the author-entered line breaks in ticket feedback. */
+.ba-ticket-note-card-body,
+.ba-ticket-resolved-grid .ba-ticket-info-value,
+.ba-maac-ticket-timeline-details li,
+.ba-maac-latest-feedback-text,
+.ba-maac-ticket-history-update-row {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the MAAC table compact while the modal retains the full feedback. */
+.ba-maac-latest-feedback-text {
+  display: -webkit-box;
+  max-height: 2.8em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}

@@ -241,7 +241,7 @@ class maac_service {
 
             $msg = new \core\message\message();
             $msg->component = 'local_batchanalytics';
-            $msg->name = 'ticket_update';
+            $msg->name = 'ticket_raised';
             $msg->userfrom = $userfrom;
             $msg->subject = "New Ticket Raised: " . format_string($tickettitle);
             $msg->fullmessage = "A new ticket has been raised.\n\nTitle: " . $tickettitle . "\nReason: " . $ticketreason;
@@ -249,7 +249,7 @@ class maac_service {
             $msg->fullmessagehtml = "<p>A new ticket has been raised.</p><p><strong>Title:</strong> " . s($tickettitle) . "</p><p><strong>Reason:</strong> " . s($ticketreason) . "</p>";
             $msg->smallmessage = "New ticket raised: " . $tickettitle;
 
-            if ($ssteamuser && $ssteamuser->id != $userid) {
+            if ($userfrom && $ssteamuser && $ssteamuser->id != $userid) {
                 $msg->userto = $ssteamuser;
                 message_send($msg);
             }
@@ -515,7 +515,7 @@ class maac_service {
                    AND t.timeresolved = 0
                    AND t.resolvedby = 0
                    AND t.timecreated <= :cutoff
-                   AND LOWER(t.status) IN (:openstatus, :ssstatus, :oldprogressstatus)
+                   AND t.status IN (:openstatus, :ssstatus, :oldprogressstatus)
               ORDER BY t.timecreated ASC";
 
         $tickets = [];
@@ -641,7 +641,7 @@ class maac_service {
             throw new \moodle_exception('ticket_already_resolved', 'local_batchanalytics');
         }
 
-        $cleanfeedback = clean_param(trim((string)($payload['feedback'] ?? '')), PARAM_TEXT);
+        $cleanfeedback = clean_param(trim((string)($payload['feedback'] ?? '')), PARAM_RAW_TRIMMED);
         if ($cleanfeedback === '') {
             throw new \moodle_exception('ticket_feedback_required', 'local_batchanalytics');
         }
@@ -716,7 +716,8 @@ class maac_service {
                     // Ignore messaging errors
                 }
             }
-            $this->send_ticket_update_cliq_notification($ticket, $userid);
+            $messagetype = $statuskey === 'resolved' ? 'resolved' : 'update';
+            $this->send_ticket_update_cliq_notification($ticket, $userid, $messagetype);
         }
 
         return [
@@ -768,7 +769,7 @@ class maac_service {
         $studentssql = "
             SELECT DISTINCT
                 u.id AS userid,
-                CONCAT(u.firstname, ' ', u.lastname) AS fullname,
+                " . $DB->sql_fullname('u.firstname', 'u.lastname') . " AS fullname,
                 u.username,
                 u.email
             FROM {user} u
@@ -1502,42 +1503,6 @@ class maac_service {
         return round($percentage, 1);
     }
 
-    /**
-     * @param array $points
-     * @return float|null
-     */
-    private function calculate_trend_change(array $points): ?float {
-        $count = count($points);
-        if ($count === 0) {
-            return null;
-        }
-
-        if ($count === 1) {
-            return 0.0;
-        }
-
-        if ($count < 4) {
-            $first = (float)$points[0]['grade'];
-            $last = (float)$points[$count - 1]['grade'];
-            return $last - $first;
-        }
-
-        $split = (int)floor($count / 2);
-        $older = array_slice($points, 0, $split);
-        $recent = array_slice($points, $split);
-        if (empty($older) || empty($recent)) {
-            return null;
-        }
-
-        $olderavg = array_sum(array_map(static function(array $point): float {
-            return (float)$point['grade'];
-        }, $older)) / count($older);
-        $recentavg = array_sum(array_map(static function(array $point): float {
-            return (float)$point['grade'];
-        }, $recent)) / count($recent);
-
-        return $recentavg - $olderavg;
-    }
 
     /**
      * @param float|null $change
@@ -1582,17 +1547,60 @@ class maac_service {
      * @return array
      */
     private function get_formatted_ticket_dashboard_record(int $ticketid, int $userid, array $access): array {
-        $records = $this->get_ticket_dashboard_records($userid, $access);
-        foreach ($records as $record) {
-            if ((int)$record->id === $ticketid) {
-                $formatted = $this->format_ticket_dashboard_record($record, $userid, $access);
-                $timeline = $this->get_ticket_timeline_events([$ticketid]);
-                $formatted['timeline'] = $timeline[$ticketid] ?? [];
-                return $formatted;
-            }
+        $record = $this->get_ticket_dashboard_record($ticketid, $userid, $access);
+        if ($record) {
+            $formatted = $this->format_ticket_dashboard_record($record, $userid, $access);
+            $timeline = $this->get_ticket_timeline_events([$ticketid]);
+            $formatted['timeline'] = $timeline[$ticketid] ?? [];
+            return $formatted;
         }
 
         return [];
+    }
+
+    /**
+     * @param int $ticketid
+     * @param int $userid
+     * @param array $access
+     * @return \stdClass|null
+     */
+    private function get_ticket_dashboard_record(int $ticketid, int $userid, array $access): ?\stdClass {
+        global $DB;
+
+        $params = ['ticketid' => $ticketid];
+        $wheresql = 'WHERE t.id = :ticketid';
+        if (empty($access['canviewall'])) {
+            $visiblecourseids = array_keys($access['visiblecourseids'] ?? []);
+            if (empty($visiblecourseids)) {
+                return null;
+            }
+            list($insql, $inparams) = $DB->get_in_or_equal($visiblecourseids, SQL_PARAMS_NAMED, 'ticketcourse');
+            $wheresql .= " AND t.courseid $insql";
+            $params = array_merge($params, $inparams);
+        }
+
+        $sql = "SELECT t.*,
+                       c.fullname AS coursename,
+                       c.shortname AS courseshortname,
+                       " . $DB->sql_fullname('stu.firstname', 'stu.lastname') . " AS studentfullname,
+                       stu.username AS studentusername,
+                       stu.email AS studentemail,
+                       " . $DB->sql_fullname('cb.firstname', 'cb.lastname') . " AS createdbyfullname,
+                       cb.email AS createdbyemail,
+                       " . $DB->sql_fullname('ss.firstname', 'ss.lastname') . " AS ssteamfullname,
+                       " . $DB->sql_fullname('bm.firstname', 'bm.lastname') . " AS batchmanagerfullname,
+                       " . $DB->sql_fullname('rb.firstname', 'rb.lastname') . " AS resolvedbyfullname
+                  FROM {local_batchanalytics_ticket} t
+             LEFT JOIN {course} c ON c.id = t.courseid
+             LEFT JOIN {user} stu ON stu.id = t.studentuserid AND stu.deleted = 0
+             LEFT JOIN {user} cb ON cb.id = t.createdby AND cb.deleted = 0
+             LEFT JOIN {user} ss ON ss.id = t.ssteamuserid AND ss.deleted = 0
+             LEFT JOIN {user} bm ON bm.id = t.batchmanageruserid AND bm.deleted = 0
+             LEFT JOIN {user} rb ON rb.id = t.resolvedby AND rb.deleted = 0
+                  $wheresql";
+
+        $record = $DB->get_record_sql($sql, $params);
+        return $record ?: null;
     }
 
     /**
@@ -1632,21 +1640,21 @@ class maac_service {
         $sql = "SELECT t.*,
                        c.fullname AS coursename,
                        c.shortname AS courseshortname,
-                       CONCAT(stu.firstname, ' ', stu.lastname) AS studentfullname,
+                       " . $DB->sql_fullname('stu.firstname', 'stu.lastname') . " AS studentfullname,
                        stu.username AS studentusername,
                        stu.email AS studentemail,
-                       CONCAT(cb.firstname, ' ', cb.lastname) AS createdbyfullname,
+                       " . $DB->sql_fullname('cb.firstname', 'cb.lastname') . " AS createdbyfullname,
                        cb.email AS createdbyemail,
-                       CONCAT(ss.firstname, ' ', ss.lastname) AS ssteamfullname,
-                       CONCAT(bm.firstname, ' ', bm.lastname) AS batchmanagerfullname,
-                       CONCAT(rb.firstname, ' ', rb.lastname) AS resolvedbyfullname
+                       " . $DB->sql_fullname('ss.firstname', 'ss.lastname') . " AS ssteamfullname,
+                       " . $DB->sql_fullname('bm.firstname', 'bm.lastname') . " AS batchmanagerfullname,
+                       " . $DB->sql_fullname('rb.firstname', 'rb.lastname') . " AS resolvedbyfullname
                   FROM {local_batchanalytics_ticket} t
              LEFT JOIN {course} c ON c.id = t.courseid
-             LEFT JOIN {user} stu ON stu.id = t.studentuserid
-             LEFT JOIN {user} cb ON cb.id = t.createdby
-             LEFT JOIN {user} ss ON ss.id = t.ssteamuserid
-             LEFT JOIN {user} bm ON bm.id = t.batchmanageruserid
-             LEFT JOIN {user} rb ON rb.id = t.resolvedby
+             LEFT JOIN {user} stu ON stu.id = t.studentuserid AND stu.deleted = 0
+             LEFT JOIN {user} cb ON cb.id = t.createdby AND cb.deleted = 0
+             LEFT JOIN {user} ss ON ss.id = t.ssteamuserid AND ss.deleted = 0
+             LEFT JOIN {user} bm ON bm.id = t.batchmanageruserid AND bm.deleted = 0
+             LEFT JOIN {user} rb ON rb.id = t.resolvedby AND rb.deleted = 0
                   $wheresql
               ORDER BY t.timecreated DESC, t.id DESC";
 
@@ -1750,14 +1758,7 @@ class maac_service {
         return (string)end($parts);
     }
 
-    /**
-     * @param int $userid
-     * @return bool
-     */
-    private function can_manage_all(int $userid): bool {
-        $context = \context_system::instance();
-        return is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
-    }
+    // Centralized in moodledata::can_manage_all
 
     /**
      * @param int $courseid
@@ -1765,7 +1766,7 @@ class maac_service {
      * @return bool
      */
     private function can_view_maac_data(int $courseid, int $userid): bool {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return true;
         }
 
@@ -1782,7 +1783,7 @@ class maac_service {
      * @return bool
      */
     private function can_view_tickets_for_course(int $courseid, int $userid): bool {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return true;
         }
 
@@ -1800,7 +1801,7 @@ class maac_service {
      * @return bool
      */
     private function can_manage_tickets_for_course(int $courseid, int $userid): bool {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return true;
         }
 
@@ -1813,7 +1814,7 @@ class maac_service {
      * @return bool
      */
     private function can_manage_escalated_tickets_for_course(int $courseid, int $userid): bool {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return true;
         }
 
@@ -1863,7 +1864,7 @@ class maac_service {
      * @return array
      */
     private function build_ticket_access_scope(int $userid): array {
-        $canmanageall = $this->can_manage_all($userid);
+        $canmanageall = moodledata::can_manage_all($userid);
         $visiblecourseids = $this->get_accessible_ticket_course_ids($userid, false);
         $manageablecourseids = $this->get_accessible_ticket_course_ids($userid, true);
         $escalatedmanagercourseids = $this->get_accessible_escalated_ticket_course_ids($userid);
@@ -1984,7 +1985,7 @@ class maac_service {
      * @return array
      */
     private function get_accessible_ticket_course_ids(int $userid, bool $manageonly = false): array {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return [];
         }
 
@@ -2023,7 +2024,7 @@ class maac_service {
      * @return array
      */
     private function get_accessible_escalated_ticket_course_ids(int $userid): array {
-        if ($this->can_manage_all($userid)) {
+        if (moodledata::can_manage_all($userid)) {
             return [];
         }
 
@@ -2243,7 +2244,7 @@ class maac_service {
         foreach ($chunks as $chunk) {
             list($insql, $params) = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
             $sql = "SELECT e.*,
-                           CONCAT(u.firstname, ' ', u.lastname) AS actorfullname
+                           " . $DB->sql_fullname('u.firstname', 'u.lastname') . " AS actorfullname
                       FROM {local_batchanalytics_ticket_event} e
                  LEFT JOIN {user} u ON u.id = e.userid
                      WHERE e.ticketid $insql
@@ -2410,7 +2411,12 @@ class maac_service {
             return false;
         }
 
-        if ((time() - (int)($ticket->timecreated ?? 0)) > DAYSECS) {
+        $editwindowhours = (int)get_config('local_batchanalytics', 'ticket_edit_window_hours');
+        if ($editwindowhours <= 0) {
+            $editwindowhours = 24;
+        }
+        $editwindowsecs = $editwindowhours * HOURSECS;
+        if ((time() - (int)($ticket->timecreated ?? 0)) > $editwindowsecs) {
             return false;
         }
 
@@ -2450,9 +2456,9 @@ class maac_service {
                        t.timemodified,
                        t.timeresolved,
                        t.timecreated,
-                       CONCAT(ss.firstname, ' ', ss.lastname) AS ssteamfullname,
-                       CONCAT(bm.firstname, ' ', bm.lastname) AS batchmanagerfullname,
-                       CONCAT(rb.firstname, ' ', rb.lastname) AS resolvedbyfullname
+                       " . $DB->sql_fullname('ss.firstname', 'ss.lastname') . " AS ssteamfullname,
+                       " . $DB->sql_fullname('bm.firstname', 'bm.lastname') . " AS batchmanagerfullname,
+                       " . $DB->sql_fullname('rb.firstname', 'rb.lastname') . " AS resolvedbyfullname
                   FROM {local_batchanalytics_ticket} t
              LEFT JOIN {user} ss ON ss.id = t.ssteamuserid
              LEFT JOIN {user} bm ON bm.id = t.batchmanageruserid
@@ -2496,15 +2502,8 @@ class maac_service {
      */
     private function send_ticket_raise_cliq_notification(\stdClass $ticket, array $ticketmeta): void {
         try {
-            $recipients = [];
-            foreach ($ticketmeta['ss_team_users'] ?? [] as $user) {
-                if ((int)($user['id'] ?? 0) === (int)$ticket->ssteamuserid) {
-                    $recipients[] = $user;
-                }
-            }
-            foreach ($ticketmeta['batch_manager_users'] ?? [] as $user) {
-                $recipients[] = $user;
-            }
+            $recipients = array_values($ticketmeta['ss_team_users'] ?? []);
+            $recipients = array_merge($recipients, array_values($ticketmeta['batch_manager_users'] ?? []));
             if (empty($recipients)) {
                 return;
             }
@@ -2520,7 +2519,7 @@ class maac_service {
      * @param int $updatedby
      * @return void
      */
-    private function send_ticket_update_cliq_notification(\stdClass $ticket, int $updatedby): void {
+    private function send_ticket_update_cliq_notification(\stdClass $ticket, int $updatedby, string $messagetype = 'update'): void {
         try {
             $createdby = (int)($ticket->createdby ?? 0);
             if ($createdby <= 0 || $createdby === $updatedby) {
@@ -2532,7 +2531,7 @@ class maac_service {
             }
             $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
             $service = new cliq_service();
-            $service->send_ticket_message('update', $ticket, [$recipient], ['updatedby' => $updatedbyuser ?: null]);
+            $service->send_ticket_message($messagetype, $ticket, [$recipient], ['updatedby' => $updatedbyuser ?: null]);
         } catch (\Throwable $e) {
             // Cliq delivery must not block ticket updates.
         }
@@ -2648,7 +2647,7 @@ class maac_service {
         $sql = "
             SELECT DISTINCT
                 u.id,
-                CONCAT(u.firstname, ' ', u.lastname) AS fullname,
+                " . $DB->sql_fullname('u.firstname', 'u.lastname') . " AS fullname,
                 u.username,
                 u.email
             FROM {user} u
@@ -2718,11 +2717,14 @@ class maac_service {
             return [];
         }
 
-        $dbman = $DB->get_manager();
-        if (
-            !$dbman->table_exists(new \xmldb_table('spotaward_nomination_items')) ||
-            !$dbman->table_exists(new \xmldb_table('spotaward_nominations'))
-        ) {
+        static $tablesexist = null;
+        if ($tablesexist === null) {
+            $dbman = $DB->get_manager();
+            $tablesexist = $dbman->table_exists(new \xmldb_table('spotaward_nomination_items')) &&
+                           $dbman->table_exists(new \xmldb_table('spotaward_nominations'));
+        }
+
+        if (!$tablesexist) {
             return [];
         }
 
@@ -3023,11 +3025,4 @@ class maac_service {
      * @param string $type
      * @return bool
      */
-    private function is_truthy_value($value, string $type): bool {
-        if ($type === 'boolean') {
-            return (string)$value === '1' || $value === 1 || $value === true;
-        }
-
-        return !empty($value);
-    }
 }

@@ -35,7 +35,7 @@ class moodledata
      * @param int $userid
      * @return bool
      */
-    private function can_manage_all(int $userid): bool {
+    public static function can_manage_all(int $userid): bool {
         $context = \context_system::instance();
         return is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
     }
@@ -48,7 +48,7 @@ class moodledata
      */
     private function can_view_all_courses(int $userid): bool {
         $context = \context_system::instance();
-        return $this->can_manage_all($userid) || has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+        return self::can_manage_all($userid) || has_capability('local/batchanalytics:viewallcourses', $context, $userid);
     }
 
     /**

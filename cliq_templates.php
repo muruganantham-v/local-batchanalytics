@@ -59,6 +59,16 @@ if (optional_param('submitbutton', '', PARAM_RAW) !== '') {
         'local_batchanalytics'
     );
     set_config(
+        'cliq_ticket_resolved_subject',
+        optional_param('cliq_ticket_resolved_subject', '', PARAM_RAW_TRIMMED),
+        'local_batchanalytics'
+    );
+    set_config(
+        'cliq_ticket_resolved_body',
+        optional_param('cliq_ticket_resolved_body', '', PARAM_RAW),
+        'local_batchanalytics'
+    );
+    set_config(
         'cliq_ticket_auto_pm_subject',
         optional_param('cliq_ticket_auto_pm_subject', '', PARAM_RAW_TRIMMED),
         'local_batchanalytics'
@@ -80,6 +90,8 @@ $raise_subject = get_config('local_batchanalytics', 'cliq_ticket_raise_subject')
 $raise_body = get_config('local_batchanalytics', 'cliq_ticket_raise_body');
 $update_subject = get_config('local_batchanalytics', 'cliq_ticket_update_subject');
 $update_body = get_config('local_batchanalytics', 'cliq_ticket_update_body');
+$resolved_subject = get_config('local_batchanalytics', 'cliq_ticket_resolved_subject');
+$resolved_body = get_config('local_batchanalytics', 'cliq_ticket_resolved_body');
 $autopm_subject = get_config('local_batchanalytics', 'cliq_ticket_auto_pm_subject');
 $autopm_body = get_config('local_batchanalytics', 'cliq_ticket_auto_pm_body');
 
@@ -94,6 +106,12 @@ if (trim((string)$update_subject) === '') {
 }
 if (trim((string)$update_body) === '') {
     $update_body = \local_batchanalytics\cliq_service::get_default_ticket_update_body();
+}
+if (trim((string)$resolved_subject) === '') {
+    $resolved_subject = \local_batchanalytics\cliq_service::get_default_ticket_resolved_subject();
+}
+if (trim((string)$resolved_body) === '') {
+    $resolved_body = \local_batchanalytics\cliq_service::get_default_ticket_resolved_body();
 }
 if (trim((string)$autopm_subject) === '') {
     $autopm_subject = \local_batchanalytics\cliq_service::get_default_ticket_auto_pm_subject();
@@ -186,6 +204,14 @@ $form .= local_batchanalytics_render_cliq_template_section(
     $update_subject,
     'cliq_ticket_update_body',
     $update_body,
+    true
+);
+$form .= local_batchanalytics_render_cliq_template_section(
+    get_string('cliq_ticket_resolved_template', 'local_batchanalytics'),
+    'cliq_ticket_resolved_subject',
+    $resolved_subject,
+    'cliq_ticket_resolved_body',
+    $resolved_body,
     true
 );
 $form .= local_batchanalytics_render_cliq_template_section(

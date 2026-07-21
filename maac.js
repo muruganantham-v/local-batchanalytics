@@ -1559,7 +1559,11 @@ document.addEventListener("DOMContentLoaded", function () {
       </td>`;
     }
 
-    if (column.key === "maac_rating" || column.system) {
+    if (column.key === "maac_rating") {
+      return `<td>${renderScoreBadge(value, { scale: 10, decimals: 1 })}</td>`;
+    }
+
+    if (column.system) {
       return `<td>${renderReadOnlyCustomValue(value, column)}</td>`;
     }
 
@@ -2636,6 +2640,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const avgMaac = maacCount > 0 ? (totalMaac / maacCount).toFixed(1) : "-";
     const avgPerf = perfCount > 0 ? Math.round(totalPerf / perfCount) : "-";
+    const trendStudentCount = trendCounts.stable + trendCounts.declining + trendCounts.improving;
+    const trendPercentage = (count) => trendStudentCount > 0 ? Math.round((count / trendStudentCount) * 100) : 0;
     const spotAwardStudents = (state.data.students || []).filter((student) => {
       const value = student.custom?.spot_awards_nomination;
       const list = normalizeDisplayList(value);
@@ -2661,7 +2667,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 <span class="ba-maac-ticket-pill-separator">|</span>
                 <span class="ba-maac-ticket-pill-closed">Closed : ${ticketCounts.closed}</span>
               </span>
-              <span class="ba-ch-badge avg">Trends: Improving ${trendCounts.improving} | Declining ${trendCounts.declining} | Stable ${trendCounts.stable}</span>
+              <span class="ba-ch-badge avg">Trends: Improving ${trendPercentage(trendCounts.improving)}% | Declining ${trendPercentage(trendCounts.declining)}% | Stable ${trendPercentage(trendCounts.stable)}%</span>
             </div>
           </div>
           <div class="ba-ch-right">

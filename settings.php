@@ -23,14 +23,13 @@ require_once(__DIR__ . '/classes/admin_setting_mentor_crm_field_groups.php');
 
 global $DB;
 
-$roleoptions = [0 => get_string('none')];
-$roles = $DB->get_records('role', null, 'sortorder ASC, shortname ASC', 'id, shortname, name');
-foreach ($roles as $role) {
-    $label = trim($role->shortname . (!empty($role->name) ? ' - ' . $role->name : ''));
-    $roleoptions[(int)$role->id] = $label !== '' ? $label : (string)$role->id;
-}
-
 if ($hassiteconfig) {
+    $roleoptions = [0 => get_string('none')];
+    $roles = $DB->get_records('role', null, 'sortorder ASC, shortname ASC', 'id, shortname, name');
+    foreach ($roles as $role) {
+        $label = trim($role->shortname . (!empty($role->name) ? ' - ' . $role->name : ''));
+        $roleoptions[(int)$role->id] = $label !== '' ? $label : (string)$role->id;
+    }
     $settings = new admin_settingpage('local_batchanalytics', get_string('pluginname', 'local_batchanalytics'));
 
     $settings->add(new admin_setting_heading(
@@ -194,16 +193,18 @@ if ($hassiteconfig) {
             'local-batchanalytics-ticket-template-actions'
         )
     ));
-    // $settings->add(new admin_setting_heading(
-    //     'local_batchanalytics/auto_assign_ticket_to_pm_manager',
-    //     get_string('auto_assign_ticket_to_pm_manager', 'local_batchanalytics'),
-    //     ''
-    // ));
     $settings->add(new admin_setting_configtext(
         'local_batchanalytics/ticket_duration_days',
         get_string('ticket_duration', 'local_batchanalytics'),
         get_string('ticket_duration_desc', 'local_batchanalytics'),
         '0',
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/ticket_edit_window_hours',
+        get_string('ticket_edit_window_hours', 'local_batchanalytics'),
+        get_string('ticket_edit_window_hours_desc', 'local_batchanalytics'),
+        '24',
         PARAM_INT
     ));
 

@@ -88,6 +88,14 @@ class cliq_service {
     /**
      * @return string
      */
+    public static function get_default_ticket_resolved_subject(): string {
+        return 'Notification: MAAC ticket resolved - {{ticket_title}}';
+    }
+
+    public static function get_default_ticket_resolved_body(): string {
+        return '*Your MAAC ticket has been resolved.*';
+    }
+
     public static function get_default_ticket_auto_pm_subject(): string {
         return 'Notification: MAAC ticket assigned to PM - {{ticket_title}}';
     }
@@ -165,6 +173,15 @@ class cliq_service {
             ];
         }
 
+        if ($type === 'resolved') {
+            return [
+                'subjectkey' => 'cliq_ticket_resolved_subject',
+                'bodykey' => 'cliq_ticket_resolved_body',
+                'defaultsubject' => self::get_default_ticket_resolved_subject(),
+                'defaultbody' => self::get_default_ticket_resolved_body(),
+            ];
+        }
+
         return [
             'subjectkey' => 'cliq_ticket_update_subject',
             'bodykey' => 'cliq_ticket_update_body',
@@ -189,6 +206,7 @@ class cliq_service {
 
         $payload = [
             'text' => $text,
+            // Note: Zoho Cliq API uses the key 'userids' but we pass mapped email addresses.
             'userids' => $recipient['email'],
         ];
         $botkey = trim((string)get_config('local_batchanalytics', 'cliq_bot_key'));
@@ -204,7 +222,13 @@ class cliq_service {
             $info = $curl->get_info();
             $httpcode = (int)($info['http_code'] ?? 0);
             if ($httpcode >= 200 && $httpcode < 300) {
-                $status = 'success';
+                $response = json_decode($responsebody, true);
+                if (is_array($response) && isset($response['user_ids'], $response['users'])
+                        && $response['user_ids'] === [] && $response['users'] === []) {
+                    $status = 'no user found';
+                } else {
+                    $status = 'success';
+                }
             } else {
                 $error = trim('HTTP ' . $httpcode . ' ' . $responsebody);
             }
@@ -254,17 +278,17 @@ class cliq_service {
                 return;
             }
             $record = (object)[
-                'ticketid' => (int)($ticket->id ?? 0),
-                'courseid' => (int)($ticket->courseid ?? 0),
+                'ticketid'        => (int)($ticket->id ?? 0),
+                'courseid'        => (int)($ticket->courseid ?? 0),
                 'recipientuserid' => (int)($recipient['id'] ?? 0),
-                'recipientemail' => \core_text::substr((string)($recipient['email'] ?? ''), 0, 255),
-                'messagetype' => \core_text::substr($type, 0, 30),
-                'subject' => \core_text::substr($subject, 0, 255),
-                'messagebody' => $text,
-                'status' => \core_text::substr($status, 0, 20),
-                'responsebody' => $responsebody,
-                'errormessage' => $error,
-                'timecreated' => time(),
+                'recipientemail'  => \core_text::substr((string)($recipient['email'] ?? ''), 0, 255),
+                'messagetype'     => \core_text::substr($type, 0, 30),
+                'subject'         => \core_text::substr($subject, 0, 255),
+                'messagebody'     => $text,
+                'status'          => \core_text::substr($status, 0, 20),
+                'responsebody'    => $responsebody,
+                'errormessage'    => $error,
+                'timecreated'     => time(),
             ];
             $DB->insert_record('local_batchanalytics_cliq_history', $record);
         } catch (\Throwable $e) {
@@ -297,37 +321,37 @@ class cliq_service {
         if (!$course && !empty($ticket->courseid)) {
             $course = $DB->get_record('course', ['id' => (int)$ticket->courseid], 'id, fullname, shortname', IGNORE_MISSING);
         }
-        $student = $extra['student'] ?? $this->get_user((int)($ticket->studentuserid ?? 0));
-        $raisedby = $extra['raisedby'] ?? $this->get_user((int)($ticket->createdby ?? 0));
-        $updatedby = $extra['updatedby'] ?? null;
-        $ssteam = $extra['ssteam'] ?? $this->get_user((int)($ticket->ssteamuserid ?? 0));
+        $student      = $extra['student']      ?? $this->get_user((int)($ticket->studentuserid ?? 0));
+        $raisedby     = $extra['raisedby']     ?? $this->get_user((int)($ticket->createdby ?? 0));
+        $updatedby    = $extra['updatedby']    ?? null;
+        $ssteam       = $extra['ssteam']       ?? $this->get_user((int)($ticket->ssteamuserid ?? 0));
         $batchmanager = $extra['batchmanager'] ?? $this->get_user((int)($ticket->batchmanageruserid ?? 0));
 
-        $coursefullname = $course ? format_string($course->fullname) : '';
+        $coursefullname  = $course ? format_string($course->fullname)  : '';
         $courseshortname = $course ? format_string($course->shortname) : '';
 
         return [
-            'ticket_id' => (string)((int)($ticket->id ?? 0)),
-            'ticket_title' => (string)($ticket->tickettitle ?? ''),
-            'ticket_reason' => (string)($ticket->ticketreason ?? ''),
-            'ticket_status' => ucfirst(str_replace('_', ' ', (string)($ticket->status ?? 'open'))),
-            'ticket_priority' => ucfirst((string)($ticket->priority ?? 'low')),
-            'student_name' => $student ? fullname($student) : '',
-            'student_email' => $student->email ?? '',
-            'student_username' => $student->username ?? '',
-            'course_name' => $coursefullname,
-            'course_shortname' => $courseshortname,
-            'batch_name' => $this->get_batch_name($coursefullname, $courseshortname),
-            'raised_by_name' => $raisedby ? fullname($raisedby) : '',
-            'raised_by_email' => $raisedby->email ?? '',
-            'ss_team_name' => $ssteam ? fullname($ssteam) : '',
-            'ss_team_email' => $ssteam->email ?? '',
-            'batch_manager_name' => $batchmanager ? fullname($batchmanager) : '',
-            'batch_manager_email' => $batchmanager->email ?? '',
-            'resolution_feedback' => (string)($ticket->resolutionfeedback ?? ''),
-            'updated_by_name' => $updatedby ? fullname($updatedby) : '',
-            'updated_by_email' => $updatedby->email ?? '',
-            'site_url' => $CFG->wwwroot,
+            'ticket_id'           => (string)($ticket->id ?? ''),
+            'ticket_title'        => (string)($ticket->tickettitle ?? ''),
+            'ticket_reason'       => (string)($ticket->ticketreason ?? ''),
+            'ticket_status'       => (string)($ticket->status ?? ''),
+            'ticket_priority'     => (string)($ticket->priority ?? ''),
+            'student_name'        => $student      ? fullname($student)           : '',
+            'student_email'       => $student      ? (string)$student->email      : '',
+            'student_username'    => $student      ? (string)$student->username   : '',
+            'course_name'         => $coursefullname,
+            'course_shortname'    => $courseshortname,
+            'batch_name'          => $this->get_batch_name($coursefullname, $courseshortname),
+            'raised_by_name'      => $raisedby     ? fullname($raisedby)          : '',
+            'raised_by_email'     => $raisedby     ? (string)$raisedby->email     : '',
+            'ss_team_name'        => $ssteam       ? fullname($ssteam)            : '',
+            'ss_team_email'       => $ssteam       ? (string)$ssteam->email       : '',
+            'batch_manager_name'  => $batchmanager ? fullname($batchmanager)      : '',
+            'batch_manager_email' => $batchmanager ? (string)$batchmanager->email : '',
+            'resolution_feedback' => (string)($extra['resolution_feedback'] ?? $ticket->resolutionfeedback ?? ''),
+            'updated_by_name'     => $updatedby    ? fullname($updatedby)         : '',
+            'updated_by_email'    => $updatedby    ? (string)$updatedby->email    : '',
+            'site_url'            => $CFG->wwwroot,
         ];
     }
 
@@ -365,8 +389,8 @@ class cliq_service {
         foreach ($recipients as $recipient) {
             if (is_object($recipient)) {
                 $recipient = [
-                    'id' => (int)($recipient->id ?? 0),
-                    'email' => (string)($recipient->email ?? ''),
+                    'id'       => (int)($recipient->id ?? 0),
+                    'email'    => (string)($recipient->email ?? ''),
                     'fullname' => fullname($recipient),
                 ];
             }
@@ -378,8 +402,8 @@ class cliq_service {
                 continue;
             }
             $clean[strtolower($email)] = [
-                'id' => (int)($recipient['id'] ?? 0),
-                'email' => $email,
+                'id'       => (int)($recipient['id'] ?? 0),
+                'email'    => $email,
                 'fullname' => (string)($recipient['fullname'] ?? ''),
             ];
         }

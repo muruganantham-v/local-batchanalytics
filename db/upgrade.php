@@ -130,14 +130,6 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026051300, 'local', 'batchanalytics');
     }
 
-    if ($oldversion < 2026051800) {
-        upgrade_plugin_savepoint(true, 2026051800, 'local', 'batchanalytics');
-    }
-
-    if ($oldversion < 2026052000) {
-        upgrade_plugin_savepoint(true, 2026052000, 'local', 'batchanalytics');
-    }
-
     if ($oldversion < 2026071600) {
         $table = new xmldb_table('local_batchanalytics_cliq_history');
 
@@ -167,6 +159,7 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
 
         upgrade_plugin_savepoint(true, 2026071600, 'local', 'batchanalytics');
     }
+    
     if ($oldversion < 2026071601) {
         $table = new xmldb_table('local_batchanalytics_ticket');
 

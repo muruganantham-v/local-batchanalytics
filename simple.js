@@ -609,7 +609,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="ba-filter-header">
           <div>
             <h3>Mentor Details</h3>
-            <p class="ba-mentor-subtitle">Batch Group: ${escapeHtml(batchgroup || "-")}</p>
+            <p class="ba-mentor-subtitle">Batch : ${escapeHtml(batchgroup || "-")}</p>
           </div>
         </div>
         ${bodyHtml}
