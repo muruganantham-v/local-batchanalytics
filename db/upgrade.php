@@ -170,5 +170,28 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
 
         upgrade_plugin_savepoint(true, 2026071601, 'local', 'batchanalytics');
     }
+    if ($oldversion < 2026072300) {
+        $table = new xmldb_table('local_batchanalytics_activity_tracker');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('cmid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('completed', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('completiondate', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('modifiedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('course_cmid_uix', XMLDB_INDEX_UNIQUE, ['courseid', 'cmid']);
+        $table->add_index('courseid_ix', XMLDB_INDEX_NOTUNIQUE, ['courseid']);
+        $table->add_index('cmid_ix', XMLDB_INDEX_NOTUNIQUE, ['cmid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026072300, 'local', 'batchanalytics');
+    }
+
     return true;
 }

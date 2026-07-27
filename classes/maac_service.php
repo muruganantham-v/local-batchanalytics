@@ -30,6 +30,7 @@ class maac_service {
             'module_columns' => $dataset['module_columns'],
             'ticket_meta' => $dataset['ticket_meta'],
             'ticket_templates' => $dataset['ticket_templates'],
+            'feedback_duration_days' => $dataset['feedback_duration_days'],
             'summary' => $dataset['summary'],
             'students' => $dataset['students'],
             'canedit' => $canedit,
@@ -912,6 +913,9 @@ class maac_service {
         }
 
         $trenddetailsbyuser = $this->get_course_trend_values($courseid, array_keys($students));
+        $feedbackinsightsbyuser = $surface === 'maac'
+            ? $this->get_feedback_insights($courseid, array_keys($students))
+            : [];
         foreach ($trenddetailsbyuser as $studentid => $trendvalue) {
             $customvalues[$studentid]['trend'] = $trendvalue['label'] ?? 'Stable';
         }
@@ -960,7 +964,9 @@ class maac_service {
                     continue;
                 }
 
-                if ($totalitems > 0) {
+                if (stripos($categoryname, 'attend') !== false) {
+                    $performancevalues[] = $percentage ?? 0.0;
+                } else if ($totalitems > 0) {
                     $performancevalues[] = round(($itemscompleted / $totalitems) * 100, 2);
                 }
             }
@@ -990,6 +996,7 @@ class maac_service {
                     'trend_window' => 20,
                     'attendance_window' => 5,
                 ],
+                'feedback_insights' => $feedbackinsightsbyuser[$student->userid] ?? [],
                 'ticket_count' => (int)($ticketcounts[$student->userid] ?? 0),
                 'tickets' => $studenttickets[$student->userid] ?? [],
             ];
@@ -1063,6 +1070,7 @@ class maac_service {
             'module_columns' => $modulecolumns,
             'ticket_meta' => $ticketmeta,
             'ticket_templates' => $this->get_ticket_templates(),
+            'feedback_duration_days' => $this->get_feedback_duration_days(),
             'summary' => $summary,
             'students' => $outputstudents,
         ];
@@ -1097,6 +1105,276 @@ class maac_service {
         }
 
         return round(max(0, min(10, $adjusted)), 2);
+    }
+
+    /**
+     * Build the recent student data used by feedback suggestions.
+     *
+     * @param int $courseid
+     * @param array $userids
+     * @return array
+     */
+    private function get_feedback_insights(int $courseid, array $userids): array {
+        global $DB;
+
+        $duration = $this->get_feedback_duration_days();
+        $starttime = time() - ($duration * DAYSECS);
+        $values = [];
+        foreach ($userids as $userid) {
+            $values[(int)$userid] = [
+                'attendance' => ['sessions' => 0, 'present' => 0, 'leave' => 0, 'absent' => 0, 'continuous_absent' => 0],
+                'assignments' => ['scheduled' => 0, 'completed' => 0, 'graded' => 0, 'grade_total' => 0.0, 'mentor_completed_activities' => []],
+                'tests' => ['scheduled' => 0, 'completed' => 0, 'graded' => 0, 'grade_total' => 0.0, 'mentor_completed_activities' => []],
+                'projects' => ['scheduled' => 0, 'completed' => 0, 'graded' => 0, 'grade_total' => 0.0, 'project_submissions' => 0, 'mentor_completed_activities' => []],
+            ];
+        }
+        if (empty($userids)) {
+            return $values;
+        }
+
+        if ($DB->get_manager()->table_exists('attendance')) {
+            list($attendanceinsql, $attendanceparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'feedbackattendanceuser');
+            $attendanceparams['feedbackcourseid'] = $courseid;
+            $attendanceparams['feedbackstarttime'] = $starttime;
+            $attendancesql = "SELECT asess.id AS sessionid, asess.sessdate, al.studentid, al.id AS logid,
+                                     astatus.grade, astatus.acronym
+                                FROM {attendance_sessions} asess
+                                JOIN {attendance} att ON att.id = asess.attendanceid
+                           LEFT JOIN {attendance_log} al ON al.sessionid = asess.id
+                                                        AND al.studentid $attendanceinsql
+                           LEFT JOIN {attendance_statuses} astatus ON astatus.id = al.statusid
+                               WHERE att.course = :feedbackcourseid
+                                 AND asess.sessdate >= :feedbackstarttime
+                                 AND asess.sessdate <= :feedbacknow
+                            ORDER BY asess.sessdate ASC, al.studentid ASC, al.id DESC";
+            $attendanceparams['feedbacknow'] = time();
+            $records = $DB->get_recordset_sql($attendancesql, $attendanceparams);
+            $history = [];
+            foreach ($records as $record) {
+                $userid = (int)($record->studentid ?? 0);
+                if (!$userid || !isset($values[$userid]) || empty($record->logid)) {
+                    continue;
+                }
+                $status = strtoupper(trim((string)($record->acronym ?? '')));
+                $present = isset($record->grade) ? (float)$record->grade > 0 : in_array($status, ['P', 'E'], true);
+                $history[$userid][] = $present;
+                $values[$userid]['attendance']['sessions']++;
+                $values[$userid]['attendance'][$present ? 'present' : 'absent']++;
+                if ($status === 'L') {
+                    $values[$userid]['attendance']['leave']++;
+                }
+            }
+            $records->close();
+            foreach ($history as $userid => $sessions) {
+                $streak = 0;
+                foreach (array_reverse($sessions) as $present) {
+                    if ($present) {
+                        break;
+                    }
+                    $streak++;
+                }
+                $values[$userid]['attendance']['continuous_absent'] = $streak;
+            }
+        }
+
+        if (!$DB->get_manager()->table_exists(new \xmldb_table('local_batchanalytics_activity_tracker'))) {
+            return $this->finalise_feedback_insights($values);
+        }
+
+        $activitiesql = "SELECT tracker.cmid, cm.instance, module.name AS modulename, gi.id AS itemid,
+                                 gc.id AS categoryid
+                            FROM {local_batchanalytics_activity_tracker} tracker
+                            JOIN {course_modules} cm ON cm.id = tracker.cmid
+                            JOIN {modules} module ON module.id = cm.module
+                       LEFT JOIN {grade_items} gi ON gi.courseid = tracker.courseid
+                                                   AND gi.itemtype = 'mod'
+                                                   AND gi.itemmodule = module.name
+                                                   AND gi.iteminstance = cm.instance
+                       LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
+                           WHERE tracker.courseid = :courseid
+                             AND tracker.completed = 1
+                             AND tracker.completiondate >= :startdate
+                             AND tracker.completiondate <= :enddate
+                        ORDER BY tracker.cmid";
+        $activities = $DB->get_records_sql($activitiesql, [
+            'courseid' => $courseid,
+            'startdate' => userdate($starttime, '%Y-%m-%d'),
+            'enddate' => userdate(time(), '%Y-%m-%d'),
+        ]);
+        $gradecategories = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+        $modinfo = get_fast_modinfo(get_course($courseid));
+        $activitymap = [];
+        foreach ($activities as $activity) {
+            // Follow the Module Tracker category hierarchy exactly.
+            $category = $this->get_feedback_activity_category((int)($activity->categoryid ?? 0), $gradecategories);
+            if ($category === null || isset($activitymap[(int)$activity->cmid])) {
+                continue;
+            }
+            $activitymap[(int)$activity->cmid] = [
+                'category' => $category,
+                'itemid' => (int)($activity->itemid ?? 0),
+                'instance' => (int)$activity->instance,
+                'modulename' => (string)$activity->modulename,
+                'name' => format_string($modinfo->cms[(int)$activity->cmid]->name ?? 'Activity'),
+            ];
+            foreach ($values as &$value) {
+                $value[$category]['scheduled']++;
+                $value[$category]['mentor_completed_activities'][] = $activitymap[(int)$activity->cmid]['name'];
+            }
+            unset($value);
+        }
+        if (empty($activitymap)) {
+            return $this->finalise_feedback_insights($values);
+        }
+
+        $studentactivityevidence = [];
+        list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'feedbackcompletionuser');
+        list($cminsql, $cmparams) = $DB->get_in_or_equal(array_keys($activitymap), SQL_PARAMS_NAMED, 'feedbackcompletioncm');
+        $completionrecords = $DB->get_recordset_sql("SELECT userid, coursemoduleid
+            FROM {course_modules_completion}
+            WHERE userid $userinsql
+              AND coursemoduleid $cminsql
+              AND completionstate > 0", $userparams + $cmparams);
+        foreach ($completionrecords as $record) {
+            $userid = (int)$record->userid;
+            $activity = $activitymap[(int)$record->coursemoduleid] ?? null;
+            if ($activity && isset($values[$userid])) {
+                $studentactivityevidence[$userid][(int)$record->coursemoduleid] = true;
+            }
+        }
+        $completionrecords->close();
+
+        $assignmentinstances = [];
+        foreach ($activitymap as $cmid => $activity) {
+            if ($activity['modulename'] === 'assign') {
+                $assignmentinstances[(int)$activity['instance']] = (int)$cmid;
+            }
+        }
+        if (!empty($assignmentinstances) && $DB->get_manager()->table_exists('assign_submission')) {
+            list($submissionuserinsql, $submissionuserparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'feedbacksubmissionuser');
+            list($assignmentinsql, $assignmentparams) = $DB->get_in_or_equal(array_keys($assignmentinstances), SQL_PARAMS_NAMED, 'feedbacksubmissionassign');
+            $submissionrecords = $DB->get_recordset_sql("SELECT userid, assignment
+                FROM {assign_submission}
+                WHERE userid $submissionuserinsql
+                  AND assignment $assignmentinsql
+                  AND status = :feedbacksubmissionstatus
+                  AND latest = 1", $submissionuserparams + $assignmentparams + ['feedbacksubmissionstatus' => 'submitted']);
+            foreach ($submissionrecords as $record) {
+                $userid = (int)$record->userid;
+                $cmid = $assignmentinstances[(int)$record->assignment] ?? 0;
+                $activity = $activitymap[$cmid] ?? null;
+                if ($activity && isset($values[$userid])) {
+                    $studentactivityevidence[$userid][$cmid] = true;
+                    if ($activity['category'] === 'projects') {
+                        $values[$userid]['projects']['project_submissions']++;
+                    }
+                }
+            }
+            $submissionrecords->close();
+        }
+
+        $itemmap = [];
+        foreach ($activitymap as $cmid => $activity) {
+            if ($activity['itemid']) {
+                $itemmap[$activity['itemid']] = [
+                    'cmid' => (int)$cmid,
+                    'category' => $activity['category'],
+                ];
+            }
+        }
+        if (!empty($itemmap)) {
+            list($gradeuserinsql, $gradeuserparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'feedbackgradeuser');
+            list($iteminsql, $itemparams) = $DB->get_in_or_equal(array_keys($itemmap), SQL_PARAMS_NAMED, 'feedbackgradeitem');
+            $graderecords = $DB->get_recordset_sql("SELECT gg.userid, gg.itemid, gg.finalgrade, gi.grademax
+                FROM {grade_grades} gg
+                JOIN {grade_items} gi ON gi.id = gg.itemid
+                WHERE gg.userid $gradeuserinsql
+                  AND gg.itemid $iteminsql
+                  AND gg.finalgrade IS NOT NULL", $gradeuserparams + $itemparams);
+            foreach ($graderecords as $record) {
+                $userid = (int)$record->userid;
+                $activity = $itemmap[(int)$record->itemid] ?? null;
+                if (!$activity || !isset($values[$userid])) {
+                    continue;
+                }
+                $studentactivityevidence[$userid][$activity['cmid']] = true;
+                if ((float)$record->grademax > 0) {
+                    $values[$userid][$activity['category']]['graded']++;
+                    $values[$userid][$activity['category']]['grade_total'] +=
+                        ((float)$record->finalgrade / (float)$record->grademax) * 100;
+                }
+            }
+            $graderecords->close();
+        }
+
+        foreach ($studentactivityevidence as $userid => $completedcmids) {
+            foreach (array_keys($completedcmids) as $cmid) {
+                $activity = $activitymap[(int)$cmid] ?? null;
+                if ($activity) {
+                    $values[$userid][$activity['category']]['completed']++;
+                }
+            }
+        }
+
+        return $this->finalise_feedback_insights($values);
+    }
+
+    /**
+     * @param array $values
+     * @return array
+     */
+    private function finalise_feedback_insights(array $values): array {
+        foreach ($values as &$value) {
+            foreach (['assignments', 'tests', 'projects'] as $category) {
+                $graded = (int)$value[$category]['graded'];
+                $value[$category]['incomplete'] = max(0,
+                    (int)$value[$category]['scheduled'] - (int)$value[$category]['completed']);
+                $value[$category]['average_grade'] = $graded
+                    ? round((float)$value[$category]['grade_total'] / $graded, 1)
+                    : null;
+                unset($value[$category]['grade_total']);
+            }
+        }
+        unset($value);
+        return $values;
+    }
+
+    /**
+     * Mirrors Module Tracker: only direct course-level delivery categories are used.
+     *
+     * @param int $categoryid
+     * @param array $categories
+     * @return string|null
+     */
+    private function get_feedback_activity_category(int $categoryid, array $categories): ?string {
+        $category = $categories[$categoryid] ?? null;
+        while ($category && $category->depth > 2 && !empty($category->parent)
+                && isset($categories[$category->parent])) {
+            $category = $categories[$category->parent];
+        }
+        if (!$category || (int)$category->depth !== 2) {
+            return null;
+        }
+
+        $categoryname = strtolower(trim((string)$category->fullname));
+        if (in_array($categoryname, ['assignment', 'assignments'], true)) {
+            return 'assignments';
+        }
+        if (in_array($categoryname, ['test', 'tests'], true)) {
+            return 'tests';
+        }
+        if (in_array($categoryname, ['project', 'projects'], true)) {
+            return 'projects';
+        }
+        return null;
+    }
+
+    /**
+     * @return int
+     */
+    private function get_feedback_duration_days(): int {
+        $duration = (int)get_config('local_batchanalytics', 'feedback_duration_days');
+        return min(365, max(1, $duration > 0 ? $duration : 7));
     }
 
     /**

@@ -1,4 +1,7 @@
 <?php
+if (!empty($_REQUEST['action'])) {
+    ob_start();
+}
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -17,6 +20,9 @@ $action = optional_param('action', '', PARAM_ALPHA);
 
 if ($courseid <= 0) {
     if ($action !== '') {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['error' => 'Invalid course ID']);
         die();
@@ -27,10 +33,15 @@ if ($courseid <= 0) {
 $service = new \local_batchanalytics\maac_service();
 
 if ($action !== '') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
+    $sendjson = static function(array $data, int $status = 200): void {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code($status);
+        echo json_encode($data);
+        die();
+    };
 
     try {
         if ($action === 'summary') {
@@ -38,8 +49,7 @@ if ($action !== '') {
                 throw new moodle_exception('invalidrequest');
             }
             require_sesskey();
-            echo json_encode($service->get_course_summary($courseid, $USER->id));
-            die();
+            $sendjson($service->get_course_summary($courseid, $USER->id));
         }
 
         if ($action === 'getdata') {
@@ -47,8 +57,7 @@ if ($action !== '') {
                 throw new moodle_exception('invalidrequest');
             }
             require_sesskey();
-            echo json_encode($service->get_course_data($courseid, $USER->id));
-            die();
+            $sendjson($service->get_course_data($courseid, $USER->id));
         }
 
         if ($action === 'savedata') {
@@ -58,18 +67,15 @@ if ($action !== '') {
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
             if (strlen($payload) > 1048576) {
-                echo json_encode(['error' => 'Payload too large']);
-                die();
+                $sendjson(['error' => 'Payload too large'], 400);
             }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
-                echo json_encode(['error' => 'Invalid JSON payload']);
-                die();
+                $sendjson(['error' => 'Invalid JSON payload'], 400);
             }
             $rows = is_array($decoded['rows'] ?? null) ? $decoded['rows'] : [];
             $service->save_course_data($courseid, $USER->id, $rows);
-            echo json_encode(['status' => 'ok']);
-            die();
+            $sendjson(['status' => 'ok']);
         }
 
         if ($action === 'saveticket') {
@@ -79,21 +85,18 @@ if ($action !== '') {
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
             if (strlen($payload) > 1048576) {
-                echo json_encode(['error' => 'Payload too large']);
-                die();
+                $sendjson(['error' => 'Payload too large'], 400);
             }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
-                echo json_encode(['error' => 'Invalid JSON payload']);
-                die();
+                $sendjson(['error' => 'Invalid JSON payload'], 400);
             }
             $result = $service->save_ticket($courseid, $USER->id, $decoded);
-            echo json_encode([
+            $sendjson([
                 'status' => 'ok',
                 'message' => get_string('ticket_saved', 'local_batchanalytics'),
                 'ticket' => $result,
             ]);
-            die();
         }
         if ($action === 'editticket') {
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
@@ -102,21 +105,18 @@ if ($action !== '') {
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
             if (strlen($payload) > 1048576) {
-                echo json_encode(['error' => 'Payload too large']);
-                die();
+                $sendjson(['error' => 'Payload too large'], 400);
             }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
-                echo json_encode(['error' => 'Invalid JSON payload']);
-                die();
+                $sendjson(['error' => 'Invalid JSON payload'], 400);
             }
             $result = $service->edit_maac_ticket($courseid, $USER->id, $decoded);
-            echo json_encode([
+            $sendjson([
                 'status' => 'ok',
                 'message' => 'Ticket updated successfully',
                 'ticket' => $result,
             ]);
-            die();
         }
 
         if ($action === 'viewticket') {
@@ -126,28 +126,24 @@ if ($action !== '') {
             require_sesskey();
             $payload = optional_param('payload', '', PARAM_RAW);
             if (strlen($payload) > 1048576) {
-                echo json_encode(['error' => 'Payload too large']);
-                die();
+                $sendjson(['error' => 'Payload too large'], 400);
             }
             $decoded = json_decode($payload, true);
             if (!is_array($decoded)) {
-                echo json_encode(['error' => 'Invalid JSON payload']);
-                die();
+                $sendjson(['error' => 'Invalid JSON payload'], 400);
             }
             $result = $service->mark_maac_ticket_viewed($courseid, $USER->id, $decoded);
-            echo json_encode([
+            $sendjson([
                 'status' => 'ok',
                 'ticket' => $result,
             ]);
-            die();
         }
 
-        echo json_encode(['error' => 'Unknown action']);
+        $sendjson(['error' => 'Unknown action'], 400);
     } catch (\Throwable $e) {
-        debugging('MAAC API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        echo json_encode(['error' => 'An error occurred processing your request.']);
+        error_log('MAAC API Error: ' . $e->getMessage());
+        $sendjson(['error' => 'Unable to process the MAAC request. Please check the Moodle error log.'], 400);
     }
-    die();
 }
 
 $courseinfo = $service->get_course_summary($courseid, $USER->id);
@@ -160,9 +156,12 @@ $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime
 $scripturl = new moodle_url('/local/batchanalytics/maac.js', ['v' => filemtime(__DIR__ . '/maac.js')]);
 $PAGE->requires->css($styleurl);
 $PAGE->requires->js($scripturl);
+$courseurl = new moodle_url('/course/view.php', ['id' => $courseid]);
+$trackerurl = new moodle_url('/local/batchanalytics/activity_tracker.php', ['courseid' => $courseid]);
 
 echo $OUTPUT->header();
-echo '<div class="local-batchanalytics-maac" data-courseid="' . (int)$courseid . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-maac" data-courseid="' . (int)$courseid . '" data-sesskey="' . sesskey()
+    . '" data-courseurl="' . s($courseurl->out(false)) . '" data-trackerurl="' . s($trackerurl->out(false)) . '">';
 echo '<div id="ba-maac-app" class="ba-maac-app"></div>';
 echo '</div>';
 echo $OUTPUT->footer();

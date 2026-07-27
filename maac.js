@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return normalizeSortValue(latestTicket?.resolutionfeedback || "", sortType);
     }
     if (sortKey === "module:overall_performance") {
-      return normalizeSortValue(student.performance_rating, "number");
+      return normalizeSortValue(getOverallPerformanceValue(student), "number");
     }
     if (sortKey === "module:maac_rating") {
       return normalizeSortValue(student.maac_rating, "number");
@@ -375,9 +375,16 @@ document.addEventListener("DOMContentLoaded", function () {
         body: "sesskey=" + encodeURIComponent(sesskey)
       }
     );
-    const json = await res.json();
-    if (json.error) {
-      app.innerHTML = `<div class="ba-maac-error">${escapeHtml(json.error)}</div>`;
+    const responseText = await res.text();
+    let json = {};
+    try {
+      json = responseText ? JSON.parse(responseText) : {};
+    } catch (error) {
+      app.innerHTML = '<div class="ba-maac-error">Unable to load MAAC data. Please check the Moodle error log.</div>';
+      return;
+    }
+    if (!res.ok || json.error) {
+      app.innerHTML = `<div class="ba-maac-error">${escapeHtml(json.error || "Unable to load MAAC data.")}</div>`;
       return;
     }
 
@@ -823,6 +830,20 @@ document.addEventListener("DOMContentLoaded", function () {
       value: mode === "completion" ? module.completion : module.grade,
       mode,
     };
+  }
+
+  function getOverallPerformanceValue(student) {
+    const values = (state.data.module_columns || []).map((column) => {
+      const value = getModuleMetricValue(student, column).value;
+      const numeric = parseFloat(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    });
+
+    if (!values.length) {
+      return 0;
+    }
+
+    return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100;
   }
 
   function parseFilterNumber(value) {
@@ -1339,7 +1360,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const metric = getModuleMetricValue(student, column);
                 return `<td>${renderScoreBadge(metric.value, { scale: 100, suffix: "%" })}</td>`;
               }),
-              `<td>${renderScoreBadge(student.performance_rating, { scale: 100, suffix: "%", decimals: 2, extraClass: "ba-overall-performance" })}</td>`,
+              `<td>${renderScoreBadge(getOverallPerformanceValue(student), { scale: 100, suffix: "%", decimals: 2, extraClass: "ba-overall-performance" })}</td>`,
             ];
 
         const customCells = customGroups
@@ -2592,6 +2613,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function renderPage() {
     const course = state.data.course || {};
+    const courseUrl = wrap.dataset.courseurl || "";
+    const trackerUrl = wrap.dataset.trackerurl || "";
 
     let totalMaac = 0;
     let maacCount = 0;
@@ -2607,7 +2630,7 @@ document.addEventListener("DOMContentLoaded", function () {
         maacCount++;
       }
 
-      const perf = parseFloat(student.performance_rating);
+      const perf = getOverallPerformanceValue(student);
       if (!isNaN(perf)) {
         totalPerf += perf;
         perfCount++;
@@ -2657,7 +2680,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="ba-ch-meta" style="display: flex; gap: 10px; flex-wrap: wrap;">
               <span class="ba-ch-badge avg">${state.data.students.length} Students</span>
               <span class="ba-ch-badge avg">Avg MAAC Rating: ${avgMaac}</span>
-              <span class="ba-ch-badge avg">Avg Performance: ${avgPerf}%</span>
+              <span id="ba-maac-avg-performance" class="ba-ch-badge avg">Avg Performance: ${avgPerf}%</span>
               <span class="ba-ch-badge avg">Spot Awards Students: ${spotAwardStudents}</span>
               <span class="ba-ch-badge avg ba-maac-ticket-pill">
                 <span>Tickets :</span>
@@ -2671,6 +2694,8 @@ document.addEventListener("DOMContentLoaded", function () {
             </div>
           </div>
           <div class="ba-ch-right">
+            ${courseUrl ? `<a class="ba-btn ba-btn-view" href="${escapeHtml(courseUrl)}" target="_blank" rel="noopener">View Course <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>` : ""}
+            ${trackerUrl ? `<a class="ba-btn ba-btn-sm ba-btn-view" href="${escapeHtml(trackerUrl)}">Module Tracker</a>` : ""}
           </div>
         </div>
       </div>
@@ -3334,6 +3359,46 @@ document.addEventListener("DOMContentLoaded", function () {
       return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().split("T")[0];
     }
 
+    function getFeedbackSuggestions(category) {
+      const duration = Math.max(1, Number(state.data?.feedback_duration_days) || 7);
+      const insights = student.feedback_insights || {};
+      if (category === "attendance") {
+        const attendance = insights.attendance || {};
+        const sessions = Number(attendance.sessions) || 0;
+        const present = Number(attendance.present) || 0;
+        const absent = Number(attendance.absent) || 0;
+        if (!sessions || !present) {
+          return [`No sessions were attended in the past ${duration} days.`];
+        }
+        if (present === sessions) {
+          return ["Maintaining perfect attendance."];
+        }
+        return [`Out of ${sessions} sessions, ${present} were attended and ${absent} were not attended.`];
+      }
+
+      const labels = { assignments: "assignments", tests: "tests", projects: "projects" };
+      const details = insights[category] || {};
+      const label = labels[category] || category;
+      const scheduled = Number(details.scheduled) || 0;
+      const completed = Number(details.completed) || 0;
+      const incomplete = Number(details.incomplete) || Math.max(0, scheduled - completed);
+      if (!scheduled) {
+        return ["No activity completed yet."];
+      }
+      if (!completed) {
+        return [`Out of ${scheduled} ${label}, no ${label} are completed.`];
+      }
+      if (completed === scheduled) {
+        const perfectMessages = {
+          assignments: "Assignments are being maintained perfectly.",
+          tests: "Tests are being maintained perfectly.",
+          projects: "Projects are being maintained perfectly.",
+        };
+        return [perfectMessages[category] || "Activities are being maintained perfectly."];
+      }
+      return [`Out of ${scheduled} ${label}, ${completed} were completed and ${incomplete} were not completed.`];
+    }
+
     function renderFeedbackCard(feedback, index) {
       const addedAt = Number(feedback.added_at || 0);
       const isEditable = addedAt > 0 && Date.now() - addedAt < 24 * 60 * 60 * 1000;
@@ -3442,6 +3507,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
                   <div class="ba-feedback-form-main">
                     <textarea id="ba-feedback-modal-text-${userid}-${key}" class="ba-maac-input ba-feedback-textarea" placeholder="Enter feedback here..."></textarea>
+                    <div class="ba-feedback-suggestions">
+                      <span class="ba-feedback-suggestions-label">Suggestions</span>
+                      <div class="ba-feedback-suggestion-categories" role="group" aria-label="Feedback suggestions">
+                        <button type="button" class="ba-feedback-suggestion-category" data-feedback-suggestion-category="attendance">Attendance</button>
+                        <button type="button" class="ba-feedback-suggestion-category" data-feedback-suggestion-category="assignments">Assignments</button>
+                        <button type="button" class="ba-feedback-suggestion-category" data-feedback-suggestion-category="tests">Tests</button>
+                        <button type="button" class="ba-feedback-suggestion-category" data-feedback-suggestion-category="projects">Projects</button>
+                      </div>
+                      <div class="ba-feedback-suggestion-options" id="ba-feedback-suggestion-options-${userid}-${key}" hidden></div>
+                    </div>
                     <div class="ba-feedback-form-actions ba-feedback-add-actions">
                       ${externalFeedbackColumn ? `<label class="ba-feedback-copy-external" id="ba-feedback-modal-copy-wrap-${userid}-${key}" hidden>
                         <input type="checkbox" id="ba-feedback-modal-copy-external-${userid}-${key}">
@@ -3473,6 +3548,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusEl = modal.querySelector(".ba-feedback-modal-status");
     const dateInput = document.getElementById(`ba-feedback-modal-date-${userid}-${key}`);
     const textInput = document.getElementById(`ba-feedback-modal-text-${userid}-${key}`);
+    const suggestionOptions = document.getElementById(`ba-feedback-suggestion-options-${userid}-${key}`);
     const copyExternalWrap = document.getElementById(`ba-feedback-modal-copy-wrap-${userid}-${key}`);
     const copyExternalInput = document.getElementById(`ba-feedback-modal-copy-external-${userid}-${key}`);
     const addBtn = document.getElementById(`ba-feedback-modal-add-btn-${userid}-${key}`);
@@ -3481,8 +3557,36 @@ document.addEventListener("DOMContentLoaded", function () {
     const cancelBtn = document.getElementById(`ba-feedback-modal-cancel-btn-${userid}-${key}`);
     const saveBtn = document.getElementById(`ba-feedback-modal-save-btn-${userid}-${key}`);
     let statusTimer = null;
+    let feedbackCloseWarning = null;
+    let activeSuggestions = [];
+
+    function clearFeedbackSuggestions() {
+      activeSuggestions = [];
+      suggestionOptions.hidden = true;
+      suggestionOptions.innerHTML = "";
+      modal.querySelectorAll("[data-feedback-suggestion-category]").forEach((button) => {
+        button.classList.remove("is-active");
+      });
+    }
+
+    function showFeedbackSuggestions(category, button) {
+      activeSuggestions = getFeedbackSuggestions(category);
+      suggestionOptions.innerHTML = activeSuggestions.map((suggestion, index) =>
+        `<button type="button" class="ba-feedback-suggestion-option" data-feedback-suggestion-index="${index}">${escapeHtml(suggestion)}</button>`
+      ).join("");
+      suggestionOptions.hidden = activeSuggestions.length === 0;
+      modal.querySelectorAll("[data-feedback-suggestion-category]").forEach((item) => {
+        item.classList.toggle("is-active", item === button);
+      });
+    }
+
+    function closeFeedbackCloseWarning() {
+      feedbackCloseWarning?.remove();
+      feedbackCloseWarning = null;
+    }
 
     function closeFeedbackModal() {
+      closeFeedbackCloseWarning();
       if (statusTimer) {
         window.clearTimeout(statusTimer);
         statusTimer = null;
@@ -3491,10 +3595,62 @@ document.addEventListener("DOMContentLoaded", function () {
       modal.remove();
     }
 
+    function showFeedbackCloseWarning() {
+      if (feedbackCloseWarning) {
+        return;
+      }
+
+      const warningId = `ba-feedback-unsaved-modal-${userid}-${key}`;
+      document.body.insertAdjacentHTML("beforeend", `
+        <div class="ba-modal-overlay ba-maac-unsaved-modal" id="${escapeHtml(warningId)}" role="dialog" aria-modal="true" aria-labelledby="ba-feedback-unsaved-title">
+          <div class="ba-modal-container ba-maac-unsaved-dialog">
+            <div class="ba-modal-header">
+              <h3 id="ba-feedback-unsaved-title">You have unsaved changes</h3>
+              <button type="button" class="ba-modal-close" data-feedback-unsaved-close="1" aria-label="Close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div class="ba-modal-body">
+              <p class="ba-maac-unsaved-text">You have made changes that have not been saved. Do you want to discard the changes?</p>
+            </div>
+            <div class="ba-modal-footer ba-maac-unsaved-actions">
+              <button type="button" class="ba-btn" data-feedback-unsaved-cancel="1">Cancel</button>
+              <button type="button" class="ba-btn ba-btn-success" data-feedback-unsaved-discard="1">Discard changes</button>
+            </div>
+          </div>
+        </div>`);
+
+      feedbackCloseWarning = document.getElementById(warningId);
+      feedbackCloseWarning.querySelectorAll("[data-feedback-unsaved-close], [data-feedback-unsaved-cancel]").forEach((button) => {
+        button.addEventListener("click", closeFeedbackCloseWarning);
+      });
+      feedbackCloseWarning.querySelector("[data-feedback-unsaved-discard]")?.addEventListener("click", () => {
+        textInput.value = "";
+        closeFeedbackModal();
+      });
+      feedbackCloseWarning.addEventListener("click", (event) => {
+        if (event.target === feedbackCloseWarning) {
+          closeFeedbackCloseWarning();
+        }
+      });
+    }
+
+    function requestFeedbackModalClose() {
+      if (textInput.value.trim() !== "") {
+        showFeedbackCloseWarning();
+        return;
+      }
+      closeFeedbackModal();
+    }
+
     function handleFeedbackModalKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeFeedbackModal();
+        if (feedbackCloseWarning) {
+          closeFeedbackCloseWarning();
+          return;
+        }
+        requestFeedbackModalClose();
       }
     }
 
@@ -3541,6 +3697,7 @@ document.addEventListener("DOMContentLoaded", function () {
       addBtn.style.display = "inline-flex";
       dateInput.value = new Date().toISOString().split("T")[0];
       textInput.value = "";
+      clearFeedbackSuggestions();
       if (copyExternalInput) {
         copyExternalInput.checked = false;
       }
@@ -3685,15 +3842,34 @@ document.addEventListener("DOMContentLoaded", function () {
     updateCopyExternalVisibility();
     bindFeedbackCardEvents();
 
+    modal.querySelectorAll("[data-feedback-suggestion-category]").forEach((button) => {
+      button.addEventListener("click", () => showFeedbackSuggestions(button.dataset.feedbackSuggestionCategory, button));
+    });
+    suggestionOptions.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-feedback-suggestion-index]");
+      if (!option) {
+        return;
+      }
+      const index = Number(option.dataset.feedbackSuggestionIndex);
+      if (!activeSuggestions[index]) {
+        return;
+      }
+      const existingText = textInput.value;
+      textInput.value = existingText
+        ? `${existingText}${existingText.endsWith("\n") ? "\n" : "\n\n"}${activeSuggestions[index]}`
+        : activeSuggestions[index];
+      textInput.focus();
+    });
+
     document.addEventListener("keydown", handleFeedbackModalKeydown);
 
     modal.querySelectorAll(".ba-modal-close").forEach((button) => {
-      button.addEventListener("click", closeFeedbackModal);
+      button.addEventListener("click", requestFeedbackModalClose);
     });
 
     modal.addEventListener("click", (event) => {
       if (event.target === modal) {
-        closeFeedbackModal();
+        requestFeedbackModalClose();
       }
     });
 
@@ -3704,6 +3880,7 @@ document.addEventListener("DOMContentLoaded", function () {
       form.style.display = "flex";
       dateInput.value = new Date().toISOString().split("T")[0];
       textInput.value = "";
+      clearFeedbackSuggestions();
       if (copyExternalInput) {
         copyExternalInput.checked = false;
       }
@@ -3877,8 +4054,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      if (!isNaN(perfMin) && parseFloat(student.performance_rating) < perfMin) return false;
-      if (!isNaN(perfMax) && parseFloat(student.performance_rating) > perfMax) return false;
+      const overallPerformance = getOverallPerformanceValue(student);
+      if (!isNaN(perfMin) && overallPerformance < perfMin) return false;
+      if (!isNaN(perfMax) && overallPerformance > perfMax) return false;
       if (!isNaN(maacMin) && parseFloat(student.maac_rating) < maacMin) return false;
       if (!isNaN(maacMax) && parseFloat(student.maac_rating) > maacMax) return false;
 
@@ -3920,6 +4098,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const countEl = document.getElementById("ba-maac-count");
     if (countEl) {
       countEl.textContent = `Found ${state.filtered.length} students`;
+    }
+    const averagePerformanceEl = document.getElementById("ba-maac-avg-performance");
+    if (averagePerformanceEl) {
+      const students = state.data.students || [];
+      const average = students.length
+        ? students.reduce((sum, student) => sum + getOverallPerformanceValue(student), 0) / students.length
+        : null;
+      averagePerformanceEl.textContent = `Avg Performance: ${average === null ? "-" : Math.round(average)}%`;
     }
     renderMaacTableSection();
   }

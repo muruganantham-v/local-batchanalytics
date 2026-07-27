@@ -147,6 +147,13 @@ if ($hassiteconfig) {
         get_string('maac_column_groups_desc', 'local_batchanalytics')
     ));
     $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/feedback_duration_days',
+        get_string('feedback_duration_days', 'local_batchanalytics'),
+        get_string('feedback_duration_days_desc', 'local_batchanalytics'),
+        '7',
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
         'local_batchanalytics/trend_window',
         get_string('trend_window', 'local_batchanalytics'),
         get_string('trend_window_desc', 'local_batchanalytics'),
@@ -160,7 +167,6 @@ if ($hassiteconfig) {
         '5',
         PARAM_INT
     ));
-
     $settings->add(new admin_setting_heading(
         'local_batchanalytics/role_management',
         get_string('role_management', 'local_batchanalytics'),

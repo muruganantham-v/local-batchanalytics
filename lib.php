@@ -90,4 +90,19 @@ function local_batchanalytics_extend_navigation_course(navigation_node $navigati
     $node->showinflatnavigation = true;
     $node->linkattributes = ['target' => '_blank', 'rel' => 'noopener'];
     $navigation->add_node($node);
+
+    if ($navigation->find('local_batchanalytics_module_tracker', navigation_node::TYPE_CUSTOM)) {
+        return;
+    }
+
+    $node = navigation_node::create(
+        get_string('module_tracker', 'local_batchanalytics'),
+        new moodle_url('/local/batchanalytics/activity_tracker.php', ['courseid' => $course->id]),
+        navigation_node::TYPE_CUSTOM,
+        null,
+        'local_batchanalytics_module_tracker',
+        new pix_icon('i/report', '')
+    );
+    $node->showinflatnavigation = true;
+    $navigation->add_node($node);
 }
