@@ -78,3 +78,5 @@ Write endpoints require POST plus `sesskey`:
 - Keep CRM credentials in plugin settings, not in source.
 - PHP CLI validation and Moodle runtime verification should be run in a PHP-enabled environment after deployment.
 
+
+updated feedback suggestion
