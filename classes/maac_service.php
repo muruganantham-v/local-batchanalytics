@@ -474,6 +474,7 @@ class maac_service {
             'feedback' => 'Escalated to PM' . ($batchmanager ? ': ' . fullname($batchmanager) : ''),
         ]);
         $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, $userid, 'auto_pm');
+        $this->send_ticket_escalation_student_email($ticket, $userid, $batchmanager);
 
         $access = $this->build_ticket_access_scope($userid);
         $formatted = $this->get_formatted_ticket_dashboard_record($ticketid, $userid, $access);
@@ -882,6 +883,17 @@ class maac_service {
             ];
         }
 
+        foreach ($modulecolumns as &$modulecolumn) {
+            foreach ($categories as $categoryname => $categorydata) {
+                if ($modulecolumn['key'] !== $categorydata['key'] || !empty($modulecolumn['isattendance'])) {
+                    continue;
+                }
+                $modulecolumn['label'] = $categoryname . ' (' . count($categorydata['items']) . ')';
+                break;
+            }
+        }
+        unset($modulecolumn);
+
         $gradesmap = [];
         $gradesql = "
             SELECT gg.userid, gg.itemid, gg.finalgrade
@@ -937,7 +949,6 @@ class maac_service {
         $performancecount = 0;
         foreach ($students as $student) {
             $performancevalues = [];
-            $maacrating = null;
 
             foreach ($categories as $categoryname => $categorydata) {
                 $totalearned = 0.0;
@@ -959,8 +970,7 @@ class maac_service {
                 }
 
                 $percentage = $totalmax > 0 ? round(($totalearned / $totalmax) * 100, 2) : null;
-                if ($categoryname === 'MAAC Ratings' && $percentage !== null) {
-                    $maacrating = round($percentage / 10, 1);
+                if ($categoryname === 'MAAC Ratings') {
                     continue;
                 }
 
@@ -976,7 +986,8 @@ class maac_service {
                 : 0.0;
 
             $studentcustom = $customvalues[$student->userid] ?? [];
-            $adjustedmaacrating = $this->apply_maac_exclusions($maacrating ?? 0.0, $studentcustom, $allcolumns);
+            $maacbase = ($performancerating / 100) * 9;
+            $adjustedmaacrating = $this->apply_maac_exclusions($maacbase, $studentcustom, $allcolumns);
             $studentrow = [
                 'userid' => (int)$student->userid,
                 'fullname' => $student->fullname,
@@ -1085,7 +1096,7 @@ class maac_service {
      * @return float
      */
     private function apply_maac_exclusions(float $maacrating, array $studentcustom, array $columns): float {
-        $adjusted = $maacrating;
+        $exclusionvalues = [];
 
         foreach ($columns as $column) {
             if (
@@ -1101,10 +1112,14 @@ class maac_service {
                 continue;
             }
 
-            $adjusted -= (float)$rawvalue;
+            $exclusionvalues[] = (float)$rawvalue;
         }
 
-        return round(max(0, min(10, $adjusted)), 2);
+        $adjusted = $maacrating;
+        if (!empty($exclusionvalues)) {
+            $adjusted -= array_sum($exclusionvalues) / count($exclusionvalues);
+        }
+        return round(max(0, min(9, $adjusted)), 2);
     }
 
     /**
@@ -2831,6 +2846,53 @@ class maac_service {
             $service->send_ticket_message($messagetype, $ticket, $recipients, ['updatedby' => $updatedbyuser ?: null]);
         } catch (\Throwable $e) {
             // Cliq delivery must not block ticket escalation.
+        }
+    }
+
+    /**
+     * Notify the affected student after a manual ticket escalation.
+     *
+     * @param \stdClass $ticket
+     * @param int $escalatedby
+     * @param \stdClass|null $batchmanager
+     * @return void
+     */
+    private function send_ticket_escalation_student_email(\stdClass $ticket, int $escalatedby, ?\stdClass $batchmanager): void {
+        try {
+            $student = \core_user::get_user((int)($ticket->studentuserid ?? 0),
+                'id, firstname, lastname, username, email', IGNORE_MISSING);
+            $escalatedbyuser = \core_user::get_user($escalatedby,
+                'id, firstname, lastname, username, email', IGNORE_MISSING);
+            $systemuser = \core_user::get_noreply_user();
+            if (!$student || !$systemuser) {
+                return;
+            }
+
+            $subjecttemplate = trim((string)get_config('local_batchanalytics', 'ticket_student_escalation_email_subject'));
+            $bodytemplate = trim((string)get_config('local_batchanalytics', 'ticket_student_escalation_email_body'));
+            if ($subjecttemplate === '') {
+                $subjecttemplate = cliq_service::get_default_ticket_student_escalation_email_subject();
+            }
+            if ($bodytemplate === '') {
+                $bodytemplate = cliq_service::get_default_ticket_student_escalation_email_body();
+            }
+
+            $templateservice = new cliq_service();
+            $rendered = $templateservice->render_ticket_template($subjecttemplate, $bodytemplate, $ticket, [
+                'student' => $student,
+                'updatedby' => $escalatedbyuser,
+                'batchmanager' => $batchmanager,
+            ]);
+
+            email_to_user(
+                $student,
+                $systemuser,
+                $rendered['subject'],
+                $rendered['body'],
+                nl2br(s($rendered['body']))
+            );
+        } catch (\Throwable $e) {
+            // Student email delivery must not block ticket escalation.
         }
     }
     /**

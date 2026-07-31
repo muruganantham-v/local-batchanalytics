@@ -78,6 +78,16 @@ if (optional_param('submitbutton', '', PARAM_RAW) !== '') {
         optional_param('cliq_ticket_auto_pm_body', '', PARAM_RAW),
         'local_batchanalytics'
     );
+    set_config(
+        'ticket_student_escalation_email_subject',
+        optional_param('ticket_student_escalation_email_subject', '', PARAM_RAW_TRIMMED),
+        'local_batchanalytics'
+    );
+    set_config(
+        'ticket_student_escalation_email_body',
+        optional_param('ticket_student_escalation_email_body', '', PARAM_RAW),
+        'local_batchanalytics'
+    );
     redirect(
         new moodle_url('/local/batchanalytics/cliq_templates.php'),
         get_string('cliq_templates_saved', 'local_batchanalytics'),
@@ -94,6 +104,8 @@ $resolved_subject = get_config('local_batchanalytics', 'cliq_ticket_resolved_sub
 $resolved_body = get_config('local_batchanalytics', 'cliq_ticket_resolved_body');
 $autopm_subject = get_config('local_batchanalytics', 'cliq_ticket_auto_pm_subject');
 $autopm_body = get_config('local_batchanalytics', 'cliq_ticket_auto_pm_body');
+$studentemail_subject = get_config('local_batchanalytics', 'ticket_student_escalation_email_subject');
+$studentemail_body = get_config('local_batchanalytics', 'ticket_student_escalation_email_body');
 
 if (trim((string)$raise_subject) === '') {
     $raise_subject = \local_batchanalytics\cliq_service::get_default_ticket_raise_subject();
@@ -118,6 +130,12 @@ if (trim((string)$autopm_subject) === '') {
 }
 if (trim((string)$autopm_body) === '') {
     $autopm_body = \local_batchanalytics\cliq_service::get_default_ticket_auto_pm_body();
+}
+if (trim((string)$studentemail_subject) === '') {
+    $studentemail_subject = \local_batchanalytics\cliq_service::get_default_ticket_student_escalation_email_subject();
+}
+if (trim((string)$studentemail_body) === '') {
+    $studentemail_body = \local_batchanalytics\cliq_service::get_default_ticket_student_escalation_email_body();
 }
 
 /**
@@ -220,6 +238,14 @@ $form .= local_batchanalytics_render_cliq_template_section(
     $autopm_subject,
     'cliq_ticket_auto_pm_body',
     $autopm_body,
+    true
+);
+$form .= local_batchanalytics_render_cliq_template_section(
+    get_string('ticket_student_escalation_email_template', 'local_batchanalytics'),
+    'ticket_student_escalation_email_subject',
+    $studentemail_subject,
+    'ticket_student_escalation_email_body',
+    $studentemail_body,
     true
 );
 $form .= html_writer::tag('div',

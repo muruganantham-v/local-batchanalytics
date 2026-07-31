@@ -47,6 +47,8 @@ class util {
      */
     public static function get_batch_cache_key(int $userid, string $batchcode, bool $can_view_all_courses): string {
         return sha1(json_encode([
+            // Bump when the shape or calculation of the batch payload changes.
+            'v' => 2,
             'u' => $userid,
             'c' => $can_view_all_courses,
             'b' => trim($batchcode)

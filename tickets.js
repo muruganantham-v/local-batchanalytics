@@ -738,7 +738,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="ba-ticket-info-label">Title</div>
           <div class="ba-ticket-info-value">${escapeHtml(ticket.tickettitle || "-")}</div>
           <div class="ba-ticket-info-label">Description</div>
-          <div class="ba-ticket-info-value">${escapeHtml(ticket.ticketreason || "-")}</div>
+          <div class="ba-ticket-info-value ba-ticket-multiline-text">${escapeHtml(ticket.ticketreason || "-")}</div>
         </div>
       </div>
     </div>`;
@@ -746,7 +746,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderReadOnlyPanel(title, content) {
     return `<div class="ba-ticket-note-card">
       <div class="ba-ticket-note-card-title">${escapeHtml(title)}</div>
-      <div class="ba-ticket-note-card-body">${escapeHtml(content || "-")}</div>
+      <div class="ba-ticket-note-card-body ba-ticket-multiline-text">${escapeHtml(content || "-")}</div>
     </div>`;
   }
 
@@ -905,7 +905,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const targetName = state.escalationConfirm.batchManagerName || "Configured Batch Manager";
-    return `<div class="ba-modal-overlay" id="ba-ticket-escalation-confirm" role="dialog" aria-modal="true" aria-labelledby="ba-ticket-escalation-title">
+    return `<div class="ba-modal-overlay" id="ba-ticket-escalation-modal" role="dialog" aria-modal="true" aria-labelledby="ba-ticket-escalation-title">
       <div class="ba-modal-container ba-maac-unsaved-dialog">
         <div class="ba-modal-header">
           <h3 id="ba-ticket-escalation-title">Escalate to Program Manager</h3>
@@ -919,7 +919,7 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>
         <div class="ba-modal-footer ba-maac-unsaved-actions">
           <button type="button" class="ba-btn" id="ba-ticket-escalation-cancel">Cancel</button>
-          <button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-escalation-confirm">Confirm</button>
+          <button type="button" class="ba-btn ba-maac-ticket-submit" id="ba-ticket-escalation-confirm-button">Confirm</button>
         </div>
       </div>
     </div>`;
@@ -1059,7 +1059,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const ticketid = state.modal.ticket.id;
-    const button = document.getElementById("ba-ticket-escalation-confirm");
+    const button = document.getElementById("ba-ticket-escalation-confirm-button");
     if (button) {
       button.disabled = true;
       button.textContent = "Escalating...";
@@ -1328,7 +1328,7 @@ document.addEventListener("DOMContentLoaded", function () {
       escalateBtn.addEventListener("click", openEscalationConfirm);
     }
 
-    const escalationConfirmModal = document.getElementById("ba-ticket-escalation-confirm");
+    const escalationConfirmModal = document.getElementById("ba-ticket-escalation-modal");
     if (escalationConfirmModal) {
       escalationConfirmModal.addEventListener("click", (event) => {
         if (event.target === escalationConfirmModal) {
@@ -1347,7 +1347,7 @@ document.addEventListener("DOMContentLoaded", function () {
       escalationCancelBtn.addEventListener("click", closeEscalationConfirm);
     }
 
-    const escalationConfirmBtn = document.getElementById("ba-ticket-escalation-confirm");
+    const escalationConfirmBtn = document.getElementById("ba-ticket-escalation-confirm-button");
     if (escalationConfirmBtn) {
       escalationConfirmBtn.addEventListener("click", submitEscalate);
     }

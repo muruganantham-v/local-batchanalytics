@@ -132,6 +132,7 @@ $string['cliq_ticket_raise_template'] = 'Cliq Ticket Raising message template';
 $string['cliq_ticket_update_template'] = 'Cliq Ticket Update message template';
 $string['cliq_ticket_resolved_template'] = 'Cliq Ticket Resolved message template';
 $string['cliq_ticket_auto_pm_template'] = 'Assign ticket to PM manager';
+$string['ticket_student_escalation_email_template'] = 'Mail notification to student';
 $string['cliq_template_title'] = 'Title';
 $string['cliq_template_message_body'] = 'Message body';
 $string['cliq_templates_saved'] = 'Cliq templates saved successfully.';

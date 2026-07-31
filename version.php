@@ -24,7 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026072300;
+$plugin->version   = 2026072801;
 $plugin->requires  = 2024042200;
 $plugin->component = 'local_batchanalytics';
 $plugin->maturity  = MATURITY_STABLE;

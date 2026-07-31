@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", function () {
     filtersHidden: false,
     filterValues: {},
     trendModal: null,
+    feedbackSummaryModal: false,
     ticketModal: null,
     ticketSaving: false,
     ticketEdit: null,
@@ -427,7 +428,7 @@ document.addEventListener("DOMContentLoaded", function () {
       performanceMin: "0",
       performanceMax: "100",
       maacMin: "0",
-      maacMax: "10",
+      maacMax: "9",
       modules: {},
       custom: {},
     };
@@ -962,9 +963,9 @@ document.addEventListener("DOMContentLoaded", function () {
               <span class="ba-filter-label">MAAC Ratings</span>
             </div>
             <div class="ba-range-wrapper">
-              <input type="number" id="ba-maac-rating-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.maacMin || "0")}">
+              <input type="number" id="ba-maac-rating-min" class="ba-range-input" min="0" max="9" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.maacMin || "0")}">
               <span class="ba-range-divider">-</span>
-              <input type="number" id="ba-maac-rating-max" class="ba-range-input" step="0.1" placeholder="10" value="${escapeHtml(state.filterValues.maacMax || "10")}">
+              <input type="number" id="ba-maac-rating-max" class="ba-range-input" min="0" max="9" step="0.1" placeholder="9" value="${escapeHtml(state.filterValues.maacMax || "9")}">
             </div>
           </div>`;
       }
@@ -1354,7 +1355,7 @@ document.addEventListener("DOMContentLoaded", function () {
           ? [`<td class="ba-maac-collapsed-col"></td>`]
           : [
               ...(showMaacRatingColumn
-                ? [`<td>${renderScoreBadge(student.maac_rating, { scale: 10, decimals: 1 })}</td>`]
+                ? [`<td>${renderScoreBadge(student.maac_rating, { scale: 9, decimals: 1 })}</td>`]
                 : []),
               ...moduleColumnsVisible.map((column) => {
                 const metric = getModuleMetricValue(student, column);
@@ -1581,7 +1582,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (column.key === "maac_rating") {
-      return `<td>${renderScoreBadge(value, { scale: 10, decimals: 1 })}</td>`;
+      return `<td>${renderScoreBadge(value, { scale: 9, decimals: 1 })}</td>`;
     }
 
     if (column.system) {
@@ -1741,6 +1742,78 @@ document.addEventListener("DOMContentLoaded", function () {
     return normalizeFeedbackItems(value).length;
   }
 
+  function getFeedbackSummary() {
+    const columns = getAllCustomColumns().filter((column) => column.type === "multi_feedback");
+    const studentCounts = (state.data?.students || []).map((student) =>
+      Object.fromEntries(columns.map((column) => [column.key, getFeedbackItemCount(student.custom?.[column.key])])),
+    );
+    const summaries = columns.map((column) => {
+      const values = studentCounts.map((counts) => counts[column.key] || 0);
+      const received = values.filter((count) => count > 0);
+      return {
+        key: column.key,
+        label: column.label || "Feedback",
+        highest: received.length ? Math.max(...received) : 0,
+        studentCounts: values,
+      };
+    });
+    const highest = summaries.length ? Math.max(...summaries.map((summary) => summary.highest)) : 0;
+    const rows = Array.from({ length: highest }, (_, index) => {
+      const feedbackNumber = index + 1;
+      return {
+        feedbackNumber,
+        counts: Object.fromEntries(
+          summaries.map((summary) => [
+            summary.key,
+            studentCounts.filter((counts) => (counts[summary.key] || 0) >= feedbackNumber).length,
+          ]),
+        ),
+      };
+    });
+
+    return { summaries, rows };
+  }
+
+  function renderFeedbackSummaryModal() {
+    if (!state.feedbackSummaryModal) {
+      return "";
+    }
+
+    const summary = getFeedbackSummary();
+    const rows = summary.rows.length
+      ? summary.rows
+          .map(
+            (row) => `<tr>
+              <td>Feedback ${row.feedbackNumber}</td>
+              ${summary.summaries.map((column) => `<td>${row.counts[column.key] || 0}</td>`).join("")}
+            </tr>`,
+          )
+          .join("")
+      : `<tr><td colspan="${summary.summaries.length + 1}">No feedback has been provided yet.</td></tr>`;
+    const headers = summary.summaries.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("");
+
+    return `<div class="ba-modal-overlay" id="ba-maac-feedback-summary-modal" role="dialog" aria-modal="true" aria-labelledby="ba-maac-feedback-summary-title">
+      <div class="ba-modal-container ba-maac-ticket-dialog">
+        <div class="ba-modal-header">
+          <h3 id="ba-maac-feedback-summary-title">Feedback</h3>
+          <button type="button" class="ba-modal-close" id="ba-maac-feedback-summary-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="ba-modal-body ba-maac-ticket-body">
+          <div class="ba-maac-ticket-panel">
+            <div class="ba-table-wrap">
+              <table class="ba-table">
+                <thead><tr><th>Feedback</th>${headers}</tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
   function formatDisplayValue(value, type) {
     if (type === "boolean") {
       return value ? "Yes" : "No";
@@ -1757,7 +1830,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return "loading";
     }
 
-    const score = scale === 10 ? parseFloat(value) * 10 : parseFloat(value);
+    const score = scale === 100 ? parseFloat(value) : parseFloat(value) * (100 / scale);
     if (score >= 75) return "high";
     if (score >= 50) return "medium";
     return "low";
@@ -2324,6 +2397,63 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>`;
   }
 
+  function getTicketFeedbackSuggestions(student, category) {
+    const duration = Math.max(1, Number(state.data?.feedback_duration_days) || 7);
+    const insights = student.feedback_insights || {};
+    if (category === "attendance") {
+      const attendance = insights.attendance || {};
+      const sessions = Number(attendance.sessions) || 0;
+      const present = Number(attendance.present) || 0;
+      const absent = Number(attendance.absent) || 0;
+      if (!sessions || !present) return [`No sessions were attended in the past ${duration} days.`];
+      if (present === sessions) return ["Maintaining perfect attendance."];
+      return [`Out of ${sessions} sessions, ${present} were attended and ${absent} were not attended.`];
+    }
+
+    const labels = { assignments: "assignments", tests: "tests", projects: "projects" };
+    const details = insights[category] || {};
+    const label = labels[category] || category;
+    const scheduled = Number(details.scheduled) || 0;
+    const completed = Number(details.completed) || 0;
+    const incomplete = Number(details.incomplete) || Math.max(0, scheduled - completed);
+    if (!scheduled) return ["No activity completed yet."];
+    if (!completed) return [`Out of ${scheduled} ${label}, no ${label} are completed.`];
+
+    let completionSuggestion = "";
+    if (completed === scheduled) {
+      const perfectMessages = {
+        assignments: "Assignments are being maintained perfectly.",
+        tests: "Tests are being maintained perfectly.",
+        projects: "Projects are being maintained perfectly.",
+      };
+      completionSuggestion = perfectMessages[category] || "Activities are being maintained perfectly.";
+    } else {
+      completionSuggestion = `Out of ${scheduled} ${label}, ${completed} were completed and ${incomplete} were not completed.`;
+    }
+    if (category !== "tests") return [completionSuggestion];
+
+    const averageGrade = Number(details.average_grade);
+    const graded = Number(details.graded) || 0;
+    if (!graded || !Number.isFinite(averageGrade)) return [completionSuggestion];
+    const performance = averageGrade <= 40
+      ? "Needs improvement."
+      : averageGrade <= 70 ? "Good performance." : "Excellent performance.";
+    const grade = Number.isInteger(averageGrade) ? averageGrade : averageGrade.toFixed(1);
+    const testLabel = completed === 1 ? "test is" : "tests are";
+    return [completionSuggestion, `${completed} ${testLabel} completed with ${grade} grade: ${performance}`];
+  }
+
+  function appendTicketSuggestion(input, suggestion) {
+    const existingText = String(input?.value || "");
+    const cleanSuggestion = String(suggestion || "").trim();
+    const normalise = (value) => String(value).trim().replace(/^[-*]\s*/, "").replace(/\s+/g, " ").toLowerCase();
+    if (!cleanSuggestion || existingText.split(/\r?\n/).some((line) => normalise(line) === normalise(cleanSuggestion))) {
+      return;
+    }
+    const text = existingText.trimEnd();
+    input.value = text ? `${text}\n- ${cleanSuggestion}` : `- ${cleanSuggestion}`;
+  }
+
   function renderTicketModal() {
     if (!state.ticketModal) {
       return "";
@@ -2390,6 +2520,16 @@ document.addEventListener("DOMContentLoaded", function () {
                     <div class="ba-maac-ticket-field ba-maac-ticket-field-full">
                       <label for="ba-maac-ticket-reason">Reason for Raising Ticket <span class="ba-maac-ticket-required">*</span></label>
                       <textarea id="ba-maac-ticket-reason" class="ba-maac-ticket-textarea" rows="5" placeholder="Describe the issue or reason for raising this support ticket...">${escapeHtml(state.ticketModal.ticketreason || "")}</textarea>
+                      <div class="ba-feedback-suggestions ba-maac-ticket-suggestions">
+                        <span class="ba-feedback-suggestions-label">Suggestions</span>
+                        <div class="ba-feedback-suggestion-categories" role="group" aria-label="Ticket reason suggestions">
+                          <button type="button" class="ba-feedback-suggestion-category" data-ticket-suggestion-category="attendance">Attendance</button>
+                          <button type="button" class="ba-feedback-suggestion-category" data-ticket-suggestion-category="assignments">Assignments</button>
+                          <button type="button" class="ba-feedback-suggestion-category" data-ticket-suggestion-category="tests">Tests</button>
+                          <button type="button" class="ba-feedback-suggestion-category" data-ticket-suggestion-category="projects">Projects</button>
+                        </div>
+                        <div class="ba-feedback-suggestion-options" id="ba-maac-ticket-suggestion-options" hidden></div>
+                      </div>
                     </div>
                   </div>
                   ${saveDisabled ? `<div class="ba-maac-ticket-warning">Ticket roles are not fully configured for this course.</div>` : ""}
@@ -2670,6 +2810,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const list = normalizeDisplayList(value);
       return list ? list.length > 0 : String(value || "").trim() !== "";
     }).length;
+    const feedbackSummary = getFeedbackSummary();
     const maacActionButtons = renderMaacActionButtons();
 
     app.innerHTML = `
@@ -2682,6 +2823,11 @@ document.addEventListener("DOMContentLoaded", function () {
               <span class="ba-ch-badge avg">Avg MAAC Rating: ${avgMaac}</span>
               <span id="ba-maac-avg-performance" class="ba-ch-badge avg">Avg Performance: ${avgPerf}%</span>
               <span class="ba-ch-badge avg">Spot Awards Students: ${spotAwardStudents}</span>
+              <button type="button" class="ba-ch-badge avg" id="ba-maac-feedback-summary-open" style="border:0; cursor:pointer;">
+                ${feedbackSummary.summaries.length
+                  ? feedbackSummary.summaries.map((column) => `${escapeHtml(column.label)}: ${column.highest}`).join(" | ")
+                  : "No feedback columns"}
+              </button>
               <span class="ba-ch-badge avg ba-maac-ticket-pill">
                 <span>Tickets :</span>
                 <span class="ba-maac-ticket-pill-open">Open : ${ticketCounts.open}</span>
@@ -2711,7 +2857,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div id="ba-maac-table-section">${renderTable()}</div>
           </div>
         </div>
-      </div>${renderTrendModalFixed()}${renderTicketModal()}
+      </div>${renderTrendModalFixed()}${renderFeedbackSummaryModal()}${renderTicketModal()}
     `;
 
     bindEvents();
@@ -2849,6 +2995,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function closeTrendModal() {
     state.trendModal = null;
+    renderPagePreservingScroll();
+  }
+
+  function openFeedbackSummaryModal() {
+    state.feedbackSummaryModal = true;
+    renderPagePreservingScroll();
+  }
+
+  function closeFeedbackSummaryModal() {
+    state.feedbackSummaryModal = false;
     renderPagePreservingScroll();
   }
 
@@ -3016,6 +3172,35 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
+    const ticketSuggestionOptions = document.getElementById("ba-maac-ticket-suggestion-options");
+    if (ticketModal && ticketSuggestionOptions && state.ticketModal?.mode === "raise") {
+      let activeTicketSuggestions = [];
+      ticketModal.querySelectorAll("[data-ticket-suggestion-category]").forEach((button) => {
+        button.addEventListener("click", () => {
+          activeTicketSuggestions = getTicketFeedbackSuggestions(
+            state.ticketModal.student,
+            button.dataset.ticketSuggestionCategory,
+          );
+          ticketSuggestionOptions.innerHTML = activeTicketSuggestions.map((suggestion, index) =>
+            `<button type="button" class="ba-feedback-suggestion-option" data-ticket-suggestion-index="${index}">${escapeHtml(suggestion)}</button>`,
+          ).join("");
+          ticketSuggestionOptions.hidden = activeTicketSuggestions.length === 0;
+          ticketModal.querySelectorAll("[data-ticket-suggestion-category]").forEach((item) => {
+            item.classList.toggle("is-active", item === button);
+          });
+        });
+      });
+      ticketSuggestionOptions.addEventListener("click", (event) => {
+        const option = event.target.closest("[data-ticket-suggestion-index]");
+        const index = Number(option?.dataset.ticketSuggestionIndex);
+        const reasonInput = document.getElementById("ba-maac-ticket-reason");
+        if (option && activeTicketSuggestions[index] && reasonInput) {
+          appendTicketSuggestion(reasonInput, activeTicketSuggestions[index]);
+          reasonInput.focus();
+        }
+      });
+    }
+
     // Use event delegation on the app container for the ticket submit button.
     // Delegated handlers survive DOM re-renders (unlike direct addEventListener
     // on the button element which is destroyed when app.innerHTML is rebuilt).
@@ -3090,6 +3275,25 @@ document.addEventListener("DOMContentLoaded", function () {
     const trendCloseBtn = document.getElementById("ba-trend-close");
     if (trendCloseBtn) {
       trendCloseBtn.addEventListener("click", closeTrendModal);
+    }
+
+    const feedbackSummaryOpenBtn = document.getElementById("ba-maac-feedback-summary-open");
+    if (feedbackSummaryOpenBtn) {
+      feedbackSummaryOpenBtn.addEventListener("click", openFeedbackSummaryModal);
+    }
+
+    const feedbackSummaryModal = document.getElementById("ba-maac-feedback-summary-modal");
+    if (feedbackSummaryModal) {
+      feedbackSummaryModal.addEventListener("click", (event) => {
+        if (event.target === feedbackSummaryModal) {
+          closeFeedbackSummaryModal();
+        }
+      });
+    }
+
+    const feedbackSummaryCloseBtn = document.getElementById("ba-maac-feedback-summary-close");
+    if (feedbackSummaryCloseBtn) {
+      feedbackSummaryCloseBtn.addEventListener("click", closeFeedbackSummaryModal);
     }
 
     bindTableEvents();
@@ -3388,15 +3592,55 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!completed) {
         return [`Out of ${scheduled} ${label}, no ${label} are completed.`];
       }
+      let completionSuggestion = "";
       if (completed === scheduled) {
         const perfectMessages = {
           assignments: "Assignments are being maintained perfectly.",
           tests: "Tests are being maintained perfectly.",
           projects: "Projects are being maintained perfectly.",
         };
-        return [perfectMessages[category] || "Activities are being maintained perfectly."];
+        completionSuggestion = perfectMessages[category] || "Activities are being maintained perfectly.";
+      } else {
+        completionSuggestion = `Out of ${scheduled} ${label}, ${completed} were completed and ${incomplete} were not completed.`;
       }
-      return [`Out of ${scheduled} ${label}, ${completed} were completed and ${incomplete} were not completed.`];
+
+      if (category !== "tests") {
+        return [completionSuggestion];
+      }
+
+      const averageGrade = Number(details.average_grade);
+      const graded = Number(details.graded) || 0;
+      if (!graded || !Number.isFinite(averageGrade)) {
+        return [completionSuggestion];
+      }
+      const performance = averageGrade <= 40
+        ? "Needs improvement."
+        : averageGrade <= 70
+          ? "Good performance."
+          : "Excellent performance.";
+      const grade = Number.isInteger(averageGrade) ? averageGrade : averageGrade.toFixed(1);
+      const testLabel = completed === 1 ? "test is" : "tests are";
+      return [
+        completionSuggestion,
+        `${completed} ${testLabel} completed with ${grade} grade: ${performance}`,
+      ];
+    }
+
+    function appendFeedbackSuggestion(input, suggestion) {
+      const cleanSuggestion = String(suggestion || "").trim();
+      const normaliseSuggestionLine = (value) => String(value)
+        .trim()
+        .replace(/^[-*]\s*/, "")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+      const existingText = String(input?.value || "");
+      const alreadyAdded = existingText.split(/\r?\n/)
+        .some((line) => normaliseSuggestionLine(line) === normaliseSuggestionLine(cleanSuggestion));
+      if (!cleanSuggestion || alreadyAdded || !input) {
+        return;
+      }
+      const text = existingText.trimEnd();
+      input.value = text ? `${text}\n- ${cleanSuggestion}` : `- ${cleanSuggestion}`;
     }
 
     function renderFeedbackCard(feedback, index) {
@@ -3432,6 +3676,16 @@ document.addEventListener("DOMContentLoaded", function () {
             </div>
             <div class="ba-feedback-inline-main">
               <textarea class="ba-maac-input ba-feedback-textarea ba-feedback-inline-text" placeholder="Enter feedback here...">${escapeHtml(feedback.text)}</textarea>
+              <div class="ba-feedback-suggestions">
+                <span class="ba-feedback-suggestions-label">Suggestions</span>
+                <div class="ba-feedback-suggestion-categories" role="group" aria-label="Feedback edit suggestions">
+                  <button type="button" class="ba-feedback-suggestion-category" data-feedback-inline-suggestion-category="attendance">Attendance</button>
+                  <button type="button" class="ba-feedback-suggestion-category" data-feedback-inline-suggestion-category="assignments">Assignments</button>
+                  <button type="button" class="ba-feedback-suggestion-category" data-feedback-inline-suggestion-category="tests">Tests</button>
+                  <button type="button" class="ba-feedback-suggestion-category" data-feedback-inline-suggestion-category="projects">Projects</button>
+                </div>
+                <div class="ba-feedback-suggestion-options" data-feedback-inline-suggestion-options hidden></div>
+              </div>
               <div class="ba-feedback-form-actions">
                 <button type="button" class="ba-btn ba-btn-sm ba-feedback-cancel-btn" data-feedback-inline-cancel="1">Cancel</button>
                 <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-save-btn" data-feedback-inline-save="1">${saveIcon} Update</button>
@@ -3776,6 +4030,33 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
     function bindFeedbackCardEvents() {
+      listEl.querySelectorAll(".ba-feedback-card").forEach((card) => {
+        const inlineText = card.querySelector(".ba-feedback-inline-text");
+        const inlineOptions = card.querySelector("[data-feedback-inline-suggestion-options]");
+        let inlineSuggestions = [];
+        card.querySelectorAll("[data-feedback-inline-suggestion-category]").forEach((button) => {
+          button.addEventListener("click", () => {
+            inlineSuggestions = getFeedbackSuggestions(button.dataset.feedbackInlineSuggestionCategory);
+            inlineOptions.innerHTML = inlineSuggestions.map((suggestion, index) =>
+              `<button type="button" class="ba-feedback-suggestion-option" data-feedback-inline-suggestion-index="${index}">${escapeHtml(suggestion)}</button>`,
+            ).join("");
+            inlineOptions.hidden = inlineSuggestions.length === 0;
+            card.querySelectorAll("[data-feedback-inline-suggestion-category]").forEach((item) => {
+              item.classList.toggle("is-active", item === button);
+            });
+          });
+        });
+        inlineOptions.addEventListener("click", (event) => {
+          const option = event.target.closest("[data-feedback-inline-suggestion-index]");
+          const index = Number(option?.dataset.feedbackInlineSuggestionIndex);
+          if (!option || !inlineSuggestions[index] || !inlineText) {
+            return;
+          }
+          appendFeedbackSuggestion(inlineText, inlineSuggestions[index]);
+          inlineText.focus();
+        });
+      });
+
       listEl.querySelectorAll("[data-feedback-edit]").forEach((button) => {
         button.addEventListener("click", () => {
           const card = button.closest(".ba-feedback-card");
@@ -3854,10 +4135,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!activeSuggestions[index]) {
         return;
       }
-      const existingText = textInput.value;
-      textInput.value = existingText
-        ? `${existingText}${existingText.endsWith("\n") ? "\n" : "\n\n"}${activeSuggestions[index]}`
-        : activeSuggestions[index];
+      appendFeedbackSuggestion(textInput, activeSuggestions[index]);
       textInput.focus();
     });
 
@@ -4003,7 +4281,7 @@ document.addEventListener("DOMContentLoaded", function () {
       performanceMin: document.getElementById("ba-maac-performance-min")?.value || "0",
       performanceMax: document.getElementById("ba-maac-performance-max")?.value || "100",
       maacMin: document.getElementById("ba-maac-rating-min")?.value || "0",
-      maacMax: document.getElementById("ba-maac-rating-max")?.value || "10",
+      maacMax: document.getElementById("ba-maac-rating-max")?.value || "9",
       modules: {},
       custom: {},
     };
@@ -4126,7 +4404,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (perfMin) perfMin.value = "0";
     if (perfMax) perfMax.value = "100";
     if (maacMin) maacMin.value = "0";
-    if (maacMax) maacMax.value = "10";
+    if (maacMax) maacMax.value = "9";
 
     document.querySelectorAll("[data-filter-key]").forEach((input) => {
       const type = input.getAttribute("data-filter-type");

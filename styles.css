@@ -4964,6 +4964,11 @@ input:checked+.ba-slider:before {
   resize: vertical;
 }
 
+.ba-ticket-multiline-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .ba-feedback-suggestions {
   display: flex;
   flex-wrap: wrap;

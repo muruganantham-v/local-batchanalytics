@@ -1260,7 +1260,9 @@ document.addEventListener("DOMContentLoaded", function () {
       const isAtt = isAttendance(cat.categoryname);
 
       let statsHtml = "";
-      if (isMaac || isAtt) {
+      if (isMaac) {
+        statsHtml = `<div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG MAAC RATING</span><span class="val">${grade}</span></div>`;
+      } else if (isAtt) {
         statsHtml = `<div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG GRADE</span><span class="val">${grade}%</span></div>`;
       } else {
         statsHtml = `<div class="stat-box"><span class="lbl">AVG GRADE</span><span class="val">${grade}%</span></div><div class="stat-box"><span class="lbl">COMPLETION</span><span class="val ${getCompClass(comp)}">${comp}%</span></div>`;
@@ -1293,7 +1295,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // FIX: Force to number for mathematical height scaling
       const numVal = parseFloat(val) || 0;
 
-      const height = isMaac ? numVal * 10 : Math.max(numVal, 2);
+      const height = isMaac ? (numVal / 9) * 100 : Math.max(numVal, 2);
       const barClass = isMaac || isAtt ? "bar-purple" : "bar-green";
       const displayVal = isMaac ? val : val + "%";
 
@@ -2463,7 +2465,7 @@ document.addEventListener("DOMContentLoaded", function () {
         min: parseFloat(document.getElementById(`f-${i}-min`)?.value || "") || 0,
         max:
           parseFloat(document.getElementById(`f-${i}-max`)?.value || "") ||
-          (c.categoryname === "MAAC Ratings" ? 10 : 100),
+          (c.categoryname === "MAAC Ratings" ? 9 : 100),
         isMaac: c.categoryname === "MAAC Ratings",
         isAtt: isAttendance(c.categoryname),
       })),
@@ -2545,9 +2547,9 @@ document.addEventListener("DOMContentLoaded", function () {
       return {
         label: value,
         className: hasValue
-          ? (data.pct || 0) * 10 >= 75
+          ? (data.pct || 0) * (100 / 9) >= 75
             ? "high"
-            : (data.pct || 0) * 10 >= 50
+            : (data.pct || 0) * (100 / 9) >= 50
               ? "medium"
               : "low"
           : "medium",
@@ -2856,9 +2858,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // GENERATE SLIDER-STYLE INPUTS FOR EACH CATEGORY
     let inputs = allVisibleCategories
       .map((cat, i) => {
-        // Determine max value based on category type (MAAC = 10, Others = 100)
+        // MAAC is on a 0-9 scale; other category metrics are percentages.
         const isMaac = cat.categoryname === "MAAC Ratings";
-        const maxVal = isMaac ? 10 : 100;
+        const maxVal = isMaac ? 9 : 100;
         const step = isMaac ? 0.1 : 1;
 
         return `
@@ -3126,7 +3128,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const isMaac = c.categoryname === "MAAC Ratings";
 
       if (minEl) minEl.value = "0";
-      if (maxEl) maxEl.value = isMaac ? "10" : "100";
+      if (maxEl) maxEl.value = isMaac ? "9" : "100";
     });
 
     getCourseMaacColumns(CURRENT_COURSE.courseid).forEach((column) => {
@@ -3764,6 +3766,19 @@ document.addEventListener("DOMContentLoaded", function () {
     await MAAC_SUMMARY_PENDING[courseId];
   }
 
+  function syncCourseMaacRatings(courseId, maacData) {
+    const course = BATCH_DATA?.courses?.find((item) => Number(item.courseid) === Number(courseId));
+    const maacCategory = course?.categories?.find((category) => category.categoryname === "MAAC Ratings");
+    if (!maacCategory || !Array.isArray(maacData?.students)) {
+      return;
+    }
+
+    const ratings = new Map(maacData.students.map((student) => [student.username, student.maac_rating]));
+    maacCategory.studentGrades.forEach((student) => {
+      student.percentage = ratings.has(student.username) ? ratings.get(student.username) : null;
+    });
+  }
+
   async function loadCourseMaacData(courseId) {
     if (MAAC_COURSE_CACHE[courseId]) {
       if (CURRENT_COURSE && CURRENT_COURSE.courseid === courseId) {
@@ -3792,8 +3807,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         MAAC_COURSE_CACHE[courseId] = data;
+        syncCourseMaacRatings(courseId, data);
         if (CURRENT_COURSE && CURRENT_COURSE.courseid === courseId) {
-          renderCourseFilterSection(CURRENT_COURSE);
+          renderCourse(courseId);
         }
       })
       .catch((e) => {

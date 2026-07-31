@@ -27,7 +27,31 @@ $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:view
 $can_view_tickets = $can_manage || \local_batchanalytics\util::has_any_course_capability($userid, [
     'local/batchanalytics:viewtickets',
     'local/batchanalytics:managetickets',
+    'local/batchanalytics:manageescalatedtickets',
 ]);
+
+// The Ticket Dashboard also grants access to users assigned the configured
+// Batch Manager role directly in a visible course.
+if (!$can_view_tickets) {
+    $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
+    if ($batchmanagerroleid > 0) {
+        $can_view_tickets = $DB->record_exists_sql(
+            "SELECT 1
+               FROM {role_assignments} ra
+               JOIN {context} ctx ON ctx.id = ra.contextid
+               JOIN {course} c ON c.id = ctx.instanceid
+              WHERE ra.userid = :userid
+                AND ra.roleid = :roleid
+                AND ctx.contextlevel = :coursecontextlevel
+                AND c.visible = 1",
+            [
+                'userid' => $userid,
+                'roleid' => $batchmanagerroleid,
+                'coursecontextlevel' => CONTEXT_COURSE,
+            ]
+        );
+    }
+}
 
 // Load restricted CRM fields for view-only users.
 $restricted_crm_fields = [];
@@ -479,6 +503,14 @@ if ($action === 'getbatchfulldata') {
                 'grademin' => (float)$item->grademin
             ];
         }
+
+        foreach ($categories_data as $category_key => &$category_data) {
+            if ($category_key === 'MAAC Ratings' || stripos($category_key, 'attend') !== false) {
+                continue;
+            }
+            $category_data['categoryname'] = $category_key . ' (' . count($category_data['items']) . ')';
+        }
+        unset($category_data);
 
         // 5. Pre-fetch ALL grades for this course in a single query to prevent N+1 DB lookups!
         $all_grades_sql = "

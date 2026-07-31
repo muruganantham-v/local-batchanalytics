@@ -115,6 +115,42 @@ class cliq_service {
     }
 
     /**
+     * @return string
+     */
+    public static function get_default_ticket_student_escalation_email_subject(): string {
+        return 'Your MAAC ticket has been escalated - {{ticket_title}}';
+    }
+
+    /**
+     * @return string
+     */
+    public static function get_default_ticket_student_escalation_email_body(): string {
+        return "Your MAAC ticket has been escalated to the Program Manager.\n\n"
+            . "Course: {{course_name}}\n"
+            . "Ticket: {{ticket_title}}\n"
+            . "Status: {{ticket_status}}\n"
+            . "Program Manager: {{batch_manager_name}}";
+    }
+
+    /**
+     * Render a ticket subject and body using the shared template placeholders.
+     *
+     * @param string $subjecttemplate
+     * @param string $bodytemplate
+     * @param \stdClass $ticket
+     * @param array $extra
+     * @return array
+     */
+    public function render_ticket_template(string $subjecttemplate, string $bodytemplate, \stdClass $ticket,
+            array $extra = []): array {
+        $variables = $this->build_ticket_variables($ticket, $extra);
+        return [
+            'subject' => $this->render_template($subjecttemplate, $variables),
+            'body' => $this->render_template($bodytemplate, $variables),
+        ];
+    }
+
+    /**
      * @param string $type
      * @param \stdClass $ticket
      * @param array $recipients
@@ -141,9 +177,9 @@ class cliq_service {
             $bodytemplate = $defaultbody;
         }
 
-        $variables = $this->build_ticket_variables($ticket, $extra);
-        $subject = $this->render_template($subjecttemplate, $variables);
-        $body = $this->render_template($bodytemplate, $variables);
+        $rendered = $this->render_ticket_template($subjecttemplate, $bodytemplate, $ticket, $extra);
+        $subject = $rendered['subject'];
+        $body = $rendered['body'];
         $text = trim($subject . "\n\n" . $body);
 
         foreach ($this->normalise_recipients($recipients) as $recipient) {
