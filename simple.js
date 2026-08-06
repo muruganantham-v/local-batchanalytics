@@ -24,6 +24,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const tabsWrapper = document.getElementById("ba-tabs-wrapper");
   const batchTabs = document.getElementById("batchTabs");
   const batchTabsContent = document.getElementById("batchTabsContent");
+  const canManage = document.querySelector(".local-batchanalytics-wrap")?.dataset.canManage === "1";
+  const importMaacEnabled = document.querySelector(".local-batchanalytics-wrap")?.dataset.importMaacEnabled === "1";
+  let importReturnState = null;
+  try {
+    importReturnState = JSON.parse(sessionStorage.getItem("ba-maac-import-return") || "null");
+  } catch (_error) {
+    sessionStorage.removeItem("ba-maac-import-return");
+  }
 
   if (!searchBox || !searchBtn || !batchSelect) {
     return;
@@ -204,6 +212,10 @@ document.addEventListener("DOMContentLoaded", function () {
       opt.textContent = `${b.code} (${b.count} courses)`;
       batchSelect.appendChild(opt);
     });
+    if (importReturnState?.batchcode && batches.some((batch) => batch.code === importReturnState.batchcode)) {
+      batchSelect.value = importReturnState.batchcode;
+      setTimeout(() => batchSelect.dispatchEvent(new Event("change")), 0);
+    }
   }
 
   function batchMatchesKeyword(batch, keyword) {
@@ -323,6 +335,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  if (importReturnState?.batchcode) {
+    searchBox.value = importReturnState.search || importReturnState.batchcode;
+    searchBtn.click();
+  }
+
   // ==================== BATCH SELECTION ====================
   batchSelect.addEventListener("change", async function () {
     if (!this.value) {
@@ -369,7 +386,17 @@ document.addEventListener("DOMContentLoaded", function () {
         fetchUnifiedData(allUsers);
       }
 
-      OVERVIEW_SELECTED_COURSES = BATCH_DATA.courses.map((c) => c.courseid);
+      const restoredCourses = importReturnState?.batchcode === BATCH_DATA.batchcode ? importReturnState.courses : null;
+      OVERVIEW_SELECTED_COURSES = Array.isArray(restoredCourses)
+        ? BATCH_DATA.courses.map((course) => course.courseid).filter((courseid) => restoredCourses.includes(courseid))
+        : BATCH_DATA.courses.map((course) => course.courseid);
+      if (OVERVIEW_SELECTED_COURSES.length === 0) {
+        OVERVIEW_SELECTED_COURSES = BATCH_DATA.courses.map((course) => course.courseid);
+      }
+      if (restoredCourses) {
+        sessionStorage.removeItem("ba-maac-import-return");
+        importReturnState = null;
+      }
       buildTabs();
       renderOverview();
       tabsWrapper.style.display = "block";
@@ -1049,6 +1076,7 @@ document.addEventListener("DOMContentLoaded", function () {
               </div>
               <div class="ba-ch-right">
                   ${filterHtml}
+                  ${canManage && importMaacEnabled ? `<a class="ba-btn ba-btn-view" id="ba-import-maac-link" href="maac_import.php?courses=${encodeURIComponent((BATCH_DATA?.courses || []).map((course) => course.courseid).join(","))}">Import MAAC</a>` : ""}
               </div>
           </div>
       </div>`;
@@ -1166,6 +1194,13 @@ document.addEventListener("DOMContentLoaded", function () {
     html += `</div>`;
 
     batchTabsContent.innerHTML = html;
+    document.getElementById("ba-import-maac-link")?.addEventListener("click", () => {
+      sessionStorage.setItem("ba-maac-import-return", JSON.stringify({
+        search: searchBox.value,
+        batchcode: BATCH_DATA.batchcode,
+        courses: OVERVIEW_SELECTED_COURSES,
+      }));
+    });
   }
 
   // GLOBAL FUNCTION: Handle Filter Application
@@ -2534,7 +2569,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (range.isMaac || range.isAtt) {
       return data.pct || 0;
     }
-    return isCompMode ? data.comp || 0 : data.pct || 0;
+    return isCompMode ? data.comp || 0 : data.advpct || 0;
   }
 
   function getCourseMetricDisplay(data, categoryName, isCompMode) {
@@ -2573,7 +2608,7 @@ document.addEventListener("DOMContentLoaded", function () {
       };
     }
 
-    const metric = isCompMode ? data.comp : data.pct;
+    const metric = isCompMode ? data.comp : data.advpct;
     const hasValue = metric !== null && metric !== undefined;
     const numeric = hasValue ? parseFloat(metric) : 0;
     const value = hasValue ? numeric.toFixed(0) : "-";
@@ -2950,6 +2985,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!map[s.username]) map[s.username] = { ...s, cats: {}, maaccustom: {} };
         map[s.username].cats[cat.categoryname] = {
           pct: s.percentage,
+          advpct: s.advancedFilterPercentage,
           comp: s.completionRate, // FIX: Store true completion rate
           earned: s.totalEarned,
         };

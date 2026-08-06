@@ -4969,6 +4969,56 @@ input:checked+.ba-slider:before {
   overflow-wrap: anywhere;
 }
 
+.ba-import-section { margin-top: 12px; }
+.ba-import-upload-body { display: block; padding: 18px 20px 22px; }
+.ba-import-upload-card { width: 60%; max-width: 760px; min-width: 420px; border: 1px solid #dbe5f0; border-radius: 10px; overflow: hidden; background: #fff; }
+.ba-import-upload-head { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #e8edf3; }
+.ba-import-upload-head strong, .ba-import-upload-head small { display: block; }
+.ba-import-upload-head small, .ba-import-dropzone small, .ba-import-file-name { color: #7b8794; font-size: 12px; margin-top: 3px; }
+.ba-import-upload-icon, .ba-import-dropzone-icon { color: #2563eb; }
+.ba-import-dropzone { margin: 16px; min-height: 150px; border: 2px dashed #c8d7e8; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #344054; text-align: center; }
+.ba-import-dropzone.is-dragging { border-color: #2563eb; background: #eff6ff; }
+.ba-import-dropzone-icon { display: inline-flex; }
+.ba-import-dropzone .ba-btn { margin-top: 4px; }
+.ba-import-file-name { padding: 0 16px 16px; }
+.ba-import-file-summary { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; min-height: 82px; }
+.ba-import-file-summary strong, .ba-import-file-summary small, .ba-import-file-summary span { display: block; }
+.ba-import-file-summary span { color: #16803c; font-size: 13px; font-weight: 600; margin-top: 8px; }
+.ba-import-file-clear { border: 0; background: transparent; color: #667085; cursor: pointer; font-weight: 600; padding: 4px; }
+.ba-import-file-clear:hover { color: #b42318; }
+.ba-import-upload-layout { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.ba-import-actions { display: flex; justify-content: center; }
+.ba-import-section #ba-import-message { margin-top: 14px; text-align: center; }
+.ba-import-course-list { display: grid; gap: 10px; }
+.ba-import-course-card { width: 100%; margin: 0; padding: 14px; box-sizing: border-box; }
+.ba-import-course-toggle { width: 100%; border: 0; background: transparent; padding: 0; display: flex; justify-content: space-between; align-items: center; color: #1d2939; cursor: pointer; font-size: 16px; font-weight: 700; text-align: left; }
+.ba-import-course-chevron { color: #667085; transition: transform .2s ease; }
+.ba-import-course-card.is-expanded .ba-import-course-chevron { transform: rotate(180deg); }
+.ba-import-course-content { padding-top: 12px; }
+.ba-import-course-controls { gap: 0; }
+.ba-import-course-controls .ba-mentor-field-value { display: flex; align-items: center; }
+.ba-import-course-controls .ba-range-input { width: 100%; max-width: 100%; }
+.ba-import-course-controls .ba-range-input, .ba-import-mentor-grid .ba-range-input { text-align: left; }
+.ba-import-course-controls .ba-range-input option, .ba-import-mentor-grid .ba-range-input option { text-align: left; }
+.ba-import-mapping-title { font-weight: 700; margin: 14px 0 8px; }
+.ba-import-mentor-grid .ba-mentor-field-value { display: flex; align-items: center; }
+.ba-import-mentor-grid .ba-range-input { width: 100%; max-width: 100%; }
+.ba-import-modal-dialog { width: min(760px, calc(100vw - 32px)); }
+.ba-import-modal-body { padding: 20px 24px; }
+.ba-import-modal-body > p { margin: 0 0 14px; color: #475467; }
+.ba-import-review-list { display: grid; gap: 10px; }
+.ba-import-review-course { border: 1px solid #dbe5f0; border-radius: 8px; padding: 12px 14px; display: grid; gap: 5px; }
+.ba-import-review-course strong { color: #1d2939; }
+.ba-import-review-course span, .ba-import-review-course small { color: #667085; font-size: 13px; }
+.ba-import-review-note { color: #8a5b00 !important; margin-top: 14px !important; }
+.ba-import-review-error { color: #b42318 !important; margin-top: 14px !important; }
+.ba-import-modal-actions { padding: 14px 24px; border-top: 1px solid #e8edf3; display: flex; justify-content: flex-end; gap: 10px; }
+.ba-import-success-dialog { width: min(500px, calc(100vw - 32px)); }
+.ba-import-redirect-text { margin-bottom: 10px !important; }
+.ba-import-progress { height: 8px; border-radius: 999px; background: #e8edf3; overflow: hidden; }
+.ba-import-progress span { display: block; height: 100%; width: 0; background: #16803c; transition: width .05s linear; }
+@media (max-width: 700px) { .ba-import-upload-body { padding: 20px 14px 24px; } .ba-import-upload-layout { align-items: stretch; flex-direction: column; } .ba-import-upload-card { width: 100%; min-width: 0; } .ba-import-actions { justify-content: center; } }
+
 .ba-feedback-suggestions {
   display: flex;
   flex-wrap: wrap;

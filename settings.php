@@ -245,6 +245,18 @@ if ($hassiteconfig) {
         ''
     ));
 
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/import_properties',
+        get_string('import_properties', 'local_batchanalytics'),
+        ''
+    ));
+    $settings->add(new admin_setting_configcheckbox(
+        'local_batchanalytics/import_maac_sheet',
+        get_string('import_maac_sheet', 'local_batchanalytics'),
+        get_string('import_maac_sheet_desc', 'local_batchanalytics'),
+        0
+    ));
+
     $ADMIN->add('localplugins', $settings);
     $ADMIN->add('localplugins', new admin_externalpage(
         'local_batchanalytics_ticket_templates',

@@ -535,6 +535,15 @@ if ($action === 'getbatchfulldata') {
         // 6. Calculate Grades
         foreach ($categories_data as $cat_name => &$cat_data) {
             $total_items_in_cat = count($cat_data['items']); // NEW: Get total assignments (e.g. 27)
+            $category_total_max = 0;
+
+            foreach ($cat_data['items'] as $item) {
+                $gmax = $item['grademax'];
+                $gmin = $item['grademin'];
+                if ($gmax > $gmin) {
+                    $category_total_max += ($gmax - $gmin);
+                }
+            }
 
             foreach ($students as $student) {
                 $total_earned = 0;
@@ -561,9 +570,16 @@ if ($action === 'getbatchfulldata') {
 
                 // Grade %: Only calculated on items they ACTUALLY submitted (Ignores unsubmitted)
                 $percentage = $total_max > 0 ? round(($total_earned / $total_max) * 100, 2) : null;
+                $advanced_filter_percentage = $category_total_max > 0
+                    ? round(($total_earned / $category_total_max) * 100, 2)
+                    : null;
 
                 if ($cat_name === 'MAAC Ratings' && $percentage !== null) {
                     $percentage = round($percentage / 10, 1);
+                }
+
+                if ($cat_name === 'MAAC Ratings' && $advanced_filter_percentage !== null) {
+                    $advanced_filter_percentage = round($advanced_filter_percentage / 10, 1);
                 }
 
                 // Completion %: Items Completed / Total Items in Category (e.g., 10/27 = 37.04%)
@@ -575,6 +591,7 @@ if ($action === 'getbatchfulldata') {
                     'fullname' => $student->fullname,
                     'username' => $student->username,
                     'percentage' => $percentage,
+                    'advancedFilterPercentage' => $advanced_filter_percentage,
                     'completionRate' => $comp_rate, // NEW: Pass the true completion metric to JS
                     'totalEarned' => $total_earned
                 ];
@@ -626,7 +643,7 @@ echo $OUTPUT->header();
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
 $mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 // echo '<h2 class="ba-page-title">' . get_string('pluginname', 'local_batchanalytics') . '</h2>';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
