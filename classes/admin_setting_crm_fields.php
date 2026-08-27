@@ -14,7 +14,6 @@ defined('MOODLE_INTERNAL') || die();
  *   - Delete button
  * Plus an "Add Field" button at the bottom.
  *
-<<<<<<< HEAD
  * The whole table serialises to a single JSON blob stored in the configured setting.
  */
 class admin_setting_crm_fields extends \admin_setting {
@@ -26,16 +25,6 @@ class admin_setting_crm_fields extends \admin_setting {
         // Pass '' as default - get_defaultsetting() overrides this.
         parent::__construct($name, $visiblename, $description, '');
         $this->defaultfields = $defaultfields;
-=======
- * The whole table serialises to a single JSON blob stored in
- * local_batchanalytics/crm_fields_config.
- */
-class admin_setting_crm_fields extends \admin_setting {
-
-    public function __construct($name, $visiblename, $description) {
-        // Pass '' as default — get_defaultsetting() overrides this.
-        parent::__construct($name, $visiblename, $description, '');
->>>>>>> origin/main
     }
 
     public function get_setting() {
@@ -43,11 +32,7 @@ class admin_setting_crm_fields extends \admin_setting {
     }
 
     public function get_defaultsetting() {
-<<<<<<< HEAD
         return json_encode($this->defaultfields ?? crm_fields_helper::get_default_fields());
-=======
-        return json_encode(crm_fields_helper::get_default_fields());
->>>>>>> origin/main
     }
 
     public function write_setting($data) {
@@ -79,21 +64,12 @@ class admin_setting_crm_fields extends \admin_setting {
         $id   = $this->get_id();
         $name = $this->get_full_name();
 
-<<<<<<< HEAD
         if ($data === '' || $data === null) {
             $fields = $this->defaultfields ?? crm_fields_helper::get_default_fields();
         } else {
             $fields = json_decode($data, true);
             if (!is_array($fields)) {
                 $fields = $this->defaultfields ?? crm_fields_helper::get_default_fields();
-=======
-        if (empty($data)) {
-            $fields = crm_fields_helper::get_default_fields();
-        } else {
-            $fields = json_decode($data, true);
-            if (!is_array($fields)) {
-                $fields = crm_fields_helper::get_default_fields();
->>>>>>> origin/main
             }
         }
 
