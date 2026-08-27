@@ -611,6 +611,7 @@ class maac_service {
             'mynew' => $mynew,
             'myresolved' => $myresolved,
             'access' => [
+                'currentuserid' => $userid,
                 'rolekey' => $access['rolekey'],
                 'rolelabel' => $access['rolelabel'],
                 'scopekey' => $access['scopekey'],
@@ -1977,6 +1978,22 @@ class maac_service {
     private function format_ticket_dashboard_record(\stdClass $record, int $userid, array $access): array {
         $statuskey = $this->normalise_ticket_status((string)$record->status);
         $courseid = (int)$record->courseid;
+        $isassignedtopm = !empty($record->escalatedtopm) || $statuskey === 'pm_in_progress';
+        $assigneeuserid = $isassignedtopm
+            ? (int)$record->batchmanageruserid
+            : (int)$record->ssteamuserid;
+        $assigneefullname = $isassignedtopm
+            ? trim((string)$record->batchmanagerfullname)
+            : trim((string)$record->ssteamfullname);
+        $assignees = [];
+        foreach ([
+            ['id' => (int)$record->ssteamuserid, 'name' => trim((string)$record->ssteamfullname)],
+            ['id' => (int)$record->batchmanageruserid, 'name' => trim((string)$record->batchmanagerfullname)],
+        ] as $assignee) {
+            if ($assignee['id'] > 0 && $assignee['name'] !== '') {
+                $assignees[$assignee['id']] = $assignee;
+            }
+        }
         $isassigned = (int)$record->ssteamuserid === $userid;
         $canmanagecourse = !empty($access['canmanage']) || !empty($access['manageablecourseids'][$courseid]);
         $canssteamhandle = $this->can_ss_team_handle_ticket_record($record, $userid);
@@ -2016,6 +2033,9 @@ class maac_service {
             'raisedby' => trim((string)$record->createdbyfullname),
             'raisedbyemail' => trim((string)($record->createdbyemail ?? '')),
             'raisedto' => $this->build_raised_to_label((string)$record->ssteamfullname, (string)$record->batchmanagerfullname),
+            'assigneeuserid' => $assigneeuserid,
+            'assigneename' => $assigneefullname,
+            'assignees' => array_values($assignees),
             'tickettitle' => (string)$record->tickettitle,
             'ticketreason' => (string)$record->ticketreason,
             'status' => $this->get_ticket_status_label($statuskey),

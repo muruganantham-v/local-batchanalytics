@@ -159,7 +159,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return raw.filter((t) => {
       if (state.filters.batch && t.batchname !== state.filters.batch) return false;
       if (state.filters.course && getCourseKey(t) !== state.filters.course) return false;
-      if (state.filters.assignedTo && (t.raisedto || "") !== state.filters.assignedTo) return false;
+      if (
+        state.filters.assignedTo &&
+        !(t.assignees || []).some((assignee) => String(assignee.id || "") === state.filters.assignedTo)
+      ) return false;
       if (state.filters.status && t.statuskey !== state.filters.status) return false;
       return true;
     });
@@ -226,7 +229,24 @@ document.addEventListener("DOMContentLoaded", function () {
     const batches = [...new Set(allDashboardTickets.map((t) => t.batchname).filter(Boolean))].sort();
     const courses = [];
     const courseSeen = new Set();
-    const assigned = [...new Set(allDashboardTickets.map((t) => t.raisedto).filter(Boolean))].sort();
+    const assignedById = new Map();
+    const access = state.data?.access || {};
+    allDashboardTickets.forEach((ticket) => {
+      (ticket.assignees || []).forEach((assignee) => {
+        const userid = Number(assignee.id || 0);
+        const name = String(assignee.name || "").trim();
+        if (!userid || !name) {
+          return;
+        }
+        if (access.rolekey === "ss_team" && userid === Number(access.currentuserid || 0)) {
+          return;
+        }
+        assignedById.set(userid, name);
+      });
+    });
+    const assigned = [...assignedById.entries()]
+      .map(([userid, name]) => ({ userid: String(userid), name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
 
     allDashboardTickets.forEach((ticket) => {
       const key = getCourseKey(ticket);
@@ -267,7 +287,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <label style="font-size: 12px; font-weight: 600; color: var(--text-gray); display: block; margin-bottom: 5px;">Assigned To</label>
           <select id="filter-assigned" class="ba-select-small" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
             <option value="">All Assignees</option>
-            ${options.assigned.map((name) => `<option value="${escapeHtml(name)}"${state.filters.assignedTo === name ? " selected" : ""}>${escapeHtml(name)}</option>`).join("")}
+            ${options.assigned.map((assignee) => `<option value="${escapeHtml(assignee.userid)}"${state.filters.assignedTo === assignee.userid ? " selected" : ""}>${escapeHtml(assignee.name)}</option>`).join("")}
           </select>
         </div>
         <div style="flex: 1; min-width: 150px;">
