@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 define([], function () {
   return {
     init: function () {
@@ -5,3 +6,12 @@ define([], function () {
     },
   };
 });
+=======
+define([], function () {
+  return {
+    init: function () {
+      console.log("AMD WORKING");
+    },
+  };
+});
+>>>>>>> origin/main
