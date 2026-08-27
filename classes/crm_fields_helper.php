@@ -102,7 +102,6 @@ class crm_fields_helper {
         }
         return $keys;
     }
-<<<<<<< HEAD
 
     /**
      * Strip restricted CRM fields from a data array.
@@ -256,6 +255,4 @@ class crm_fields_helper {
             ];
         }, self::normalise_mentor_field_groups($groups));
     }
-=======
->>>>>>> origin/main
 }
