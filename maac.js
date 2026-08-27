@@ -1167,16 +1167,6 @@ document.addEventListener("DOMContentLoaded", function () {
         rowSpan: 2,
         className: "ba-maac-group-head ba-maac-sticky-col ba-maac-student-head ba-maac-front-head",
       }),
-      renderResizableHeader({
-        label: "Username",
-        columnKey: "username",
-        columnIndex: addLeafColumn("username", 160),
-        sortable: true,
-        sortKey: "username",
-        sortType: "text",
-        rowSpan: 2,
-        className: "ba-maac-group-head ba-maac-username-head",
-      }),
     ];
     const secondHeaderCells = [];
 
@@ -1350,8 +1340,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 ? "ba-maac-ticket-row-open"
                 : "";
         const studentDetailCells = [
-          `<td class="ba-maac-sticky-col ba-maac-student-cell ba-maac-front-cell"><strong>${escapeHtml(student.fullname)}</strong></td>`,
-          `<td>${escapeHtml(student.username)}</td>`,
+          `<td class="ba-maac-sticky-col ba-maac-student-cell ba-maac-front-cell"><strong>${escapeHtml(student.fullname)}</strong><br><small style="color:#888">${escapeHtml(student.username)}</small></td>`,
         ];
         const moduleCells = state.collapsedGroups.module
           ? [`<td class="ba-maac-collapsed-col"></td>`]
