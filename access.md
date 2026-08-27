@@ -4,6 +4,7 @@ This document describes the access behavior currently implemented in the
 `local_batchanalytics` plugin. Moodle capability overrides and local role
 assignments can change the effective access for an individual user.
 
+
 ## Access Model
 
 - Batch Analytics home and Ticket Dashboard require login and the system-level
