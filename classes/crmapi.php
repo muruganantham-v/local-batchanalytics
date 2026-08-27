@@ -279,5 +279,32 @@ class crmapi
 
         return null;
     }
+
+    /** Update configured fields on a student CRM record. */
+    public function update_student_fields(string $recordid, array $fields): bool {
+        $recordid = preg_replace('/[^A-Za-z0-9]/', '', $recordid);
+        $fields = array_filter($fields, static function($value, $key): bool {
+            return preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', (string)$key) && is_numeric($value);
+        }, ARRAY_FILTER_USE_BOTH);
+        if ($recordid === '' || empty($fields) || $this->student_module_api_name === '') {
+            return false;
+        }
+
+        $token = $this->get_access_token();
+        if (!$token) {
+            return false;
+        }
+
+        $url = rtrim($this->api_base_url, '/') . '/crm/v6/'
+            . rawurlencode($this->student_module_api_name) . '/' . rawurlencode($recordid);
+        $curl = new \curl();
+        $curl->setHeader([
+            "Authorization: Zoho-oauthtoken {$token}",
+            'Content-Type: application/json',
+        ]);
+        $response = $curl->put($url, json_encode(['data' => [$fields]]));
+        $decoded = json_decode($response, true);
+        return !empty($decoded['data'][0]['status']) && strtolower((string)$decoded['data'][0]['status']) === 'success';
+    }
 }
 

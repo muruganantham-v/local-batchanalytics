@@ -10,6 +10,12 @@ class maac_columns_helper {
 
     /** @var string[] */
     private const SURFACES = ['maac', 'advanced'];
+    private const BUILTIN_KEYS = ['maac_rating', 'spot_awards_nomination', 'trend'];
+
+    /** Return whether this is a built-in MAAC display column. */
+    public static function is_builtin_key(string $key): bool {
+        return in_array($key, self::BUILTIN_KEYS, true);
+    }
 
     /**
      * Default editable columns for the MAAC page.
@@ -130,6 +136,12 @@ class maac_columns_helper {
                 continue;
             }
 
+            // Stored settings from older versions may incorrectly mark a
+            // custom field as locked. Only canonical built-ins may be locked.
+            if (!self::is_builtin_key((string)($row['key'] ?? ''))) {
+                unset($row['system'], $row['locked']);
+            }
+
             $column = self::normalise_column($row);
             if ($column['key'] === '') {
                 continue;
@@ -150,6 +162,8 @@ class maac_columns_helper {
                         $normalized[$index] = self::normalise_column(array_merge($column, $builtin, [
                             'showinmaac' => $column['showinmaac'] ?? $builtin['showinmaac'],
                             'showinadvanced' => $column['showinadvanced'] ?? $builtin['showinadvanced'],
+                            'maacsync' => $column['maacsync'] ?? $builtin['maacsync'],
+                            'crmfield' => $column['crmfield'] ?? $builtin['crmfield'],
                         ]));
                         break;
                     }
@@ -171,6 +185,15 @@ class maac_columns_helper {
     public static function get_columns(): array {
         return array_values(array_filter(self::get_settings_rows(), static function(array $column): bool {
             return empty($column['system']);
+        }));
+    }
+
+    /** Return numeric MAAC columns configured for CRM average sync. */
+    public static function get_sync_columns(): array {
+        return array_values(array_filter(self::get_settings_rows(), static function(array $column): bool {
+            return !empty($column['maacsync'])
+                && in_array($column['type'] ?? '', ['number', 'formula'], true)
+                && !empty($column['crmfield']);
         }));
     }
 
@@ -212,14 +235,6 @@ class maac_columns_helper {
      * @return bool
      */
     public static function is_visible_on_surface(array $column, string $surface): bool {
-        if ($surface === 'maac') {
-            return !array_key_exists('showinmaac', $column) || !empty($column['showinmaac']);
-        }
-
-        if ($surface === 'advanced') {
-            return !array_key_exists('showinadvanced', $column) || !empty($column['showinadvanced']);
-        }
-
         return true;
     }
 
@@ -247,15 +262,75 @@ class maac_columns_helper {
             'key' => trim((string)($column['key'] ?? '')),
             'label' => trim((string)($column['label'] ?? '')),
             'type' => $type,
+            'formula' => trim((string)($column['formula'] ?? '')),
             'options' => array_values($options),
             'selection' => $selection,
             'min' => array_key_exists('min', $column) ? $column['min'] : null,
             'max' => array_key_exists('max', $column) ? $column['max'] : null,
-            'showinmaac' => !array_key_exists('showinmaac', $column) || !empty($column['showinmaac']),
-            'showinadvanced' => !array_key_exists('showinadvanced', $column) || !empty($column['showinadvanced']),
+            'showinmaac' => true,
+            'showinadvanced' => true,
+            'maacsync' => !empty($column['maacsync']),
+            'crmfield' => preg_replace('/[^A-Za-z0-9_]/', '', trim((string)($column['crmfield'] ?? ''))),
             'excludefrommaac' => !empty($column['excludefrommaac']),
             'system' => !empty($column['system']),
             'locked' => !empty($column['locked']),
         ];
+    }
+
+    /** Calculate configured formula columns from a student's stored custom values. */
+    public static function calculate_formula_values(array $values, array $columns): array {
+        $bykey = array_column($columns, null, 'key');
+        $resolved = [];
+        $resolving = [];
+        $resolve = function(string $key) use (&$resolve, &$resolved, &$resolving, $values, $bykey): ?float {
+            if (array_key_exists($key, $resolved)) {
+                return $resolved[$key];
+            }
+            if (!isset($bykey[$key]) || isset($resolving[$key])) {
+                return null;
+            }
+            $resolving[$key] = true;
+            $column = $bykey[$key];
+            if (($column['type'] ?? '') === 'formula') {
+                $value = self::evaluate_formula((string)($column['formula'] ?? ''), $resolve);
+            } else {
+                $raw = $values[$key] ?? 0;
+                $value = is_numeric($raw) ? (float)$raw : 0.0;
+            }
+            unset($resolving[$key]);
+            $resolved[$key] = $value;
+            return $value;
+        };
+        foreach ($columns as $column) {
+            if (($column['type'] ?? '') === 'formula') {
+                $value = $resolve($column['key']);
+                $values[$column['key']] = $value === null ? '' : $value;
+            }
+        }
+        return $values;
+    }
+
+    private static function evaluate_formula(string $formula, callable $resolve): ?float {
+        $compact = preg_replace('/\s+/', '', $formula);
+        if ($compact === '') return null;
+        preg_match_all('/\{[a-z0-9_]+\}|\d+(?:\.\d+)?|[()+\-*\/]/i', $compact, $matches);
+        $tokens = $matches[0] ?? [];
+        if (implode('', $tokens) !== $compact) return null;
+        $output = []; $operators = []; $precedence = ['+' => 1, '-' => 1, '*' => 2, '/' => 2]; $previous = null;
+        foreach ($tokens as $token) {
+            if (is_numeric($token) || $token[0] === '{') { $output[] = $token; }
+            else if ($token === '(') { $operators[] = $token; }
+            else if ($token === ')') { while (!empty($operators) && end($operators) !== '(') $output[] = array_pop($operators); if (array_pop($operators) !== '(') return null; }
+            else { if ($token === '-' && ($previous === null || isset($precedence[$previous]) || $previous === '(')) $output[] = '0'; while (!empty($operators) && end($operators) !== '(' && $precedence[end($operators)] >= $precedence[$token]) $output[] = array_pop($operators); $operators[] = $token; }
+            $previous = $token;
+        }
+        while (!empty($operators)) { $operator = array_pop($operators); if ($operator === '(') return null; $output[] = $operator; }
+        $stack = [];
+        foreach ($output as $token) {
+            if (isset($precedence[$token])) { $right = array_pop($stack); $left = array_pop($stack); if ($left === null || $right === null || ($token === '/' && (float)$right == 0.0)) return null; $stack[] = match ($token) { '+' => $left + $right, '-' => $left - $right, '*' => $left * $right, '/' => $left / $right }; }
+            else if ($token[0] === '{') { $value = $resolve(substr($token, 1, -1)); if ($value === null) return null; $stack[] = $value; }
+            else { $stack[] = (float)$token; }
+        }
+        return count($stack) === 1 && is_finite((float)$stack[0]) ? round((float)$stack[0], 4) : null;
     }
 }

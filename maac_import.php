@@ -105,7 +105,7 @@ if ($action !== '') {
         if (!is_array($payload) || empty($source)) {
             throw new moodle_exception('generalexceptionmessage', 'error', '', 'Analyze a file before importing.');
         }
-        $columns = array_values(array_filter(\local_batchanalytics\maac_columns_helper::get_columns(), static fn($column) => empty($column['system'])));
+        $columns = array_values(array_filter(\local_batchanalytics\maac_columns_helper::get_columns(), static fn($column) => empty($column['system']) && ($column['type'] ?? '') !== 'formula'));
         $columnmap = array_column($columns, null, 'key');
         $plans = [];
         $skipped = [];
@@ -222,5 +222,5 @@ $PAGE->set_heading('Import MAAC');
 $PAGE->requires->css(new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]));
 $PAGE->requires->js(new moodle_url('/local/batchanalytics/maac_import.js', ['v' => filemtime(__DIR__ . '/maac_import.js')]));
 echo $OUTPUT->header();
-echo '<div id="ba-maac-import-app" class="local-batchanalytics-wrap" data-sesskey="' . sesskey() . '" data-courses="' . s(json_encode(array_map(static fn($course) => ['id' => $course->id, 'name' => $course->fullname], $courses))) . '" data-columns="' . s(json_encode(array_values(array_filter(\local_batchanalytics\maac_columns_helper::get_columns(), static fn($column) => empty($column['system']))))) . '"></div>';
+echo '<div id="ba-maac-import-app" class="local-batchanalytics-wrap" data-sesskey="' . sesskey() . '" data-courses="' . s(json_encode(array_map(static fn($course) => ['id' => $course->id, 'name' => $course->fullname], $courses))) . '" data-columns="' . s(json_encode(array_values(array_filter(\local_batchanalytics\maac_columns_helper::get_columns(), static fn($column) => empty($column['system']) && ($column['type'] ?? '') !== 'formula')))) . '"></div>';
 echo $OUTPUT->footer();

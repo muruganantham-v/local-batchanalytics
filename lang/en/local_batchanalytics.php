@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Batch Analytics';
-$string['local/batchanalytics:view'] = 'View batch analytics';
+$string['batchanalytics:view'] = 'View batch analytics';
 $string['crmsettings'] = 'CRM Integration Settings';
 $string['crmsettingsdesc'] = 'Configure CRM API credentials for fetching placement data';
 $string['zoho_client_id'] = 'Zoho CRM Client ID';
@@ -41,14 +41,14 @@ $string['zoho_api_base_url_desc'] = 'Zoho CRM data API base URL (e.g., https://w
 $string['crmconfigmissing'] = 'CRM configuration missing';
 $string['crmconnectionfailed'] = 'CRM connection failed';
 $string['crmtokenfailed'] = 'CRM token request failed';
-$string['local/batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
-$string['local/batchanalytics:editmaac'] = 'Edit MAAC data';
-$string['local/batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
-$string['local/batchanalytics:viewenrolledcourses'] = 'View enrolled courses in batch analytics';
-$string['local/batchanalytics:viewmaac'] = 'View MAAC data';
-$string['local/batchanalytics:viewtickets'] = 'View ticket dashboard';
-$string['local/batchanalytics:managetickets'] = 'Manage tickets';
-$string['local/batchanalytics:manageescalatedtickets'] = 'Manage escalated tickets for PM';
+$string['batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
+$string['batchanalytics:editmaac'] = 'Edit MAAC data';
+$string['batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
+$string['batchanalytics:viewenrolledcourses'] = 'View enrolled courses in batch analytics';
+$string['batchanalytics:viewmaac'] = 'View MAAC data';
+$string['batchanalytics:viewtickets'] = 'View ticket dashboard';
+$string['batchanalytics:managetickets'] = 'Manage tickets';
+$string['batchanalytics:manageescalatedtickets'] = 'Manage escalated tickets for PM';
 $string['allowed_course_keywords'] = 'Allowed course keywords';
 $string['allowed_course_keywords_desc'] = 'Comma-separated list of course name keywords. Only courses whose name contains at least one of these keywords will appear. Only batch groups containing matching courses will be shown in the dropdown. Leave empty to show all courses.';
 $string['crm_fields_config'] = 'CRM Fields Configuration';

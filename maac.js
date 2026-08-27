@@ -311,7 +311,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (sortKey.startsWith("custom:")) {
       const column = getSortableCustomColumn(sortKey);
       const value = getStudentCustomValue(student, column?.key || "");
-      const type = column?.type === "number"
+      const type = column?.type === "number" || column?.type === "formula"
         ? "number"
         : column?.type === "boolean"
           ? "boolean"
@@ -438,7 +438,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     getAllCustomColumns(data).forEach((column) => {
-      if (column.type === "number") {
+      if (column.type === "number" || column.type === "formula") {
         filters.custom[column.key] = {
           min: "",
           max: "",
@@ -824,11 +824,13 @@ document.addEventListener("DOMContentLoaded", function () {
       };
     }
 
-    const mode = column.isattendance || state.filterValues.metricMode === "grade"
+    const mode = column.isattendance
       ? "grade"
-      : "completion";
+      : state.filterValues.metricMode === "completion"
+        ? "completion"
+        : "overallgrade";
     return {
-      value: mode === "completion" ? module.completion : module.grade,
+      value: module[mode],
       mode,
     };
   }
@@ -1594,6 +1596,10 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const safeValue = value === null || value === undefined ? "" : value;
+    if (column.type === "formula") {
+      return `<td>${renderReadOnlyCustomValue(safeValue, column)}</td>`;
+    }
+
     if (column.type === "boolean") {
       return `<td><input type="checkbox" class="ba-maac-input" data-userid="${student.userid}" data-key="${escapeHtml(
         column.key,
@@ -1660,9 +1666,26 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function renderReadOnlyCustomValue(value, column) {
+    if (column.key === "spot_awards_nomination") {
+      const awards = normalizeDisplayList(value) || (value ? [String(value)] : []);
+      if (!awards.length) {
+        return "-";
+      }
+      return `<ul class="ba-maac-bullet-list">${awards.map((award) => `<li>${escapeHtml(award)}</li>`).join("")}</ul>`;
+    }
+
+    if (column.type === "formula") {
+      if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      return escapeHtml(Number(value).toFixed(2));
+    }
+
     if (column.type === "number") {
-      const displayValue = value === null || value === undefined || value === "" ? "-" : value;
-      return `<span class="ba-filter-percentage medium">${escapeHtml(String(displayValue))}</span>`;
+      if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) {
+        return '<span class="ba-filter-percentage loading">-</span>';
+      }
+      return '<span class="ba-filter-percentage medium">' + escapeHtml(String(value)) + '</span>';
     }
 
     return formatDisplayValue(value, column.type);

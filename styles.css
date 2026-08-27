@@ -4970,6 +4970,7 @@ input:checked+.ba-slider:before {
 }
 
 .ba-import-section { margin-top: 12px; }
+
 .ba-import-upload-body { display: block; padding: 18px 20px 22px; }
 .ba-import-upload-card { width: 60%; max-width: 760px; min-width: 420px; border: 1px solid #dbe5f0; border-radius: 10px; overflow: hidden; background: #fff; }
 .ba-import-upload-head { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #e8edf3; }
@@ -5734,6 +5735,51 @@ input:checked+.ba-slider:before {
 }
 .ba-course-summary-dialog {
   width: min(92vw, 720px);
+}
+
+.ba-maac-metrics-dialog {
+  width: min(96vw, 1280px);
+}
+
+.ba-maac-metrics-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ba-maac-metrics-card {
+  margin: 30px 0 20px;
+}
+
+.ba-maac-metrics-pills .ba-ch-badge {
+  font-size: 12px;
+}
+
+.ba-maac-metrics-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ba-maac-metrics-body {
+  padding: 20px 24px;
+}
+
+.ba-maac-metrics-table-wrap {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.ba-maac-metrics-table {
+  width: 100%;
+  min-width: max-content;
+  margin: 0;
+}
+
+.ba-maac-metrics-table th,
+.ba-maac-metrics-table td {
+  white-space: nowrap;
 }
 
 .ba-course-summary-body {

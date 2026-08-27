@@ -114,6 +114,9 @@ class maac_service {
             }
 
             foreach ($columns as $fieldkey => $column) {
+                if (($column['type'] ?? '') === 'formula') {
+                    continue;
+                }
                 if (!array_key_exists($fieldkey, $values)) {
                     continue;
                 }
@@ -988,6 +991,8 @@ class maac_service {
             $studentcustom = $customvalues[$student->userid] ?? [];
             $maacbase = ($performancerating / 100) * 9;
             $adjustedmaacrating = $this->apply_maac_exclusions($maacbase, $studentcustom, $allcolumns);
+            $studentcustom['maac_rating'] = $adjustedmaacrating;
+            $studentcustom = maac_columns_helper::calculate_formula_values($studentcustom, $allcolumns);
             $studentrow = [
                 'userid' => (int)$student->userid,
                 'fullname' => $student->fullname,
@@ -1018,13 +1023,18 @@ class maac_service {
                 }
 
                 $modulepercentage = null;
+                $moduleoverallgrade = null;
                 $modulecompletion = 0.0;
                 $totalearned = 0.0;
                 $totalmax = 0.0;
+                $totalpossiblemax = 0.0;
                 $itemscompleted = 0;
                 $totalitems = count($categorydata['items']);
                 foreach ($categorydata['items'] as $item) {
                     $itemid = $item['itemid'];
+                    if ($item['grademax'] > 0) {
+                        $totalpossiblemax += $item['grademax'];
+                    }
                     if (!isset($gradesmap[$student->userid][$itemid])) {
                         continue;
                     }
@@ -1038,11 +1048,15 @@ class maac_service {
                 if ($totalmax > 0) {
                     $modulepercentage = round(($totalearned / $totalmax) * 100, 2);
                 }
+                if ($totalpossiblemax > 0) {
+                    $moduleoverallgrade = round(($totalearned / $totalpossiblemax) * 100, 2);
+                }
                 if ($totalitems > 0) {
                     $modulecompletion = round(($itemscompleted / $totalitems) * 100, 2);
                 }
                 $studentrow['modules'][$categorydata['key']] = [
                     'grade' => $modulepercentage,
+                    'overallgrade' => $moduleoverallgrade,
                     'completion' => $modulecompletion,
                 ];
             }

@@ -61,7 +61,101 @@ if (!$can_manage) {
 
 $action = optional_param('action', '', PARAM_ALPHA);
 
+// Course teachers can maintain the summary for courses to which they are assigned.
+$can_edit_course_summary = static function($coursecontext) use ($can_manage, $userid, $DB): bool {
+    if (!$coursecontext) {
+        return false;
+    }
+    if ($can_manage || has_capability('local/batchanalytics:editmaac', $coursecontext, $userid)) {
+        return true;
+    }
+
+    return $DB->record_exists_sql(
+        "SELECT 1
+           FROM {role_assignments} ra
+           JOIN {role} r ON r.id = ra.roleid
+          WHERE ra.userid = :userid
+            AND ra.contextid = :contextid
+            AND r.shortname IN ('teacher', 'editingteacher')",
+        ['userid' => $userid, 'contextid' => $coursecontext->id]
+    );
+};
+
 // ==================== API ENDPOINTS ====================
+
+if ($action === 'syncmaaccrm') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            throw new moodle_exception('invalidrequest');
+        }
+        require_sesskey();
+        if (!$can_manage) {
+            throw new moodle_exception('nopermissions', 'error', '', 'sync MAAC metrics to CRM');
+        }
+
+        $payload = optional_param('payload', '', PARAM_RAW);
+        $decoded = json_decode($payload, true);
+        if (!is_array($decoded) || !is_array($decoded['rows'] ?? null)) {
+            throw new moodle_exception('invalidjson', 'error');
+        }
+
+        $synccolumns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
+        if (empty($synccolumns)) {
+            echo json_encode(['error' => 'No MAAC sync columns are configured.']);
+            die();
+        }
+        if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
+            echo json_encode(['error' => 'CRM request limit reached. Please try again later.']);
+            die();
+        }
+
+        $crm = new \local_batchanalytics\crmapi();
+        $result = ['updated' => 0, 'notfound' => 0, 'skipped' => 0, 'failed' => 0];
+        foreach ($decoded['rows'] as $row) {
+            $username = trim((string)($row['username'] ?? ''));
+            $values = is_array($row['values'] ?? null) ? $row['values'] : [];
+            if ($username === '') {
+                $result['skipped']++;
+                continue;
+            }
+
+            $fields = [];
+            foreach ($synccolumns as $column) {
+                $key = $column['key'];
+                if (isset($values[$key]) && is_numeric($values[$key])) {
+                    $fields[$column['crmfield']] = round((float)$values[$key], 2);
+                }
+            }
+            if (empty($fields)) {
+                $result['skipped']++;
+                continue;
+            }
+
+            $record = $crm->get_student_details($username);
+            if (empty($record['id'])) {
+                $result['notfound']++;
+                continue;
+            }
+            if ($crm->update_student_fields((string)$record['id'], $fields)) {
+                $result['updated']++;
+            } else {
+                $result['failed']++;
+            }
+        }
+
+        echo json_encode(['success' => true, 'result' => $result]);
+    } catch (\Throwable $e) {
+        error_log('MAAC CRM sync error: ' . $e->getMessage());
+        http_response_code(400);
+        echo json_encode(['error' => 'Unable to sync MAAC metrics to CRM. Please check the Moodle error log.']);
+    }
+    die();
+}
 
 if ($action === 'getallbatches') {
     while (ob_get_level())
@@ -122,7 +216,7 @@ if ($action === 'savecoursesummary') {
         $courseid = required_param('courseid', PARAM_INT);
         $summary = optional_param('summary', '', PARAM_RAW_TRIMMED);
         $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
-        $caneditsummary = $can_manage || ($coursecontext && has_capability('local/batchanalytics:editmaac', $coursecontext, $userid));
+        $caneditsummary = $can_edit_course_summary($coursecontext);
 
         if (!$coursecontext) {
             http_response_code(404);
@@ -604,7 +698,7 @@ if ($action === 'getbatchfulldata') {
             'coursename' => $course['fullname'],
             'shortname' => $course['shortname'],
             'summary' => (string)get_config('local_batchanalytics', 'course_summary_' . $courseid),
-            'cansummaryedit' => $can_manage || ($coursecontext && has_capability('local/batchanalytics:editmaac', $coursecontext, $userid)),
+            'cansummaryedit' => $can_edit_course_summary($coursecontext),
             'categories' => array_values($categories_data),
             'studentCount' => count($students),
             'teacherCount' => $course_teacher_count
@@ -643,7 +737,8 @@ echo $OUTPUT->header();
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
 $mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+$maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 // echo '<h2 class="ba-page-title">' . get_string('pluginname', 'local_batchanalytics') . '</h2>';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 

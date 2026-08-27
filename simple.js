@@ -198,8 +198,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const BA_CRM_FIELDS = wrapEl ? JSON.parse(wrapEl.dataset.crmFields || "[]") : [];
   const BA_MENTOR_CRM_FIELDS = wrapEl ? JSON.parse(wrapEl.dataset.mentorCrmFields || "[]") : [];
   const BA_MENTOR_CRM_GROUPS = wrapEl ? JSON.parse(wrapEl.dataset.mentorCrmGroups || "[]") : [];
+  const BA_MAAC_SYNC_COLUMNS = wrapEl ? JSON.parse(wrapEl.dataset.maacSyncColumns || "[]") : [];
   const BA_RESTRICTED = BA_CRM_FIELDS.filter((f) => f.restricted).map((f) => f.key);
   const BA_SESSKEY = wrapEl ? (wrapEl.dataset.sesskey || "") : "";
+  let batchMaacMetrics = null;
 
   // ==================== BATCH LOADING ====================
   let ALL_BATCHES = []; // [{code, count}, ...] - used for teacher client-side filtering
@@ -1110,6 +1112,10 @@ document.addEventListener("DOMContentLoaded", function () {
       html += `</div>`;
     }
 
+    if (BA_MAAC_SYNC_COLUMNS.length > 0) {
+      html += `<div class="ba-course-header-card ba-maac-metrics-card"><div class="ba-ch-content"><div class="ba-ch-left"><h2 class="ba-ch-title">MAAC Metrics</h2><div id="ba-maac-metrics" class="ba-ch-meta ba-maac-metrics-pills">Loading...</div></div><div class="ba-ch-right" id="ba-maac-metrics-action"></div></div></div>`;
+    }
+
     // 6. Batch Performance Metrics
     html += `<div class="ba-section-title">Batch Performance Metrics</div><div class="ba-batch-metrics-grid">`;
     const metrics = {};
@@ -1194,6 +1200,9 @@ document.addEventListener("DOMContentLoaded", function () {
     html += `</div>`;
 
     batchTabsContent.innerHTML = html;
+    if (BA_MAAC_SYNC_COLUMNS.length > 0) {
+      loadBatchMaacMetrics(coursesToRender);
+    }
     document.getElementById("ba-import-maac-link")?.addEventListener("click", () => {
       sessionStorage.setItem("ba-maac-import-return", JSON.stringify({
         search: searchBox.value,
@@ -1527,6 +1536,10 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function formatMaacValueForDisplay(value, column) {
+    if (column.type === "formula") {
+      const numeric = Number(value);
+      return value === null || value === undefined || value === "" || Number.isNaN(numeric) ? "-" : numeric.toFixed(2);
+    }
     if (column.type === "boolean") {
       return value ? "Yes" : "No";
     }
@@ -1553,6 +1566,11 @@ document.addEventListener("DOMContentLoaded", function () {
       return display.length ? display.join(" | ") : "-";
     }
     return String(display);
+  }
+  function getFormulaBadgeClass(value, column) {
+    const numeric = Number(value);
+    if (column.type !== "formula" || Number.isNaN(numeric) || column.min === null || column.max === null) return "medium";
+    return numeric < Number(column.min) ? "low" : numeric > Number(column.max) ? "medium" : "high";
   }
   function renderCourseTrendBadge(value) {
     const normalized = String(value || "").trim().toLowerCase();
@@ -2397,7 +2415,7 @@ document.addEventListener("DOMContentLoaded", function () {
           </div>`;
     }
 
-    if (column.type === "number") {
+    if (column.type === "number" || column.type === "formula") {
       return `
           <div class="ba-filter-item-modern">
               <div class="ba-filter-header-row">
@@ -2510,7 +2528,7 @@ document.addEventListener("DOMContentLoaded", function () {
           acc[column.key] = {
             value: (document.getElementById(`f-maac-${column.key}`)?.value || "").toLowerCase(),
           };
-        } else if (column.type === "number") {
+        } else if (column.type === "number" || column.type === "formula") {
           acc[column.key] = {
             min: parseFloat(document.getElementById(`f-maac-${column.key}-min`)?.value || ""),
             max: parseFloat(document.getElementById(`f-maac-${column.key}-max`)?.value || ""),
@@ -2532,7 +2550,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return !filter.value || String(value || "").toLowerCase() === filter.value;
     }
 
-    if (column.type === "number") {
+    if (column.type === "number" || column.type === "formula") {
       const numeric = parseFloat(value);
       const hasFilter = !isNaN(filter.min) || !isNaN(filter.max);
       if (isNaN(numeric)) {
@@ -2884,7 +2902,7 @@ document.addEventListener("DOMContentLoaded", function () {
             courseId: c.courseid,
             sortable: true,
             sortIndex: sortIndex++,
-            numericSort: column.type === "number",
+            numericSort: column.type === "number" || column.type === "formula",
             className: "ba-maac-col-head",
           }),
         );
@@ -3068,7 +3086,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           (group.visibleColumns || []).forEach((column) => {
             const value = getCourseStudentCustomValue(s, column);
-            if (column.type === "number") {
+            if (column.type === "number" || column.type === "formula") {
               const display = formatMaacValueForDisplay(value, column);
               cols += `<td><span class="ba-filter-percentage medium">${escapeHtml(String(display))}</span></td>`;
             } else {
@@ -3168,7 +3186,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     getCourseMaacColumns(CURRENT_COURSE.courseid).forEach((column) => {
-      if (column.type === "number") {
+      if (column.type === "number" || column.type === "formula") {
         const minEl = document.getElementById(`f-maac-${column.key}-min`);
         const maxEl = document.getElementById(`f-maac-${column.key}-max`);
         if (minEl) minEl.value = "";
@@ -3856,6 +3874,113 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
     await MAAC_COURSE_PENDING[courseId];
+  }
+
+  async function loadBatchMaacMetrics(courses) {
+    const container = document.getElementById("ba-maac-metrics");
+    if (!container) return;
+
+    await Promise.all(courses.map((course) => loadCourseMaacData(course.courseid)));
+    if (!document.getElementById("ba-maac-metrics")) return;
+
+    const students = new Map();
+    courses.forEach((course) => {
+      const data = MAAC_COURSE_CACHE[course.courseid];
+      (data?.students || []).forEach((student) => {
+        const key = String(student.username || "").toLowerCase();
+        if (!key) return;
+        if (!students.has(key)) {
+          students.set(key, {
+            fullname: student.fullname || "-",
+            username: student.username,
+            courses: {},
+            averages: {},
+          });
+        }
+        const entry = students.get(key);
+        entry.courses[course.courseid] = {};
+        BA_MAAC_SYNC_COLUMNS.forEach((column) => {
+          const value = Number(student.custom?.[column.key]);
+          entry.courses[course.courseid][column.key] = Number.isFinite(value) ? value : null;
+        });
+      });
+    });
+
+    const rows = Array.from(students.values());
+    BA_MAAC_SYNC_COLUMNS.forEach((column) => {
+      rows.forEach((student) => {
+        const values = Object.values(student.courses)
+          .map((coursevalues) => coursevalues[column.key])
+          .filter((value) => Number.isFinite(value));
+        student.averages[column.key] = values.length
+          ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2))
+          : null;
+      });
+    });
+
+    batchMaacMetrics = { courses, rows };
+    const pills = BA_MAAC_SYNC_COLUMNS.map((column) => {
+      const values = rows.map((student) => student.averages[column.key]).filter((value) => Number.isFinite(value));
+      const average = values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2) : "-";
+      return `<span class="ba-ch-badge avg">${escapeHtml(column.label)}: ${escapeHtml(average)}</span>`;
+    }).join("");
+    container.innerHTML = pills;
+    const action = document.getElementById("ba-maac-metrics-action");
+    if (action) {
+      action.innerHTML = BA_CAN_MANAGE ? `<button type="button" class="ba-btn ba-btn-success" id="ba-open-maac-sync">Sync to CRM</button>` : "";
+    }
+    document.getElementById("ba-open-maac-sync")?.addEventListener("click", openMaacMetricsModal);
+  }
+
+  function openMaacMetricsModal() {
+    if (!batchMaacMetrics) return;
+    document.getElementById("ba-maac-metrics-modal")?.remove();
+    const { courses, rows } = batchMaacMetrics;
+    const coursegroupheaders = courses.map((course) => `<th colspan="${BA_MAAC_SYNC_COLUMNS.length}" class="ba-maac-group-head">${escapeHtml(course.coursename)}</th>`).join("");
+    const coursecolumnheaders = courses.flatMap(() => BA_MAAC_SYNC_COLUMNS.map((column) => `<th>${escapeHtml(column.label)}</th>`)).join("");
+    const averageheaders = BA_MAAC_SYNC_COLUMNS.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("");
+    const totalcolumns = 1 + (courses.length * BA_MAAC_SYNC_COLUMNS.length) + BA_MAAC_SYNC_COLUMNS.length;
+    const body = rows.map((student) => {
+      const coursevalues = courses.flatMap((course) => BA_MAAC_SYNC_COLUMNS.map((column) => {
+        const value = student.courses[course.courseid]?.[column.key];
+        return `<td>${Number.isFinite(value) ? escapeHtml(value.toFixed(2)) : "-"}</td>`;
+      })).join("");
+      const averages = BA_MAAC_SYNC_COLUMNS.map((column) => {
+        const value = student.averages[column.key];
+        return `<td><strong>${Number.isFinite(value) ? escapeHtml(value.toFixed(2)) : "-"}</strong></td>`;
+      }).join("");
+      return `<tr><td class="ba-maac-front-cell">${escapeHtml(student.fullname)}<br><small>${escapeHtml(student.username)}</small></td>${coursevalues}${averages}</tr>`;
+    }).join("");
+    const overlay = document.createElement("div");
+    overlay.id = "ba-maac-metrics-modal";
+    overlay.className = "ba-modal-overlay";
+    overlay.innerHTML = `<div class="ba-modal-container ba-maac-metrics-dialog"><div class="ba-modal-header"><h3>MAAC Metrics</h3><div class="ba-maac-metrics-actions"><button type="button" class="ba-btn ba-btn-success" id="ba-confirm-maac-sync">Sync CRM</button><button type="button" class="ba-modal-close" id="ba-close-maac-sync" aria-label="Close">&times;</button></div></div><div class="ba-modal-body ba-maac-metrics-body"><div class="ba-maac-metrics-table-wrap"><table class="ba-table ba-grouped-filter-table ba-maac-metrics-table"><thead><tr><th rowspan="2" class="ba-maac-front-head">Student Name</th>${coursegroupheaders}<th colspan="${BA_MAAC_SYNC_COLUMNS.length}" class="ba-maac-group-head">Average</th></tr><tr>${coursecolumnheaders}${averageheaders}</tr></thead><tbody>${body || `<tr><td colspan="${totalcolumns}">No student metrics found.</td></tr>`}</tbody></table></div></div></div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+    document.getElementById("ba-close-maac-sync")?.addEventListener("click", () => overlay.remove());
+    document.getElementById("ba-confirm-maac-sync")?.addEventListener("click", syncMaacMetricsToCrm);
+  }
+
+  async function syncMaacMetricsToCrm() {
+    if (!batchMaacMetrics) return;
+    const button = document.getElementById("ba-confirm-maac-sync");
+    if (button) { button.disabled = true; button.textContent = "Syncing..."; }
+    const rows = batchMaacMetrics.rows.map((student) => ({ username: student.username, values: student.averages }));
+    try {
+      const response = await fetch(`${BASE_URL}?action=syncmaaccrm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `sesskey=${encodeURIComponent(BA_SESSKEY)}&payload=${encodeURIComponent(JSON.stringify({ rows }))}`,
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || "CRM sync failed");
+      const result = data.result || {};
+      showToast(`CRM sync complete: ${result.updated || 0} updated, ${result.notfound || 0} not found, ${result.failed || 0} failed.`, result.failed ? "warn" : "success");
+      document.getElementById("ba-maac-metrics-modal")?.remove();
+    } catch (error) {
+      showToast(error.message || "Unable to sync MAAC metrics to CRM", "error");
+      if (button) { button.disabled = false; button.textContent = "Sync CRM"; }
+    }
   }
 
   function getCategoryIconAndColor(name, index) {
