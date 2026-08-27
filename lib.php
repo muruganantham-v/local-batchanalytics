@@ -54,7 +54,6 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
     $node->showinflatnavigation = true;
     $navigation->add_node($node);
 }
-<<<<<<< HEAD
 
 /**
  * Add MAAC sheet link to the current course navigation.
@@ -107,5 +106,3 @@ function local_batchanalytics_extend_navigation_course(navigation_node $navigati
     $node->showinflatnavigation = true;
     $navigation->add_node($node);
 }
-=======
->>>>>>> origin/main
