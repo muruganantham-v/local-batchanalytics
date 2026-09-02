@@ -485,35 +485,18 @@ if ($action === 'getbatchfulldata') {
     }
     $student_role_id = $student_role->id;
 
-    // Pre-fetch all teachers for all batch courses to avoid N+1 queries
-    $teachers_by_course = [];
-    if (!empty($courses)) {
-        $courseids = array_column($courses, 'courseid');
-        list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'tid');
-        $teachers_sql = "
-            SELECT DISTINCT ctx.instanceid as courseid, u.id as userid, u.firstname, u.lastname
-            FROM {user} u
-            JOIN {role_assignments} ra ON ra.userid = u.id
-            JOIN {context} ctx ON ctx.id = ra.contextid
-            WHERE ctx.instanceid $insql
-              AND ctx.contextlevel = 50
-              AND ra.roleid IN (3, 4)
-              AND u.deleted = 0
-        ";
-        $teachers_rs = $DB->get_recordset_sql($teachers_sql, $inparams);
-        if ($teachers_rs->valid()) {
-            foreach ($teachers_rs as $t) {
-                $teachers_by_course[$t->courseid][] = $t;
-            }
-        }
-        $teachers_rs->close();
-    }
+    // Resolve teacher roles once. get_role_users() includes inherited assignments.
+    $teacher_roles = $DB->get_records_list('role', 'shortname', ['teacher', 'editingteacher'], '', 'id, shortname');
+    $teacher_role_ids = array_keys($teacher_roles);
 
     foreach ($courses as $course) {
         $courseid = $course['courseid'];
 
-        // 1. Get Teachers (From pre-fetched map)
-        $teachers_raw = $teachers_by_course[$courseid] ?? [];
+        // 1. Get Teachers, including assignments inherited from parent contexts.
+        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
+        $teachers_raw = $coursecontext && !empty($teacher_role_ids)
+            ? get_role_users($teacher_role_ids, $coursecontext, true, 'ra.id, u.id AS userid, u.firstname, u.lastname')
+            : [];
 
         $course_unique_teachers = [];
         foreach ($teachers_raw as $t) {
