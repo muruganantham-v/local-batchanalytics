@@ -254,7 +254,29 @@ if ($action === 'getcrmdata') {
     while (ob_get_level())
         ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed. Please use POST.']);
+        die();
+    }
+    require_sesskey();
+
+    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
+        die();
+    }
+
     $username = optional_param('username', '', PARAM_TEXT);
+    $mdata = new \local_batchanalytics\moodledata();
+    $allowedusernames = $mdata->filter_accessible_student_usernames([$username], $userid);
+    if (empty($allowedusernames)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'You do not have permission to access this student.']);
+        die();
+    }
+    $username = reset($allowedusernames);
 
     try {
         $crm = new \local_batchanalytics\crmapi();
@@ -319,6 +341,12 @@ if ($action === 'getptfdata') {
 
         if (!empty($usernames)) {
             $usernameList = array_slice(array_filter(array_map('trim', explode(',', $usernames))), 0, 500);
+            $mdata = new \local_batchanalytics\moodledata();
+            $usernameList = $mdata->filter_accessible_student_usernames($usernameList, $userid);
+            if (empty($usernameList)) {
+                echo json_encode(['students' => []]);
+                die();
+            }
             $records = $crm->get_students_details($usernameList);
 
             $output = [];
@@ -352,6 +380,15 @@ if ($action === 'getptfdata') {
             echo json_encode(['students' => $output]);
             die();
         }
+
+        $mdata = new \local_batchanalytics\moodledata();
+        $allowedusernames = $mdata->filter_accessible_student_usernames([$username], $userid);
+        if (empty($allowedusernames)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'You do not have permission to access this student.']);
+            die();
+        }
+        $username = reset($allowedusernames);
 
         $record = $crm->get_student_details($username);
 

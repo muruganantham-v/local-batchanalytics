@@ -417,4 +417,109 @@ class moodledata
         return isset($enrolledcourses[$courseid]) && $this->can_view_enrolled_course($courseid, $userid) ? $course : null;
     }
 
+    /**
+     * Keep only requested usernames belonging to students in courses visible to the caller.
+     *
+     * @param array $usernames Requested Moodle usernames
+     * @param int $userid Requesting user ID
+     * @return array Authorized usernames in the original request order
+     */
+    public function filter_accessible_student_usernames(array $usernames, int $userid): array {
+        global $DB;
+
+        $requested = [];
+        foreach ($usernames as $username) {
+            if (!is_scalar($username)) {
+                continue;
+            }
+            $username = trim((string)$username);
+            if ($username === '') {
+                continue;
+            }
+            $key = \core_text::strtolower($username);
+            if (!isset($requested[$key])) {
+                $requested[$key] = $username;
+            }
+        }
+        if (empty($requested) || $userid <= 0) {
+            return [];
+        }
+
+        $params = [
+            'studentrole' => 'student',
+            'coursecontext' => CONTEXT_COURSE,
+        ];
+        list($usernamesql, $usernameparams) = $DB->get_in_or_equal(
+            array_keys($requested),
+            SQL_PARAMS_NAMED,
+            'crmuser'
+        );
+        $params = array_merge($params, $usernameparams);
+
+        $accesssql = '';
+        if ($this->can_view_all_courses($userid)) {
+            $allowedkeywords = $this->get_allowed_keywords();
+            if (!empty($allowedkeywords)) {
+                $keywordconditions = [];
+                foreach ($allowedkeywords as $index => $keyword) {
+                    $paramname = 'crmcourse' . $index;
+                    $keywordconditions[] = $DB->sql_like('c.fullname', ':' . $paramname, false);
+                    $params[$paramname] = '%' . $DB->sql_like_escape($keyword) . '%';
+                }
+                $accesssql = ' AND (' . implode(' OR ', $keywordconditions) . ')';
+            }
+        } else {
+            $allowedkeywords = $this->get_allowed_keywords();
+            $courseids = [];
+            foreach (enrol_get_users_courses($userid, true, ['id', 'fullname']) as $course) {
+                $courseid = (int)$course->id;
+                if ($courseid <= 1 || !$this->can_view_enrolled_course($courseid, $userid)) {
+                    continue;
+                }
+                if (!$this->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                    continue;
+                }
+                $courseids[] = $courseid;
+            }
+            if (empty($courseids)) {
+                return [];
+            }
+            list($coursesql, $courseparams) = $DB->get_in_or_equal(
+                array_values(array_unique($courseids)),
+                SQL_PARAMS_NAMED,
+                'crmcourseid'
+            );
+            $accesssql = " AND c.id $coursesql";
+            $params = array_merge($params, $courseparams);
+        }
+
+        $lowerusername = $DB->sql_lower('u.username');
+        $sql = "SELECT DISTINCT u.id, u.username
+                  FROM {user} u
+                  JOIN {role_assignments} ra ON ra.userid = u.id
+                  JOIN {role} r ON r.id = ra.roleid
+                  JOIN {context} ctx ON ctx.id = ra.contextid
+                  JOIN {course} c ON c.id = ctx.instanceid
+                 WHERE $lowerusername $usernamesql
+                   AND r.shortname = :studentrole
+                   AND ctx.contextlevel = :coursecontext
+                   AND c.visible = 1
+                   AND c.id > 1
+                   AND u.deleted = 0
+                       $accesssql";
+
+        $allowed = [];
+        foreach ($DB->get_records_sql($sql, $params) as $record) {
+            $allowed[\core_text::strtolower($record->username)] = $record->username;
+        }
+
+        $result = [];
+        foreach (array_keys($requested) as $key) {
+            if (isset($allowed[$key])) {
+                $result[] = $allowed[$key];
+            }
+        }
+        return $result;
+    }
+
 }

@@ -10,6 +10,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #23 | Medium | Closed | Ticket message providers now have readable labels, explicit popup/email defaults, and a migration for missing existing-site defaults. | `fix#23: Ticket message providers have missing labels and delivery defaults` |
 | #24 | Medium | Closed | Cliq history now uses server-side filters and 50-row pages; a daily task prunes records older than the configurable 90-day default. | `fix#24: Cliq history loads the entire unpruned table into an inline script` |
 | #25 | Low | Closed | Plugin version now uses a valid calendar date and remains greater than all upgrade savepoints. | `fix#25: Plugin version encodes an invalid July date` |
+| #26 | Critical | Closed | CRM student lookups now permit only students enrolled in the caller's accessible courses; the legacy endpoint is POST-only with sesskey and rate-limit protection. | `fix#26: CRM endpoints do not restrict requested students to accessible courses` |
 
 ## Resolution Process
 
