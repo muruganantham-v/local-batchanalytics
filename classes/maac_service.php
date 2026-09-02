@@ -742,6 +742,8 @@ class maac_service {
             SELECT DISTINCT
                 u.id AS userid,
                 " . $DB->sql_fullname('u.firstname', 'u.lastname') . " AS fullname,
+                u.firstname,
+                u.lastname,
                 u.username,
                 u.email
             FROM {user} u
@@ -2988,6 +2990,8 @@ class maac_service {
             SELECT DISTINCT
                 u.id,
                 " . $DB->sql_fullname('u.firstname', 'u.lastname') . " AS fullname,
+                u.firstname,
+                u.lastname,
                 u.username,
                 u.email
             FROM {user} u
