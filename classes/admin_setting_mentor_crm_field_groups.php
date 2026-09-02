@@ -31,25 +31,35 @@ class admin_setting_mentor_crm_field_groups extends \admin_setting {
         $cleangroups = [];
 
         foreach ($decoded as $mentorgroup) {
-            $groupname = strip_tags(trim($mentorgroup['name'] ?? ''));
+            if (!is_array($mentorgroup)) {
+                continue;
+            }
+
+            $rawgroupname = $mentorgroup['name'] ?? '';
+            $selectedmentorfields = $mentorgroup['fields'] ?? $mentorgroup['columns'] ?? [];
+            if (!is_string($rawgroupname) || !is_array($selectedmentorfields)) {
+                continue;
+            }
+
+            $groupname = strip_tags(trim($rawgroupname));
             if ($groupname === '') {
                 continue;
             }
 
-            $selectedmentorfields = [];
-            foreach (($mentorgroup['fields'] ?? $mentorgroup['columns'] ?? []) as $fieldkey) {
-                if (isset($validfieldlookup[$fieldkey])) {
-                    $selectedmentorfields[] = $fieldkey;
+            $cleanfields = [];
+            foreach ($selectedmentorfields as $fieldkey) {
+                if (is_string($fieldkey) && isset($validfieldlookup[$fieldkey])) {
+                    $cleanfields[] = $fieldkey;
                 }
             }
 
-            if (empty($selectedmentorfields)) {
+            if (empty($cleanfields)) {
                 continue;
             }
 
             $cleangroups[] = [
                 'name' => $groupname,
-                'fields' => array_values(array_unique($selectedmentorfields)),
+                'fields' => array_values(array_unique($cleanfields)),
             ];
         }
 
