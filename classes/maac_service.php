@@ -2860,10 +2860,9 @@ class maac_service {
             if (empty($recipients)) {
                 return;
             }
-            $service = new cliq_service();
-            $service->send_ticket_message('raise', $ticket, $recipients);
+            $this->queue_ticket_cliq_notification($ticket, 'raise', $recipients);
         } catch (\Throwable $e) {
-            // Cliq delivery must not block ticket creation.
+            // Queueing Cliq delivery must not block ticket creation.
         }
     }
 
@@ -2882,11 +2881,9 @@ class maac_service {
             if (!$recipient || empty($recipient->email)) {
                 return;
             }
-            $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
-            $service = new cliq_service();
-            $service->send_ticket_message($messagetype, $ticket, [$recipient], ['updatedby' => $updatedbyuser ?: null]);
+            $this->queue_ticket_cliq_notification($ticket, $messagetype, [$recipient], $updatedby);
         } catch (\Throwable $e) {
-            // Cliq delivery must not block ticket updates.
+            // Queueing Cliq delivery must not block ticket updates.
         }
     }
 
@@ -2901,12 +2898,48 @@ class maac_service {
             if (empty($recipients)) {
                 return;
             }
-            $updatedbyuser = \core_user::get_user($updatedby, 'id, firstname, lastname, username, email', IGNORE_MISSING);
-            $service = new cliq_service();
-            $service->send_ticket_message($messagetype, $ticket, $recipients, ['updatedby' => $updatedbyuser ?: null]);
+            $this->queue_ticket_cliq_notification($ticket, $messagetype, $recipients, $updatedby);
         } catch (\Throwable $e) {
-            // Cliq delivery must not block ticket escalation.
+            // Queueing Cliq delivery must not block ticket escalation.
         }
+    }
+
+    /**
+     * Queue a Cliq message after the ticket write has completed.
+     *
+     * @param \stdClass $ticket
+     * @param string $messagetype
+     * @param array $recipients
+     * @param int $updatedby
+     * @return void
+     */
+    private function queue_ticket_cliq_notification(\stdClass $ticket, string $messagetype, array $recipients,
+            int $updatedby = 0): void {
+        $recipientdata = [];
+        foreach ($recipients as $recipient) {
+            $record = is_object($recipient) ? $recipient : (object)$recipient;
+            $email = trim((string)($record->email ?? ''));
+            if ($email === '' || !validate_email($email)) {
+                continue;
+            }
+            $recipientdata[] = [
+                'id' => (int)($record->id ?? 0),
+                'email' => $email,
+                'fullname' => (string)($record->fullname ?? (is_object($recipient) ? fullname($recipient) : '')),
+            ];
+        }
+        if (empty($recipientdata)) {
+            return;
+        }
+
+        $task = new \local_batchanalytics\task\send_ticket_cliq_notification();
+        $task->set_custom_data((object)[
+            'ticket' => (array)$ticket,
+            'type' => $messagetype,
+            'recipients' => $recipientdata,
+            'updatedby' => $updatedby,
+        ]);
+        \core\task\manager::queue_adhoc_task($task);
     }
 
     /**
