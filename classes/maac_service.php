@@ -381,40 +381,6 @@ class maac_service {
     }
 
     /**
-     * Mark an opened ticket as in progress when the assigned SS Team user views it.
-     *
-     * @param int $courseid
-     * @param int $userid
-     * @param array $payload
-     * @return array
-     */
-    public function mark_maac_ticket_viewed(int $courseid, int $userid, array $payload): array {
-        global $DB;
-
-        $ticketid = (int)($payload['ticketid'] ?? 0);
-        $ticket = $DB->get_record('local_batchanalytics_ticket', ['id' => $ticketid, 'courseid' => $courseid]);
-        if (!$ticket) {
-            throw new \moodle_exception('ticket_invalid', 'local_batchanalytics');
-        }
-
-        $result = $this->mark_ticket_viewed($ticketid, $userid);
-
-        // mark_ticket_viewed updates the DB. We just fetch the updated record to format.
-        $ticket = $DB->get_record('local_batchanalytics_ticket', ['id' => $ticketid, 'courseid' => $courseid]);
-
-        $ticket->ssteamfullname = '';
-        $ticket->batchmanagerfullname = '';
-        $ticket->resolvedbyfullname = '';
-        $timeline = $this->get_ticket_timeline_events([$ticketid]);
-
-        return [
-            'ticketid' => $ticketid,
-            'changed' => $result['changed'],
-            'ticket' => $this->format_maac_ticket_record($ticket, $userid, $timeline[$ticketid] ?? []),
-        ];
-    }
-
-    /**
      * Escalate a ticket to the configured batch manager/PM.
      *
      * @param int $ticketid

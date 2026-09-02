@@ -119,26 +119,6 @@ if ($action !== '') {
             ]);
         }
 
-        if ($action === 'viewticket') {
-            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-                throw new moodle_exception('invalidrequest');
-            }
-            require_sesskey();
-            $payload = optional_param('payload', '', PARAM_RAW);
-            if (strlen($payload) > 1048576) {
-                $sendjson(['error' => 'Payload too large'], 400);
-            }
-            $decoded = json_decode($payload, true);
-            if (!is_array($decoded)) {
-                $sendjson(['error' => 'Invalid JSON payload'], 400);
-            }
-            $result = $service->mark_maac_ticket_viewed($courseid, $USER->id, $decoded);
-            $sendjson([
-                'status' => 'ok',
-                'ticket' => $result,
-            ]);
-        }
-
         $sendjson(['error' => 'Unknown action'], 400);
     } catch (\Throwable $e) {
         error_log('MAAC API Error: ' . $e->getMessage());
