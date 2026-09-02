@@ -231,6 +231,9 @@ if ($hassiteconfig) {
         get_string('cliq_configuration', 'local_batchanalytics'),
         $cliqtemplatelinks
     ));
+    $settings->add(new admin_setting_configtext('local_batchanalytics/cliq_history_retention_days',
+        get_string('cliq_history_retention_days', 'local_batchanalytics'),
+        get_string('cliq_history_retention_days_desc', 'local_batchanalytics'), '90', PARAM_INT));
     $settings->add(new admin_setting_configtext(
         'local_batchanalytics/cliq_bot_url',
         get_string('cliq_bot_url', 'local_batchanalytics'),

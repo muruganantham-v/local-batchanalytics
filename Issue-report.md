@@ -8,6 +8,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #21 | Medium | Closed | Cliq history requires a non-empty recipient confirmation before recording delivery as successful. | `fix#21: Cliq delivery is logged as success for rejected HTTP 200 responses` |
 | #22 | Medium | Closed | CRM rate limiting uses a fixed 60-second window rather than extending the counter lifetime after each request. | `fix#22: CRM rate limiter uses an inactivity timeout instead of a fixed minute window` |
 | #23 | Medium | Closed | Ticket message providers now have readable labels, explicit popup/email defaults, and a migration for missing existing-site defaults. | `fix#23: Ticket message providers have missing labels and delivery defaults` |
+| #24 | Medium | Closed | Cliq history now uses server-side filters and 50-row pages; a daily task prunes records older than the configurable 90-day default. | `fix#24: Cliq history loads the entire unpruned table into an inline script` |
 
 ## Resolution Process
 

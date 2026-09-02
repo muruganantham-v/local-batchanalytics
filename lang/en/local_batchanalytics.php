@@ -149,8 +149,11 @@ $string['cliq_history_recipient'] = 'Recipient';
 $string['cliq_history_subject'] = 'Subject';
 $string['cliq_history_status'] = 'Status';
 $string['cliq_history_error'] = 'Response / Error';
+$string['cliq_history_retention_days'] = 'Cliq history retention (days)';
+$string['cliq_history_retention_days_desc'] = 'Delete Cliq message history older than this number of days. Enter 0 to disable automatic pruning.';
 
 $string['task_auto_assign_tickets_to_pm'] = 'Auto assign overdue tickets to PM manager';
+$string['task_prune_cliq_history'] = 'Prune expired Cliq message history';
 
 $string['student_crm_data'] = 'Student CRM Data';
 $string['mentor_crm_data'] = 'Mentor Details CRM Data';
