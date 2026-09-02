@@ -117,26 +117,41 @@ class moodledata
     }
 
     /**
-     * Extract the batch/group code from a course name or shortname.
+     * Extract a valid batch code from a course name value.
      *
-     * Examples:
-     * - "Advanced C : 25001" => "25001"
-     * - "Data Structure : 25001" => "25001"
+     * Batch codes are five or more digits with an optional alphabetic suffix,
+     * for example 25001 and 25002A. This deliberately ignores descriptive
+     * fullname suffixes such as "Weekend Cohort".
+     *
+     * @param string $value
+     * @return string
+     */
+    private function extract_batch_code_from_value(string $value): string {
+        if (preg_match('/(?:^|[:\s])(\d{5,}[a-z]?)(?=$|[\s:(])/i', $value, $matches)) {
+            return $matches[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract the batch/group code from a course shortname or fullname.
+     *
+     * The shortname is the canonical batch identifier when present. Fullname
+     * is a fallback because it can contain descriptive text after a colon.
      *
      * @param array $course
      * @return string
      */
     private function extract_course_group_label(array $course): string {
-        $name = strpos($course['fullname'], ':') !== false ? $course['fullname'] : $course['shortname'];
-        $parts = array_filter(array_map('trim', explode(':', $name)), function($part) {
-            return $part !== '';
-        });
-
-        if (empty($parts)) {
-            return '';
+        foreach (['shortname', 'fullname'] as $field) {
+            $code = $this->extract_batch_code_from_value((string)($course[$field] ?? ''));
+            if ($code !== '') {
+                return $code;
+            }
         }
 
-        return (string) end($parts);
+        return '';
     }
 
     /**

@@ -14,6 +14,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #27 | High | Closed | CRM failures are now explicit errors rather than cached missing records; a rejected token refreshes once and CRM criteria preserve the requested username. | `fix#27: Failed CRM chunks are cached as clean no-record results` |
 | #28 | High | Closed | Course summaries now honor Moodle capability overrides and the accessible-course scope; ticket dashboard entry checks apply the configured course-keyword scope. | `fix#28: Course-summary edit rights bypass capability overrides` |
 | #29 | Medium | Closed | Teacher counts use inherited Moodle role assignments and resolve teacher roles by shortname instead of fixed database IDs. | `fix#29: Teacher counts silently drop category-level teachers` |
+| #30 | Medium | Closed | Batch grouping now uses a validated shortname-first batch code and ignores descriptive fullname suffixes. | `fix#30: Batch grouping splits batches whenever a fullname contains a colon` |
 
 ## Resolution Process
 
