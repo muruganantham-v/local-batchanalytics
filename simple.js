@@ -100,6 +100,7 @@ document.addEventListener("DOMContentLoaded", function () {
     numericSort = false,
     rowSpan = null,
     className = "",
+    allowHtmlLabel = false,
   }) {
     const classes = [className, sortable ? "sortable" : "", "ba-resizable-header"]
       .filter(Boolean)
@@ -111,7 +112,7 @@ document.addEventListener("DOMContentLoaded", function () {
       columnKey,
     )}" data-courseid="${courseId}"${rowSpanAttr}${sortAttr}>
       <div class="ba-maac-head-shell">
-        <span class="ba-maac-col-title">${escapeHtml(label)}</span>
+        <span class="ba-maac-col-title">${allowHtmlLabel ? label : escapeHtml(label)}</span>
       </div>
       <span class="ba-column-resizer" data-column-resizer="1" aria-hidden="true"></span>
     </th>`;
@@ -2827,6 +2828,7 @@ document.addEventListener("DOMContentLoaded", function () {
           courseId: c.courseid,
           rowSpan: 2,
           className: "ba-maac-group-head",
+          allowHtmlLabel: true,
         }),
       );
     } else {
@@ -2880,6 +2882,7 @@ document.addEventListener("DOMContentLoaded", function () {
             courseId: c.courseid,
             rowSpan: 2,
             className: "ba-maac-group-head",
+            allowHtmlLabel: true,
           }),
         );
         return;
@@ -4260,4 +4263,3 @@ document.addEventListener("DOMContentLoaded", function () {
   };
 
 });
-
