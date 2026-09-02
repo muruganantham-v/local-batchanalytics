@@ -487,7 +487,11 @@ document.addEventListener("DOMContentLoaded", function () {
           return result;
         }, {});
     }
-    return value;
+    // Coerce scalars to string — HTML input.value is always a string, so PHP-
+    // returned numbers (7) must compare equal to DOM-read strings ("7") in the
+    // dirty-state check. null/undefined → "" matches an empty input. (F-17)
+    if (value === null || value === undefined) return "";
+    return String(value);
   }
 
   function cloneMaacDraft(draft) {
