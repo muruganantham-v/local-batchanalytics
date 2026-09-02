@@ -168,6 +168,32 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
     $settings->add(new admin_setting_heading(
+        'local_batchanalytics/module_tracker_configuration',
+        get_string('module_tracker_configuration', 'local_batchanalytics'),
+        ''
+    ));
+    $settings->add(new admin_setting_configtextarea(
+        'local_batchanalytics/module_tracker_assignment_aliases',
+        get_string('module_tracker_assignment_aliases', 'local_batchanalytics'),
+        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
+        'assignment,assignments,lab assignment,lab assignments',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_configtextarea(
+        'local_batchanalytics/module_tracker_test_aliases',
+        get_string('module_tracker_test_aliases', 'local_batchanalytics'),
+        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
+        'test,tests,quiz,quizzes,assessment,assessments',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_configtextarea(
+        'local_batchanalytics/module_tracker_project_aliases',
+        get_string('module_tracker_project_aliases', 'local_batchanalytics'),
+        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
+        'project,projects',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_heading(
         'local_batchanalytics/role_management',
         get_string('role_management', 'local_batchanalytics'),
         ''

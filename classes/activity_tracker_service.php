@@ -9,6 +9,9 @@ defined('MOODLE_INTERNAL') || die();
  * @package local_batchanalytics
  */
 class activity_tracker_service {
+    /** @var array|null Normalized aliases cached for this request. */
+    private ?array $trackercategoryaliases = null;
+
     /**
      * @return bool
      */
@@ -37,10 +40,10 @@ class activity_tracker_service {
 
         $categories = [];
         foreach ($activities as $activity) {
-            $categoryid = (int)$activity['categoryid'];
-            if (!isset($categories[$categoryid])) {
-                $categories[$categoryid] = [
-                    'id' => $categoryid,
+            $categorykey = strtolower($activity['categoryname']);
+            if (!isset($categories[$categorykey])) {
+                $categories[$categorykey] = [
+                    'id' => $categorykey,
                     'name' => $activity['categoryname'],
                     'activities' => [],
                     'completed' => 0,
@@ -50,7 +53,7 @@ class activity_tracker_service {
 
             $record = $savedbycmid[(int)$activity['cmid']] ?? null;
             $completed = !empty($record->completed);
-            $categories[$categoryid]['activities'][] = [
+            $categories[$categorykey]['activities'][] = [
                 'cmid' => (int)$activity['cmid'],
                 'name' => $activity['name'],
                 'completed' => $completed,
@@ -58,9 +61,9 @@ class activity_tracker_service {
                 'timemodified' => $record ? (int)$record->timemodified : 0,
             ];
             if ($completed) {
-                $categories[$categoryid]['completed']++;
+                $categories[$categorykey]['completed']++;
             } else {
-                $categories[$categoryid]['pending']++;
+                $categories[$categorykey]['pending']++;
             }
         }
 
@@ -152,28 +155,26 @@ class activity_tracker_service {
         $seen = [];
         foreach ($items as $item) {
             $category = $allcategories[(int)$item->categoryid] ?? null;
-            while ($category && $category->depth > 2 && !empty($category->parent)
-                    && isset($allcategories[$category->parent])) {
-                $category = $allcategories[$category->parent];
-            }
-            if (!$category || (int)$category->depth !== 2) {
-                continue;
-            }
-
-            $trackercategory = $this->get_tracker_category((string)$category->fullname);
-            if ($trackercategory === null) {
-                continue;
-            }
-
             $cm = $cms[$item->itemmodule . ':' . $item->iteminstance] ?? null;
             if (!$cm || isset($seen[$cm->id])) {
                 continue;
             }
+
+            $trackercategory = $this->get_category_ancestor_tracker_category($category, $allcategories);
+            if ($trackercategory === null) {
+                $trackercategory = $this->get_module_tracker_category(
+                    (string)$item->itemmodule,
+                    (string)$cm->name
+                );
+            }
+            if ($trackercategory === null) {
+                continue;
+            }
+
             $seen[$cm->id] = true;
             $activities[] = [
                 'cmid' => (int)$cm->id,
                 'name' => format_string($cm->name),
-                'categoryid' => (int)$category->id,
                 'categoryname' => $trackercategory,
             ];
         }
@@ -182,23 +183,94 @@ class activity_tracker_service {
     }
 
     /**
-     * Limits the tracker to the Gradebook categories used for course delivery.
+     * Return the first configured tracker category in the gradebook ancestry.
      *
-     * @param string $categoryname
+     * @param \stdClass|null $category
+     * @param array $allcategories
      * @return string|null
      */
-    private function get_tracker_category(string $categoryname): ?string {
-        $name = strtolower(trim($categoryname));
-        if (in_array($name, ['assignment', 'assignments'], true)) {
-            return 'Assignments';
+    private function get_category_ancestor_tracker_category(?\stdClass $category, array $allcategories): ?string {
+        $seen = [];
+        while ($category && !isset($seen[$category->id])) {
+            $seen[$category->id] = true;
+            $trackercategory = $this->get_tracker_category((string)$category->fullname);
+            if ($trackercategory !== null) {
+                return $trackercategory;
+            }
+            if (empty($category->parent) || !isset($allcategories[$category->parent])) {
+                break;
+            }
+            $category = $allcategories[$category->parent];
         }
-        if (in_array($name, ['test', 'tests'], true)) {
+
+        return null;
+    }
+
+    /** Return the tracker category inferred from a flat-gradebook activity. */
+    private function get_module_tracker_category(string $module, string $activityname): ?string {
+        if ($module === 'assign') {
+            return $this->matches_tracker_category($activityname, 'Projects') ? 'Projects' : 'Assignments';
+        }
+        if ($module === 'quiz') {
             return 'Tests';
         }
-        if (in_array($name, ['project', 'projects'], true)) {
-            return 'Projects';
+
+        return $this->get_tracker_category($activityname);
+    }
+
+    /** Match a category name against the administrator-configured aliases. */
+    private function get_tracker_category(string $categoryname): ?string {
+        foreach ($this->get_tracker_category_aliases() as $trackercategory => $aliases) {
+            if ($this->matches_tracker_category($categoryname, $trackercategory, $aliases)) {
+                return $trackercategory;
+            }
         }
+
         return null;
+    }
+
+    /** Check whether a name contains a complete configured category alias. */
+    private function matches_tracker_category(string $value, string $trackercategory, ?array $aliases = null): bool {
+        $aliases = $aliases ?? ($this->get_tracker_category_aliases()[$trackercategory] ?? []);
+        $value = \core_text::strtolower(trim($value));
+        foreach ($aliases as $alias) {
+            if ($alias !== '' && preg_match('/(^|[^[:alnum:]])' . preg_quote($alias, '/')
+                    . '($|[^[:alnum:]])/u', $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Load normalized aliases for the three canonical Module Tracker tabs. */
+    private function get_tracker_category_aliases(): array {
+        if ($this->trackercategoryaliases !== null) {
+            return $this->trackercategoryaliases;
+        }
+
+        $defaults = [
+            'Assignments' => 'assignment,assignments,lab assignment,lab assignments',
+            'Tests' => 'test,tests,quiz,quizzes,assessment,assessments',
+            'Projects' => 'project,projects',
+        ];
+        $aliases = [];
+        foreach ($defaults as $trackercategory => $default) {
+            $setting = 'module_tracker_' . strtolower(rtrim($trackercategory, 's')) . '_aliases';
+            $value = (string)get_config('local_batchanalytics', $setting);
+            if (trim($value) === '') {
+                $value = $default;
+            }
+            $aliases[$trackercategory] = array_values(array_unique(array_filter(array_map(
+                static function(string $alias): string {
+                    return \core_text::strtolower(trim($alias));
+                },
+                explode(',', $value)
+            ))));
+        }
+
+        $this->trackercategoryaliases = $aliases;
+        return $this->trackercategoryaliases;
     }
 
     /**
