@@ -360,7 +360,7 @@ class maac_service {
         }
 
         $changed = false;
-        if ($this->can_ss_team_handle_ticket_record($ticket, $userid) && $this->normalise_ticket_status((string)$ticket->status) === 'open') {
+        if ((int)($ticket->ssteamuserid ?? 0) === $userid && $this->normalise_ticket_status((string)$ticket->status) === 'open') {
             $ticket->status = 'ss_in_progress';
             $ticket->timemodified = time();
             $DB->update_record('local_batchanalytics_ticket', $ticket);
@@ -497,13 +497,22 @@ class maac_service {
         $records->close();
 
         $processed = 0;
+        $batchlimit = max(1, (int)get_config('local_batchanalytics', 'ticket_auto_assign_batch_size') ?: 100);
+        $metabycourse = [];
         $now = time();
         foreach ($tickets as $ticket) {
+            if ($processed >= $batchlimit) {
+                break;
+            }
             if ($this->normalise_ticket_status((string)$ticket->status) === 'resolved') {
                 continue;
             }
 
-            $ticketmeta = $this->build_ticket_meta((int)$ticket->courseid);
+            $courseid = (int)$ticket->courseid;
+            if (!isset($metabycourse[$courseid])) {
+                $metabycourse[$courseid] = $this->build_ticket_meta($courseid);
+            }
+            $ticketmeta = $metabycourse[$courseid];
             $batchmanagerusers = array_values($ticketmeta['batch_manager_users'] ?? []);
             $batchmanagerroleid = (int)($ticketmeta['batch_manager_role']['id'] ?? 0);
             $batchmanageruserid = (int)($ticket->batchmanageruserid ?? 0);
@@ -534,6 +543,7 @@ class maac_service {
 
         return [
             'processed' => $processed,
+            'batchlimit' => $batchlimit,
             'durationdays' => $durationdays,
             'cutoff' => $cutoff,
             'enabled' => true,

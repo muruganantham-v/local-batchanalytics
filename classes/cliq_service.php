@@ -253,6 +253,7 @@ class cliq_service {
         $error = '';
         try {
             $curl = new \curl();
+            $curl->setopt(['CURLOPT_CONNECTTIMEOUT' => 5, 'CURLOPT_TIMEOUT' => 15]);
             $curl->setHeader(['Content-Type: application/json']);
             $responsebody = (string)$curl->post($requesturl, json_encode($payload));
             $info = $curl->get_info();
