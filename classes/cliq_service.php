@@ -41,6 +41,20 @@ class cliq_service {
         return self::PLACEHOLDERS;
     }
 
+    /** Return complete template tokens that are not supported placeholders. */
+    public static function get_invalid_placeholders(string $template): array {
+        preg_match_all('/{{[^{}]*}}/', $template, $matches);
+        $invalid = [];
+        foreach ($matches[0] as $token) {
+            $placeholder = substr($token, 2, -2);
+            if (!in_array($placeholder, self::PLACEHOLDERS, true)) {
+                $invalid[] = $token;
+            }
+        }
+
+        return array_values(array_unique($invalid));
+    }
+
     /**
      * @return string
      */

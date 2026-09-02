@@ -18,6 +18,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #31 | Medium | Closed | Grade calculations now ignore hidden or excluded records and use only positive-range items for completion. | `fix#31: Grade maths ignores excluded and hidden grades; zero-range items inflate completion` |
 | #32 | Medium | Closed | Course summaries now use dedicated table storage, migrate legacy settings, and are removed when their course is deleted. | `fix#32: Per-course summaries are stored as plugin settings keys` |
 | #33 | Medium | Closed | Module Tracker now supports configurable category aliases, flat gradebooks, and one canonical tab per activity type. | `fix#33: Module Tracker renders empty for most gradebook layouts` |
+| #34 | Medium | Closed | Cliq templates now reject unsupported complete placeholders before any template settings are updated. | `fix#34: Unknown Cliq placeholders are saved and delivered verbatim` |
 
 ## Resolution Process
 

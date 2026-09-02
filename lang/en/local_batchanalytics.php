@@ -147,6 +147,7 @@ $string['ticket_student_escalation_email_template'] = 'Mail notification to stud
 $string['cliq_template_title'] = 'Title';
 $string['cliq_template_message_body'] = 'Message body';
 $string['cliq_templates_saved'] = 'Cliq templates saved successfully.';
+$string['cliq_template_invalid_placeholders'] = 'Unsupported placeholder(s): {$a}. Use only the placeholders listed above.';
 $string['cliq_message_history_empty'] = 'No Cliq messages have been recorded yet.';
 $string['cliq_history_table_missing'] = 'Cliq message history table is not available yet. Complete the plugin upgrade first.';
 $string['cliq_history_type'] = 'Type';

@@ -36,8 +36,39 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 JS);
 
+$templatefields = [
+    'cliq_ticket_raise_subject' => PARAM_RAW_TRIMMED,
+    'cliq_ticket_raise_body' => PARAM_RAW,
+    'cliq_ticket_update_subject' => PARAM_RAW_TRIMMED,
+    'cliq_ticket_update_body' => PARAM_RAW,
+    'cliq_ticket_resolved_subject' => PARAM_RAW_TRIMMED,
+    'cliq_ticket_resolved_body' => PARAM_RAW,
+    'cliq_ticket_auto_pm_subject' => PARAM_RAW_TRIMMED,
+    'cliq_ticket_auto_pm_body' => PARAM_RAW,
+    'ticket_student_escalation_email_subject' => PARAM_RAW_TRIMMED,
+    'ticket_student_escalation_email_body' => PARAM_RAW,
+];
+$submittedtemplates = [];
+$templatevalidationerror = '';
+
 if (optional_param('submitbutton', '', PARAM_RAW) !== '') {
     require_sesskey();
+    $invalidplaceholders = [];
+    foreach ($templatefields as $field => $paramtype) {
+        $submittedtemplates[$field] = optional_param($field, '', $paramtype);
+        $invalidplaceholders = array_merge(
+            $invalidplaceholders,
+            \local_batchanalytics\cliq_service::get_invalid_placeholders($submittedtemplates[$field])
+        );
+    }
+    $invalidplaceholders = array_values(array_unique($invalidplaceholders));
+    if (!empty($invalidplaceholders)) {
+        $templatevalidationerror = get_string(
+            'cliq_template_invalid_placeholders',
+            'local_batchanalytics',
+            implode(', ', array_map('s', $invalidplaceholders))
+        );
+    } else {
     set_config(
         'cliq_ticket_raise_subject',
         optional_param('cliq_ticket_raise_subject', '', PARAM_RAW_TRIMMED),
@@ -94,6 +125,7 @@ if (optional_param('submitbutton', '', PARAM_RAW) !== '') {
         null,
         \core\output\notification::NOTIFY_SUCCESS
     );
+    }
 }
 
 $raise_subject = get_config('local_batchanalytics', 'cliq_ticket_raise_subject');
@@ -136,6 +168,19 @@ if (trim((string)$studentemail_subject) === '') {
 }
 if (trim((string)$studentemail_body) === '') {
     $studentemail_body = \local_batchanalytics\cliq_service::get_default_ticket_student_escalation_email_body();
+}
+
+if (!empty($submittedtemplates)) {
+    $raise_subject = $submittedtemplates['cliq_ticket_raise_subject'];
+    $raise_body = $submittedtemplates['cliq_ticket_raise_body'];
+    $update_subject = $submittedtemplates['cliq_ticket_update_subject'];
+    $update_body = $submittedtemplates['cliq_ticket_update_body'];
+    $resolved_subject = $submittedtemplates['cliq_ticket_resolved_subject'];
+    $resolved_body = $submittedtemplates['cliq_ticket_resolved_body'];
+    $autopm_subject = $submittedtemplates['cliq_ticket_auto_pm_subject'];
+    $autopm_body = $submittedtemplates['cliq_ticket_auto_pm_body'];
+    $studentemail_subject = $submittedtemplates['ticket_student_escalation_email_subject'];
+    $studentemail_body = $submittedtemplates['ticket_student_escalation_email_body'];
 }
 
 /**
@@ -265,5 +310,8 @@ $form .= html_writer::end_tag('form');
 
 echo $output->header();
 echo $output->heading(get_string('configure_cliq_templates', 'local_batchanalytics'));
+if ($templatevalidationerror !== '') {
+    echo $output->notification($templatevalidationerror, 'error');
+}
 echo $form;
 echo $output->footer();
