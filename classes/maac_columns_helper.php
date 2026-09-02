@@ -316,18 +316,26 @@ class maac_columns_helper {
         preg_match_all('/\{[a-z0-9_]+\}|\d+(?:\.\d+)?|[()+\-*\/]/i', $compact, $matches);
         $tokens = $matches[0] ?? [];
         if (implode('', $tokens) !== $compact) return null;
-        $output = []; $operators = []; $precedence = ['+' => 1, '-' => 1, '*' => 2, '/' => 2]; $previous = null;
+        $output = []; $operators = []; $precedence = ['+' => 1, '-' => 1, '*' => 2, '/' => 2, 'u-' => 3]; $previous = null;
         foreach ($tokens as $token) {
             if (is_numeric($token) || $token[0] === '{') { $output[] = $token; }
             else if ($token === '(') { $operators[] = $token; }
             else if ($token === ')') { while (!empty($operators) && end($operators) !== '(') $output[] = array_pop($operators); if (array_pop($operators) !== '(') return null; }
-            else { if ($token === '-' && ($previous === null || isset($precedence[$previous]) || $previous === '(')) $output[] = '0'; while (!empty($operators) && end($operators) !== '(' && $precedence[end($operators)] >= $precedence[$token]) $output[] = array_pop($operators); $operators[] = $token; }
+            else {
+                $operator = $token === '-' && ($previous === null || isset($precedence[$previous]) || $previous === '(') ? 'u-' : $token;
+                while (!empty($operators) && end($operators) !== '(' && (
+                    $precedence[end($operators)] > $precedence[$operator]
+                    || ($precedence[end($operators)] === $precedence[$operator] && $operator !== 'u-')
+                )) $output[] = array_pop($operators);
+                $operators[] = $operator;
+            }
             $previous = $token;
         }
         while (!empty($operators)) { $operator = array_pop($operators); if ($operator === '(') return null; $output[] = $operator; }
         $stack = [];
         foreach ($output as $token) {
-            if (isset($precedence[$token])) { $right = array_pop($stack); $left = array_pop($stack); if ($left === null || $right === null || ($token === '/' && (float)$right == 0.0)) return null; $stack[] = match ($token) { '+' => $left + $right, '-' => $left - $right, '*' => $left * $right, '/' => $left / $right }; }
+            if ($token === 'u-') { $value = array_pop($stack); if ($value === null) return null; $stack[] = -$value; }
+            else if (isset($precedence[$token])) { $right = array_pop($stack); $left = array_pop($stack); if ($left === null || $right === null || ($token === '/' && (float)$right == 0.0)) return null; $stack[] = match ($token) { '+' => $left + $right, '-' => $left - $right, '*' => $left * $right, '/' => $left / $right }; }
             else if ($token[0] === '{') { $value = $resolve(substr($token, 1, -1)); if ($value === null) return null; $stack[] = $value; }
             else { $stack[] = (float)$token; }
         }
