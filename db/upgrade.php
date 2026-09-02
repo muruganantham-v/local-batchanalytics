@@ -204,5 +204,43 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026073300, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026080200) {
+        $table = new xmldb_table('local_batchanalytics_course_summary');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('summary', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('courseid_uix', XMLDB_INDEX_UNIQUE, ['courseid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $legacysummaries = $DB->get_records_select(
+            'config_plugins',
+            'plugin = :plugin AND ' . $DB->sql_like('name', ':nameprefix', false),
+            ['plugin' => 'local_batchanalytics', 'nameprefix' => 'course_summary_%']
+        );
+        foreach ($legacysummaries as $legacy) {
+            if (preg_match('/^course_summary_(\d+)$/', $legacy->name, $matches)) {
+                $courseid = (int)$matches[1];
+                $summary = trim((string)$legacy->value);
+                if ($courseid > 1 && $summary !== '' && $DB->record_exists('course', ['id' => $courseid])) {
+                    $DB->insert_record('local_batchanalytics_course_summary', (object)[
+                        'courseid' => $courseid,
+                        'summary' => $summary,
+                        'timemodified' => time(),
+                    ]);
+                }
+            }
+            unset_config($legacy->name, 'local_batchanalytics');
+        }
+
+        upgrade_plugin_savepoint(true, 2026080200, 'local', 'batchanalytics');
+    }
+
     return true;
 }

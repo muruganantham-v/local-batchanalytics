@@ -16,6 +16,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #29 | Medium | Closed | Teacher counts use inherited Moodle role assignments and resolve teacher roles by shortname instead of fixed database IDs. | `fix#29: Teacher counts silently drop category-level teachers` |
 | #30 | Medium | Closed | Batch grouping now uses a validated shortname-first batch code and ignores descriptive fullname suffixes. | `fix#30: Batch grouping splits batches whenever a fullname contains a colon` |
 | #31 | Medium | Closed | Grade calculations now ignore hidden or excluded records and use only positive-range items for completion. | `fix#31: Grade maths ignores excluded and hidden grades; zero-range items inflate completion` |
+| #32 | Medium | Closed | Course summaries now use dedicated table storage, migrate legacy settings, and are removed when their course is deleted. | `fix#32: Per-course summaries are stored as plugin settings keys` |
 
 ## Resolution Process
 

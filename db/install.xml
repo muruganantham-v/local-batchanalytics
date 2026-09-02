@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/batchanalytics/db" VERSION="2026072300" COMMENT="XMLDB file for local_batchanalytics"
+<XMLDB PATH="local/batchanalytics/db" VERSION="2026080200" COMMENT="XMLDB file for local_batchanalytics"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -119,6 +119,20 @@
         <INDEX NAME="course_cmid_uix" UNIQUE="true" FIELDS="courseid, cmid"/>
         <INDEX NAME="courseid_ix" UNIQUE="false" FIELDS="courseid"/>
         <INDEX NAME="cmid_ix" UNIQUE="false" FIELDS="cmid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_batchanalytics_course_summary" COMMENT="Per-course Batch Analytics summaries">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="summary" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="courseid_uix" UNIQUE="true" FIELDS="courseid"/>
       </INDEXES>
     </TABLE>
   </TABLES>

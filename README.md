@@ -57,8 +57,9 @@ The plugin uses Moodle core tables and these plugin tables:
 - `local_batchanalytics_maac`: per-course, per-student MAAC field values
 - `local_batchanalytics_ticket`: ticket records, ownership, status, priority, escalation, and resolution data
 - `local_batchanalytics_ticket_event`: ticket timeline events
-- `local_batchanalytics_cliq_history`: Cliq delivery attempts and responses
-- `local_batchanalytics_activity_tracker`: per-course module delivery status
+  - `local_batchanalytics_cliq_history`: Cliq delivery attempts and responses
+  - `local_batchanalytics_activity_tracker`: per-course module delivery status
+  - `local_batchanalytics_course_summary`: per-course Batch Analytics summaries
 
 ## JSON Actions
 

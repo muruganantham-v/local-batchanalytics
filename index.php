@@ -206,7 +206,7 @@ if ($action === 'savecoursesummary') {
         }
 
         $summary = trim((string)$summary);
-        set_config('course_summary_' . $courseid, $summary, 'local_batchanalytics');
+        \local_batchanalytics\course_summary_service::save($courseid, $summary);
         \local_batchanalytics\util::purge_batch_response_cache();
 
         echo json_encode([
@@ -489,6 +489,10 @@ if ($action === 'getbatchfulldata') {
     $teacher_roles = $DB->get_records_list('role', 'shortname', ['teacher', 'editingteacher'], '', 'id, shortname');
     $teacher_role_ids = array_keys($teacher_roles);
 
+    $course_summaries = \local_batchanalytics\course_summary_service::get_for_courses(
+        array_column($courses, 'courseid')
+    );
+
     foreach ($courses as $course) {
         $courseid = $course['courseid'];
 
@@ -700,7 +704,7 @@ if ($action === 'getbatchfulldata') {
             'courseid' => $courseid,
             'coursename' => $course['fullname'],
             'shortname' => $course['shortname'],
-            'summary' => (string)get_config('local_batchanalytics', 'course_summary_' . $courseid),
+            'summary' => $course_summaries[$courseid] ?? '',
             'cansummaryedit' => $can_edit_course_summary($coursecontext),
             'categories' => array_values($categories_data),
             'studentCount' => count($students),
