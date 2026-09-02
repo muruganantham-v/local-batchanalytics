@@ -14,6 +14,7 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
+require_capability('local/batchanalytics:view', $context);
 
 $courseid = optional_param('courseid', 0, PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);

@@ -68,6 +68,9 @@ function local_batchanalytics_extend_navigation_course(navigation_node $navigati
     }
 
     $systemcontext = context_system::instance();
+    if (!is_siteadmin() && !has_capability('local/batchanalytics:view', $systemcontext)) {
+        return;
+    }
     $canmanage = is_siteadmin() || has_capability('local/batchanalytics:manage', $systemcontext);
     $canviewmaac = has_capability('local/batchanalytics:viewmaac', $context)
         || has_capability('local/batchanalytics:editmaac', $context);

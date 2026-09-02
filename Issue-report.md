@@ -19,6 +19,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #32 | Medium | Closed | Course summaries now use dedicated table storage, migrate legacy settings, and are removed when their course is deleted. | `fix#32: Per-course summaries are stored as plugin settings keys` |
 | #33 | Medium | Closed | Module Tracker now supports configurable category aliases, flat gradebooks, and one canonical tab per activity type. | `fix#33: Module Tracker renders empty for most gradebook layouts` |
 | #34 | Medium | Closed | Cliq templates now reject unsupported complete placeholders before any template settings are updated. | `fix#34: Unknown Cliq placeholders are saved and delivered verbatim` |
+| #35 | Medium | Closed | Plugin-level View now gates MAAC, Module Tracker, their service authorization, and course navigation links. | `fix#35: local/batchanalytics:view does not gate the MAAC or tracker pages` |
 
 ## Resolution Process
 

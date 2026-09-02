@@ -2091,12 +2091,24 @@ class maac_service {
 
     // Centralized in moodledata::can_manage_all
 
+    /** Return whether the user can enter the Batch Analytics plugin. */
+    private function can_access_batchanalytics(int $userid): bool {
+        return is_siteadmin($userid) || has_capability(
+            'local/batchanalytics:view',
+            \context_system::instance(),
+            $userid
+        );
+    }
+
     /**
      * @param int $courseid
      * @param int $userid
      * @return bool
      */
     private function can_view_maac_data(int $courseid, int $userid): bool {
+        if (!$this->can_access_batchanalytics($userid)) {
+            return false;
+        }
         if (moodledata::can_manage_all($userid)) {
             return true;
         }
@@ -2114,6 +2126,9 @@ class maac_service {
      * @return bool
      */
     private function can_view_tickets_for_course(int $courseid, int $userid): bool {
+        if (!$this->can_access_batchanalytics($userid)) {
+            return false;
+        }
         if (moodledata::can_manage_all($userid)) {
             return true;
         }
@@ -2132,6 +2147,9 @@ class maac_service {
      * @return bool
      */
     private function can_manage_tickets_for_course(int $courseid, int $userid): bool {
+        if (!$this->can_access_batchanalytics($userid)) {
+            return false;
+        }
         if (moodledata::can_manage_all($userid)) {
             return true;
         }
@@ -2145,6 +2163,9 @@ class maac_service {
      * @return bool
      */
     private function can_manage_escalated_tickets_for_course(int $courseid, int $userid): bool {
+        if (!$this->can_access_batchanalytics($userid)) {
+            return false;
+        }
         if (moodledata::can_manage_all($userid)) {
             return true;
         }
@@ -2168,6 +2189,9 @@ class maac_service {
      * @return bool
      */
     private function can_edit_maac_data(int $courseid, int $userid): bool {
+        if (!$this->can_access_batchanalytics($userid)) {
+            return false;
+        }
         if (is_siteadmin($userid)) {
             return true;
         }

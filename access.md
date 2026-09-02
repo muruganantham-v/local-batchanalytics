@@ -7,10 +7,11 @@ assignments can change the effective access for an individual user.
 
 ## Access Model
 
-- Batch Analytics home and Ticket Dashboard require login and the system-level
-  capability `local/batchanalytics:view`.
-- Course actions are checked in the course context. A user must also have the
-  relevant course capability or configured ticket role.
+- Every Batch Analytics page, including MAAC, Module Tracker, and Ticket
+  Dashboard, requires login and the system-level capability
+  `local/batchanalytics:view`.
+- Course actions are checked only after this plugin-level gate. A user must
+  also have the relevant course capability or configured ticket role.
 - Site administrators always have full plugin access.
 - Plugin settings, ticket templates, and Cliq templates require Moodle site
   configuration access: `moodle/site:config`.
@@ -21,7 +22,7 @@ assignments can change the effective access for an individual user.
 
 | Capability | Context | Access granted |
 | --- | --- | --- |
-| `local/batchanalytics:view` | System | Open Batch Analytics home and Ticket Dashboard. |
+| `local/batchanalytics:view` | System | Open Batch Analytics pages, including MAAC, Module Tracker, and Ticket Dashboard. |
 | `local/batchanalytics:manage` | System | Full plugin access, including all courses and MAAC data. |
 | `local/batchanalytics:viewallcourses` | System | Search and view all permitted courses. |
 | `local/batchanalytics:viewenrolledcourses` | Course | View an enrolled course through Batch Analytics. |
@@ -36,8 +37,8 @@ assignments can change the effective access for an individual user.
 | Role | Batch Analytics and courses | MAAC and Module Tracker | Tickets | Settings |
 | --- | --- | --- | --- | --- |
 | Admin | Full access to all courses. | View and edit. | View, raise, update, resolve, and escalate. | Full access. |
-| Manager | Full access only when assigned `local/batchanalytics:manage` at system level. Otherwise access follows assigned capabilities. | View and edit when the relevant capabilities are assigned. | Full ticket management when the relevant capabilities are assigned. | Only with `moodle/site:config`. |
-| Teacher | Must have system `local/batchanalytics:view` to open plugin home. Course access follows course capabilities. | Default plugin archetype grants view and edit MAAC capabilities when active in the course. Module Tracker can be viewed and edited. | Default plugin archetype grants ticket view and management when active in the course. | No default access. |
+| Manager | Requires system `local/batchanalytics:view`; full access also requires system `local/batchanalytics:manage`. Otherwise access follows assigned capabilities. | View and edit when the relevant capabilities are assigned. | Full ticket management when the relevant capabilities are assigned. | Only with `moodle/site:config`. |
+| Teacher | Must have system `local/batchanalytics:view` to access plugin pages. Course access follows course capabilities. | Default plugin archetype grants view and edit MAAC capabilities when active in the course. Module Tracker can be viewed and edited. | Default plugin archetype grants ticket view and management when active in the course. | No default access. |
 | SS Team | Must have system `local/batchanalytics:view`. The role selected in **SS Team role** setting grants ticket dashboard access in its assigned course. | No MAAC or Module Tracker access unless separate course capabilities are granted. | Can view assigned-course tickets, handle tickets, and escalate tickets to PM. | No default access. |
 | Batch Manager | Must have system `local/batchanalytics:view`. The role selected in **Batch Manager role** setting grants the Ticket Dashboard button and dashboard access in its assigned course. | No MAAC or Module Tracker access unless separate course capabilities are granted. | Can view assigned-course tickets and resolve tickets only after escalation to PM. Cannot escalate tickets. | No default access. |
 | Student | No default Batch Analytics access. | No default MAAC or Module Tracker access. | Cannot access the Ticket Dashboard. A student can receive the configured email when their ticket is escalated. | No access. |
@@ -60,8 +61,8 @@ assignments can change the effective access for an individual user.
   Those roles must be assigned at the course level for role-based ticket
   access to work.
 - A user with a configured ticket role still needs the system-level
-  `local/batchanalytics:view` capability to enter plugin home or the Ticket
-  Dashboard page.
+  `local/batchanalytics:view` capability to enter any plugin page, including
+  MAAC, Module Tracker, plugin home, and the Ticket Dashboard.
 - Course visibility and configured allowed-course keywords can further limit
   which courses appear in the ticket dashboard.
 - This plugin does not give students or guests access by default. Any such

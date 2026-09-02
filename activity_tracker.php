@@ -12,6 +12,7 @@ $action = optional_param('action', '', PARAM_ALPHA);
 $course = get_course($courseid);
 $context = context_course::instance($courseid);
 $systemcontext = context_system::instance();
+require_capability('local/batchanalytics:view', $systemcontext);
 $canmanage = is_siteadmin() || has_capability('local/batchanalytics:manage', $systemcontext);
 $canview = has_capability('local/batchanalytics:viewmaac', $context)
     || has_capability('local/batchanalytics:editmaac', $context);
