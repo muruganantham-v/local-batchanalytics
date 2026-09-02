@@ -836,17 +836,39 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getOverallPerformanceValue(student) {
-    const values = (state.data.module_columns || []).map((column) => {
-      const value = getModuleMetricValue(student, column).value;
-      const numeric = parseFloat(value);
-      return Number.isFinite(numeric) ? numeric : 0;
-    });
+    // Mirrors PHP maac_service.php lines 958-993 (performance_rating logic).
+    // Attendance categories  → grade percentage (totalearned / totalmax × 100).
+    // Non-attendance categories → completion percentage; zero-item/null entries
+    //   are SKIPPED (not coerced to 0) to match PHP's $totalitems > 0 guard.
+    const performanceValues = [];
 
-    if (!values.length) {
+    for (const column of (state.data.module_columns || [])) {
+      const module = student.modules ? student.modules[column.key] : null;
+      if (!module || typeof module !== "object") {
+        continue;
+      }
+
+      if (column.isattendance) {
+        // Attendance: use grade percentage; treat missing as 0 (PHP: $percentage ?? 0.0)
+        const grade = parseFloat(module.overallgrade);
+        performanceValues.push(Number.isFinite(grade) ? grade : 0);
+      } else {
+        // Non-attendance: use completion percentage; skip if not available
+        // (PHP skips categories where $totalitems === 0)
+        const completion = parseFloat(module.completion);
+        if (Number.isFinite(completion)) {
+          performanceValues.push(completion);
+        }
+      }
+    }
+
+    if (!performanceValues.length) {
       return 0;
     }
 
-    return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100;
+    return Math.round(
+      (performanceValues.reduce((sum, v) => sum + v, 0) / performanceValues.length) * 100
+    ) / 100;
   }
 
   function parseFilterNumber(value) {
