@@ -260,11 +260,23 @@ class cliq_service {
             $httpcode = (int)($info['http_code'] ?? 0);
             if ($httpcode >= 200 && $httpcode < 300) {
                 $response = json_decode($responsebody, true);
-                if (is_array($response) && isset($response['user_ids'], $response['users'])
-                        && $response['user_ids'] === [] && $response['users'] === []) {
+                $userids = is_array($response) && isset($response['user_ids']) && is_array($response['user_ids'])
+                    ? $response['user_ids'] : null;
+                $users = is_array($response) && isset($response['users']) && is_array($response['users'])
+                    ? $response['users'] : null;
+                if ($userids === [] && $users === []) {
                     $status = 'no user found';
-                } else {
+                } else if ((!empty($userids) && is_array($userids)) || (!empty($users) && is_array($users))) {
                     $status = 'success';
+                } else if (is_array($response)) {
+                    $detail = $response['message'] ?? $response['error'] ?? $response['code'] ?? '';
+                    if (is_scalar($detail) && trim((string)$detail) !== '') {
+                        $error = 'Cliq response did not confirm delivery: ' . trim((string)$detail);
+                    } else {
+                        $error = 'Cliq response did not confirm delivery.';
+                    }
+                } else {
+                    $error = 'Cliq returned a non-JSON response.';
                 }
             } else {
                 $error = trim('HTTP ' . $httpcode . ' ' . $responsebody);

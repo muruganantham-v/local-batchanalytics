@@ -5,6 +5,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | Issue | Severity | Status | Resolution | Commit |
 |---|---|---|---|---|
 | #20 | High | Closed | Ticket writes now queue Cliq notifications as adhoc tasks. HTTP delivery and its existing timeouts run only in the background worker. | `fix#20: synchronous Cliq delivery delays ticket saves per recipient` |
+| #21 | Medium | Closed | Cliq history requires a non-empty recipient confirmation before recording delivery as successful. | `fix#21: Cliq delivery is logged as success for rejected HTTP 200 responses` |
 
 ## Resolution Process
 
