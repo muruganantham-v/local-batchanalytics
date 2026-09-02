@@ -100,11 +100,22 @@ class util {
         try {
             $cache = \cache::make('local_batchanalytics', 'crmratelimit');
             $key = 'user_' . $userid;
-            $count = (int)$cache->get($key);
+            $now = time();
+            $window = $cache->get($key);
+            $window = is_array($window) ? $window : [];
+            $windowstart = (int)($window['windowstart'] ?? 0);
+            $count = (int)($window['count'] ?? 0);
+            if ($windowstart <= 0 || $now < $windowstart || ($now - $windowstart) >= 60) {
+                $windowstart = $now;
+                $count = 0;
+            }
             if ($count >= 30) {
                 return false;
             }
-            $cache->set($key, $count + 1);
+            $cache->set($key, [
+                'windowstart' => $windowstart,
+                'count' => $count + 1,
+            ]);
             return true;
         } catch (\Exception $e) {
             // Fail open if cache is unavailable

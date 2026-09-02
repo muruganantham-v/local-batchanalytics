@@ -36,7 +36,8 @@ $definitions = [
     'crmratelimit' => [
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,
-        'simpledata' => true,
+        // The counter keeps its fixed window start time alongside the request count. (F-21)
+        'simpledata' => false,
         'ttl' => 60, // 1 minute window for rate limiting
     ]
 ];
