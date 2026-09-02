@@ -120,8 +120,10 @@ if ($action !== '') {
             if (!isset($source[$sheetname]) || $usernameheader === '') {
                 throw new moodle_exception('generalexceptionmessage', 'error', '', 'Select both a worksheet and Username column for ' . format_string($course->fullname) . '.');
             }
-            $mappedfields = array_filter($map['fields'] ?? [], static fn($header): bool => trim((string)$header) !== '');
-            if (empty($mappedfields)) {
+            $mappedfieldkeys = array_keys(array_filter($map['fields'] ?? [], static function($header, $fieldkey) use ($columnmap): bool {
+                return isset($columnmap[$fieldkey]) && trim((string)$header) !== '';
+            }, ARRAY_FILTER_USE_BOTH));
+            if (empty($mappedfieldkeys)) {
                 throw new moodle_exception('generalexceptionmessage', 'error', '', 'Select at least one MAAC field for every course.');
             }
             $rows = $source[$sheetname]['rows'];
@@ -175,9 +177,21 @@ if ($action !== '') {
                 }
                 $importrows[] = ['userid' => $usersbyusername[$username], 'values' => $values];
             }
+            $matcheduserids = array_values(array_unique(array_column($importrows, 'userid')));
+            $existingvalues = 0;
+            if (!empty($matcheduserids)) {
+                list($userinsql, $userparams) = $DB->get_in_or_equal($matcheduserids, SQL_PARAMS_NAMED, 'importuser');
+                list($fieldinsql, $fieldparams) = $DB->get_in_or_equal($mappedfieldkeys, SQL_PARAMS_NAMED, 'importfield');
+                $existingvalues = $DB->count_records_select(
+                    'local_batchanalytics_maac',
+                    "courseid = :importcourseid AND userid $userinsql AND fieldkey $fieldinsql",
+                    ['importcourseid' => (int)$course->id] + $userparams + $fieldparams
+                );
+            }
             $plans[] = [
                 'courseid' => (int)$course->id,
                 'rows' => $importrows,
+                'existingvalues' => $existingvalues,
                 'unmatched' => count($unmatched),
                 'missingusernames' => $missingusernames,
                 'usernameheader' => $usernameheader,
@@ -190,6 +204,7 @@ if ($action !== '') {
             $sendjson(['status' => 'ok', 'courses' => array_map(static fn($plan) => [
                 'courseid' => $plan['courseid'],
                 'rows' => count($plan['rows']),
+                'existingvalues' => $plan['existingvalues'],
                 'unmatched' => $plan['unmatched'],
                 'missingusernames' => $plan['missingusernames'],
                 'usernameheader' => $plan['usernameheader'],
@@ -198,7 +213,6 @@ if ($action !== '') {
         $transaction = $DB->start_delegated_transaction();
         $service = new \local_batchanalytics\maac_service();
         foreach ($plans as $plan) {
-            $DB->delete_records('local_batchanalytics_maac', ['courseid' => $plan['courseid']]);
             $service->save_course_data($plan['courseid'], $USER->id, $plan['rows']);
         }
         $transaction->allow_commit();
@@ -206,6 +220,7 @@ if ($action !== '') {
         $sendjson(['status' => 'ok', 'courses' => array_map(static fn($plan) => [
             'courseid' => $plan['courseid'],
             'rows' => count($plan['rows']),
+            'existingvalues' => $plan['existingvalues'],
             'unmatched' => $plan['unmatched'],
             'missingusernames' => $plan['missingusernames'],
             'usernameheader' => $plan['usernameheader'],
