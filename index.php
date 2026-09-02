@@ -27,6 +27,45 @@ $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:view
 $moodledata = new \local_batchanalytics\moodledata();
 $can_view_tickets = $moodledata->can_access_ticket_dashboard($userid);
 
+/**
+ * Return a safe CRM error for the browser while retaining the detailed cause in server logs.
+ *
+ * @param \Throwable $exception
+ * @return array{error:string,errorcode:string}
+ */
+$format_crm_error = static function(\Throwable $exception): array {
+    $message = $exception->getMessage();
+    $lowercase = strtolower($message);
+    $errorcode = 'crm_unavailable';
+    $safeerror = 'CRM data is unavailable. Please retry later.';
+
+    if (str_contains($lowercase, 'access token')) {
+        $errorcode = 'crm_authorization';
+        $safeerror = 'CRM authorization is unavailable. Check the Zoho CRM settings and retry.';
+    } else if (preg_match('/http status (\d+)/i', $message, $matches)) {
+        $httpcode = (int)$matches[1];
+        if ($httpcode === 401 || $httpcode === 403) {
+            $errorcode = 'crm_authorization';
+            $safeerror = 'CRM authorization was rejected. Check the Zoho CRM settings and retry.';
+        } else if ($httpcode === 429) {
+            $errorcode = 'crm_rate_limited';
+            $safeerror = 'Zoho CRM rate limit was reached. Please retry later.';
+        } else if ($httpcode >= 400 && $httpcode < 500) {
+            $errorcode = 'crm_request_rejected';
+            $safeerror = 'Zoho CRM rejected this request. Check the CRM module and field settings.';
+        } else {
+            $errorcode = 'crm_upstream_unavailable';
+            $safeerror = 'Zoho CRM is temporarily unavailable. Please retry later.';
+        }
+    } else if (str_contains($lowercase, 'invalid response')) {
+        $errorcode = 'crm_invalid_response';
+        $safeerror = 'Zoho CRM returned an invalid response. Please retry later.';
+    }
+
+    error_log('[local_batchanalytics] CRM request failed [' . $errorcode . ']: ' . $message);
+    return ['error' => $safeerror, 'errorcode' => $errorcode];
+};
+
 // Load restricted CRM fields for view-only users.
 $restricted_crm_fields = [];
 if (!$can_manage) {
@@ -404,7 +443,7 @@ if ($action === 'getptfdata') {
     } catch (\Throwable $e) {
         debugging('CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
         http_response_code(502);
-        echo json_encode(['error' => 'An error occurred fetching CRM data']);
+        echo json_encode($format_crm_error($e));
     }
     die();
 }

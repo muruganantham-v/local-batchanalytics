@@ -5,6 +5,8 @@ let CURRENT_COURSE = null;
 let CRM_CACHE = {};
 let PTF_CACHE = {};
 let PTF_PENDING = {};
+let PTF_FAILED = {};
+let CRM_FAILURE_NOTICE_SHOWN = false;
 let MENTOR_DETAILS_CACHE = {};
 let MENTOR_DETAILS_PENDING = {};
 let OVERVIEW_SELECTED_COURSES = [];
@@ -382,6 +384,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
       BATCH_DATA = await res.json();
 
+      // CRM values belong to the selected batch. Do not carry either loaded or failed
+      // state into the next batch selection.
+      CRM_CACHE = {};
+      PTF_CACHE = {};
+      PTF_PENDING = {};
+      PTF_FAILED = {};
+      CRM_FAILURE_NOTICE_SHOWN = false;
+
       // CRM data is lazy-loaded via fetchUnifiedData when tabs are rendered.
       // Kick off CRM fetch in the background so data is ready when user opens CRM tab.
       if (BATCH_DATA && BATCH_DATA.uniqueStudents) {
@@ -464,8 +474,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ==================== UNIFIED DATA FETCHER ====================
 
+  function recordCrmChunkFailure(chunk, error) {
+    const message = String(error || "CRM data is unavailable");
+    chunk.forEach((username) => {
+      PTF_FAILED[username] = message;
+    });
+
+    if (!CRM_FAILURE_NOTICE_SHOWN) {
+      CRM_FAILURE_NOTICE_SHOWN = true;
+      showToast(`${message} Open CRM Data and select Retry CRM Data after resolving the issue.`, "error");
+    }
+
+    // Replace loading cells with a stable failure state when the CRM tab is open.
+    if (document.getElementById("ptf-table")) {
+      renderPtf();
+    }
+  }
+
   async function fetchUnifiedData(users) {
-    const uncached = [...new Set(users)].filter((u) => !PTF_CACHE[u] && !PTF_PENDING[u]);
+    const uncached = [...new Set(users)].filter(
+      (u) => !PTF_CACHE[u] && !PTF_PENDING[u] && !PTF_FAILED[u],
+    );
     if (uncached.length === 0) return;
 
     // Batch fetch in chunks of 20.
@@ -481,10 +510,11 @@ document.addEventListener("DOMContentLoaded", function () {
         .then((result) => {
           if (result && result.error) {
             console.error("Batch fetch error for chunk", chunk, result.error);
-            showToast(result.error, "error");
+            recordCrmChunkFailure(chunk, result.error);
             return;
           }
           if (!(result && result.students)) {
+            recordCrmChunkFailure(chunk, "CRM returned an invalid response");
             return;
           }
 
@@ -510,6 +540,7 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .catch((e) => {
           console.error("Batch fetch error for chunk", chunk, e);
+          recordCrmChunkFailure(chunk, e?.message || "CRM request failed");
         })
         .finally(() => {
           chunk.forEach((username) => {
@@ -523,6 +554,19 @@ document.addEventListener("DOMContentLoaded", function () {
       await request;
     }
   }
+
+  window.retryCrmData = function () {
+    const failedUsers = Object.keys(PTF_FAILED);
+    if (failedUsers.length === 0) {
+      showToast("No failed CRM requests to retry", "info");
+      return;
+    }
+
+    PTF_FAILED = {};
+    CRM_FAILURE_NOTICE_SHOWN = false;
+    showToast("Retrying CRM data...", "info");
+    fetchUnifiedData(failedUsers);
+  };
 
 
   // ==================== MENTOR DETAILS TAB ====================
@@ -683,9 +727,13 @@ document.addEventListener("DOMContentLoaded", function () {
                       <b>${s.fullname}</b><br><small style="color:#888">${u}</small>
                     </td>`;
 
-      if (!PTF_CACHE[u]) toFetch.push(u);
+      if (!PTF_CACHE[u] && !PTF_FAILED[u]) toFetch.push(u);
 
-      PTF_COLS.forEach(() => (tbody += `<td class="ptf-load">...</td>`));
+      if (PTF_FAILED[u]) {
+        PTF_COLS.forEach(() => (tbody += '<td class="ptf-load">CRM unavailable</td>'));
+      } else {
+        PTF_COLS.forEach(() => (tbody += `<td class="ptf-load">...</td>`));
+      }
       tbody += `</tr>`;
     });
 
@@ -704,7 +752,10 @@ document.addEventListener("DOMContentLoaded", function () {
       <div class="ba-filter-section" style="margin-top:0;">
           <div class="ba-filter-header">
               <h3>CRM Data & Advanced Filter</h3>
-              <button class="ba-btn ba-btn-success" onclick="exportTable('ptf-table', 'CRM_Data_Export')">Export CSV</button>
+              <div class="ba-header-actions">
+                <button class="ba-btn ba-btn-primary" onclick="retryCrmData()">Retry CRM Data</button>
+                <button class="ba-btn ba-btn-success" onclick="exportTable('ptf-table', 'CRM_Data_Export')">Export CSV</button>
+              </div>
           </div>
           <div class="ba-filter-body">
 
@@ -3103,7 +3154,7 @@ document.addEventListener("DOMContentLoaded", function () {
           });
         });
 
-        if (!CRM_CACHE[s.username]) {
+        if (!CRM_CACHE[s.username] && !PTF_FAILED[s.username]) {
           toFetch.push(s.username);
         }
 

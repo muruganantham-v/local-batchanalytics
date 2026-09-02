@@ -208,6 +208,10 @@ class crmapi
             throw new \RuntimeException('Zoho CRM access token is unavailable.');
         }
 
+        if ($this->student_module_api_name === '') {
+            throw new \RuntimeException('Zoho CRM student module API name is unavailable.');
+        }
+
         $fields_to_fetch = $this->crm_fields;
         if (!in_array('Admission_Number', $fields_to_fetch, true)) {
             $fields_to_fetch[] = 'Admission_Number';
