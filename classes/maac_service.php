@@ -904,7 +904,7 @@ class maac_service {
             $customvalues[$studentid]['trend'] = $trendvalue['label'] ?? 'Stable';
         }
 
-        if ($surface !== 'summary') {
+        if ($surface !== 'summary' && $this->can_view_tickets_for_course($courseid, $userid)) {
             $ticketmeta = $this->build_ticket_meta($courseid);
             $ticketcounts = $this->get_ticket_counts($courseid, array_keys($students));
             $studenttickets = $this->get_tickets_by_student($courseid, array_keys($students), $userid);
