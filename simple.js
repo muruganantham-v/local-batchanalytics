@@ -3805,9 +3805,11 @@ document.addEventListener("DOMContentLoaded", function () {
         body: "sesskey=" + encodeURIComponent(BA_SESSKEY)
       }
     )
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error || !Array.isArray(data.course_groups)) {
+      .then(async (res) => {
+        const text = await res.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+        if (!res.ok || data.error || !Array.isArray(data.course_groups)) {
           throw new Error(data.error || "Failed to load MAAC details");
         }
         MAAC_SUMMARY_CACHE[courseId] = data.course_groups;
@@ -3857,10 +3859,12 @@ document.addEventListener("DOMContentLoaded", function () {
         body: "sesskey=" + encodeURIComponent(BA_SESSKEY)
       }
     )
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) {
-          throw new Error(data.error);
+      .then(async (res) => {
+        const text = await res.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+        if (!res.ok || data.error) {
+          throw new Error(data.error || `HTTP ${res.status}`);
         }
 
         MAAC_COURSE_CACHE[courseId] = data;
@@ -3871,6 +3875,10 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch((e) => {
         console.error("Failed to load MAAC course data", e);
+        showToast(
+          "Unable to load MAAC configuration for this course. Please refresh or check your session.",
+          "error"
+        );
       })
       .finally(() => {
         delete MAAC_COURSE_PENDING[courseId];
@@ -3975,7 +3983,9 @@ document.addEventListener("DOMContentLoaded", function () {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `sesskey=${encodeURIComponent(BA_SESSKEY)}&payload=${encodeURIComponent(JSON.stringify({ rows }))}`,
       });
-      const data = await response.json();
+      const text = await response.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_) {}
       if (!response.ok || data.error) throw new Error(data.error || "CRM sync failed");
       const result = data.result || {};
       showToast(`CRM sync complete: ${result.updated || 0} updated, ${result.notfound || 0} not found, ${result.failed || 0} failed.`, result.failed ? "warn" : "success");
