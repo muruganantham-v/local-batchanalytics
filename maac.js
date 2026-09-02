@@ -3599,9 +3599,19 @@ document.addEventListener("DOMContentLoaded", function () {
       return cleanFeedbacks;
     }
 
+    // Returns the local calendar date as YYYY-MM-DD, matching activity_tracker.js:getTodayDate.
+    // new Date().toISOString() is always UTC; for UTC+ users between local midnight and the
+    // UTC offset it returns the previous day. getTimezoneOffset() corrects for this.
+    function getTodayLocalDate() {
+      const now = new Date();
+      return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 10);
+    }
+
     function getDateInputValue(value) {
       const raw = String(value || "").trim();
-      return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().split("T")[0];
+      return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : getTodayLocalDate();
     }
 
     function getFeedbackSuggestions(category) {
@@ -3991,7 +4001,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function resetAddForm() {
       form.style.display = "none";
       addBtn.style.display = "inline-flex";
-      dateInput.value = new Date().toISOString().split("T")[0];
+      dateInput.value = getTodayLocalDate();
       textInput.value = "";
       clearFeedbackSuggestions();
       if (copyExternalInput) {
@@ -4162,7 +4172,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    dateInput.value = new Date().toISOString().split("T")[0];
+    dateInput.value = getTodayLocalDate();
     updateCopyExternalVisibility();
     bindFeedbackCardEvents();
 
@@ -4199,7 +4209,7 @@ document.addEventListener("DOMContentLoaded", function () {
       closeInlineEditors();
       addBtn.style.display = "none";
       form.style.display = "flex";
-      dateInput.value = new Date().toISOString().split("T")[0];
+      dateInput.value = getTodayLocalDate();
       textInput.value = "";
       clearFeedbackSuggestions();
       if (copyExternalInput) {
