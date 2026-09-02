@@ -1156,6 +1156,7 @@ document.addEventListener("DOMContentLoaded", function () {
       "payload",
       JSON.stringify({
         ticketid: state.modal.ticket.id,
+        timemodified: state.modal.ticket.timemodified,
         feedback,
         priority,
         mode,

@@ -4471,6 +4471,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const rows = (state.data.students || []).map((student) => ({
       userid: student.userid,
       values: state.customDraft[student.userid] || {},
+      versions: student.customversions || {},
     }));
 
     const body = new URLSearchParams();

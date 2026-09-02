@@ -109,6 +109,7 @@ class maac_service {
             }
 
             $values = $row['values'] ?? [];
+            $versions = $row['versions'] ?? [];
             if (!is_array($values)) {
                 continue;
             }
@@ -121,8 +122,26 @@ class maac_service {
                     continue;
                 }
 
+                $expectedversion = (int)($versions[$fieldkey] ?? 0);
+                if (($column['type'] ?? '') !== 'multi_feedback') {
+                    $currentrecord = $DB->get_record('local_batchanalytics_maac', [
+                        'courseid' => $courseid,
+                        'userid' => $targetuserid,
+                        'fieldkey' => $fieldkey,
+                    ], 'timemodified', IGNORE_MISSING);
+                    $currentversion = (int)($currentrecord->timemodified ?? 0);
+                    if ($currentversion !== $expectedversion) {
+                        throw new \moodle_exception('generalexceptionmessage', 'error', '', 'MAAC data was updated by another user. Reload before saving.');
+                    }
+                }
+
                 $storedvalue = $this->normalise_value_for_storage($values[$fieldkey], $column);
                 $existingid = (int)($existingrecords[$targetuserid][$fieldkey] ?? 0);
+
+                if ($existingid > 0 && ($column['type'] ?? '') === 'multi_feedback' && $storedvalue !== null) {
+                    $existingvalue = (string)$DB->get_field('local_batchanalytics_maac', 'value', ['id' => $existingid]);
+                    $storedvalue = $this->merge_multi_feedback_values($existingvalue, $storedvalue);
+                }
 
                 if ($storedvalue === null) {
                     if ($existingid > 0) {
@@ -397,6 +416,11 @@ class maac_service {
 
         if ($this->normalise_ticket_status((string)$ticket->status) === 'resolved') {
             throw new \moodle_exception('ticket_already_resolved', 'local_batchanalytics');
+        }
+
+        $expectedtimemodified = (int)($payload['timemodified'] ?? 0);
+        if ($expectedtimemodified > 0 && $expectedtimemodified !== (int)$ticket->timemodified) {
+            throw new \moodle_exception('generalexceptionmessage', 'error', '', 'This ticket was updated by another user. Reload it before saving.');
         }
 
         if (!$this->can_escalate_ticket_record($ticket, $userid)) {
@@ -902,6 +926,7 @@ class maac_service {
         $hastrendcolumn = isset($columns['trend']);
         $columns = array_values($columns);
         $customvalues = $this->get_custom_values($courseid, array_keys($students));
+        $customversions = $this->get_custom_value_versions($courseid, array_keys($students));
         foreach ($this->get_spot_award_nomination_values($courseid, array_keys($students)) as $studentid => $value) {
             $customvalues[$studentid]['spot_awards_nomination'] = $value;
         }
@@ -1249,6 +1274,7 @@ class maac_service {
             if ($activity && isset($values[$userid])) {
                 $studentactivityevidence[$userid][(int)$record->coursemoduleid] = true;
             }
+            $studentrow['customversions'] = $customversions[$student->userid] ?? [];
         }
         $completionrecords->close();
 
@@ -3079,6 +3105,19 @@ class maac_service {
         return $values;
     }
 
+    /** Load per-field versions used to reject stale MAAC saves. */
+    private function get_custom_value_versions(int $courseid, array $userids): array {
+        global $DB;
+        if (empty($userids)) return [];
+        list($insql, $params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $params['courseid'] = $courseid;
+        $records = $DB->get_recordset_sql("SELECT userid, fieldkey, timemodified FROM {local_batchanalytics_maac} WHERE courseid = :courseid AND userid $insql", $params);
+        $versions = [];
+        foreach ($records as $record) $versions[(int)$record->userid][$record->fieldkey] = (int)$record->timemodified;
+        $records->close();
+        return $versions;
+    }
+
     /**
      * Load closed spot award nominations for the provided course + users.
      *
@@ -3160,6 +3199,22 @@ class maac_service {
      * @param array $column
      * @return string|null
      */
+    /** Merge independently added feedback entries from concurrent browser sessions. */
+    private function merge_multi_feedback_values(string $existing, string $incoming): string {
+        $merged = [];
+        foreach ([$existing, $incoming] as $value) {
+            $entries = json_decode($value, true);
+            foreach (is_array($entries) ? $entries : [] as $entry) {
+                if (!is_array($entry) || empty($entry['text'])) {
+                    continue;
+                }
+                $key = (string)($entry['added_at'] ?? '') . '|' . (string)($entry['date'] ?? '') . '|' . (string)$entry['text'];
+                $merged[$key] = $entry;
+            }
+        }
+        return json_encode(array_values($merged));
+    }
+
     private function normalise_value_for_storage($value, array $column): ?string {
         $type = $column['type'] ?? 'text';
         if ($type === 'boolean') {
