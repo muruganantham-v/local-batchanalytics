@@ -514,6 +514,7 @@ if ($action === 'getbatchfulldata') {
             LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
             WHERE gi.courseid = :courseid
               AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
+              AND gi.hidden = 0
             ORDER BY gc.fullname, gi.itemname
         ";
         $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
@@ -606,7 +607,11 @@ if ($action === 'getbatchfulldata') {
             SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade
             FROM {grade_grades} gg
             JOIN {grade_items} gi ON gi.id = gg.itemid
-            WHERE gi.courseid = :courseid AND gg.finalgrade IS NOT NULL
+            WHERE gi.courseid = :courseid
+              AND gi.hidden = 0
+              AND gg.finalgrade IS NOT NULL
+              AND gg.excluded = 0
+              AND gg.hidden = 0
         ";
 
         $grades_map = []; // structure: $grades_map[userid][itemid] = finalgrade
@@ -623,13 +628,14 @@ if ($action === 'getbatchfulldata') {
 
         // 6. Calculate Grades
         foreach ($categories_data as $cat_name => &$cat_data) {
-            $total_items_in_cat = count($cat_data['items']); // NEW: Get total assignments (e.g. 27)
+            $gradable_items_in_cat = 0;
             $category_total_max = 0;
 
             foreach ($cat_data['items'] as $item) {
                 $gmax = $item['grademax'];
                 $gmin = $item['grademin'];
                 if ($gmax > $gmin) {
+                    $gradable_items_in_cat++;
                     $category_total_max += ($gmax - $gmin);
                 }
             }
@@ -646,11 +652,11 @@ if ($action === 'getbatchfulldata') {
                     // Fetch grade instantly from memory instead of hitting the DB!
                     if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
                         $finalgrade = $grades_map[$userid][$itemid];
-                        $items_completed++; // Student submitted this item
 
                         $gmax = $item['grademax'];
                         $gmin = $item['grademin'];
                         if ($gmax > $gmin) {
+                            $items_completed++;
                             $total_earned += ($finalgrade - $gmin);
                             $total_max += ($gmax - $gmin);
                         }
@@ -671,8 +677,10 @@ if ($action === 'getbatchfulldata') {
                     $advanced_filter_percentage = round($advanced_filter_percentage / 10, 1);
                 }
 
-                // Completion %: Items Completed / Total Items in Category (e.g., 10/27 = 37.04%)
-                $comp_rate = $total_items_in_cat > 0 ? round(($items_completed / $total_items_in_cat) * 100, 2) : 0;
+                // Completion %: completed gradeable items / gradeable items in category.
+                $comp_rate = $gradable_items_in_cat > 0
+                    ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
+                    : 0;
 
                 // Remove individual student CRM appendage, it's not needed for the Moodle Grades API
                 $cat_data['studentGrades'][] = [

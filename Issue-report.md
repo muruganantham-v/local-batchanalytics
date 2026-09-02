@@ -15,6 +15,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #28 | High | Closed | Course summaries now honor Moodle capability overrides and the accessible-course scope; ticket dashboard entry checks apply the configured course-keyword scope. | `fix#28: Course-summary edit rights bypass capability overrides` |
 | #29 | Medium | Closed | Teacher counts use inherited Moodle role assignments and resolve teacher roles by shortname instead of fixed database IDs. | `fix#29: Teacher counts silently drop category-level teachers` |
 | #30 | Medium | Closed | Batch grouping now uses a validated shortname-first batch code and ignores descriptive fullname suffixes. | `fix#30: Batch grouping splits batches whenever a fullname contains a colon` |
+| #31 | Medium | Closed | Grade calculations now ignore hidden or excluded records and use only positive-range items for completion. | `fix#31: Grade maths ignores excluded and hidden grades; zero-range items inflate completion` |
 
 ## Resolution Process
 
