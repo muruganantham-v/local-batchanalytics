@@ -3783,6 +3783,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 ${renderFeedbackList(feedbacks)}
               </div>
 
+              ${state.editMode ? `
               <div class="ba-feedback-add-section">
                 <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-add-btn" id="ba-feedback-modal-add-btn-${userid}-${key}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Feedback
@@ -3827,7 +3828,7 @@ document.addEventListener("DOMContentLoaded", function () {
                   </div>
 
                 </div>
-              </div>
+              </div>` : ""} <!-- end editMode add-section (Bug B fix) -->
 
             </div>
 
@@ -4061,6 +4062,7 @@ document.addEventListener("DOMContentLoaded", function () {
       try {
         await saveFeedbacksToBackend(valuesByKey);
         setFeedbackStatus(successMessage, "success");
+        renderMaacTableSection(); // update cell count + header badge immediately (Bug A fix)
       } catch (error) {
         setFeedbackStatus(error.message || "Unable to save feedback.", "error");
         showMessage(error.message || "Unable to save feedback.", "error");
