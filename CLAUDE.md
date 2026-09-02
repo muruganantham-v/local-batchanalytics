@@ -1,54 +1,91 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for maintaining the `local_batchanalytics` Moodle local plugin.
 
 ## Plugin Overview
 
-`local_batchanalytics` is a Moodle local plugin that aggregates student, teacher, and grade data from Moodle courses and enriches it with Zoho CRM placement data. Requires Moodle 4.x+ and PHP 8.x.
+`local_batchanalytics` provides batch and course analytics, MAAC data management,
+Module Tracker, ticket workflows, optional MAAC import, and Zoho CRM/Cliq
+integrations. The current release is `2.0.4`, requires Moodle 4.4 or later, and
+supports the PHP version required by that Moodle installation.
 
-Install by copying to `moodle/local/batchanalytics` and visiting Site Administration > Notifications.
+Install the plugin at `moodle/local/batchanalytics` and complete **Site
+administration > Notifications** after installing or deploying an upgrade.
 
 ## Architecture
 
-**Single-page app pattern**: `index.php` serves both the HTML page and JSON API endpoints (via `?action=` parameter). The frontend is vanilla ES6+ JavaScript (`simple.js`) with plain CSS (`styles.css`) — no build system, no Node.js dependencies.
+This is not a single-page plugin. Its primary pages and frontend scripts are:
 
-### Backend
+- `index.php` and top-level `simple.js`: Batch Analytics page and its batch,
+  course, CRM, and course-summary actions. `index.php` is approximately 780
+  lines and `simple.js` is approximately 4,280 lines at this revision.
+- `maac.php` and `maac.js`: per-course MAAC values, feedback, and ticket actions.
+- `activity_tracker.php` and `activity_tracker.js`: Module Tracker activity
+  delivery status and completion dates.
+- `tickets.php` and `tickets.js`: Ticket Dashboard and ticket workflow actions.
+- `maac_import.php` and `maac_import.js`: optional MAAC XLSX/CSV import flow.
+- `ticket_templates.php`, `cliq_templates.php`, and
+  `cliq_message_history.php`: plugin administration pages for templates and
+  notification history.
 
-- **`index.php`** — Main controller (~470 lines). All API endpoints and HTML rendering. Endpoints return JSON:
-  - `searchcourses` — keyword search
-  - `getbatchcourses` — find courses by batch code
-  - `getcrmdata` / `getptfdata` — CRM placement data (single or batch)
-  - `getbatchfulldata` — primary endpoint returning full batch analytics with grades and CRM data
-- **`classes/moodledata.php`** — Moodle DB queries. Role-based filtering: admins see all courses, teachers see only enrolled. Uses recordsets to avoid N+1.
-- **`classes/crmapi.php`** — Zoho CRM OAuth2 integration. Searches `Child_Admission` module by `Admission_Number`. Batches requests in chunks of 10. Session-cached access tokens with 1-hour expiry.
-- **`settings.php`** — Admin settings for Zoho CRM credentials (client ID, secret, refresh token, URLs). Configured at Site Admin > Plugins > Local Plugins > Batch Analytics.
-- **`db/access.php`** — Defines `local/batchanalytics:view` capability (granted to manager, editingteacher, teacher at SYSTEM context).
+`amd/src/main.js` is only the Moodle AMD entry stub. The active page scripts are
+the top-level JavaScript files listed above.
 
-### Frontend
+## Backend Services
 
-- **`simple.js`** (~1900 lines) — Entire frontend: search UI, tab navigation (Batch Overview, CRM/PTF data, per-course grades), sortable tables, skeleton loading, toast notifications. Key state: `BATCH_DATA`, `CRM_CACHE`, `PTF_CACHE`.
-- **`amd/src/main.js`** — Minimal AMD stub, not actively used.
-- **`styles.css`** — All styling including skeleton loading animations, tab system, sortable tables, sticky headers.
+- `classes/moodledata.php`: role-aware Moodle course, enrollment, grade, and
+  analytics data access.
+- `classes/maac_service.php`: MAAC aggregation/persistence, ticket workflow,
+  and related authorization checks.
+- `classes/activity_tracker_service.php`: Module Tracker classification,
+  retrieval, and status persistence.
+- `classes/course_summary_service.php`: per-course summary storage and legacy
+  configuration migration.
+- `classes/crmapi.php`: Zoho CRM token, lookup, and update client.
+- `classes/cliq_service.php`: Zoho Cliq template rendering, delivery, and
+  history recording.
+- `classes/admin_setting_*.php`: custom Moodle administration setting controls.
 
-### Data Flow
+## Persistent Storage
 
-User searches batch code → `getbatchfulldata` returns courses, grades, student list → frontend renders tabs → CRM data lazy-loaded via `getptfdata` and cached in `PTF_CACHE`.
+The plugin uses Moodle core tables and six custom plugin tables. Do not assume
+that it is stateless or that no database migration is needed.
 
-### Key Implementation Details
+- `local_batchanalytics_maac`: per-course, per-student MAAC field values.
+- `local_batchanalytics_ticket`: ticket records, ownership, status, priority,
+  escalation, and resolution data.
+- `local_batchanalytics_ticket_event`: ticket timeline events.
+- `local_batchanalytics_cliq_history`: Cliq delivery attempts and responses.
+- `local_batchanalytics_activity_tracker`: per-course module delivery status.
+- `local_batchanalytics_course_summary`: per-course Batch Analytics summaries.
 
-- **Batch code parsing**: Extracted from course name format "Batch 22: Python" → "22"
-- **Grade calculation**: Distinguishes percentage (submitted work quality) from completion rate (submitted / total). MAAC Ratings category divides by 10 for 0-10 scale.
-- **No custom DB tables** — uses only standard Moodle tables (course, user, grade_items, grade_grades, etc.)
+New installs use `db/install.xml`; changes to persisted schema require a new
+incremental upgrade step in `db/upgrade.php` and a higher plugin version in
+`version.php`. Course-summary records are removed by the plugin observer when a
+course is deleted.
 
-## API Endpoints
+## Access and Request Rules
 
-All via `index.php?action=<action>`:
-- `searchcourses&keyword=<term>` — search courses
-- `getbatchcourses&batchcode=<code>` — courses by batch
-- `getbatchfulldata&batchcode=<code>` — full batch data (main endpoint)
-- `getptfdata&username=<user>` or `&usernames=<json>` — CRM data
-- `getcrmdata&username=<user>` — simple placement status
+- The Batch Analytics, MAAC, Module Tracker, and Ticket Dashboard pages require
+  `local/batchanalytics:view` at system context, except that site
+  administrators retain full access.
+- Course-level MAAC, Module Tracker, and ticket operations apply their specific
+  course capabilities in addition to the system-level access gate.
+- MAAC import requires `local/batchanalytics:manage` and the enabled import
+  setting.
+- Mutating JSON actions use POST and Moodle `sesskey` validation. Preserve these
+  checks when adding actions; do not expose these endpoints as a public API.
+- Use `access.md` for the detailed capability matrix, ticket routing rules, and
+  role behavior.
 
-## Zoho CRM Configuration
+## Development Notes
 
-Credentials are stored in Moodle admin settings, never hardcoded. Access via `get_config('local_batchanalytics', 'zoho_client_id')` etc.
+- Keep Zoho CRM and Cliq credentials in Moodle plugin settings, never in source
+  code or documentation.
+- Use existing UI classes and page-specific JavaScript rather than adding a
+  build system or duplicating frontend helpers.
+- After PHP changes, run `php -l` on every changed PHP file. After JavaScript
+  changes, run `node --check` on every changed JavaScript file. Always run
+  `git diff --check` before committing.
+- Runtime behavior involving Moodle capabilities, database upgrades, CRM, and
+  Cliq must be verified in a configured Moodle environment after deployment.

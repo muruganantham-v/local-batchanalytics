@@ -21,6 +21,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #34 | Medium | Closed | Cliq templates now reject unsupported complete placeholders before any template settings are updated. | `fix#34: Unknown Cliq placeholders are saved and delivered verbatim` |
 | #35 | Medium | Closed | Plugin-level View now gates MAAC, Module Tracker, their service authorization, and course navigation links. | `fix#35: local/batchanalytics:view does not gate the MAAC or tracker pages` |
 | #36 | Low | Closed | Mentor CRM group saves now ignore malformed rows and field collections without PHP warnings, preserving valid groups. | `fix#36: Mentor field-group settings degrade on non-object rows` |
+| #37 | Low | Closed | CLAUDE.md now documents the current multi-page architecture, frontend locations, six plugin tables, and Moodle upgrade requirement. | `fix#37: CLAUDE.md documentation is stale and contradicts the plugin` |
 
 ## Resolution Process
 
