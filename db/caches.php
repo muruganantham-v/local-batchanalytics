@@ -23,6 +23,16 @@ $definitions = [
         'simpledata' => true,
         'ttl' => 300, // 5 minutes
     ],
+    'zohotokendata' => [
+        // Dedicated store for the Zoho OAuth access token.
+        // No TTL — crmapi.php already validates the expires field itself;
+        // MUC must not evict the entry before the application-level check runs.
+        // simpledata => false because the stored value is an array
+        // (['token' => …, 'expires' => …]), not a scalar. (F-18)
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => false,
+    ],
     'crmratelimit' => [
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,

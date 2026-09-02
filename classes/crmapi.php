@@ -51,7 +51,7 @@ class crmapi
         }
 
         try {
-            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache = \cache::make('local_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
             $cached_token = $cache->get('zoho_access_token');
             if (is_array($cached_token) && $cached_token['expires'] > time() + 60) {
                 self::$access_token_cache = $cached_token['token'];
@@ -82,7 +82,7 @@ class crmapi
         $expiry = time() + (int)($json->expires_in ?? 3600);
 
         try {
-            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache = \cache::make('local_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
             $cache->set('zoho_access_token', [
                 'token' => $json->access_token,
                 'expires' => $expiry
