@@ -1964,8 +1964,8 @@ class maac_service {
         }
         $isassigned = (int)$record->ssteamuserid === $userid;
         $canmanagecourse = !empty($access['canmanage']) || !empty($access['manageablecourseids'][$courseid]);
-        $canssteamhandle = $this->can_ss_team_handle_ticket_record($record, $userid);
-        $canbatchmanagerresolve = $this->can_batch_manager_resolve_ticket_record($record, $userid);
+        $canssteamhandle = $this->can_ss_team_handle_ticket_from_access($record, $userid, $access);
+        $canbatchmanagerresolve = $this->can_batch_manager_resolve_ticket_from_access($record, $userid, $access);
         $canupdate = $statuskey !== 'resolved' && ($canssteamhandle || $canbatchmanagerresolve);
         $prioritykey = $this->normalise_ticket_priority((string)($record->priority ?? 'low'));
 
@@ -2017,7 +2017,7 @@ class maac_service {
             'isinrolecourse' => $canmanagecourse || $canssteamhandle,
             'canresolve' => $canupdate,
             'canedit' => $canupdate,
-            'canescalate' => $statuskey !== 'resolved' && $this->can_escalate_ticket_record($record, $userid) && empty($record->escalatedtopm),
+            'canescalate' => $statuskey !== 'resolved' && $canssteamhandle && empty($record->escalatedtopm),
             'escalatedtopm' => !empty($record->escalatedtopm),
             'actionlabel' => $actionlabel,
             'accessrole' => $accessrole,
@@ -2360,6 +2360,28 @@ class maac_service {
      */
     private function can_escalate_ticket_record(\stdClass $ticket, int $userid): bool {
         return $this->can_ss_team_handle_ticket_record($ticket, $userid);
+    }
+
+    /** Use the dashboard access scope to avoid per-ticket role queries. */
+    private function can_ss_team_handle_ticket_from_access(\stdClass $ticket, int $userid, array $access): bool {
+        $courseid = (int)($ticket->courseid ?? 0);
+        return !empty($access['canmanage'])
+            || !empty($access['manageablecourseids'][$courseid])
+            || (int)($ticket->ssteamuserid ?? 0) === $userid
+            || !empty($access['ssteamcourseids'][$courseid]);
+    }
+
+    /** Use the dashboard access scope to avoid per-ticket role queries. */
+    private function can_batch_manager_resolve_ticket_from_access(\stdClass $ticket, int $userid, array $access): bool {
+        if (empty($ticket->escalatedtopm)) {
+            return false;
+        }
+
+        $courseid = (int)($ticket->courseid ?? 0);
+        return (int)($ticket->batchmanageruserid ?? 0) === $userid
+            || !empty($access['canmanage'])
+            || !empty($access['escalatedmanagercourseids'][$courseid])
+            || !empty($access['batchmanagercourseids'][$courseid]);
     }
 
     /**
