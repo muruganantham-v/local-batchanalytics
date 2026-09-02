@@ -7,6 +7,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #20 | High | Closed | Ticket writes now queue Cliq notifications as adhoc tasks. HTTP delivery and its existing timeouts run only in the background worker. | `fix#20: synchronous Cliq delivery delays ticket saves per recipient` |
 | #21 | Medium | Closed | Cliq history requires a non-empty recipient confirmation before recording delivery as successful. | `fix#21: Cliq delivery is logged as success for rejected HTTP 200 responses` |
 | #22 | Medium | Closed | CRM rate limiting uses a fixed 60-second window rather than extending the counter lifetime after each request. | `fix#22: CRM rate limiter uses an inactivity timeout instead of a fixed minute window` |
+| #23 | Medium | Closed | Ticket message providers now have readable labels, explicit popup/email defaults, and a migration for missing existing-site defaults. | `fix#23: Ticket message providers have missing labels and delivery defaults` |
 
 ## Resolution Process
 

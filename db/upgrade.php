@@ -193,5 +193,16 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072300, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026073300) {
+        foreach (['ticket_raised', 'ticket_update'] as $provider) {
+            $enabledkey = 'message_provider_local_batchanalytics_' . $provider . '_enabled';
+            if (get_config('message', $enabledkey) === false) {
+                set_config($enabledkey, 'popup,email', 'message');
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026073300, 'local', 'batchanalytics');
+    }
+
     return true;
 }
