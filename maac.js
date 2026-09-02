@@ -1634,17 +1634,24 @@ document.addEventListener("DOMContentLoaded", function () {
       const min = Math.round(Number(column.min));
       const max = Math.round(Number(column.max));
       if (!Number.isNaN(min) && !Number.isNaN(max) && max >= min && max - min <= 200) {
+        let hasSelected = false;
+        let options = Array.from(
+          { length: max - min + 1 },
+          (_, index) => {
+            const val = min + index;
+            const isSelected = String(safeValue) === String(val);
+            if (isSelected) hasSelected = true;
+            return `<option value="${val}"${isSelected ? " selected" : ""}>${val}</option>`;
+          }
+        ).join("");
+
+        if (safeValue !== "" && safeValue !== null && safeValue !== undefined && !hasSelected) {
+          options += `<option value="${escapeHtml(safeValue)}" selected>${escapeHtml(safeValue)}</option>`;
+        }
+
         return `<td><select class="ba-maac-input ba-maac-input-text" data-userid="${student.userid}" data-key="${escapeHtml(
           column.key,
-        )}"><option value="">Select</option>${Array.from(
-          { length: max - min + 1 },
-          (_, index) => min + index,
-        )
-          .map((option) => {
-            const selected = String(safeValue) === String(option) ? " selected" : "";
-            return `<option value="${option}"${selected}>${option}</option>`;
-          })
-          .join("")}</select></td>`;
+        )}"><option value="">Select</option>${options}</select></td>`;
       }
     }
 
