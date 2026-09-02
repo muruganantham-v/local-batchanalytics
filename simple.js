@@ -479,6 +479,11 @@ document.addEventListener("DOMContentLoaded", function () {
       })
         .then((res) => res.json())
         .then((result) => {
+          if (result && result.error) {
+            console.error("Batch fetch error for chunk", chunk, result.error);
+            showToast(result.error, "error");
+            return;
+          }
           if (!(result && result.students)) {
             return;
           }

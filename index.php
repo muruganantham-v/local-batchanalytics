@@ -136,7 +136,13 @@ if ($action === 'syncmaaccrm') {
                 continue;
             }
 
-            $record = $crm->get_student_details($username);
+            try {
+                $record = $crm->get_student_details($username);
+            } catch (\Throwable $e) {
+                debugging('MAAC CRM lookup error: ' . $e->getMessage(), DEBUG_DEVELOPER);
+                $result['failed']++;
+                continue;
+            }
             if (empty($record['id'])) {
                 $result['notfound']++;
                 continue;
@@ -296,10 +302,9 @@ if ($action === 'getcrmdata') {
         ]);
     } catch (\Throwable $e) {
         debugging('CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        http_response_code(502);
         echo json_encode([
-            'username' => $username,
-            'placed_company' => 'Error',
-            'debug' => 'An error occurred fetching CRM data'
+            'error' => 'Unable to fetch CRM data. Please try again later.'
         ]);
     }
     die();
@@ -429,6 +434,7 @@ if ($action === 'getptfdata') {
         echo json_encode($data);
     } catch (\Throwable $e) {
         debugging('CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        http_response_code(502);
         echo json_encode(['error' => 'An error occurred fetching CRM data']);
     }
     die();

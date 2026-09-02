@@ -96,6 +96,23 @@ class crmapi
         return $json->access_token;
     }
 
+    /**
+     * Remove a rejected token from both request and application caches.
+     *
+     * @return void
+     */
+    private function clear_access_token_cache(): void {
+        self::$access_token_cache = null;
+        self::$access_token_expires = 0;
+
+        try {
+            $cache = \cache::make('local_batchanalytics', 'zohotokendata');
+            $cache->delete('zoho_access_token');
+        } catch (\Exception $e) {
+            // A fresh request can still obtain a new token without the cache store.
+        }
+    }
+
     private function normalize_username($username)
     {
         return trim((string) $username);
@@ -103,13 +120,68 @@ class crmapi
 
     private function escape_zoho_value($value)
     {
-        return substr(preg_replace('/[^A-Za-z0-9_\-\.@]/', '', $value), 0, 100);
+        return str_replace(
+            ['\\', ',', '(', ')'],
+            ['\\\\', '\\,', '\\(', '\\)'],
+            trim((string)$value)
+        );
+    }
+
+    /**
+     * Execute one CRM student search request and retain its HTTP status.
+     *
+     * @param string $url
+     * @param string $accesstoken
+     * @return array{httpcode:int,body:string}
+     */
+    private function request_student_search(string $url, string $accesstoken): array {
+        $curl = new \curl();
+        $curl->setHeader([
+            "Authorization: Zoho-oauthtoken {$accesstoken}"
+        ]);
+
+        $body = (string)$curl->get($url);
+        $info = $curl->get_info();
+        return [
+            'httpcode' => (int)($info['http_code'] ?? 0),
+            'body' => $body,
+        ];
+    }
+
+    /**
+     * Check whether a successful Zoho response explicitly confirms no records.
+     *
+     * @param int $httpcode
+     * @param mixed $response
+     * @return bool
+     */
+    private function is_no_records_response(int $httpcode, $response): bool {
+        if ($httpcode === 204) {
+            return true;
+        }
+        if (!is_array($response)) {
+            return false;
+        }
+
+        return strtoupper((string)($response['code'] ?? '')) === 'NO_CONTENT'
+            || strtolower((string)($response['message'] ?? '')) === 'no records found';
     }
 
     // --- UPGRADED BATCH FUNCTION USING SEARCH API ---
     public function get_students_details(array $usernames)
     {
-        $usernames = array_values(array_unique(array_filter(array_map([$this, 'normalize_username'], $usernames))));
+        $requested = [];
+        foreach ($usernames as $username) {
+            $username = $this->normalize_username($username);
+            if ($username === '') {
+                continue;
+            }
+            $key = strtolower($username);
+            if (!isset($requested[$key])) {
+                $requested[$key] = $username;
+            }
+        }
+        $usernames = array_values($requested);
         if (empty($usernames)) {
             return [];
         }
@@ -133,7 +205,7 @@ class crmapi
 
         $accessToken = $this->get_access_token();
         if (!$accessToken) {
-            return $results;
+            throw new \RuntimeException('Zoho CRM access token is unavailable.');
         }
 
         $fields_to_fetch = $this->crm_fields;
@@ -143,38 +215,70 @@ class crmapi
         $chunks = array_chunk($tofetch, 10);
 
         foreach ($chunks as $chunk) {
-            foreach ($chunk as $username) {
-                self::$student_cache[strtolower($username)] = null;
-            }
-
             $or_conditions = array_map(function($u) {
-                return '(Admission_Number:equals:' . str_replace(',', '', $this->escape_zoho_value($u)) . ')';
+                return '(Admission_Number:equals:' . $this->escape_zoho_value($u) . ')';
             }, $chunk);
 
             $criteria = '(' . implode('or', $or_conditions) . ')';
             $searchUrl = $this->build_search_url($this->student_module_api_name, $criteria, $fields_to_fetch);
 
-            $curl = new \curl();
-            $curl->setHeader([
-                "Authorization: Zoho-oauthtoken {$accessToken}"
-            ]);
+            $attempt = 0;
+            do {
+                $response = $this->request_student_search($searchUrl, $accessToken);
+                if ($response['httpcode'] !== 401 || $attempt > 0) {
+                    break;
+                }
 
-            $response = $curl->get($searchUrl);
-            $json = json_decode($response, true);
+                $this->clear_access_token_cache();
+                $accessToken = $this->get_access_token();
+                if (!$accessToken) {
+                    throw new \RuntimeException('Zoho CRM access token refresh failed.');
+                }
+                $attempt++;
+            } while (true);
 
-            if (!empty($json['data']) && is_array($json['data'])) {
+            $httpcode = $response['httpcode'];
+            $json = json_decode($response['body'], true);
+            if ($httpcode < 200 || $httpcode >= 300) {
+                throw new \RuntimeException('Zoho CRM student search failed with HTTP status ' . $httpcode . '.');
+            }
+
+            $chunkkeys = [];
+            foreach ($chunk as $username) {
+                $chunkkeys[strtolower($username)] = $username;
+            }
+
+            if ($this->is_no_records_response($httpcode, $json)) {
+                foreach ($chunkkeys as $cachekey => $username) {
+                    self::$student_cache[$cachekey] = null;
+                }
+                continue;
+            }
+
+            if (!is_array($json) || !array_key_exists('data', $json) || !is_array($json['data'])) {
+                throw new \RuntimeException('Zoho CRM student search returned an invalid response.');
+            }
+
+            if (!empty($json['data'])) {
                 foreach ($json['data'] as $record) {
                     $keyField = !empty($record['Admission_Number']) ? trim((string)$record['Admission_Number']) : '';
                     if ($keyField === '') {
                         continue;
                     }
                     $cachekey = strtolower($keyField);
-                    $record['username'] = $keyField;
+                    if (!isset($chunkkeys[$cachekey])) {
+                        continue;
+                    }
+                    $record['username'] = $chunkkeys[$cachekey];
                     self::$student_cache[$cachekey] = $record;
                     $results[$cachekey] = $record;
                 }
-            } else if (!empty($json['message']) && strtolower((string)$json['message']) !== 'no records found') {
-                debugging('Zoho CRM search request failed for local_batchanalytics', DEBUG_DEVELOPER);
+            }
+
+            foreach ($chunkkeys as $cachekey => $username) {
+                if (!array_key_exists($cachekey, self::$student_cache)) {
+                    self::$student_cache[$cachekey] = null;
+                }
             }
         }
 
@@ -307,4 +411,3 @@ class crmapi
         return !empty($decoded['data'][0]['status']) && strtolower((string)$decoded['data'][0]['status']) === 'success';
     }
 }
-

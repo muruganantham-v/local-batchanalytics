@@ -11,6 +11,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #24 | Medium | Closed | Cliq history now uses server-side filters and 50-row pages; a daily task prunes records older than the configurable 90-day default. | `fix#24: Cliq history loads the entire unpruned table into an inline script` |
 | #25 | Low | Closed | Plugin version now uses a valid calendar date and remains greater than all upgrade savepoints. | `fix#25: Plugin version encodes an invalid July date` |
 | #26 | Critical | Closed | CRM student lookups now permit only students enrolled in the caller's accessible courses; the legacy endpoint is POST-only with sesskey and rate-limit protection. | `fix#26: CRM endpoints do not restrict requested students to accessible courses` |
+| #27 | High | Closed | CRM failures are now explicit errors rather than cached missing records; a rejected token refreshes once and CRM criteria preserve the requested username. | `fix#27: Failed CRM chunks are cached as clean no-record results` |
 
 ## Resolution Process
 
