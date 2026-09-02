@@ -119,7 +119,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function renderCourseGroupHeader({ label, courseId, groupKey, colSpan }) {
-    const safeGroupKey = JSON.stringify(groupKey);
+    const safeGroupKey = escapeHtml(JSON.stringify(groupKey));
     return `<th colspan="${colSpan}" class="ba-maac-group-head">
       <div class="ba-maac-group-shell">
         <button type="button" class="ba-maac-group-toggle" onclick='toggleCourseFilterGroup(${courseId}, ${safeGroupKey})'>
@@ -2869,7 +2869,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     visibleGroups.forEach((group) => {
-      const groupKey = JSON.stringify(`group:${group.name}`);
+      const groupKey = escapeHtml(JSON.stringify(`group:${group.name}`));
       if (group.collapsed) {
         groupHeaders.push(
           renderResizableColumnHeader({
