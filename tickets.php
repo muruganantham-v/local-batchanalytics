@@ -20,56 +20,8 @@ require_capability('local/batchanalytics:view', $context);
  * @return bool
  */
 function local_batchanalytics_can_access_tickets(int $userid): bool {
-    global $DB;
-
-    $systemcontext = context_system::instance();
-    if (is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $systemcontext, $userid)) {
-        return true;
-    }
-
-    $courses = enrol_get_users_courses($userid, true, ['id']);
-    foreach ($courses as $course) {
-        $coursecontext = context_course::instance((int)$course->id, IGNORE_MISSING);
-        if (!$coursecontext) {
-            continue;
-        }
-        if (
-            has_capability('local/batchanalytics:viewtickets', $coursecontext, $userid) ||
-            has_capability('local/batchanalytics:managetickets', $coursecontext, $userid) ||
-            has_capability('local/batchanalytics:manageescalatedtickets', $coursecontext, $userid)
-        ) {
-            return true;
-        }
-    }
-
-    $escalatedcourses = get_user_capability_course('local/batchanalytics:manageescalatedtickets', $userid, true, 'c.id');
-    if (!empty($escalatedcourses)) {
-        return true;
-    }
-
-    $roleids = array_filter([
-        (int)get_config('local_batchanalytics', 'ss_team_role'),
-        (int)get_config('local_batchanalytics', 'batch_manager_role'),
-    ]);
-    if (empty($roleids)) {
-        return false;
-    }
-
-    list($roleinsql, $roleparams) = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'ticketrole');
-    $sql = "SELECT 1
-              FROM {role_assignments} ra
-              JOIN {context} ctx ON ctx.id = ra.contextid
-              JOIN {course} c ON c.id = ctx.instanceid
-             WHERE ra.userid = :userid
-               AND ra.roleid $roleinsql
-               AND ctx.contextlevel = :coursecontextlevel
-               AND c.visible = 1";
-    $params = [
-        'userid' => $userid,
-        'coursecontextlevel' => CONTEXT_COURSE,
-    ] + $roleparams;
-
-    return $DB->record_exists_sql($sql, $params);
+    $moodledata = new \local_batchanalytics\moodledata();
+    return $moodledata->can_access_ticket_dashboard($userid);
 }
 
 if (!local_batchanalytics_can_access_tickets($USER->id)) {

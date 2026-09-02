@@ -24,34 +24,8 @@ require_capability('local/batchanalytics:view', $context);
 $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context);
 $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);
 
-$can_view_tickets = $can_manage || \local_batchanalytics\util::has_any_course_capability($userid, [
-    'local/batchanalytics:viewtickets',
-    'local/batchanalytics:managetickets',
-    'local/batchanalytics:manageescalatedtickets',
-]);
-
-// The Ticket Dashboard also grants access to users assigned the configured
-// Batch Manager role directly in a visible course.
-if (!$can_view_tickets) {
-    $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
-    if ($batchmanagerroleid > 0) {
-        $can_view_tickets = $DB->record_exists_sql(
-            "SELECT 1
-               FROM {role_assignments} ra
-               JOIN {context} ctx ON ctx.id = ra.contextid
-               JOIN {course} c ON c.id = ctx.instanceid
-              WHERE ra.userid = :userid
-                AND ra.roleid = :roleid
-                AND ctx.contextlevel = :coursecontextlevel
-                AND c.visible = 1",
-            [
-                'userid' => $userid,
-                'roleid' => $batchmanagerroleid,
-                'coursecontextlevel' => CONTEXT_COURSE,
-            ]
-        );
-    }
-}
+$moodledata = new \local_batchanalytics\moodledata();
+$can_view_tickets = $moodledata->can_access_ticket_dashboard($userid);
 
 // Load restricted CRM fields for view-only users.
 $restricted_crm_fields = [];
@@ -62,23 +36,11 @@ if (!$can_manage) {
 $action = optional_param('action', '', PARAM_ALPHA);
 
 // Course teachers can maintain the summary for courses to which they are assigned.
-$can_edit_course_summary = static function($coursecontext) use ($can_manage, $userid, $DB): bool {
+$can_edit_course_summary = static function($coursecontext) use ($can_manage, $userid): bool {
     if (!$coursecontext) {
         return false;
     }
-    if ($can_manage || has_capability('local/batchanalytics:editmaac', $coursecontext, $userid)) {
-        return true;
-    }
-
-    return $DB->record_exists_sql(
-        "SELECT 1
-           FROM {role_assignments} ra
-           JOIN {role} r ON r.id = ra.roleid
-          WHERE ra.userid = :userid
-            AND ra.contextid = :contextid
-            AND r.shortname IN ('teacher', 'editingteacher')",
-        ['userid' => $userid, 'contextid' => $coursecontext->id]
-    );
+    return $can_manage || has_capability('local/batchanalytics:editmaac', $coursecontext, $userid);
 };
 
 // ==================== API ENDPOINTS ====================
@@ -221,6 +183,13 @@ if ($action === 'savecoursesummary') {
 
         $courseid = required_param('courseid', PARAM_INT);
         $summary = optional_param('summary', '', PARAM_RAW_TRIMMED);
+        $mdata = new \local_batchanalytics\moodledata();
+        $course = $mdata->get_accessible_course($courseid, $userid);
+        if (!$course) {
+            http_response_code(403);
+            echo json_encode(['error' => 'You do not have permission to edit this course summary.']);
+            die();
+        }
         $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
         $caneditsummary = $can_edit_course_summary($coursecontext);
 

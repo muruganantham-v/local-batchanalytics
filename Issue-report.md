@@ -12,6 +12,7 @@ This register tracks issues resolved from this point forward. GitHub remains the
 | #25 | Low | Closed | Plugin version now uses a valid calendar date and remains greater than all upgrade savepoints. | `fix#25: Plugin version encodes an invalid July date` |
 | #26 | Critical | Closed | CRM student lookups now permit only students enrolled in the caller's accessible courses; the legacy endpoint is POST-only with sesskey and rate-limit protection. | `fix#26: CRM endpoints do not restrict requested students to accessible courses` |
 | #27 | High | Closed | CRM failures are now explicit errors rather than cached missing records; a rejected token refreshes once and CRM criteria preserve the requested username. | `fix#27: Failed CRM chunks are cached as clean no-record results` |
+| #28 | High | Closed | Course summaries now honor Moodle capability overrides and the accessible-course scope; ticket dashboard entry checks apply the configured course-keyword scope. | `fix#28: Course-summary edit rights bypass capability overrides` |
 
 ## Resolution Process
 

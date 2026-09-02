@@ -522,4 +522,86 @@ class moodledata
         return $result;
     }
 
+    /**
+     * Check ticket-dashboard access while respecting the configured course scope.
+     *
+     * Configured SS Team and Batch Manager roles remain valid ticket routes, but
+     * only when their assignment belongs to a permitted visible course.
+     *
+     * @param int $userid
+     * @return bool
+     */
+    public function can_access_ticket_dashboard(int $userid): bool {
+        global $DB;
+
+        if (self::can_manage_all($userid)) {
+            return true;
+        }
+
+        $allowedkeywords = $this->get_allowed_keywords();
+        $capabilities = [
+            'local/batchanalytics:viewtickets',
+            'local/batchanalytics:managetickets',
+            'local/batchanalytics:manageescalatedtickets',
+        ];
+
+        foreach (enrol_get_users_courses($userid, true, ['id', 'fullname']) as $course) {
+            $courseid = (int)$course->id;
+            if ($courseid <= 1 || !$this->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                continue;
+            }
+            $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
+            if (!$coursecontext) {
+                continue;
+            }
+            foreach ($capabilities as $capability) {
+                if (has_capability($capability, $coursecontext, $userid)) {
+                    return true;
+                }
+            }
+        }
+
+        $escalatedcourses = get_user_capability_course(
+            'local/batchanalytics:manageescalatedtickets',
+            $userid,
+            true,
+            'c.id, c.fullname, c.shortname'
+        );
+        foreach ($escalatedcourses as $course) {
+            if ((int)$course->id > 1 && $this->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                return true;
+            }
+        }
+
+        $roleids = array_filter([
+            (int)get_config('local_batchanalytics', 'ss_team_role'),
+            (int)get_config('local_batchanalytics', 'batch_manager_role'),
+        ]);
+        if (empty($roleids)) {
+            return false;
+        }
+
+        list($roleinsql, $roleparams) = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'ticketrole');
+        $sql = "SELECT DISTINCT c.id, c.fullname
+                  FROM {role_assignments} ra
+                  JOIN {context} ctx ON ctx.id = ra.contextid
+                  JOIN {course} c ON c.id = ctx.instanceid
+                 WHERE ra.userid = :userid
+                   AND ra.roleid $roleinsql
+                   AND ctx.contextlevel = :coursecontextlevel
+                   AND c.visible = 1";
+        $params = [
+            'userid' => $userid,
+            'coursecontextlevel' => CONTEXT_COURSE,
+        ] + $roleparams;
+
+        foreach ($DB->get_records_sql($sql, $params) as $course) {
+            if ($this->course_matches_keywords($course->fullname, $allowedkeywords)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 }
