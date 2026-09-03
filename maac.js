@@ -3683,9 +3683,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
                 <div class="ba-feedback-suggestion-options" data-feedback-inline-suggestion-options hidden></div>
               </div>
-              <div class="ba-feedback-form-actions">
-                <button type="button" class="ba-btn ba-btn-sm ba-feedback-cancel-btn" data-feedback-inline-cancel="1">Cancel</button>
-                <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-save-btn" data-feedback-inline-save="1">${saveIcon} Update</button>
+              <div class="ba-feedback-form-actions ba-feedback-add-actions">
+                ${externalFeedbackColumn ? `<label class="ba-feedback-copy-external">
+                  <input type="checkbox" class="ba-feedback-inline-copy-external">
+                  <span>Add the same feedback to External feedback</span>
+                </label>` : ""}
+                <div class="ba-feedback-action-buttons">
+                  <button type="button" class="ba-btn ba-btn-sm ba-feedback-cancel-btn" data-feedback-inline-cancel="1">Cancel</button>
+                  <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-save-btn" data-feedback-inline-save="1">${saveIcon} Update</button>
+                </div>
               </div>
             </div>
           </div>
@@ -3877,7 +3883,9 @@ document.addEventListener("DOMContentLoaded", function () {
         button.addEventListener("click", closeFeedbackCloseWarning);
       });
       feedbackCloseWarning.querySelector("[data-feedback-unsaved-discard]")?.addEventListener("click", () => {
-        textInput.value = "";
+        if (textInput) {
+          textInput.value = "";
+        }
         closeFeedbackModal();
       });
       feedbackCloseWarning.addEventListener("click", (event) => {
@@ -3888,7 +3896,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function requestFeedbackModalClose() {
-      if (textInput?.value.trim() !== "") {
+      if (textInput && textInput.value.trim() !== "") {
         showFeedbackCloseWarning();
         return;
       }
@@ -4113,7 +4121,14 @@ document.addEventListener("DOMContentLoaded", function () {
             date,
             text,
           };
-          await persistFeedbacks(nextFeedbacks, "Feedback updated", button);
+          const extraFeedbacksByKey = {};
+          const inlineCopyExternalInput = card.querySelector(".ba-feedback-inline-copy-external");
+          if (inlineCopyExternalInput?.checked && externalFeedbackColumn) {
+            const externalFeedbacks = getFeedbacksForColumn(externalFeedbackColumn);
+            externalFeedbacks.push({ ...nextFeedbacks[index] });
+            extraFeedbacksByKey[externalFeedbackColumn.key] = externalFeedbacks;
+          }
+          await persistFeedbacks(nextFeedbacks, "Feedback updated", button, extraFeedbacksByKey);
         });
       });
     }

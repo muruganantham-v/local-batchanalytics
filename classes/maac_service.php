@@ -558,8 +558,7 @@ class maac_service {
             $this->log_ticket_event((int)$ticket->id, 0, 'escalated', [
                 'fromstatus' => $previousstatuskey,
                 'tostatus' => $this->normalise_ticket_status((string)$ticket->status),
-                'feedback' => 'Auto assigned to PM after ' . $durationdays . ' day(s)' .
-                    ($batchmanager ? ': ' . fullname($batchmanager) : ''),
+                'feedback' => 'Assigned to PM after due date.',
             ]);
             $this->send_ticket_escalation_cliq_notification($ticket, $batchmanagerusers, 0, 'auto_pm');
             $processed++;
@@ -939,7 +938,9 @@ class maac_service {
             $customvalues[$studentid]['trend'] = $trendvalue['label'] ?? 'Stable';
         }
 
-        if ($surface !== 'summary' && $this->can_view_tickets_for_course($courseid, $userid)) {
+        // The MAAC access check above authorises all MAAC viewers to read the course ticket history.
+        // Ticket dashboard capabilities and creator-only ticket editing remain separate permissions.
+        if ($surface === 'maac') {
             $ticketmeta = $this->build_ticket_meta($courseid);
             $ticketcounts = $this->get_ticket_counts($courseid, array_keys($students));
             $studenttickets = $this->get_tickets_by_student($courseid, array_keys($students), $userid);
@@ -2683,6 +2684,10 @@ class maac_service {
         $feedback = trim((string)($record->feedback ?? ''));
         if ($feedback !== '') {
             $details[] = 'Feedback: ' . $feedback;
+        }
+
+        if ($eventtype === 'escalated') {
+            $actorname = $actorname !== '' ? 'Changed by: ' . $actorname : 'System';
         }
 
         return [

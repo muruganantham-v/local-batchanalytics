@@ -559,16 +559,23 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getSelectedCourseMeta() {
-    const ticket = (state.data?.dashboard || []).find((item) => getCourseKey(item) === state.selectedCourseKey);
+    const courseTickets = (state.data?.dashboard || []).filter(
+      (item) => getCourseKey(item) === state.selectedCourseKey,
+    );
+    const ticket = courseTickets[0];
+    const getUniqueNames = (field) =>
+      [...new Set(courseTickets.map((item) => String(item[field] || "").trim()).filter(Boolean))].join(", ") || "-";
     return ticket
       ? {
           batchname: ticket.batchname || "-",
           coursename: ticket.coursename || ticket.courseshortname || "-",
+          ssteam: getUniqueNames("ssteamfullname"),
+          batchmanager: getUniqueNames("batchmanagerfullname"),
         }
-      : { batchname: "-", coursename: "Tickets" };
+      : { batchname: "-", coursename: "Tickets", ssteam: "-", batchmanager: "-" };
   }
 
-  function renderTableCard(title, tickets, usePagination = false, showBack = false) {
+  function renderTableCard(title, tickets, usePagination = false, showBack = false, hideCourseName = false) {
     if (!tickets.length) {
       return `<div class="ba-ticket-table-card">
         <div class="ba-ticket-card-head" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -606,7 +613,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .map((ticket) => {
         return `<tr>
           <td>${escapeHtml(ticket.batchname || "-")}</td>
-          <td>${escapeHtml(ticket.coursename || ticket.courseshortname || "-")}</td>
+          ${hideCourseName ? "" : `<td>${escapeHtml(ticket.coursename || ticket.courseshortname || "-")}</td>`}
           <td>
             <strong>${escapeHtml(ticket.studentname || "-")}</strong>
             <small>${escapeHtml(ticket.studentusername || "")}</small>
@@ -631,7 +638,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <thead>
             <tr>
               <th>Batch</th>
-              <th>Course Name</th>
+              ${hideCourseName ? "" : "<th>Course Name</th>"}
               <th>Student Details</th>
               <th>Raised By</th>
               <th>Ticket Title</th>
@@ -654,8 +661,14 @@ document.addEventListener("DOMContentLoaded", function () {
       const tickets = getSelectedCourseTickets("dashboard");
       return `
         ${renderTicketFilters()}
-        <div class="ba-ticket-list-meta">${escapeHtml(meta.batchname)} - ${escapeHtml(meta.coursename)} (${tickets.length} tickets)</div>
-        ${renderTableCard("Tickets", tickets, true, true)}
+        <div class="ba-ticket-list-meta">
+          <strong>Course Name:</strong> ${escapeHtml(meta.coursename)}
+          <span>|</span>
+          <strong>Student Success Team:</strong> ${escapeHtml(meta.ssteam)}
+          <span>|</span>
+          <strong>Program Manager:</strong> ${escapeHtml(meta.batchmanager)}
+        </div>
+        ${renderTableCard(`Tickets (${tickets.length})`, tickets, true, true, true)}
       `;
     }
 
@@ -1186,7 +1199,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     state.modal = null;
-    state.activeTab = mode === "resolve" ? "myresolved" : "mynew";
     await loadData(json.message || (mode === "resolve" ? "Ticket resolved successfully" : "Ticket updated successfully"));
   }
 
