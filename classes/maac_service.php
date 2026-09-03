@@ -1007,6 +1007,7 @@ class maac_service {
                 'groups' => $studentgroups[$student->userid] ?? [],
                 'modules' => [],
                 'custom' => [],
+                'customversions' => $customversions[$student->userid] ?? [],
                 'trend_details' => $trenddetailsbyuser[$student->userid]['details'] ?? [
                     'assignments' => [],
                     'quizzes' => [],
@@ -1274,7 +1275,6 @@ class maac_service {
             if ($activity && isset($values[$userid])) {
                 $studentactivityevidence[$userid][(int)$record->coursemoduleid] = true;
             }
-            $studentrow['customversions'] = $customversions[$student->userid] ?? [];
         }
         $completionrecords->close();
 

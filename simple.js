@@ -497,14 +497,19 @@ document.addEventListener("DOMContentLoaded", function () {
     );
     if (uncached.length === 0) return;
 
-    // Batch fetch in chunks of 20.
-    const chunkSize = 20;
+    // Keep browser requests aligned with the Zoho search limit enforced by the server.
+    const chunkSize = 10;
     for (let i = 0; i < uncached.length; i += chunkSize) {
       const chunk = uncached.slice(i, i + chunkSize);
-      const request = fetch(BASE_URL + "?action=getptfdata", {
+      const requesturl = BASE_URL + "?action=getptfdata";
+      const requestpayload = { usernames: chunk };
+      const requestbody = "sesskey=" + encodeURIComponent(BA_SESSKEY)
+        + "&payload=" + encodeURIComponent(JSON.stringify(requestpayload));
+
+      const request = fetch(requesturl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "sesskey=" + encodeURIComponent(BA_SESSKEY) + "&payload=" + encodeURIComponent(JSON.stringify({ usernames: chunk }))
+        body: requestbody,
       })
         .then((res) => res.json())
         .then((result) => {
@@ -565,7 +570,11 @@ document.addEventListener("DOMContentLoaded", function () {
     PTF_FAILED = {};
     CRM_FAILURE_NOTICE_SHOWN = false;
     showToast("Retrying CRM data...", "info");
-    fetchUnifiedData(failedUsers);
+    if (document.getElementById("ptf-table")) {
+      renderPtf();
+    } else {
+      fetchUnifiedData(failedUsers);
+    }
   };
 
 
@@ -707,6 +716,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==================== PTF DATA TAB (Redesigned with Sidebar Filter) ====================
   function renderPtf() {
     const students = BATCH_DATA.uniqueStudents || [];
+    const hasFailedCrmRequests = Object.keys(PTF_FAILED).length > 0;
 
     // Build Sortable Header Row
     let thead = `<th class="sortable" onclick="sortTable(this, 0, false)" style="position: sticky; left: 0; background: #f1f5f9; z-index: 1001; border-right: 2px solid #e2e8f0;">Student Name</th>`;
@@ -753,7 +763,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="ba-filter-header">
               <h3>CRM Data & Advanced Filter</h3>
               <div class="ba-header-actions">
-                <button class="ba-btn ba-btn-primary" onclick="retryCrmData()">Retry CRM Data</button>
+                ${hasFailedCrmRequests ? '<button class="ba-btn ba-btn-primary" onclick="retryCrmData()">Retry CRM Data</button>' : ""}
                 <button class="ba-btn ba-btn-success" onclick="exportTable('ptf-table', 'CRM_Data_Export')">Export CSV</button>
               </div>
           </div>
@@ -3031,7 +3041,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 <div class="ba-filter-main">
                     <div class="ba-table-controls">
                         <span id="f-count" style="font-weight:600; color:var(--text-gray);">0 students</span>
-                        <input type="text" id="f-search" placeholder="Search student name..." onkeyup="applyFilters()">
+                        <div class="ba-course-filter-search">
+                            <svg class="ba-course-filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="16.2" y1="16.2" x2="21" y2="21"></line></svg>
+                            <input type="search" id="f-search" placeholder="Search by student name or username" aria-label="Search by student name or username" oninput="applyFilters()">
+                            <button type="button" id="f-search-clear" class="ba-course-filter-search-clear" aria-label="Clear student search" onclick="clearCourseFilterSearch()" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                        </div>
                     </div>
                     <div class="ba-table-wrap">
                         <table class="ba-table ba-grouped-filter-table ba-resizable-table">
@@ -3093,6 +3107,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 1. UPDATE: Filtering Logic to respect Toggle, MAAC, & True Completion
   window.applyFilters = function () {
+    const searchInput = document.getElementById("f-search");
+    const searchClearButton = document.getElementById("f-search-clear");
+    if (searchClearButton) {
+      searchClearButton.hidden = !(searchInput?.value || "");
+    }
     const {
       filtered,
       isCompMode,
@@ -3269,6 +3288,14 @@ document.addEventListener("DOMContentLoaded", function () {
     showToast("Filters reset", "info");
   };
 
+  window.clearCourseFilterSearch = function () {
+    const search = document.getElementById("f-search");
+    if (!search) return;
+    search.value = "";
+    applyFilters();
+    search.focus();
+  };
+
   function getCourseById(courseId) {
     return (BATCH_DATA?.courses || []).find((item) => Number(item.courseid) === Number(courseId));
   }
@@ -3439,7 +3466,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   window.openCategoryModal = function (cid, cname) {
     const c = BATCH_DATA.courses.find((x) => x.courseid == cid);
-    const cat = c.categories.find((x) => x.categoryname === cname);
+    const cat = c?.categories?.find((x) => x.categoryname === cname);
+    if (!cat) {
+      showModal(cname, `<div class="ba-modal-toolbar"><div class="ba-mt-stats"></div><button class="ba-btn-download-sm" disabled>Download CSV</button></div><div class="ba-modal-empty-state">There is no data available here.</div>`);
+      return;
+    }
+    const studentGrades = Array.isArray(cat.studentGrades) ? cat.studentGrades : [];
+    const hasStudentData = studentGrades.length > 0;
 
     // NEW: Check if it is MAAC or Attendance
     const isMaac = cname === "MAAC Ratings";
@@ -3448,13 +3481,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const avgG = getAvgGrade(cat);
     const avgC = getCompletionRate(cat);
-    const totalStudents = cat.studentGrades.length;
+    const totalStudents = studentGrades.length;
 
     // Create a safe ID without spaces for the export function
     const safeId = cname.replace(/[^a-zA-Z0-9]/g, "") + "-data";
 
     // 1. Generate Rows (Hide Completion cell if MAAC/Attendance)
-    let rows = cat.studentGrades
+    let rows = studentGrades
       .map((s) => {
         // FIX: Use the true completion rate from PHP!
         const comp = s.completionRate !== undefined ? s.completionRate : 0;
@@ -3493,7 +3526,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="ba-mt-stats">
                 ${statsHtml}
             </div>
-            <button class="ba-btn-download-sm" onclick="exportTable('${safeId}', '${cname}')">
+            <button class="ba-btn-download-sm"${hasStudentData ? ` onclick="exportTable('${safeId}', '${cname}')"` : " disabled"}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                 Download CSV
             </button>
@@ -3517,7 +3550,7 @@ document.addEventListener("DOMContentLoaded", function () {
     tfHtml += `</tr>`;
 
     // 5. Build Final Table
-    const tableHtml = `
+    const tableHtml = hasStudentData ? `
         <div class="table-scroll">
             <table class="ba-table" id="${safeId}">
                 <thead><tr>${thHtml}</tr></thead>
@@ -3525,7 +3558,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 <tfoot>${tfHtml}</tfoot>
             </table>
         </div>
-      `;
+      ` : `<div class="ba-modal-empty-state">There is no data available here.</div>`;
 
     showModal(cname, toolbarHtml + tableHtml);
   };
@@ -3686,11 +3719,13 @@ document.addEventListener("DOMContentLoaded", function () {
   window.openDrilldown = function (cat, range, students, isCompMode = false) {
     const id = `drill-${Date.now()}`;
     const isMaac = cat === "MAAC Ratings";
+    const drilldownStudents = Array.isArray(students) ? students : [];
+    const hasStudentData = drilldownStudents.length > 0;
 
     // NEW: Change the Column Header Text dynamically
     const metricName = isCompMode ? "Completion %" : "Grade";
 
-    let rows = students
+    let rows = drilldownStudents
       .map((s) => {
         let displayVal = "-";
         let hasVal = false;
@@ -3734,12 +3769,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
                 <div class="ba-modal-body">
                     <div style="text-align:right;margin:10px">
-                        <button class="ba-btn-download-sm" onclick="exportTable('${id}-t', '${cat}_${range}')">
+                        <button class="ba-btn-download-sm"${hasStudentData ? ` onclick="exportTable('${id}-t', '${cat}_${range}')"` : " disabled"}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             Download
                         </button>
                     </div>
-                    <div class="table-scroll">
+                    ${hasStudentData ? `<div class="table-scroll">
                         <table class="ba-table" id="${id}-t">
                             <thead>
                                 <tr>
@@ -3750,7 +3785,7 @@ document.addEventListener("DOMContentLoaded", function () {
                             </thead>
                             <tbody>${rows}</tbody>
                         </table>
-                    </div>
+                    </div>` : `<div class="ba-modal-empty-state">There is no data available here.</div>`}
                 </div>
             </div>
         </div>`;
@@ -4003,11 +4038,12 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!batchMaacMetrics) return;
     document.getElementById("ba-maac-metrics-modal")?.remove();
     const { courses, rows } = batchMaacMetrics;
+    const metricRows = Array.isArray(rows) ? rows : [];
+    const hasStudentData = metricRows.length > 0;
     const coursegroupheaders = courses.map((course) => `<th colspan="${BA_MAAC_SYNC_COLUMNS.length}" class="ba-maac-group-head">${escapeHtml(course.coursename)}</th>`).join("");
     const coursecolumnheaders = courses.flatMap(() => BA_MAAC_SYNC_COLUMNS.map((column) => `<th>${escapeHtml(column.label)}</th>`)).join("");
     const averageheaders = BA_MAAC_SYNC_COLUMNS.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("");
-    const totalcolumns = 1 + (courses.length * BA_MAAC_SYNC_COLUMNS.length) + BA_MAAC_SYNC_COLUMNS.length;
-    const body = rows.map((student) => {
+    const body = metricRows.map((student) => {
       const coursevalues = courses.flatMap((course) => BA_MAAC_SYNC_COLUMNS.map((column) => {
         const value = student.courses[course.courseid]?.[column.key];
         return `<td>${Number.isFinite(value) ? escapeHtml(value.toFixed(2)) : "-"}</td>`;
@@ -4018,20 +4054,40 @@ document.addEventListener("DOMContentLoaded", function () {
       }).join("");
       return `<tr><td class="ba-maac-front-cell">${escapeHtml(student.fullname)}<br><small>${escapeHtml(student.username)}</small></td>${coursevalues}${averages}</tr>`;
     }).join("");
+    const content = hasStudentData
+      ? `<div class="ba-maac-metrics-table-wrap"><table class="ba-table ba-grouped-filter-table ba-maac-metrics-table"><thead><tr><th rowspan="2" class="ba-maac-front-head">Student Name</th>${coursegroupheaders}<th colspan="${BA_MAAC_SYNC_COLUMNS.length}" class="ba-maac-group-head">Average</th></tr><tr>${coursecolumnheaders}${averageheaders}</tr></thead><tbody>${body}</tbody></table></div>`
+      : `<div class="ba-modal-empty-state">There is no data available here.</div>`;
     const overlay = document.createElement("div");
     overlay.id = "ba-maac-metrics-modal";
     overlay.className = "ba-modal-overlay";
-    overlay.innerHTML = `<div class="ba-modal-container ba-maac-metrics-dialog"><div class="ba-modal-header"><h3>MAAC Metrics</h3><div class="ba-maac-metrics-actions"><button type="button" class="ba-btn ba-btn-success" id="ba-confirm-maac-sync">Sync CRM</button><button type="button" class="ba-modal-close" id="ba-close-maac-sync" aria-label="Close"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div></div><div class="ba-modal-body ba-maac-metrics-body"><div class="ba-maac-metrics-table-wrap"><table class="ba-table ba-grouped-filter-table ba-maac-metrics-table"><thead><tr><th rowspan="2" class="ba-maac-front-head">Student Name</th>${coursegroupheaders}<th colspan="${BA_MAAC_SYNC_COLUMNS.length}" class="ba-maac-group-head">Average</th></tr><tr>${coursecolumnheaders}${averageheaders}</tr></thead><tbody>${body || `<tr><td colspan="${totalcolumns}">No student metrics found.</td></tr>`}</tbody></table></div></div></div>`;
+    overlay.innerHTML = `<div class="ba-modal-container ba-maac-metrics-dialog"><div class="ba-modal-header"><h3>MAAC Metrics</h3><div class="ba-maac-metrics-actions"><button type="button" class="ba-btn ba-btn-success" id="ba-confirm-maac-sync"${hasStudentData ? "" : " disabled"}>Sync CRM</button><button type="button" class="ba-modal-close" id="ba-close-maac-sync" aria-label="Close"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div></div><div class="ba-modal-body ba-maac-metrics-body">${content}</div></div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
     document.getElementById("ba-close-maac-sync")?.addEventListener("click", () => overlay.remove());
     document.getElementById("ba-confirm-maac-sync")?.addEventListener("click", syncMaacMetricsToCrm);
   }
 
+  function openMaacSyncProgressModal() {
+    document.getElementById("ba-maac-sync-progress-modal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "ba-maac-sync-progress-modal";
+    overlay.className = "ba-modal-overlay ba-maac-sync-progress-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "ba-maac-sync-progress-title");
+    overlay.innerHTML = `<div class="ba-modal-container ba-maac-sync-progress-dialog" aria-busy="true"><div class="ba-modal-header"><h3 id="ba-maac-sync-progress-title">Syncing to CRM</h3></div><div class="ba-modal-body ba-maac-sync-progress-body"><p>MAAC metrics are being synced to CRM.</p><div class="ba-maac-sync-progress-track" role="progressbar" aria-label="CRM sync in progress" aria-valuetext="Syncing to CRM"><span class="ba-maac-sync-progress-bar"></span></div><p class="ba-maac-sync-progress-wait">Please wait.</p></div></div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
   async function syncMaacMetricsToCrm() {
-    if (!batchMaacMetrics) return;
+    if (!batchMaacMetrics || !Array.isArray(batchMaacMetrics.rows) || batchMaacMetrics.rows.length === 0) {
+      showToast("There is no MAAC data available to sync", "warn");
+      return;
+    }
     const button = document.getElementById("ba-confirm-maac-sync");
     if (button) { button.disabled = true; button.textContent = "Syncing..."; }
+    const progressModal = openMaacSyncProgressModal();
     const rows = batchMaacMetrics.rows.map((student) => ({ username: student.username, values: student.averages }));
     try {
       const response = await fetch(`${BASE_URL}?action=syncmaaccrm`, {
@@ -4045,8 +4101,10 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!response.ok || data.error) throw new Error(data.error || "CRM sync failed");
       const result = data.result || {};
       showToast(`CRM sync complete: ${result.updated || 0} updated, ${result.notfound || 0} not found, ${result.failed || 0} failed.`, result.failed ? "warn" : "success");
+      progressModal.remove();
       document.getElementById("ba-maac-metrics-modal")?.remove();
     } catch (error) {
+      progressModal.remove();
       showToast(error.message || "Unable to sync MAAC metrics to CRM", "error");
       if (button) { button.disabled = false; button.textContent = "Sync CRM"; }
     }

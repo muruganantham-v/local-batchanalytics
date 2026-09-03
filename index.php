@@ -28,7 +28,7 @@ $moodledata = new \local_batchanalytics\moodledata();
 $can_view_tickets = $moodledata->can_access_ticket_dashboard($userid);
 
 /**
- * Return a safe CRM error for the browser while retaining the detailed cause in server logs.
+ * Return a safe CRM error for the browser.
  *
  * @param \Throwable $exception
  * @return array{error:string,errorcode:string}
@@ -62,8 +62,10 @@ $format_crm_error = static function(\Throwable $exception): array {
         $safeerror = 'Zoho CRM returned an invalid response. Please retry later.';
     }
 
-    error_log('[local_batchanalytics] CRM request failed [' . $errorcode . ']: ' . $message);
-    return ['error' => $safeerror, 'errorcode' => $errorcode];
+    return [
+        'error' => $safeerror,
+        'errorcode' => $errorcode,
+    ];
 };
 
 // Load restricted CRM fields for view-only users.

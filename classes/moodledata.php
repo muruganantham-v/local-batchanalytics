@@ -508,7 +508,8 @@ class moodledata
             $params = array_merge($params, $courseparams);
         }
 
-        $lowerusername = $DB->sql_lower('u.username');
+        // LOWER() is supported by Moodle's database engines; the DML layer has no sql_lower() helper.
+        $lowerusername = 'LOWER(u.username)';
         $sql = "SELECT DISTINCT u.id, u.username
                   FROM {user} u
                   JOIN {role_assignments} ra ON ra.userid = u.id

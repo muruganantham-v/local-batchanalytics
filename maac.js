@@ -425,10 +425,6 @@ document.addEventListener("DOMContentLoaded", function () {
       search: "",
       courseGroup: "",
       metricMode: "grade",
-      performanceMin: "0",
-      performanceMax: "100",
-      maacMin: "0",
-      maacMax: "9",
       modules: {},
       custom: {},
     };
@@ -948,73 +944,22 @@ document.addEventListener("DOMContentLoaded", function () {
                 .join("")}
             </select>
           </div>
+          ${renderStandardFilterControls()}
           ${getOrderedCustomColumns()
             .map((column) => renderCustomFilterControl(column))
             .join("")}
-          ${renderStandardFilterControls()}
         </div>
       </div>`;
   }
 
   function renderStandardFilterControls() {
-    const filterKeys = [
-      "builtin:performance",
-      "builtin:maac",
-      ...(state.data.module_columns || []).map((column) => `module:${column.key}`),
-    ];
-
-    return filterKeys.map((filterKey) => renderDynamicFilterControl(filterKey)).join("");
-  }
-
-  function renderDynamicFilterControl(filterKey) {
-    const [group, key] = filterKey.split(":");
-
-    if (group === "builtin") {
-      if (key === "performance") {
-        return `
-          <div class="ba-filter-item-modern">
-            <div class="ba-filter-header-row">
-              <span class="ba-filter-label">Overall Performance</span>
-            </div>
-            <div class="ba-range-wrapper">
-              <input type="number" id="ba-maac-performance-min" class="ba-range-input" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.performanceMin || "0")}">
-              <span class="ba-range-divider">-</span>
-              <input type="number" id="ba-maac-performance-max" class="ba-range-input" step="0.1" placeholder="100" value="${escapeHtml(state.filterValues.performanceMax || "100")}">
-            </div>
-          </div>`;
-      }
-
-      if (key === "maac") {
-        return `
-          <div class="ba-filter-item-modern">
-            <div class="ba-filter-header-row">
-              <span class="ba-filter-label">MAAC Ratings</span>
-            </div>
-            <div class="ba-range-wrapper">
-              <input type="number" id="ba-maac-rating-min" class="ba-range-input" min="0" max="9" step="0.1" placeholder="0" value="${escapeHtml(state.filterValues.maacMin || "0")}">
-              <span class="ba-range-divider">-</span>
-              <input type="number" id="ba-maac-rating-max" class="ba-range-input" min="0" max="9" step="0.1" placeholder="9" value="${escapeHtml(state.filterValues.maacMax || "9")}">
-            </div>
-          </div>`;
-      }
-    }
-
-    if (group === "module") {
-      const column = (state.data.module_columns || []).find((item) => item.key === key);
-      if (!column) {
-          return "";
-      }
-
-      return `
+    return (state.data.module_columns || []).map((column) => `
         <div class="ba-filter-item-modern">
           <div class="ba-filter-header-row">
             <span class="ba-filter-label">${escapeHtml(column.label)}</span>
           </div>
           ${renderModuleFilterControl(column)}
-        </div>`;
-    }
-
-    return "";
+        </div>`).join("");
   }
 
   function renderMaacActionButtons() {
@@ -2787,11 +2732,11 @@ document.addEventListener("DOMContentLoaded", function () {
             </button>
           </div>
           <div class="ba-modal-body">
-            <p class="ba-maac-unsaved-text">You have made changes that have not been saved. Do you want to discard the changes or save the draft?</p>
+            <p class="ba-maac-unsaved-text">You have made changes that have not been saved. Do you want to discard the changes or save the changes?</p>
           </div>
           <div class="ba-modal-footer ba-maac-unsaved-actions">
             <button type="button" class="ba-btn" id="ba-maac-unsaved-discard">Confirm Cancel</button>
-            <button type="button" class="ba-btn ba-btn-success" id="ba-maac-unsaved-save">Save Draft</button>
+            <button type="button" class="ba-btn ba-btn-success" id="ba-maac-unsaved-save">Save Changes</button>
           </div>
         </div>
       </div>`;
@@ -3116,12 +3061,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const search = document.getElementById("ba-maac-search");
     const courseGroup = document.getElementById("ba-maac-course-group");
     const metricToggle = document.getElementById("ba-maac-metric-toggle");
-    const perfMin = document.getElementById("ba-maac-performance-min");
-    const perfMax = document.getElementById("ba-maac-performance-max");
-    const maacMin = document.getElementById("ba-maac-rating-min");
-    const maacMax = document.getElementById("ba-maac-rating-max");
 
-    [search, courseGroup, perfMin, perfMax, maacMin, maacMax, metricToggle].forEach((el) => {
+    [search, courseGroup, metricToggle].forEach((el) => {
       if (el) {
         const eventName =
           el.tagName === "SELECT" || el.type === "checkbox" ? "change" : "input";
@@ -3526,6 +3467,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!student || !column) {
       return;
     }
+    const canManageFeedback = Boolean(state.data?.canedit);
 
     const calendarIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>';
     const saveIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>';
@@ -3700,7 +3642,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function renderFeedbackCard(feedback, index) {
       const addedAt = Number(feedback.added_at || 0);
-      const isEditable = addedAt > 0 && Date.now() - addedAt < 24 * 60 * 60 * 1000;
+      const isEditable = canManageFeedback && addedAt > 0 && Date.now() - addedAt < 24 * 60 * 60 * 1000;
       const displayDate = formatFeedbackDate(feedback.date);
       const inputDate = getDateInputValue(feedback.date);
 
@@ -3797,7 +3739,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 ${renderFeedbackList(feedbacks)}
               </div>
 
-              ${state.editMode ? `
+              ${canManageFeedback ? `
               <div class="ba-feedback-add-section">
                 <button type="button" class="ba-btn ba-btn-sm ba-btn-primary ba-feedback-add-btn" id="ba-feedback-modal-add-btn-${userid}-${key}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Feedback
@@ -3842,7 +3784,7 @@ document.addEventListener("DOMContentLoaded", function () {
                   </div>
 
                 </div>
-              </div>` : ""} <!-- end editMode add-section (Bug B fix) -->
+              </div>` : ""}
 
             </div>
 
@@ -3946,7 +3888,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function requestFeedbackModalClose() {
-      if (textInput.value.trim() !== "") {
+      if (textInput?.value.trim() !== "") {
         showFeedbackCloseWarning();
         return;
       }
@@ -4176,78 +4118,75 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    dateInput.value = getTodayLocalDate();
-    updateCopyExternalVisibility();
     bindFeedbackCardEvents();
 
-    modal.querySelectorAll("[data-feedback-suggestion-category]").forEach((button) => {
-      button.addEventListener("click", () => showFeedbackSuggestions(button.dataset.feedbackSuggestionCategory, button));
-    });
-    suggestionOptions.addEventListener("click", (event) => {
-      const option = event.target.closest("[data-feedback-suggestion-index]");
-      if (!option) {
-        return;
-      }
-      const index = Number(option.dataset.feedbackSuggestionIndex);
-      if (!activeSuggestions[index]) {
-        return;
-      }
-      appendFeedbackSuggestion(textInput, activeSuggestions[index]);
-      textInput.focus();
-    });
+    if (canManageFeedback) {
+      dateInput.value = getTodayLocalDate();
+      updateCopyExternalVisibility();
+      modal.querySelectorAll("[data-feedback-suggestion-category]").forEach((button) => {
+        button.addEventListener("click", () => showFeedbackSuggestions(button.dataset.feedbackSuggestionCategory, button));
+      });
+      suggestionOptions.addEventListener("click", (event) => {
+        const option = event.target.closest("[data-feedback-suggestion-index]");
+        if (!option) {
+          return;
+        }
+        const index = Number(option.dataset.feedbackSuggestionIndex);
+        if (!activeSuggestions[index]) {
+          return;
+        }
+        appendFeedbackSuggestion(textInput, activeSuggestions[index]);
+        textInput.focus();
+      });
+      addBtn.addEventListener("click", () => {
+        setFeedbackStatus("");
+        closeInlineEditors();
+        addBtn.style.display = "none";
+        form.style.display = "flex";
+        dateInput.value = getTodayLocalDate();
+        textInput.value = "";
+        clearFeedbackSuggestions();
+        if (copyExternalInput) {
+          copyExternalInput.checked = false;
+        }
+        updateCopyExternalVisibility();
+        textInput.focus();
+        formTitle.textContent = `${column.label} - ${getCurrentFeedbacks().length + 1}`;
+      });
+      cancelBtn.addEventListener("click", () => {
+        resetAddForm();
+      });
+      saveBtn.addEventListener("click", async () => {
+        const date = dateInput.value;
+        const text = textInput.value.trim();
+        if (!text) {
+          alert("Please enter feedback text.");
+          return;
+        }
+
+        const addedAt = Date.now();
+        const feedbackEntry = { date, text, added_at: addedAt };
+        const nextFeedbacks = getCurrentFeedbacks();
+        nextFeedbacks.push(feedbackEntry);
+        const extraFeedbacksByKey = {};
+        if (copyExternalInput?.checked && externalFeedbackColumn) {
+          const externalFeedbacks = getFeedbacksForColumn(externalFeedbackColumn);
+          externalFeedbacks.push({ ...feedbackEntry });
+          extraFeedbacksByKey[externalFeedbackColumn.key] = externalFeedbacks;
+        }
+        resetAddForm();
+        await persistFeedbacks(nextFeedbacks, "Feedback added", saveBtn, extraFeedbacksByKey);
+      });
+    }
 
     document.addEventListener("keydown", handleFeedbackModalKeydown);
-
     modal.querySelectorAll(".ba-modal-close").forEach((button) => {
       button.addEventListener("click", requestFeedbackModalClose);
     });
-
     modal.addEventListener("click", (event) => {
       if (event.target === modal) {
         requestFeedbackModalClose();
       }
-    });
-
-    addBtn.addEventListener("click", () => {
-      setFeedbackStatus("");
-      closeInlineEditors();
-      addBtn.style.display = "none";
-      form.style.display = "flex";
-      dateInput.value = getTodayLocalDate();
-      textInput.value = "";
-      clearFeedbackSuggestions();
-      if (copyExternalInput) {
-        copyExternalInput.checked = false;
-      }
-      updateCopyExternalVisibility();
-      textInput.focus();
-      formTitle.textContent = `${column.label} - ${getCurrentFeedbacks().length + 1}`;
-    });
-
-    cancelBtn.addEventListener("click", () => {
-      resetAddForm();
-    });
-
-    saveBtn.addEventListener("click", async () => {
-      const date = dateInput.value;
-      const text = textInput.value.trim();
-      if (!text) {
-        alert("Please enter feedback text.");
-        return;
-      }
-
-      const addedAt = Date.now();
-      const feedbackEntry = { date, text, added_at: addedAt };
-      const nextFeedbacks = getCurrentFeedbacks();
-      nextFeedbacks.push(feedbackEntry);
-      const extraFeedbacksByKey = {};
-      if (copyExternalInput?.checked && externalFeedbackColumn) {
-        const externalFeedbacks = getFeedbacksForColumn(externalFeedbackColumn);
-        externalFeedbacks.push({ ...feedbackEntry });
-        extraFeedbacksByKey[externalFeedbackColumn.key] = externalFeedbacks;
-      }
-      resetAddForm();
-      await persistFeedbacks(nextFeedbacks, "Feedback added", saveBtn, extraFeedbacksByKey);
     });
   }
 
@@ -4296,10 +4235,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const metricMode = document.getElementById("ba-maac-metric-toggle")?.checked
       ? "completion"
       : "grade";
-    const perfMin = parseFloat(document.getElementById("ba-maac-performance-min")?.value || "");
-    const perfMax = parseFloat(document.getElementById("ba-maac-performance-max")?.value || "");
-    const maacMin = parseFloat(document.getElementById("ba-maac-rating-min")?.value || "");
-    const maacMax = parseFloat(document.getElementById("ba-maac-rating-max")?.value || "");
 
     const filterState = {};
     document.querySelectorAll("[data-filter-key]").forEach((input) => {
@@ -4335,10 +4270,6 @@ document.addEventListener("DOMContentLoaded", function () {
       search: document.getElementById("ba-maac-search")?.value || "",
       courseGroup,
       metricMode,
-      performanceMin: document.getElementById("ba-maac-performance-min")?.value || "0",
-      performanceMax: document.getElementById("ba-maac-performance-max")?.value || "100",
-      maacMin: document.getElementById("ba-maac-rating-min")?.value || "0",
-      maacMax: document.getElementById("ba-maac-rating-max")?.value || "9",
       modules: {},
       custom: {},
     };
@@ -4388,12 +4319,6 @@ document.addEventListener("DOMContentLoaded", function () {
           return false;
         }
       }
-
-      const overallPerformance = getOverallPerformanceValue(student);
-      if (!isNaN(perfMin) && overallPerformance < perfMin) return false;
-      if (!isNaN(perfMax) && overallPerformance > perfMax) return false;
-      if (!isNaN(maacMin) && parseFloat(student.maac_rating) < maacMin) return false;
-      if (!isNaN(maacMax) && parseFloat(student.maac_rating) > maacMax) return false;
 
       for (const [key, filter] of Object.entries(filterState)) {
         const rawValue =
@@ -4450,18 +4375,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const search = document.getElementById("ba-maac-search");
     const courseGroup = document.getElementById("ba-maac-course-group");
     const metricToggle = document.getElementById("ba-maac-metric-toggle");
-    const perfMin = document.getElementById("ba-maac-performance-min");
-    const perfMax = document.getElementById("ba-maac-performance-max");
-    const maacMin = document.getElementById("ba-maac-rating-min");
-    const maacMax = document.getElementById("ba-maac-rating-max");
 
     if (search) search.value = "";
     if (courseGroup) courseGroup.value = "";
     if (metricToggle) metricToggle.checked = false;
-    if (perfMin) perfMin.value = "0";
-    if (perfMax) perfMax.value = "100";
-    if (maacMin) maacMin.value = "0";
-    if (maacMax) maacMax.value = "9";
 
     document.querySelectorAll("[data-filter-key]").forEach((input) => {
       const type = input.getAttribute("data-filter-type");
@@ -4569,7 +4486,7 @@ document.addEventListener("DOMContentLoaded", function () {
         saveBtn.textContent = "Save";
       }
       if (unsavedSaveBtn) {
-        unsavedSaveBtn.textContent = "Save";
+        unsavedSaveBtn.textContent = "Save Changes";
       }
       return false;
     }
