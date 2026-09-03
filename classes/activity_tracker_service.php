@@ -208,14 +208,18 @@ class activity_tracker_service {
 
     /** Return the tracker category inferred from a flat-gradebook activity. */
     private function get_module_tracker_category(string $module, string $activityname): ?string {
+        $activitycategory = $this->get_tracker_category($activityname);
+        if ($activitycategory !== null) {
+            return $activitycategory;
+        }
         if ($module === 'assign') {
-            return $this->matches_tracker_category($activityname, 'Projects') ? 'Projects' : 'Assignments';
+            return $this->get_tracker_category('assignment');
         }
         if ($module === 'quiz') {
-            return 'Tests';
+            return $this->get_tracker_category('quiz');
         }
 
-        return $this->get_tracker_category($activityname);
+        return null;
     }
 
     /** Match a category name against the administrator-configured aliases. */
@@ -243,23 +247,25 @@ class activity_tracker_service {
         return false;
     }
 
-    /** Load normalized aliases for the three canonical Module Tracker tabs. */
+    /** Load normalized aliases for the configured Module Tracker tabs. */
     private function get_tracker_category_aliases(): array {
         if ($this->trackercategoryaliases !== null) {
             return $this->trackercategoryaliases;
         }
 
-        $defaults = [
-            'Assignments' => 'assignment,assignments,lab assignment,lab assignments',
-            'Tests' => 'test,tests,quiz,quizzes,assessment,assessments',
-            'Projects' => 'project,projects',
-        ];
+        $categories = json_decode((string)get_config('local_batchanalytics', 'module_tracker_categories'), true);
+        if (!is_array($categories) || empty($categories)) {
+            $categories = self::get_legacy_tracker_categories();
+        }
         $aliases = [];
-        foreach ($defaults as $trackercategory => $default) {
-            $setting = 'module_tracker_' . strtolower(rtrim($trackercategory, 's')) . '_aliases';
-            $value = (string)get_config('local_batchanalytics', $setting);
-            if (trim($value) === '') {
-                $value = $default;
+        foreach ($categories as $category) {
+            if (!is_array($category)) {
+                continue;
+            }
+            $trackercategory = trim((string)($category['name'] ?? ''));
+            $value = (string)($category['aliases'] ?? '');
+            if ($trackercategory === '' || trim($value) === '') {
+                continue;
             }
             $aliases[$trackercategory] = array_values(array_unique(array_filter(array_map(
                 static function(string $alias): string {
@@ -271,6 +277,36 @@ class activity_tracker_service {
 
         $this->trackercategoryaliases = $aliases;
         return $this->trackercategoryaliases;
+    }
+
+    /**
+     * @return array
+     */
+    public static function get_default_tracker_categories(): array {
+        return [
+            ['name' => 'Assignments', 'aliases' => 'assignment, assignments, lab assignment, lab assignments'],
+            ['name' => 'Tests', 'aliases' => 'test, tests, quiz, quizzes, assessment, assessments'],
+            ['name' => 'Projects', 'aliases' => 'project, projects'],
+        ];
+    }
+
+    /**
+     * Use the old per-tab settings until the new category setting is saved.
+     *
+     * @return array
+     */
+    public static function get_legacy_tracker_categories(): array {
+        $defaults = self::get_default_tracker_categories();
+        $categories = [];
+        foreach ($defaults as $default) {
+            $setting = 'module_tracker_' . strtolower(rtrim($default['name'], 's')) . '_aliases';
+            $aliases = (string)get_config('local_batchanalytics', $setting);
+            $categories[] = [
+                'name' => $default['name'],
+                'aliases' => trim($aliases) !== '' ? $aliases : $default['aliases'],
+            ];
+        }
+        return $categories;
     }
 
     /**

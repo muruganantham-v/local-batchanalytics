@@ -20,6 +20,7 @@ require_once(__DIR__ . '/classes/admin_setting_crm_fields.php');
 require_once(__DIR__ . '/classes/admin_setting_maac_columns.php');
 require_once(__DIR__ . '/classes/admin_setting_maac_column_groups.php');
 require_once(__DIR__ . '/classes/admin_setting_mentor_crm_field_groups.php');
+require_once(__DIR__ . '/classes/admin_setting_module_tracker_categories.php');
 
 global $DB;
 
@@ -172,26 +173,10 @@ if ($hassiteconfig) {
         get_string('module_tracker_configuration', 'local_batchanalytics'),
         ''
     ));
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/module_tracker_assignment_aliases',
-        get_string('module_tracker_assignment_aliases', 'local_batchanalytics'),
-        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
-        'assignment,assignments,lab assignment,lab assignments',
-        PARAM_RAW_TRIMMED
-    ));
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/module_tracker_test_aliases',
-        get_string('module_tracker_test_aliases', 'local_batchanalytics'),
-        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
-        'test,tests,quiz,quizzes,assessment,assessments',
-        PARAM_RAW_TRIMMED
-    ));
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/module_tracker_project_aliases',
-        get_string('module_tracker_project_aliases', 'local_batchanalytics'),
-        get_string('module_tracker_category_aliases_desc', 'local_batchanalytics'),
-        'project,projects',
-        PARAM_RAW_TRIMMED
+    $settings->add(new \local_batchanalytics\admin_setting_module_tracker_categories(
+        'local_batchanalytics/module_tracker_categories',
+        get_string('module_tracker_categories', 'local_batchanalytics'),
+        get_string('module_tracker_categories_desc', 'local_batchanalytics')
     ));
     $settings->add(new admin_setting_heading(
         'local_batchanalytics/role_management',

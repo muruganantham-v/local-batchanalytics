@@ -1025,7 +1025,7 @@ document.addEventListener("DOMContentLoaded", function () {
       </div>`;
     }
 
-    if (column.type === "number") {
+    if (column.type === "number" || column.type === "formula") {
       const min = filter.min ?? "";
       const max = filter.max ?? "";
       const rangeAttrs = `${column.min !== null && column.min !== undefined ? ` min="${escapeHtml(String(column.min))}"` : ""}${column.max !== null && column.max !== undefined ? ` max="${escapeHtml(String(column.max))}"` : ""}`;
