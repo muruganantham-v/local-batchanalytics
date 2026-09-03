@@ -16,7 +16,7 @@ Current release: `2.0.2`
 1. Copy this directory to `moodle/local/batchanalytics`.
 2. Sign in as a site administrator and visit **Site administration > Notifications** to run the installation or upgrade.
 3. Configure the plugin at **Site administration > Plugins > Local plugins > Batch Analytics**.
-4. Assign the required capabilities and, where applicable, configure the SS Team and Batch Manager roles.
+4. Assign the required capabilities and, where applicable, configure the MAAC Executive and Batch Manager roles.
 
 ## Plugin Areas
 
@@ -37,7 +37,7 @@ The plugin settings provide these configuration groups:
 - Student CRM module name and fields, including restricted fields for non-managers
 - Mentor CRM module, batch field, fields, and field groups
 - MAAC custom columns, groups, CRM-sync columns, feedback duration, trend window, and attendance window
-- SS Team and Batch Manager course-role mappings
+- MAAC Executive and Batch Manager course-role mappings
 - Ticket duration and ticket-edit window
 - Zoho Cliq bot URL, key, notification templates, and delivery history
 - Optional MAAC sheet import

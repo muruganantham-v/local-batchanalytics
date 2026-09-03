@@ -86,7 +86,7 @@ if ($action !== '') {
                 die();
             }
             $ticketid = (int)($decoded['ticketid'] ?? 0);
-            $result = $service->escalate_ticket_to_pm($ticketid, $USER->id);
+            $result = $service->escalate_ticket_to_pm($ticketid, $USER->id, $decoded);
             echo json_encode([
                 'status' => 'ok',
                 'message' => 'Ticket escalated to PM successfully',

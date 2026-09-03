@@ -289,6 +289,8 @@ class maac_service {
             'status' => 'open',
             'priority' => 'low',
             'resolutionfeedback' => '',
+            'ssteamfeedback' => '',
+            'programmanagerfeedback' => '',
             'createdby' => $userid,
             'resolvedby' => 0,
             'ssteamuserid' => $ssteamuserid,
@@ -300,6 +302,7 @@ class maac_service {
             'ssteamfullname' => $ssteamuser ? fullname($ssteamuser) : '',
             'batchmanagerfullname' => '',
             'resolvedbyfullname' => '',
+            'createdbyfullname' => $userfrom ? fullname($userfrom) : '',
         ];
         $this->send_ticket_raise_cliq_notification($record, $ticketmeta);
 
@@ -355,6 +358,8 @@ class maac_service {
         $ticket->ssteamfullname = '';
         $ticket->batchmanagerfullname = '';
         $ticket->resolvedbyfullname = '';
+        $createdbyuser = \core_user::get_user((int)$ticket->createdby);
+        $ticket->createdbyfullname = $createdbyuser ? fullname($createdbyuser) : '';
         $timeline = $this->get_ticket_timeline_events([$ticketid]);
 
         return [
@@ -364,7 +369,7 @@ class maac_service {
     }
 
     /**
-     * Mark an opened dashboard ticket as in progress when the assigned SS Team user views it.
+     * Mark an opened dashboard ticket as in progress when the assigned MAAC Executive views it.
      *
      * @param int $ticketid
      * @param int $userid
@@ -404,9 +409,10 @@ class maac_service {
      *
      * @param int $ticketid
      * @param int $userid
+     * @param array $payload
      * @return array
      */
-    public function escalate_ticket_to_pm(int $ticketid, int $userid): array {
+    public function escalate_ticket_to_pm(int $ticketid, int $userid, array $payload = []): array {
         global $DB;
 
         $ticket = $DB->get_record('local_batchanalytics_ticket', ['id' => $ticketid]);
@@ -450,11 +456,16 @@ class maac_service {
         }
 
         $previousstatuskey = $this->normalise_ticket_status((string)$ticket->status);
+        $feedback = clean_param(trim((string)($payload['feedback'] ?? '')), PARAM_RAW_TRIMMED);
         $now = time();
         $ticket->batchmanagerroleid = $batchmanagerroleid;
         $ticket->batchmanageruserid = $batchmanageruserid;
         $ticket->escalatedtopm = 1;
         $ticket->status = 'pm_in_progress';
+        if ($feedback !== '') {
+            $ticket->ssteamfeedback = $feedback;
+            $ticket->resolutionfeedback = $feedback;
+        }
         $ticket->timemodified = $now;
         $DB->update_record('local_batchanalytics_ticket', $ticket);
 
@@ -627,7 +638,7 @@ class maac_service {
      *
      * @param int $ticketid
      * @param int $userid
-     * @param string $feedback
+     * @param array $payload
      * @return array
      */
     public function update_ticket(int $ticketid, int $userid, array $payload): array {
@@ -653,7 +664,11 @@ class maac_service {
 
         $previousstatuskey = $this->normalise_ticket_status((string)$ticket->status);
         $previousprioritykey = $this->normalise_ticket_priority((string)($ticket->priority ?? 'low'));
-        $previousfeedback = trim((string)($ticket->resolutionfeedback ?? ''));
+        $isprogrammanagerfeedback = !empty($ticket->escalatedtopm)
+            && $this->can_batch_manager_resolve_ticket_record($ticket, $userid);
+        $previousfeedback = trim((string)($isprogrammanagerfeedback
+            ? ($ticket->programmanagerfeedback ?? '')
+            : ($ticket->ssteamfeedback ?? '')));
         $mode = clean_param((string)($payload['mode'] ?? ''), PARAM_ALPHA);
         if ($mode === '' && $this->normalise_ticket_status((string)($payload['status'] ?? '')) === 'resolved') {
             $mode = 'resolve';
@@ -669,6 +684,12 @@ class maac_service {
         $now = time();
         $ticket->status = $statuskey;
         $ticket->priority = $prioritykey;
+        if ($isprogrammanagerfeedback) {
+            $ticket->programmanagerfeedback = $cleanfeedback;
+        } else {
+            $ticket->ssteamfeedback = $cleanfeedback;
+        }
+        // Retain the latest feedback for existing notification templates and integrations.
         $ticket->resolutionfeedback = $cleanfeedback;
         if ($statuskey === 'resolved') {
             $ticket->resolvedby = $userid;
@@ -2005,6 +2026,7 @@ class maac_service {
         $canbatchmanagerresolve = $this->can_batch_manager_resolve_ticket_from_access($record, $userid, $access);
         $canupdate = $statuskey !== 'resolved' && ($canssteamhandle || $canbatchmanagerresolve);
         $prioritykey = $this->normalise_ticket_priority((string)($record->priority ?? 'low'));
+        $feedbackvalues = $this->get_ticket_feedback_values($record);
 
         $accessrole = 'Viewer';
         if (!empty($access['canmanage'])) {
@@ -2012,7 +2034,7 @@ class maac_service {
         } else if (!empty($access['manageablecourseids'][$courseid])) {
             $accessrole = 'Ticket Manager';
         } else if ($canssteamhandle) {
-            $accessrole = $isassigned ? 'Assigned SS Team' : 'SS Team';
+            $accessrole = $isassigned ? 'Assigned MAAC Executive' : 'MAAC Executive';
         } else if ($canbatchmanagerresolve) {
             $accessrole = 'Escalated Batch Manager';
         }
@@ -2061,10 +2083,40 @@ class maac_service {
             'ssteamfullname' => trim((string)$record->ssteamfullname),
             'batchmanagerfullname' => trim((string)$record->batchmanagerfullname),
             'resolutionfeedback' => trim((string)($record->resolutionfeedback ?? '')),
+            'ssteamfeedback' => $feedbackvalues['ssteamfeedback'],
+            'programmanagerfeedback' => $feedbackvalues['programmanagerfeedback'],
+            'feedbackrole' => $canbatchmanagerresolve ? 'programmanager' : 'ssteam',
             'resolvedby' => (int)($record->resolvedby ?? 0),
             'resolvedbyfullname' => trim((string)($record->resolvedbyfullname ?? '')),
             'timeresolved' => (int)($record->timeresolved ?? 0),
             'timeline' => [],
+        ];
+    }
+
+    /**
+     * Return role-specific feedback while retaining a best-effort display for pre-upgrade tickets.
+     *
+     * @param \stdClass $ticket
+     * @return array
+     */
+    private function get_ticket_feedback_values(\stdClass $ticket): array {
+        $ssteamfeedback = trim((string)($ticket->ssteamfeedback ?? ''));
+        $programmanagerfeedback = trim((string)($ticket->programmanagerfeedback ?? ''));
+        $legacyfeedback = trim((string)($ticket->resolutionfeedback ?? ''));
+
+        if ($ssteamfeedback === '' && $programmanagerfeedback === '' && $legacyfeedback !== '') {
+            $resolvedby = (int)($ticket->resolvedby ?? 0);
+            $batchmanageruserid = (int)($ticket->batchmanageruserid ?? 0);
+            if (!empty($ticket->escalatedtopm) && $resolvedby > 0 && $resolvedby === $batchmanageruserid) {
+                $programmanagerfeedback = $legacyfeedback;
+            } else {
+                $ssteamfeedback = $legacyfeedback;
+            }
+        }
+
+        return [
+            'ssteamfeedback' => $ssteamfeedback,
+            'programmanagerfeedback' => $programmanagerfeedback,
         ];
     }
 
@@ -2247,7 +2299,7 @@ class maac_service {
             $rolelabel = 'Ticket Manager';
         } else if (!empty($ssteamcourseids)) {
             $rolekey = 'ss_team';
-            $rolelabel = 'SS Team';
+            $rolelabel = 'MAAC Executive';
         } else if (!empty($batchmanagercourseids)) {
             $rolekey = 'batch_manager';
             $rolelabel = 'Batch Manager';
@@ -2752,6 +2804,7 @@ class maac_service {
     private function format_maac_ticket_record(\stdClass $record, int $userid, array $timeline = []): array {
         $statuskey = $this->normalise_ticket_status((string)$record->status);
         $prioritykey = $this->normalise_ticket_priority((string)($record->priority ?? 'low'));
+        $feedbackvalues = $this->get_ticket_feedback_values($record);
 
         return [
             'id' => (int)$record->id,
@@ -2762,7 +2815,10 @@ class maac_service {
             'priority' => ucfirst($prioritykey),
             'prioritykey' => $prioritykey,
             'resolutionfeedback' => trim((string)($record->resolutionfeedback ?? '')),
+            'ssteamfeedback' => $feedbackvalues['ssteamfeedback'],
+            'programmanagerfeedback' => $feedbackvalues['programmanagerfeedback'],
             'createdby' => (int)($record->createdby ?? 0),
+            'raisedby' => trim((string)($record->createdbyfullname ?? '')),
             'resolvedby' => (int)($record->resolvedby ?? 0),
             'ssteamuserid' => (int)($record->ssteamuserid ?? 0),
             'batchmanageruserid' => (int)($record->batchmanageruserid ?? 0),
@@ -2830,6 +2886,8 @@ class maac_service {
                        t.status,
                        t.priority,
                        t.resolutionfeedback,
+                       t.ssteamfeedback,
+                       t.programmanagerfeedback,
                        t.createdby,
                        t.resolvedby,
                        t.ssteamuserid,
@@ -2840,11 +2898,13 @@ class maac_service {
                        t.timecreated,
                        " . $DB->sql_fullname('ss.firstname', 'ss.lastname') . " AS ssteamfullname,
                        " . $DB->sql_fullname('bm.firstname', 'bm.lastname') . " AS batchmanagerfullname,
-                       " . $DB->sql_fullname('rb.firstname', 'rb.lastname') . " AS resolvedbyfullname
+                       " . $DB->sql_fullname('rb.firstname', 'rb.lastname') . " AS resolvedbyfullname,
+                       " . $DB->sql_fullname('cb.firstname', 'cb.lastname') . " AS createdbyfullname
                   FROM {local_batchanalytics_ticket} t
              LEFT JOIN {user} ss ON ss.id = t.ssteamuserid
              LEFT JOIN {user} bm ON bm.id = t.batchmanageruserid
              LEFT JOIN {user} rb ON rb.id = t.resolvedby
+             LEFT JOIN {user} cb ON cb.id = t.createdby
                  WHERE t.courseid = :courseid
                    AND t.studentuserid $insql
               ORDER BY t.timecreated DESC, t.id DESC";
@@ -3057,7 +3117,7 @@ class maac_service {
         $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
 
         return [
-            'ss_team_role' => $this->get_role_descriptor($ssteamroleid, 'SS Team'),
+            'ss_team_role' => $this->get_role_descriptor($ssteamroleid, 'MAAC Executive'),
             'ss_team_users' => $this->get_course_role_users($courseid, $ssteamroleid),
             'batch_manager_role' => $this->get_role_descriptor($batchmanagerroleid, 'Batch Manager'),
             'batch_manager_users' => $this->get_course_role_users($courseid, $batchmanagerroleid),

@@ -242,5 +242,21 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080200, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026080300) {
+        $table = new xmldb_table('local_batchanalytics_ticket');
+
+        $field = new xmldb_field('ssteamfeedback', XMLDB_TYPE_TEXT, null, null, null, null, null, 'resolutionfeedback');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('programmanagerfeedback', XMLDB_TYPE_TEXT, null, null, null, null, null, 'ssteamfeedback');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026080300, 'local', 'batchanalytics');
+    }
+
     return true;
 }

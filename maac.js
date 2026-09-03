@@ -1379,7 +1379,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function getTicketMeta() {
     return state.data?.ticket_meta || {
-      ss_team_role: { id: 0, label: "SS Team" },
+      ss_team_role: { id: 0, label: "MAAC Executive" },
       ss_team_users: [],
       batch_manager_role: { id: 0, label: "Batch Manager" },
       batch_manager_users: [],
@@ -1472,21 +1472,25 @@ document.addEventListener("DOMContentLoaded", function () {
           const reason = getTicketReason(ticket);
           const editTitle = isEditing ? state.ticketEdit.tickettitle : title;
           const editReason = isEditing ? state.ticketEdit.ticketreason : reason;
-          const resolutionBlock =
-            ticket.statuskey === "resolved" || ticket.resolutionfeedback
-              ? `<div class="ba-maac-ticket-history-update">
-                  ${
-                    ticket.resolvedbyfullname
-                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Resolved By:</strong> ${escapeHtml(ticket.resolvedbyfullname)}</div>`
-                      : ""
-                  }
-                  ${
-                    ticket.resolutionfeedback
-                      ? `<div class="ba-maac-ticket-history-update-row"><strong>Feedback:</strong> ${escapeHtml(ticket.resolutionfeedback)}</div>`
-                      : ""
-                  }
-                </div>`
-              : "";
+          const ticketDetailsBlock = `<div class="ba-maac-ticket-history-update">
+              <div class="ba-maac-ticket-history-update-row"><strong>Raised By:</strong> ${escapeHtml(ticket.raisedby || "-")}</div>
+              ${
+                ticket.resolvedbyfullname
+                  ? `<div class="ba-maac-ticket-history-update-row"><strong>Resolved By:</strong> ${escapeHtml(ticket.resolvedbyfullname)}</div>`
+                  : ""
+              }
+              ${ticket.ssteamfeedback || ticket.programmanagerfeedback ? '<div class="ba-maac-ticket-history-update-row"><strong>Feedback:</strong></div>' : ""}
+              ${
+                ticket.ssteamfeedback
+                  ? `<div class="ba-maac-ticket-history-update-row"><strong>MAAC Executive:</strong> ${escapeHtml(ticket.ssteamfeedback)}</div>`
+                  : ""
+              }
+              ${
+                ticket.programmanagerfeedback
+                  ? `<div class="ba-maac-ticket-history-update-row"><strong>Program Manager:</strong> ${escapeHtml(ticket.programmanagerfeedback)}</div>`
+                  : ""
+              }
+            </div>`;
 
           const statusClass = [
             "ba-maac-ticket-history-status",
@@ -1522,7 +1526,7 @@ document.addEventListener("DOMContentLoaded", function () {
                   <div class="ba-maac-ticket-history-label">Description</div>
                   <div class="ba-maac-ticket-history-reason">${escapeHtml(reason || "-")}</div>
                 </div>`}
-            ${resolutionBlock}
+            ${ticketDetailsBlock}
             ${renderTimeline(ticket.timeline)}
           </div>`;
         })

@@ -1,4 +1,4 @@
-Cliq Ticket Raising message template: Sent to the Batch Manager and SS Team when a ticket is raised.
+Cliq Ticket Raising message template: Sent to the Batch Manager and MAAC Executive when a ticket is raised.
 
 Cliq Ticket Update message template: Sent to the user who raised the ticket when it is updated.
 

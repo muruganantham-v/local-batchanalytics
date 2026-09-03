@@ -664,7 +664,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="ba-ticket-list-meta">
           <strong>Course Name:</strong> ${escapeHtml(meta.coursename)}
           <span>|</span>
-          <strong>Student Success Team:</strong> ${escapeHtml(meta.ssteam)}
+          <strong>MAAC Executive:</strong> ${escapeHtml(meta.ssteam)}
           <span>|</span>
           <strong>Program Manager:</strong> ${escapeHtml(meta.batchmanager)}
         </div>
@@ -783,6 +783,23 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>`;
   }
 
+  function renderFeedbackSection(ssteamfeedback, programmanagerfeedback) {
+    const feedbackRows = [];
+    if (ssteamfeedback) {
+      feedbackRows.push(`<div class="ba-ticket-info-label">MAAC Executive</div><div class="ba-ticket-info-value ba-ticket-multiline-text">${escapeHtml(ssteamfeedback)}</div>`);
+    }
+    if (programmanagerfeedback) {
+      feedbackRows.push(`<div class="ba-ticket-info-label">Program Manager</div><div class="ba-ticket-info-value ba-ticket-multiline-text">${escapeHtml(programmanagerfeedback)}</div>`);
+    }
+    if (!feedbackRows.length) {
+      return "";
+    }
+    return `<div class="ba-ticket-note-card">
+      <div class="ba-ticket-note-card-title">Feedback</div>
+      <div class="ba-ticket-note-card-content"><div class="ba-ticket-resolved-grid">${feedbackRows.join("")}</div></div>
+    </div>`;
+  }
+
   function renderEscalateButton(ticket) {
     if (ticket.canescalate) {
       return `<button type="button" class="ba-btn ba-ticket-escalate-btn" id="ba-ticket-escalate">Escalate to PM</button>`;
@@ -795,6 +812,8 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderEditPanel(ticket) {
     const priority = state.modal?.priority || ticket.prioritykey || "low";
     const heading = ticket.actionlabel === "Edit" ? "Update Ticket" : "Resolve Ticket";
+    const isProgramManager = ticket.feedbackrole === "programmanager";
+    const feedbackLabel = isProgramManager ? "Program Manager Feedback" : "MAAC Executive Feedback";
     return `<div class="ba-ticket-edit-card">
       <div class="ba-ticket-edit-head">${escapeHtml(heading)}</div>
       <div class="ba-ticket-edit-body">
@@ -809,7 +828,7 @@ document.addEventListener("DOMContentLoaded", function () {
           </div>
         </div>
         <div class="ba-ticket-field ba-ticket-field-feedback">
-          <label for="ba-ticket-feedback">Support Feedback</label>
+          <label for="ba-ticket-feedback">${feedbackLabel}</label>
           <textarea id="ba-ticket-feedback" class="ba-maac-ticket-textarea" rows="5" placeholder="Please enter the feedback / resolution notes for this ticket.">${escapeHtml(
             state.modal?.feedback || "",
           )}</textarea>
@@ -835,8 +854,6 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="ba-ticket-info-value">${escapeHtml(ticket.resolvedbyfullname || "-")}</div>
           <div class="ba-ticket-info-label">Resolved On</div>
           <div class="ba-ticket-info-value">${escapeHtml(formatTimestamp(ticket.timeresolved))}</div>
-          <div class="ba-ticket-info-label">Feedback</div>
-          <div class="ba-ticket-info-value">${escapeHtml(ticket.resolutionfeedback || "-")}</div>
         </div>
       </div>
     </div>`;
@@ -900,14 +917,13 @@ document.addEventListener("DOMContentLoaded", function () {
             ${renderRaisedByCard(ticket)}
           </div>
           ${renderTicketInfoPanel(ticket)}
+          ${renderFeedbackSection(ticket.ssteamfeedback, ticket.programmanagerfeedback)}
           ${
             isEditMode
               ? renderEditPanel(ticket)
               : ticket.statuskey === "resolved"
                 ? renderResolvedDetails(ticket)
-                : ticket.resolutionfeedback
-                  ? renderReadOnlyPanel("Support Feedback", ticket.resolutionfeedback)
-                  : ""
+                : ""
           }
           ${renderTimelinePanel(ticket)}
         </div>
@@ -1039,7 +1055,10 @@ document.addEventListener("DOMContentLoaded", function () {
     state.modal = {
       mode,
       ticket,
-      feedback: ticket.resolutionfeedback || "",
+      feedback:
+        (ticket.feedbackrole === "programmanager"
+          ? ticket.programmanagerfeedback
+          : ticket.ssteamfeedback) || "",
       priority: ticket.prioritykey || "low",
     };
     renderPage();
@@ -1061,10 +1080,14 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!ticket || !ticket.canescalate) {
       return;
     }
+    const feedbackInput = document.getElementById("ba-ticket-feedback");
+    const feedback = feedbackInput ? feedbackInput.value.trim() : String(state.modal.feedback || "").trim();
+    state.modal.feedback = feedback;
 
     state.escalationConfirm = {
       ticketid: ticket.id,
       batchManagerName: ticket.batchmanagerfullname || "Configured Batch Manager",
+      feedback,
     };
     renderPage();
   }
@@ -1101,7 +1124,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const body = new URLSearchParams();
     body.set("action", "escalateticket");
     body.set("sesskey", sesskey);
-    body.set("payload", JSON.stringify({ ticketid }));
+    body.set(
+      "payload",
+      JSON.stringify({
+        ticketid,
+        timemodified: state.modal.ticket.timemodified,
+        feedback: state.escalationConfirm.feedback || "",
+      }),
+    );
 
     try {
       const response = await fetch(baseUrl, {
