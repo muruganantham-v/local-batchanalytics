@@ -815,11 +815,13 @@ if ($action === 'getnewbatchdata') {
             $delaydays = 0;
             $allcompleted = true;
             $anyinprogress = false;
+            $currentmoduleidx = 1;
+            $currentcourseid = 0;
 
             if ($sec && !empty($sec->moduledata)) {
                 $mdata = json_decode($sec->moduledata, true);
                 if (is_array($mdata)) {
-                    foreach ($mdata as $m) {
+                    foreach ($mdata as $m_i => $m) {
                         if (!empty($m['primarymentor'])) {
                             $classmentors[$m['primarymentor']] = true;
                         }
@@ -842,8 +844,10 @@ if ($action === 'getnewbatchdata') {
                         }
                         if ($currentmodule === 'N/A' && (!$isdone || count($mdata) === 1)) {
                             $anyinprogress = true;
-                            $mname = !empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . ($m['module'] ?? 1));
+                            $mname = !empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . ($m['module'] ?? ($m_i + 1)));
                             $currentmodule = $mname;
+                            $currentmoduleidx = (int)($m['module'] ?? ($m_i + 1));
+                            $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
                             $delta = (int)($m['scheduledelta'] ?? 0);
                             if ($delta > 0) {
                                 $status = 'delayed';
@@ -855,6 +859,8 @@ if ($action === 'getnewbatchdata') {
                     if ($currentmodule === 'N/A' && !empty($mdata)) {
                         $lastm = end($mdata);
                         $currentmodule = (!empty($lastm['courseshortname']) ? $lastm['courseshortname'] : 'Completed');
+                        $currentmoduleidx = count($mdata);
+                        $currentcourseid = (int)($lastm['moodlecourseid'] ?? 0);
                     }
                 }
             }
@@ -879,6 +885,8 @@ if ($action === 'getnewbatchdata') {
                 'startDate' => $startformatted,
                 'year' => $year,
                 'currentModule' => $currentmodule,
+                'moduleIdx' => $currentmoduleidx,
+                'courseId' => $currentcourseid,
                 'status' => $status,
                 'statusLabel' => $statuslabel,
                 'delayDays' => $delaydays,

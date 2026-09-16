@@ -214,31 +214,33 @@ function initNewBatchAnalytics() {
           statusHtml = `<span class="ba-status-onschedule"><span class="ba-status-dot dot-green"></span> On schedule</span>`;
         }
 
-        return `
-          <tr>
-            <td class="td-sno">${siNo}</td>
-            <td class="td-batch-id"><strong>${escapeHtml(b.batchId)}</strong></td>
-            <td class="td-course-name">${escapeHtml(b.courseName)}</td>
-            <td><span class="ba-badge ${modeBadgeClass}">${escapeHtml(b.mode)}</span></td>
-            <td><span class="ba-badge ${typeBadgeClass}">${escapeHtml(b.type)}</span></td>
-            <td class="td-date">${escapeHtml(b.startDate)}</td>
-            <td class="td-module">${escapeHtml(b.currentModule)}</td>
-            <td>${statusHtml}</td>
-            <td style="text-align:center;">
-              <button type="button" class="ba-new-view-btn" data-batch-name="${escapeHtml(b.batchId)}">View Batch</button>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
+          let moduleUrl = "";
+          if (b.courseId && b.courseId > 0) {
+            moduleUrl = `module.php?courseid=${encodeURIComponent(b.courseId)}`;
+          } else if (b.sectionId && b.sectionId > 0) {
+            moduleUrl = `module.php?batchid=${encodeURIComponent(b.sectionId)}&module=${encodeURIComponent(b.moduleIdx || 1)}`;
+          } else {
+            moduleUrl = `module.php?batchid=${encodeURIComponent(b.id)}&module=${encodeURIComponent(b.moduleIdx || 1)}`;
+          }
 
-    tbody.querySelectorAll(".ba-new-view-btn").forEach((btn) => {
-      btn.addEventListener("click", function () {
-        const batchName = this.dataset.batchName;
-        switchToOldBatch(batchName);
-      });
-    });
-  }
+          return `
+            <tr>
+              <td class="td-sno">${siNo}</td>
+              <td class="td-batch-id"><strong>${escapeHtml(b.batchId)}</strong></td>
+              <td class="td-course-name">${escapeHtml(b.courseName)}</td>
+              <td><span class="ba-badge ${modeBadgeClass}">${escapeHtml(b.mode)}</span></td>
+              <td><span class="ba-badge ${typeBadgeClass}">${escapeHtml(b.type)}</span></td>
+              <td class="td-date">${escapeHtml(b.startDate)}</td>
+              <td class="td-module">${escapeHtml(b.currentModule)}</td>
+              <td>${statusHtml}</td>
+              <td style="text-align:center;">
+                <a href="${moduleUrl}" class="ba-new-view-btn">View Batch</a>
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
 
   function renderPagination(totalItems, startIndex, pageItemCount, totalPages) {
     const infoEl = document.getElementById("ba-new-pagination-info");

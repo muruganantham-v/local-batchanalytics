@@ -104,6 +104,12 @@ if ($courseid > 0 && $has_bm_section) {
 
 if (!$section && $has_bm_section && $batchid > 0) {
     $section = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+    if (!$section) {
+        $section = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
+        if ($section) {
+            $batchid = (int)$section->id;
+        }
+    }
 }
 
 if (!$section && $has_bm_section) {

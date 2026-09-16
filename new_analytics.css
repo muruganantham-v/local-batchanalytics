@@ -375,11 +375,16 @@
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
+  line-height: normal;
   transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
 .ba-new-view-btn:hover {
   background: #0b5496;
+  color: #ffffff;
+  text-decoration: none;
   transform: translateY(-1px);
 }
 
