@@ -791,12 +791,27 @@ echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Top-Level Primary Navigation Bar (Old vs New Batch Analytics)
 echo '<div class="ba-top-nav-tabs-bar">';
-echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="old">Old Batch Analytics</button>';
-echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="new">New Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="new">New Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="old">Old Batch Analytics</button>';
 echo '</div>';
 
+// NEW BATCH ANALYTICS TAB PANE (Active by default)
+echo '<div id="ba-top-tab-new" class="ba-top-tab-pane active">';
+echo '  <div class="ba-new-analytics-card">';
+echo '    <div class="ba-new-analytics-header">';
+echo '      <h3>🚀 New Batch Analytics Dashboard</h3>';
+echo '      <p class="ba-new-analytics-sub">Next-generation analytics view for batch monitoring and course metrics.</p>';
+echo '    </div>';
+echo '    <div class="ba-new-analytics-content" id="ba-new-analytics-content">';
+echo '      <div class="ba-placeholder-box">';
+echo '        <p>New Batch Analytics view ready for configuration.</p>';
+echo '      </div>';
+echo '    </div>';
+echo '  </div>';
+echo '</div>'; // #ba-top-tab-new
+
 // OLD BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-old" class="ba-top-tab-pane active">';
+echo '<div id="ba-top-tab-old" class="ba-top-tab-pane" style="display:none">';
 echo '  <div class="ba-top-row">';
 echo '    <div class="ba-search-row">';
 $search_placeholder = 'Search course name (e.g., Advanced C)...';
@@ -822,21 +837,6 @@ echo '    <ul class="ba-tabs-nav" id="batchTabs"></ul>';
 echo '    <div class="ba-tabs-content" id="batchTabsContent"></div>';
 echo '  </div>';
 echo '</div>'; // #ba-top-tab-old
-
-// NEW BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-new" class="ba-top-tab-pane" style="display:none">';
-echo '  <div class="ba-new-analytics-card">';
-echo '    <div class="ba-new-analytics-header">';
-echo '      <h3>🚀 New Batch Analytics Dashboard</h3>';
-echo '      <p class="ba-new-analytics-sub">Next-generation analytics view for batch monitoring and course metrics.</p>';
-echo '    </div>';
-echo '    <div class="ba-new-analytics-content" id="ba-new-analytics-content">';
-echo '      <div class="ba-placeholder-box">';
-echo '        <p>New Batch Analytics view ready for configuration.</p>';
-echo '      </div>';
-echo '    </div>';
-echo '  </div>';
-echo '</div>'; // #ba-top-tab-new
 
 echo '</div>'; // .local-batchanalytics-wrap
 
