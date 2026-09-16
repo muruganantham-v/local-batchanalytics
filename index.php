@@ -802,11 +802,18 @@ echo '    <div class="ba-new-analytics-header">';
 echo '      <h3>🚀 New Batch Analytics Dashboard</h3>';
 echo '      <p class="ba-new-analytics-sub">Next-generation analytics view for batch monitoring and course metrics.</p>';
 echo '    </div>';
-echo '    <div class="ba-new-analytics-content" id="ba-new-analytics-content">';
-echo '      <div class="ba-placeholder-box">';
-echo '        <p>New Batch Analytics view ready for configuration.</p>';
-echo '      </div>';
-echo '    </div>';
+echo '    <div class="ba-new-analytics-content" id="ba-new-analytics-content">
+      <div class="ba-placeholder-box" style="text-align:left; max-width:700px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:24px;">
+        <h4 style="margin:0 0 10px 0; color:#1e293b; font-size:17px; font-weight:700;">📊 Batch Detail Screen (Batch Management Integration)</h4>
+        <p style="color:#64748b; font-size:13.5px; line-height:1.5; margin-bottom:18px;">
+          View the high-fidelity Batch Detail Screen sourced directly from <code>mdl_local_bm_classsection</code>, including module schedules, student performance bands (Grade vs Percentile), SS activities, and review notes.
+        </p>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <a href="' . (new moodle_url('/local/batchanalytics/batch.php', ['id' => 3]))->out(false) . '" class="ba-btn" style="background:#cc0066; color:#fff; text-decoration:none; font-weight:700; padding:10px 20px; border-radius:8px; display:inline-block; font-size:13.5px;">View Batch #3 (Class Section) &rarr;</a>
+          <a href="' . (new moodle_url('/local/batchanalytics/batch.php'))->out(false) . '" class="ba-btn" style="background:#1b6ec2; color:#fff; text-decoration:none; font-weight:700; padding:10px 20px; border-radius:8px; display:inline-block; font-size:13.5px;">View Batch Overview</a>
+        </div>
+      </div>
+    </div>';
 echo '  </div>';
 echo '</div>'; // #ba-top-tab-new
 
