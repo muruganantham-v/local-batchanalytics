@@ -9,3 +9,5 @@ node_modules/
 .vscode/
 scripts/
 .claude/
+.playwright-mcp/
+*.png
