@@ -6101,3 +6101,81 @@ input:checked+.ba-slider:before {
     text-align: center;
   }
 }
+
+/* ==================== TOP PRIMARY NAVIGATION TABS (OLD vs NEW) ==================== */
+.ba-top-nav-tabs-bar {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 24px;
+  padding-bottom: 0;
+}
+
+.ba-top-nav-tab {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  outline: none;
+  margin-bottom: -2px;
+}
+
+.ba-top-nav-tab:hover {
+  color: #0f6cbf;
+  background: rgba(15, 108, 191, 0.04);
+  border-radius: 6px 6px 0 0;
+}
+
+.ba-top-nav-tab.active {
+  color: #0f6cbf;
+  border-bottom-color: #0f6cbf;
+  background: rgba(15, 108, 191, 0.08);
+  border-radius: 6px 6px 0 0;
+}
+
+.ba-top-tab-pane {
+  animation: baTabFadeIn 0.2s ease-in-out;
+}
+
+@keyframes baTabFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ba-new-analytics-card {
+  padding: 28px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.ba-new-analytics-header h3 {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.ba-new-analytics-sub {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0 0 20px 0;
+}
+
+.ba-placeholder-box {
+  padding: 40px;
+  text-align: center;
+  background: #ffffff;
+  border: 2px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 500;
+}
+

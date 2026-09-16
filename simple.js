@@ -35,6 +35,27 @@ document.addEventListener("DOMContentLoaded", function () {
     sessionStorage.removeItem("ba-maac-import-return");
   }
 
+  // Top-Level Primary Tab Switching (Old vs New Batch Analytics)
+  const topNavTabs = document.querySelectorAll(".ba-top-nav-tab");
+  topNavTabs.forEach((tabBtn) => {
+    tabBtn.addEventListener("click", function () {
+      const targetTab = this.dataset.topTab;
+      topNavTabs.forEach((btn) => btn.classList.remove("active"));
+      this.classList.add("active");
+
+      document.querySelectorAll(".ba-top-tab-pane").forEach((pane) => {
+        pane.style.display = "none";
+        pane.classList.remove("active");
+      });
+
+      const targetPane = document.getElementById(`ba-top-tab-${targetTab}`);
+      if (targetPane) {
+        targetPane.style.display = "block";
+        targetPane.classList.add("active");
+      }
+    });
+  });
+
   if (!searchBox || !searchBtn || !batchSelect) {
     return;
   }

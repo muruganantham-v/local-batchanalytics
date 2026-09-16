@@ -787,33 +787,56 @@ $mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_
 $mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
 $maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
 echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
-// echo '<h2 class="ba-page-title">' . get_string('pluginname', 'local_batchanalytics') . '</h2>';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
-echo '<div class="ba-top-row">';
-echo '<div class="ba-search-row">';
+// Top-Level Primary Navigation Bar (Old vs New Batch Analytics)
+echo '<div class="ba-top-nav-tabs-bar">';
+echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="old">Old Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="new">New Batch Analytics</button>';
+echo '</div>';
+
+// OLD BATCH ANALYTICS TAB PANE
+echo '<div id="ba-top-tab-old" class="ba-top-tab-pane active">';
+echo '  <div class="ba-top-row">';
+echo '    <div class="ba-search-row">';
 $search_placeholder = 'Search course name (e.g., Advanced C)...';
-echo '<input id="ba-search" type="text" placeholder="' . $search_placeholder . '">';
-echo '<button id="ba-search-btn" class="ba-btn">Search</button>';
-echo '</div>';
-echo '<div class="ba-top-actions">';
+echo '      <input id="ba-search" type="text" placeholder="' . $search_placeholder . '">';
+echo '      <button id="ba-search-btn" class="ba-btn">Search</button>';
+echo '    </div>';
+echo '    <div class="ba-top-actions">';
 if ($can_view_tickets) {
-    echo '<a href="' . new moodle_url('/local/batchanalytics/tickets.php') . '" class="ba-btn ba-btn-view">' . get_string('ticket_dashboard', 'local_batchanalytics') . '</a>';
+    echo '      <a href="' . new moodle_url('/local/batchanalytics/tickets.php') . '" class="ba-btn ba-btn-view">' . get_string('ticket_dashboard', 'local_batchanalytics') . '</a>';
 }
-echo '</div>';
-echo '</div>';
+echo '    </div>';
+echo '  </div>';
 
-echo '<div class="ba-batch-card">';
-echo '<label class="ba-label">SELECT BATCH GROUP</label>';
-echo '<select id="ba-batch" class="ba-select">';
-echo '<option value="">-- Select a Batch --</option>';
-echo '</select>';
-echo '</div>';
+echo '  <div class="ba-batch-card">';
+echo '    <label class="ba-label">SELECT BATCH GROUP</label>';
+echo '    <select id="ba-batch" class="ba-select">';
+echo '      <option value="">-- Select a Batch --</option>';
+echo '    </select>';
+echo '  </div>';
 
-echo '<div id="ba-tabs-wrapper" class="ba-tabs-wrapper" style="display:none">';
-echo '  <ul class="ba-tabs-nav" id="batchTabs"></ul>';
-echo '  <div class="ba-tabs-content" id="batchTabsContent"></div>';
-echo '</div>';
+echo '  <div id="ba-tabs-wrapper" class="ba-tabs-wrapper" style="display:none">';
+echo '    <ul class="ba-tabs-nav" id="batchTabs"></ul>';
+echo '    <div class="ba-tabs-content" id="batchTabsContent"></div>';
+echo '  </div>';
+echo '</div>'; // #ba-top-tab-old
+
+// NEW BATCH ANALYTICS TAB PANE
+echo '<div id="ba-top-tab-new" class="ba-top-tab-pane" style="display:none">';
+echo '  <div class="ba-new-analytics-card">';
+echo '    <div class="ba-new-analytics-header">';
+echo '      <h3>🚀 New Batch Analytics Dashboard</h3>';
+echo '      <p class="ba-new-analytics-sub">Next-generation analytics view for batch monitoring and course metrics.</p>';
+echo '    </div>';
+echo '    <div class="ba-new-analytics-content" id="ba-new-analytics-content">';
+echo '      <div class="ba-placeholder-box">';
+echo '        <p>New Batch Analytics view ready for configuration.</p>';
+echo '      </div>';
+echo '    </div>';
+echo '  </div>';
+echo '</div>'; // #ba-top-tab-new
 
 echo '</div>'; // .local-batchanalytics-wrap
 
