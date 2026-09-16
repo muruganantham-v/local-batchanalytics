@@ -214,13 +214,13 @@ function initNewBatchAnalytics() {
           statusHtml = `<span class="ba-status-onschedule"><span class="ba-status-dot dot-green"></span> On schedule</span>`;
         }
 
-          let moduleUrl = "";
-          if (b.courseId && b.courseId > 0) {
-            moduleUrl = `module.php?courseid=${encodeURIComponent(b.courseId)}`;
-          } else if (b.sectionId && b.sectionId > 0) {
-            moduleUrl = `module.php?batchid=${encodeURIComponent(b.sectionId)}&module=${encodeURIComponent(b.moduleIdx || 1)}`;
+          let batchUrl = "";
+          if (b.sectionId && b.sectionId > 0) {
+            batchUrl = `batch.php?id=${encodeURIComponent(b.sectionId)}`;
+          } else if (b.id && b.id > 0) {
+            batchUrl = `batch.php?id=${encodeURIComponent(b.id)}`;
           } else {
-            moduleUrl = `module.php?batchid=${encodeURIComponent(b.id)}&module=${encodeURIComponent(b.moduleIdx || 1)}`;
+            batchUrl = "batch.php";
           }
 
           return `
@@ -234,7 +234,7 @@ function initNewBatchAnalytics() {
               <td class="td-module">${escapeHtml(b.currentModule)}</td>
               <td>${statusHtml}</td>
               <td style="text-align:center;">
-                <a href="${moduleUrl}" class="ba-new-view-btn">View Batch</a>
+                <a href="${batchUrl}" class="ba-new-view-btn">View Batch</a>
               </td>
             </tr>
           `;

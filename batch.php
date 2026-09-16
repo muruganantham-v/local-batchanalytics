@@ -31,7 +31,7 @@ require_login();
 $context = context_system::instance();
 require_capability('local/batchanalytics:view', $context);
 
-$id = optional_param('id', 0, PARAM_INT);
+$id = optional_param('id', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
 
 // -------------------------------------------------------------------------
 // 1. Data Retrieval from Batch Management (local_bm_classsection / local_bm_batch)
@@ -49,6 +49,9 @@ $is_sample_data = false;
 
 if ($has_bm_section && $id > 0) {
     $section = $DB->get_record('local_bm_classsection', ['id' => $id]);
+    if (!$section) {
+        $section = $DB->get_record('local_bm_classsection', ['batchid' => $id]);
+    }
 }
 
 // Fallback: If requested ID is not found or ID is 0, pick the first available classsection record
@@ -57,6 +60,9 @@ if (!$section && $has_bm_section) {
     if (!empty($sections)) {
         $section = reset($sections);
     }
+}
+if ($section) {
+    $id = (int)$section->id;
 }
 
 if ($section && $has_bm_batch && !empty($section->batchid)) {
