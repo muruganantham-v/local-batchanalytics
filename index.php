@@ -931,9 +931,13 @@ $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading(get_string('pluginname', 'local_batchanalytics'));
 
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
+$newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
 $scripturl = new moodle_url('/local/batchanalytics/simple.js', ['v' => filemtime(__DIR__ . '/simple.js')]);
+$newscripturl = new moodle_url('/local/batchanalytics/new_analytics.js', ['v' => filemtime(__DIR__ . '/new_analytics.js')]);
 $PAGE->requires->css($styleurl);
+$PAGE->requires->css($newstyleurl);
 $PAGE->requires->js($scripturl);
+$PAGE->requires->js($newscripturl);
 
 echo $OUTPUT->header();
 
