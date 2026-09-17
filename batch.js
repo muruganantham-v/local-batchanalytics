@@ -192,26 +192,73 @@
         var noteBtn = document.getElementById('ba-btn-addnote');
         var noteText = document.getElementById('ba-note-text');
         var noteList = document.getElementById('ba-note-list');
+        var batchContainer = document.getElementById('ba-batch-detail-container');
 
         if (noteBtn && noteText && noteList) {
             noteBtn.addEventListener('click', function() {
                 var text = noteText.value.trim();
                 if (!text) {
+                    noteText.focus();
                     return;
                 }
 
                 var author = noteBtn.getAttribute('data-author') || 'Program Manager';
-                var now = new Date();
-                var formattedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
-                    ', ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                var batchId = (batchContainer && batchContainer.getAttribute('data-batchid')) || '1';
+                var sessKey = (batchContainer && batchContainer.getAttribute('data-sesskey')) || '';
 
-                var noteItem = document.createElement('div');
-                noteItem.className = 'note-item';
-                noteItem.innerHTML = '<div class="meta"><b>' + escapeHtml(author) + '</b> · ' + escapeHtml(formattedDate) + '</div>' +
-                    '<div class="body">' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>';
+                if (!sessKey && typeof M !== 'undefined' && M.cfg && M.cfg.sesskey) {
+                    sessKey = M.cfg.sesskey;
+                }
 
-                noteList.insertBefore(noteItem, noteList.firstChild);
-                noteText.value = '';
+                var originalBtnText = noteBtn.textContent;
+                noteBtn.disabled = true;
+                noteBtn.textContent = 'Saving…';
+
+                var formData = new FormData();
+                formData.append('action', 'addnote');
+                formData.append('batchid', batchId);
+                formData.append('sesskey', sessKey);
+                formData.append('author', author);
+                formData.append('note', text);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) {
+                    if (!res.ok) {
+                        throw new Error('Server returned ' + res.status);
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    noteBtn.disabled = false;
+                    noteBtn.textContent = originalBtnText;
+
+                    if (data && data.success && data.note) {
+                        // Remove demo notes if this is the first real note
+                        var demoNotes = noteList.querySelectorAll('.note-item-demo');
+                        demoNotes.forEach(function(el) {
+                            el.remove();
+                        });
+
+                        var noteItem = document.createElement('div');
+                        noteItem.className = 'note-item';
+                        noteItem.innerHTML = '<div class="meta"><b>' + escapeHtml(data.note.who) + '</b> · ' + escapeHtml(data.note.date) + '</div>' +
+                            '<div class="body">' + escapeHtml(data.note.body).replace(/\n/g, '<br>') + '</div>';
+
+                        noteList.insertBefore(noteItem, noteList.firstChild);
+                        noteText.value = '';
+                    } else {
+                        alert((data && data.message) ? data.message : 'Failed to save review note.');
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Error saving note:', err);
+                    noteBtn.disabled = false;
+                    noteBtn.textContent = originalBtnText;
+                    alert('Network error while saving review note. Please try again.');
+                });
             });
         }
 

@@ -203,20 +203,32 @@ if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
 
 // Mentor resolution
 $class_mentor = '—';
+$class_mentor_user = null;
 if (!empty($cur_mod['primarymentor'])) {
     if (is_numeric($cur_mod['primarymentor'])) {
         $u = $DB->get_record('user', ['id' => (int)$cur_mod['primarymentor'], 'deleted' => 0]);
-        $class_mentor = $u ? fullname($u) : (string)$cur_mod['primarymentor'];
+        if ($u) {
+            $class_mentor = fullname($u);
+            $class_mentor_user = $u;
+        } else {
+            $class_mentor = (string)$cur_mod['primarymentor'];
+        }
     } else {
         $class_mentor = (string)$cur_mod['primarymentor'];
     }
 }
 
 $lab_mentor = '—';
+$lab_mentor_user = null;
 if (!empty($cur_mod['labmentor1'])) {
     if (is_numeric($cur_mod['labmentor1'])) {
         $u = $DB->get_record('user', ['id' => (int)$cur_mod['labmentor1'], 'deleted' => 0]);
-        $lab_mentor = $u ? fullname($u) : (string)$cur_mod['labmentor1'];
+        if ($u) {
+            $lab_mentor = fullname($u);
+            $lab_mentor_user = $u;
+        } else {
+            $lab_mentor = (string)$cur_mod['labmentor1'];
+        }
     } else {
         $lab_mentor = (string)$cur_mod['labmentor1'];
     }
@@ -245,115 +257,7 @@ function format_cell_muted($val) {
 }
 
 // -------------------------------------------------------------------------
-// 3. Module KPIs (Course Metrics from Gradebook or Canonical Fallback)
-// -------------------------------------------------------------------------
-$module_kpis = [
-    ['label' => 'Attendance',   'val' => '82%', 'sub' => 'Avg Grade'],
-    ['label' => 'Assignments',  'val' => '74%', 'sub' => 'Completion 78%'],
-    ['label' => 'Class Work',   'val' => '91%', 'sub' => 'Completion 95%'],
-    ['label' => 'Project Work', 'val' => '0%',  'sub' => 'Not started'],
-    ['label' => 'Module Test',  'val' => '63%', 'sub' => 'Completion 60%'],
-    ['label' => 'Quiz',         'val' => '64%', 'sub' => 'Completion 70%'],
-];
-
-// If Moodle course is valid, attempt live pull of Grade Categories
-if ($courseid > 0) {
-    $course_record = $DB->get_record('course', ['id' => $courseid]);
-    if ($course_record) {
-        $cats_sql = "SELECT gc.id, gc.fullname, COUNT(gi.id) as itemcount
-                       FROM {grade_categories} gc
-                       JOIN {grade_items} gi ON gi.categoryid = gc.id
-                      WHERE gi.courseid = :cid AND gi.hidden = 0
-                      GROUP BY gc.id, gc.fullname";
-        $db_cats = $DB->get_records_sql($cats_sql, ['cid' => $courseid]);
-        if (!empty($db_cats)) {
-            $mapped_kpis = [];
-            foreach ($db_cats as $c) {
-                if (stripos($c->fullname, 'attend') !== false) {
-                    $mapped_kpis[] = ['label' => 'Attendance', 'val' => '84%', 'sub' => $c->fullname];
-                } else if (stripos($c->fullname, 'assign') !== false) {
-                    $mapped_kpis[] = ['label' => 'Assignments', 'val' => '76%', 'sub' => $c->fullname];
-                } else if (stripos($c->fullname, 'test') !== false) {
-                    $mapped_kpis[] = ['label' => 'Module Test', 'val' => '68%', 'sub' => $c->fullname];
-                } else if (stripos($c->fullname, 'project') !== false) {
-                    $mapped_kpis[] = ['label' => 'Project Work', 'val' => '0%', 'sub' => $c->fullname];
-                }
-            }
-            if (!empty($mapped_kpis)) {
-                $module_kpis = array_merge($mapped_kpis, array_slice($module_kpis, count($mapped_kpis)));
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------
-// 4. Tab 1: Mentor Activities (Embedded Activity Tracker UI)
-// -------------------------------------------------------------------------
-$activity_categories = [];
-
-if ($courseid > 0) {
-    $act_service = new \local_batchanalytics\activity_tracker_service();
-    if ($act_service->is_table_available()) {
-        $tracker_data = $act_service->get_course_data($courseid);
-        if (!empty($tracker_data['categories'])) {
-            $activity_categories = $tracker_data['categories'];
-        }
-    }
-}
-
-// Fallback demo activities for Tracker UI if no course items found
-if (empty($activity_categories)) {
-    $activity_categories = [
-        [
-            'id' => 'assignments', 'name' => 'Assignments', 'completed' => 1, 'pending' => 2,
-            'activities' => [
-                ['cmid' => 101, 'name' => 'Assignment 1: Pointer Arithmetic & Memory Layout', 'completed' => true,  'completiondate' => '2026-09-19'],
-                ['cmid' => 102, 'name' => 'Assignment 2: Bitwise Operators & Bit Manipulation', 'completed' => false, 'completiondate' => ''],
-                ['cmid' => 103, 'name' => 'Assignment 3: Dynamic Memory Allocation (DMA)',     'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'tests', 'name' => 'Module Tests', 'completed' => 1, 'pending' => 1,
-            'activities' => [
-                ['cmid' => 201, 'name' => 'Objective Test: C Storage Classes & Scope', 'completed' => true,  'completiondate' => '2026-09-15'],
-                ['cmid' => 202, 'name' => 'Module Test Conduct: Comprehensive Advanced C', 'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'nominations', 'name' => 'Nominations & Mentorship', 'completed' => 1, 'pending' => 1,
-            'activities' => [
-                ['cmid' => 301, 'name' => 'Spot Award Nomination (Batch Mentor Recommendation)', 'completed' => true,  'completiondate' => '2026-09-14'],
-                ['cmid' => 302, 'name' => 'Power Track Nomination (High Potentials Selection)',  'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'projects', 'name' => 'Projects', 'completed' => 0, 'pending' => 2,
-            'activities' => [
-                ['cmid' => 401, 'name' => 'Mini Project: LSB Steganography', 'completed' => false, 'completiondate' => ''],
-                ['cmid' => 402, 'name' => 'Project Evaluation & Code Review', 'completed' => false, 'completiondate' => ''],
-            ]
-        ]
-    ];
-}
-
-// -------------------------------------------------------------------------
-// 5. Tab 2: SS Activities (Module Level)
-// -------------------------------------------------------------------------
-$ss_module_activities = [
-    ['activity' => 'Spot Award distribution',         'planned' => '16 Sep 2026', 'actual' => '16 Sep 2026', 'status' => 'done'],
-    ['activity' => 'Mid-module survey completed',     'planned' => '25 Sep 2026', 'actual' => '—',           'status' => 'pending'],
-    ['activity' => 'Red-case follow-up (module)',     'planned' => '22 Sep 2026', 'actual' => '—',           'status' => 'over'],
-    ['activity' => 'Soft-skill session (module)',     'planned' => '05 Oct 2026', 'actual' => '—',           'status' => 'pending'],
-];
-
-$ss_status_styles = [
-    'done'    => ['st-g', 'Done'],
-    'pending' => ['st-a', 'Pending'],
-    'over'    => ['st-r', 'Overdue']
-];
-
-// -------------------------------------------------------------------------
-// 6. Tab 3: Student Performance (Course Tab Advanced Filter Dataset)
+// 3. Student Performance Dataset (Course Tab Advanced Filter Dataset)
 // -------------------------------------------------------------------------
 $students_data = [];
 
@@ -425,6 +329,438 @@ if (empty($students_data)) {
 }
 
 // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// 4. Module KPIs (Course Metrics from LMS Gradebook or Populated Canonical)
+// -------------------------------------------------------------------------
+function get_ba_category_icon_and_color(string $name, int $index): array {
+    $n = strtolower($name);
+    $icons = [
+        'attendance' => '<path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5v-5z"></path>',
+        'assignment' => '<path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 18H6V4h2v8l2.5-1.5L13 12V4h5v16z"></path>',
+        'quiz'       => '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path>',
+        'test'       => '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>',
+        'project'    => '<path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"></path>',
+        'programming'=> '<path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"></path>',
+        'maac'       => '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"></path>',
+    ];
+
+    $svg_path = $icons['assignment'];
+    if (strpos($n, 'attend') !== false) {
+        $svg_path = $icons['attendance'];
+    } elseif (strpos($n, 'quiz') !== false || strpos($n, 'qiuz') !== false || strpos($n, 'objective') !== false) {
+        $svg_path = $icons['quiz'];
+    } elseif (strpos($n, 'project') !== false) {
+        $svg_path = $icons['project'];
+    } elseif (strpos($n, 'program') !== false || strpos($n, 'code') !== false) {
+        $svg_path = $icons['programming'];
+    } elseif (strpos($n, 'test') !== false || strpos($n, 'module') !== false) {
+        $svg_path = $icons['test'];
+    } elseif (strpos($n, 'maac') !== false || strpos($n, 'report') !== false) {
+        $svg_path = $icons['maac'];
+    }
+
+    $palettes = [
+        ['c' => '#2196F3', 'b' => '#E3F2FD'],
+        ['c' => '#E91E63', 'b' => '#FCE4EC'],
+        ['c' => '#FF9800', 'b' => '#FFF3E0'],
+        ['c' => '#4CAF50', 'b' => '#E8F5E9'],
+        ['c' => '#9C27B0', 'b' => '#F3E5F5'],
+        ['c' => '#009688', 'b' => '#E0F2F1'],
+    ];
+    $color_set = $palettes[$index % count($palettes)];
+
+    return [
+        'bg' => $color_set['b'],
+        'icon' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="' . $color_set['c'] . '">' . $svg_path . '</svg>',
+    ];
+}
+
+function get_ba_comp_class(float $v): string {
+    return $v < 50 ? 'text-danger' : ($v < 80 ? 'text-warning' : 'text-success');
+}
+
+$module_kpis = [];
+$kpi_categories_data = [];
+
+// Resolve enrolled students for course metrics
+$student_role_id = $DB->get_field('role', 'id', ['shortname' => 'student']) ?: 5;
+$students_sql = "
+    SELECT DISTINCT
+        u.id as userid,
+        CONCAT(u.firstname, ' ', u.lastname) as fullname,
+        u.username,
+        u.idnumber
+    FROM {user} u
+    JOIN {role_assignments} ra ON ra.userid = u.id
+    JOIN {context} ctx ON ctx.id = ra.contextid
+    WHERE ctx.instanceid = :courseid
+      AND ctx.contextlevel = 50
+      AND ra.roleid = :roleid
+      AND u.deleted = 0
+    ORDER BY u.firstname, u.lastname
+";
+$enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
+
+if ($courseid > 0) {
+    $items_sql = "
+        SELECT
+            gi.id as itemid, gi.itemname, gi.itemtype, gi.itemmodule, gi.grademax, gi.grademin,
+            gc.id as categoryid, gc.fullname as categoryname
+        FROM {grade_items} gi
+        LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
+        WHERE gi.courseid = :courseid
+          AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
+          AND gi.hidden = 0
+        ORDER BY gc.fullname, gi.itemname
+    ";
+    $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
+    $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+
+    $raw_cats = [];
+    foreach ($grade_items as $item) {
+        if ($item->itemtype === 'course') {
+            $cat_name = 'MAAC Ratings';
+        } else {
+            $cat_id = $item->categoryid;
+            $cat_name = 'Uncategorized';
+            if ($cat_id && isset($all_cats[$cat_id])) {
+                $c = $all_cats[$cat_id];
+                while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
+                    $c = $all_cats[$c->parent];
+                }
+                if ($c->depth == 2) {
+                    $cat_name = $c->fullname;
+                }
+            }
+        }
+
+        if (trim($cat_name) === '' || $cat_name === '?' || $cat_name === 'Uncategorized') {
+            continue;
+        }
+
+        if (!isset($raw_cats[$cat_name])) {
+            $raw_cats[$cat_name] = [
+                'categoryname' => $cat_name,
+                'items' => [],
+                'studentGrades' => []
+            ];
+        }
+        $raw_cats[$cat_name]['items'][] = [
+            'itemid' => $item->itemid,
+            'grademax' => (float)$item->grademax,
+            'grademin' => (float)$item->grademin
+        ];
+    }
+
+    if (!empty($raw_cats) && !empty($enrolled_students)) {
+        foreach ($raw_cats as $category_key => &$category_data) {
+            if ($category_key === 'MAAC Ratings' || stripos($category_key, 'attend') !== false) {
+                continue;
+            }
+            $category_data['categoryname'] = $category_key . ' (' . count($category_data['items']) . ')';
+        }
+        unset($category_data);
+
+        $all_grades_sql = "
+            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade
+            FROM {grade_grades} gg
+            JOIN {grade_items} gi ON gi.id = gg.itemid
+            WHERE gi.courseid = :courseid
+              AND gi.hidden = 0
+              AND gg.finalgrade IS NOT NULL
+              AND gg.excluded = 0
+              AND gg.hidden = 0
+        ";
+        $grades_map = [];
+        $rs = $DB->get_recordset_sql($all_grades_sql, ['courseid' => $courseid]);
+        foreach ($rs as $rec) {
+            $grades_map[$rec->userid][$rec->itemid] = $rec->finalgrade;
+        }
+        $rs->close();
+
+        // Synchronize MAAC ratings from maac_service (exactly as simple.js syncCourseMaacRatings does)
+        $maac_service = new \local_batchanalytics\maac_service();
+        $maac_ratings = [];
+        try {
+            $m_data = $maac_service->get_course_data($courseid, $USER->id);
+            if (!empty($m_data['students'])) {
+                foreach ($m_data['students'] as $st) {
+                    if (isset($st['maac_rating']) && $st['maac_rating'] !== null && $st['maac_rating'] !== '') {
+                        $maac_ratings[$st['username']] = (float)$st['maac_rating'];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        $kpi_card_idx = 0;
+        foreach ($raw_cats as $cat_key => &$cat_data) {
+            $display_name = $cat_data['categoryname'];
+            $gradable_items_in_cat = 0;
+            $category_total_max = 0;
+
+            foreach ($cat_data['items'] as $item) {
+                $gmax = $item['grademax'];
+                $gmin = $item['grademin'];
+                if ($gmax > $gmin) {
+                    $gradable_items_in_cat++;
+                    $category_total_max += ($gmax - $gmin);
+                }
+            }
+
+            $total_pct_sum = 0;
+            $valid_pct_count = 0;
+            $total_comp_sum = 0;
+
+            foreach ($enrolled_students as $student) {
+                $total_earned = 0;
+                $total_max = 0;
+                $items_completed = 0;
+
+                foreach ($cat_data['items'] as $item) {
+                    $itemid = $item['itemid'];
+                    $userid = $student->userid;
+
+                    if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
+                        $finalgrade = $grades_map[$userid][$itemid];
+                        $gmax = $item['grademax'];
+                        $gmin = $item['grademin'];
+                        if ($gmax > $gmin) {
+                            $items_completed++;
+                            $total_earned += ($finalgrade - $gmin);
+                            $total_max += ($gmax - $gmin);
+                        }
+                    }
+                }
+
+                $percentage = $total_max > 0 ? round(($total_earned / $total_max) * 100, 2) : null;
+                if ($cat_key === 'MAAC Ratings') {
+                    if (isset($maac_ratings[$student->username])) {
+                        $percentage = $maac_ratings[$student->username];
+                    } else if ($percentage !== null) {
+                        $percentage = round($percentage / 10, 1);
+                    }
+                }
+
+                $comp_rate = $gradable_items_in_cat > 0
+                    ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
+                    : 0;
+
+                if ($percentage !== null) {
+                    $total_pct_sum += $percentage;
+                    $valid_pct_count++;
+                }
+                $total_comp_sum += $comp_rate;
+
+                $cat_data['studentGrades'][] = [
+                    'userid' => $student->userid,
+                    'fullname' => $student->fullname,
+                    'username' => !empty($student->idnumber) ? $student->idnumber : $student->username,
+                    'percentage' => $percentage,
+                    'completionRate' => $comp_rate,
+                    'totalEarned' => $total_earned
+                ];
+            }
+
+            $isMaac = ($cat_key === 'MAAC Ratings');
+            $isAtt = (stripos($cat_key, 'attend') !== false);
+            $avgG = $valid_pct_count > 0 ? ($total_pct_sum / $valid_pct_count) : 0.0;
+            $avgC = count($enrolled_students) > 0 ? ($total_comp_sum / count($enrolled_students)) : 0.0;
+            $avgGFormatted = number_format($avgG, 2);
+            $avgCFormatted = number_format($avgC, 2);
+
+            $val_str = $isMaac ? $avgGFormatted : ($avgGFormatted . '%');
+            $sub_str = $isMaac ? 'Avg Rating' : ($isAtt ? 'Avg Attendance' : ('Completion ' . $avgCFormatted . '%'));
+
+            $style = get_ba_category_icon_and_color($display_name, $kpi_card_idx);
+            $kpi_card_idx++;
+
+            $module_kpis[] = [
+                'label' => $display_name,
+                'val'   => $val_str,
+                'sub'   => $sub_str,
+                'avgGrade' => $avgG,
+                'avgGradeFormatted' => $avgGFormatted,
+                'avgCompletion' => $avgC,
+                'avgCompFormatted' => $avgCFormatted,
+                'compClass' => get_ba_comp_class((float)$avgC),
+                'icon_bg' => $style['bg'],
+                'icon_svg' => $style['icon'],
+                'isMaac' => $isMaac,
+                'isAttendance' => $isAtt
+            ];
+
+            $kpi_categories_data[$display_name] = [
+                'categoryname' => $display_name,
+                'avgGrade' => $avgG,
+                'avgGradeFormatted' => $avgGFormatted,
+                'avgCompletion' => $avgC,
+                'avgCompFormatted' => $avgCFormatted,
+                'isMaac' => $isMaac,
+                'isAttendance' => $isAtt,
+                'studentGrades' => $cat_data['studentGrades']
+            ];
+        }
+        unset($cat_data);
+    }
+}
+
+// Fallback or standard 6 categories for courses without live grade items
+if (empty($module_kpis)) {
+    $std_metrics = [
+        'Attendance'   => ['val' => '82.00%', 'avgGrade' => 82.0, 'sub' => 'Avg Grade',          'isAtt' => true,  'isMaac' => false, 'comp' => 100.0],
+        'Assignments'  => ['val' => '74.00%', 'avgGrade' => 74.0, 'sub' => 'Completion 78.50%', 'isAtt' => false, 'isMaac' => false, 'comp' => 78.5],
+        'Class Work'   => ['val' => '91.00%', 'avgGrade' => 91.0, 'sub' => 'Completion 95.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 95.0],
+        'Project Work' => ['val' => '0.00%',  'avgGrade' => 0.0,  'sub' => 'Not started',        'isAtt' => false, 'isMaac' => false, 'comp' => 0.0],
+        'Module Test'  => ['val' => '63.00%', 'avgGrade' => 63.0, 'sub' => 'Completion 60.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 60.0],
+        'Quiz'         => ['val' => '64.00%', 'avgGrade' => 64.0, 'sub' => 'Completion 70.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 70.0],
+    ];
+
+    $pool = [];
+    if (!empty($enrolled_students)) {
+        foreach ($enrolled_students as $st) {
+            $pool[] = [
+                'userid' => $st->userid,
+                'username' => !empty($st->idnumber) ? $st->idnumber : $st->username,
+                'fullname' => $st->fullname,
+            ];
+        }
+    } else if (!empty($students_data)) {
+        foreach ($students_data as $s) {
+            $pool[] = [
+                'userid' => $s['id'],
+                'username' => $s['id'],
+                'fullname' => $s['name'],
+                'base_grade' => $s['grade'] ?? 75,
+            ];
+        }
+    }
+
+    $fb_idx = 0;
+    foreach ($std_metrics as $lbl => $m) {
+        $style = get_ba_category_icon_and_color($lbl, $fb_idx);
+        $fb_idx++;
+
+        $module_kpis[] = [
+            'label' => $lbl,
+            'val'   => $m['val'],
+            'sub'   => $m['sub'],
+            'avgGrade' => $m['avgGrade'],
+            'avgGradeFormatted' => number_format($m['avgGrade'], 2),
+            'avgCompletion' => $m['comp'],
+            'avgCompFormatted' => number_format($m['comp'], 2),
+            'compClass' => get_ba_comp_class((float)$m['comp']),
+            'icon_bg' => $style['bg'],
+            'icon_svg' => $style['icon'],
+            'isMaac' => $m['isMaac'],
+            'isAttendance' => $m['isAtt']
+        ];
+
+        $studentGrades = [];
+        $idx = 0;
+        foreach ($pool as $p) {
+            $base = isset($p['base_grade']) ? $p['base_grade'] : (60 + (($idx * 7) % 35));
+            if ($lbl === 'Project Work') {
+                $gradeVal = null;
+                $compVal = 0.0;
+            } else if ($lbl === 'Attendance') {
+                $gradeVal = min(100, max(50, $base + 5));
+                $compVal = 100.0;
+            } else {
+                $gradeVal = min(100, max(30, $base + ($idx % 5) - 2));
+                $compVal = min(100, max(0, $m['comp'] + (($idx % 9) - 4)));
+            }
+
+            $studentGrades[] = [
+                'userid' => $p['userid'],
+                'username' => $p['username'],
+                'fullname' => $p['fullname'],
+                'percentage' => $gradeVal,
+                'completionRate' => $compVal,
+                'totalEarned' => $gradeVal
+            ];
+            $idx++;
+        }
+
+        $kpi_categories_data[$lbl] = [
+            'categoryname' => $lbl,
+            'avgGrade' => $m['avgGrade'],
+            'avgGradeFormatted' => number_format($m['avgGrade'], 2),
+            'avgCompletion' => $m['comp'],
+            'avgCompFormatted' => number_format($m['comp'], 2),
+            'isMaac' => $m['isMaac'],
+            'isAttendance' => $m['isAtt'],
+            'studentGrades' => $studentGrades
+        ];
+    }
+}
+
+// -------------------------------------------------------------------------
+// 5. Tab 1: Mentor Activities (Embedded Activity Tracker UI)
+// -------------------------------------------------------------------------
+$activity_categories = [];
+
+if ($courseid > 0) {
+    $act_service = new \local_batchanalytics\activity_tracker_service();
+    if ($act_service->is_table_available()) {
+        $tracker_data = $act_service->get_course_data($courseid);
+        if (!empty($tracker_data['categories'])) {
+            $activity_categories = $tracker_data['categories'];
+        }
+    }
+}
+
+// Fallback demo activities for Tracker UI if no course items found
+if (empty($activity_categories)) {
+    $activity_categories = [
+        [
+            'id' => 'assignments', 'name' => 'Assignments', 'completed' => 1, 'pending' => 2,
+            'activities' => [
+                ['cmid' => 101, 'name' => 'Assignment 1: Pointer Arithmetic & Memory Layout', 'completed' => true,  'completiondate' => '2026-09-19'],
+                ['cmid' => 102, 'name' => 'Assignment 2: Bitwise Operators & Bit Manipulation', 'completed' => false, 'completiondate' => ''],
+                ['cmid' => 103, 'name' => 'Assignment 3: Dynamic Memory Allocation (DMA)',     'completed' => false, 'completiondate' => ''],
+            ]
+        ],
+        [
+            'id' => 'tests', 'name' => 'Module Tests', 'completed' => 1, 'pending' => 1,
+            'activities' => [
+                ['cmid' => 201, 'name' => 'Objective Test: C Storage Classes & Scope', 'completed' => true,  'completiondate' => '2026-09-15'],
+                ['cmid' => 202, 'name' => 'Module Test Conduct: Comprehensive Advanced C', 'completed' => false, 'completiondate' => ''],
+            ]
+        ],
+        [
+            'id' => 'nominations', 'name' => 'Nominations & Mentorship', 'completed' => 1, 'pending' => 1,
+            'activities' => [
+                ['cmid' => 301, 'name' => 'Spot Award Nomination (Batch Mentor Recommendation)', 'completed' => true,  'completiondate' => '2026-09-14'],
+                ['cmid' => 302, 'name' => 'Power Track Nomination (High Potentials Selection)',  'completed' => false, 'completiondate' => ''],
+            ]
+        ],
+        [
+            'id' => 'projects', 'name' => 'Projects', 'completed' => 0, 'pending' => 2,
+            'activities' => [
+                ['cmid' => 401, 'name' => 'Mini Project: LSB Steganography', 'completed' => false, 'completiondate' => ''],
+                ['cmid' => 402, 'name' => 'Project Evaluation & Code Review', 'completed' => false, 'completiondate' => ''],
+            ]
+        ]
+    ];
+}
+
+// -------------------------------------------------------------------------
+// 6. Tab 2: SS Activities (Module Level)
+// -------------------------------------------------------------------------
+$ss_module_activities = [
+    ['activity' => 'Spot Award distribution',         'planned' => '16 Sep 2026', 'actual' => '16 Sep 2026', 'status' => 'done'],
+    ['activity' => 'Mid-module survey completed',     'planned' => '25 Sep 2026', 'actual' => '—',           'status' => 'pending'],
+    ['activity' => 'Red-case follow-up (module)',     'planned' => '22 Sep 2026', 'actual' => '—',           'status' => 'over'],
+    ['activity' => 'Soft-skill session (module)',     'planned' => '05 Oct 2026', 'actual' => '—',           'status' => 'pending'],
+];
+
+$ss_status_styles = [
+    'done'    => ['st-g', 'Done'],
+    'pending' => ['st-a', 'Pending'],
+    'over'    => ['st-r', 'Overdue']
+];
+
+// -------------------------------------------------------------------------
 // 7. Page Setup & HTML Output
 // -------------------------------------------------------------------------
 $PAGE->set_context($context);
@@ -451,7 +787,8 @@ echo $OUTPUT->header();
      data-courseid="<?= (int)$courseid ?>"
      data-batchid="<?= (int)$batchid ?>"
      data-sesskey="<?= sesskey() ?>"
-     data-students="<?= s(json_encode($students_data)) ?>">
+     data-students="<?= s(json_encode($students_data)) ?>"
+     data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
@@ -478,13 +815,15 @@ echo $OUTPUT->header();
           <?php if ($prev_idx): ?>
             <?php
               $prev_cid = !empty($raw_modules[$prev_idx - 1]['moodlecourseid']) ? (int)$raw_modules[$prev_idx - 1]['moodlecourseid'] : 0;
-              $prev_url = $prev_cid > 0
-                  ? new moodle_url('/local/batchanalytics/module.php', ['courseid' => $prev_cid])
-                  : new moodle_url('/local/batchanalytics/module.php', ['batchid' => $batchid, 'module' => $prev_idx]);
+              $prev_linked = $prev_cid > 0 && $DB->record_exists('course', ['id' => $prev_cid]);
             ?>
-            <a href="<?= s($prev_url->out(false)) ?>">
-              ‹ <?= s($prev_name) ?>
-            </a>
+            <?php if ($prev_linked): ?>
+              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => $prev_cid]))->out(false)) ?>">
+                ‹ <?= s($prev_name) ?>
+              </a>
+            <?php else: ?>
+              <button type="button" disabled title="Course is not linked in Batch Management">‹ <?= s($prev_name) ?></button>
+            <?php endif; ?>
           <?php else: ?>
             <button type="button" disabled>‹ —</button>
           <?php endif; ?>
@@ -492,13 +831,15 @@ echo $OUTPUT->header();
           <?php if ($next_idx): ?>
             <?php
               $next_cid = !empty($raw_modules[$next_idx - 1]['moodlecourseid']) ? (int)$raw_modules[$next_idx - 1]['moodlecourseid'] : 0;
-              $next_url = $next_cid > 0
-                  ? new moodle_url('/local/batchanalytics/module.php', ['courseid' => $next_cid])
-                  : new moodle_url('/local/batchanalytics/module.php', ['batchid' => $batchid, 'module' => $next_idx]);
+              $next_linked = $next_cid > 0 && $DB->record_exists('course', ['id' => $next_cid]);
             ?>
-            <a href="<?= s($next_url->out(false)) ?>">
-              <?= s($next_name) ?> ›
-            </a>
+            <?php if ($next_linked): ?>
+              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => $next_cid]))->out(false)) ?>">
+                <?= s($next_name) ?> ›
+              </a>
+            <?php else: ?>
+              <button type="button" disabled title="Course is not linked in Batch Management"><?= s($next_name) ?> ›</button>
+            <?php endif; ?>
           <?php else: ?>
             <button type="button" disabled>— ›</button>
           <?php endif; ?>
@@ -547,9 +888,13 @@ echo $OUTPUT->header();
         <div class="v muted">—</div>
       <?php else: ?>
         <div class="mentorcell">
-          <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#663399,#1b6ec2);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;">
-            <?= s(strtoupper(substr($class_mentor, 0, 1))) ?>
-          </div>
+          <?php if (!empty($class_mentor_user) && !empty($class_mentor_user->picture)): ?>
+            <?= $OUTPUT->user_picture($class_mentor_user, ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
+          <?php else: ?>
+            <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#663399,#1b6ec2);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
+              <?= s(strtoupper(substr($class_mentor, 0, 1))) ?>
+            </div>
+          <?php endif; ?>
           <span class="v"><?= s($class_mentor) ?></span>
         </div>
       <?php endif; ?>
@@ -561,9 +906,13 @@ echo $OUTPUT->header();
         <div class="v muted">—</div>
       <?php else: ?>
         <div class="mentorcell">
-          <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2e7d32,#1e8e4e);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;">
-            <?= s(strtoupper(substr($lab_mentor, 0, 1))) ?>
-          </div>
+          <?php if (!empty($lab_mentor_user) && !empty($lab_mentor_user->picture)): ?>
+            <?= $OUTPUT->user_picture($lab_mentor_user, ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
+          <?php else: ?>
+            <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2e7d32,#1e8e4e);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
+              <?= s(strtoupper(substr($lab_mentor, 0, 1))) ?>
+            </div>
+          <?php endif; ?>
           <span class="v"><?= s($lab_mentor) ?></span>
         </div>
       <?php endif; ?>
@@ -573,34 +922,41 @@ echo $OUTPUT->header();
       <div class="k">Planned Start</div>
       <div class="v"><?= s($p_start) ?></div>
     </div>
+
     <div class="sc">
       <div class="k">Planned End</div>
       <div class="v"><?= s($p_end) ?></div>
     </div>
+
     <div class="sc">
       <div class="k">Actual Start</div>
-      <div class="v"><?= format_cell_muted($a_start) ?></div>
+      <div class="v"><?= $a_start === '—' ? '<span class="muted">—</span>' : s($a_start) ?></div>
     </div>
+
     <div class="sc">
       <div class="k">Actual End</div>
       <div class="v <?= $a_end === '—' ? 'muted' : '' ?>">
         <?= $a_end === '—' ? '— (in progress)' : s($a_end) ?>
       </div>
     </div>
+
     <div class="sc">
       <div class="k">Delay</div>
       <div class="v">
-        <?php if ($is_in_progress): ?>
+        <?php if (($cur_mod['scheduledelta'] ?? null) === 'prog' || ($is_in_progress && ($delta === null || $delta === 0))): ?>
           <span class="st st-a">In progress</span>
-        <?php elseif ($delta === 0): ?>
-          <span class="st st-g">On track</span>
-        <?php elseif ($delta > 0): ?>
-          <span class="st st-r">+<?= (int)$delta ?>d</span>
-        <?php else: ?>
+        <?php elseif ($delta === null): ?>
           <span class="muted">—</span>
+        <?php elseif ($delta <= 0): ?>
+          <span class="st st-g">On track</span>
+        <?php elseif ($delta <= 3): ?>
+          <span class="st st-a">+<?= (int)$delta ?>d</span>
+        <?php else: ?>
+          <span class="st st-r">+<?= (int)$delta ?>d</span>
         <?php endif; ?>
       </div>
     </div>
+
     <div class="sc">
       <div class="k">Remarks</div>
       <div class="v muted">—</div>
@@ -608,15 +964,38 @@ echo $OUTPUT->header();
   </div>
 
   <!-- Module KPIs (Course Metrics from Gradebook) -->
-  <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
-  <div class="kpirow">
+  <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · click any metric to view student details</span></div>
+  <div class="ba-course-metrics-grid" style="margin-bottom: 25px;">
     <?php foreach ($module_kpis as $kpi): ?>
-      <div class="kpi">
-        <div class="kv"><?= s($kpi['val']) ?></div>
-        <div class="kl"><?= s($kpi['label']) ?></div>
-        <?php if (!empty($kpi['sub'])): ?>
-          <div class="kpi-sub"><?= s($kpi['sub']) ?></div>
-        <?php endif; ?>
+      <div class="ba-course-metric-card" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>">
+        <div class="ba-course-metric-header">
+          <div class="ba-course-metric-icon" style="background:<?= s($kpi['icon_bg']) ?>;">
+            <?= $kpi['icon_svg'] ?>
+          </div>
+          <div class="ba-course-metric-title"><?= s($kpi['label']) ?></div>
+        </div>
+        <div class="ba-course-metric-stats">
+          <?php if ($kpi['isMaac']): ?>
+            <div class="stat-box" style="width:100%; text-align:center; align-items:center;">
+              <span class="lbl">Avg MAAC Rating</span>
+              <span class="val"><?= s($kpi['avgGradeFormatted']) ?></span>
+            </div>
+          <?php elseif ($kpi['isAttendance']): ?>
+            <div class="stat-box" style="width:100%; text-align:center; align-items:center;">
+              <span class="lbl">Avg Grade</span>
+              <span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span>
+            </div>
+          <?php else: ?>
+            <div class="stat-box">
+              <span class="lbl">Avg Grade</span>
+              <span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span>
+            </div>
+            <div class="stat-box">
+              <span class="lbl">Completion</span>
+              <span class="val <?= s($kpi['compClass']) ?>"><?= s($kpi['avgCompFormatted']) ?>%</span>
+            </div>
+          <?php endif; ?>
+        </div>
       </div>
     <?php endforeach; ?>
   </div>
@@ -719,54 +1098,22 @@ echo $OUTPUT->header();
       </div>
     </div>
 
-    <!-- 3. Student Performance Panel (Course Tab Advanced Filter Section) -->
+    <!-- 3. Student Performance Panel -->
     <div id="panel-mstudents" class="panel">
       <div class="panel-note">
-        Module-level student performance with advanced search, metric filters, score mode toggling, and data export.
+        Module-level student performance — same view as batch level, scoped to this module. Grade or Percentile banding.
       </div>
 
-      <!-- Advanced Filter Toolbar -->
-      <div class="ba-adv-filter-box">
-        <div class="ba-adv-filter-row">
-          <!-- Live Student Search -->
-          <div class="ba-adv-search-wrap">
-            <input type="text" id="ba-mod-search" placeholder="Search student by name or ID…">
-          </div>
-
-          <!-- Grade vs Completion Mode Toggle -->
-          <div class="toggle">
-            <span class="on" id="ba-mod-tg-grade">Grade</span>
-            <span id="ba-mod-tg-comp">Completion %</span>
-          </div>
-
-          <!-- Performance Band Filter Dropdown -->
-          <select id="ba-mod-band-filter" class="ba-adv-select">
-            <option value="all">All Performance Bands</option>
-            <option value="top">Top Performers (&gt; 70%)</option>
-            <option value="mid">Middle 70% (40–70%)</option>
-            <option value="bot">Low Performers (&lt; 40%)</option>
-          </select>
-
-          <!-- Min Attendance Input -->
-          <div class="ba-filter-num">
-            <label>Min Att %</label>
-            <input type="number" id="ba-mod-min-att" min="0" max="100" placeholder="0">
-          </div>
-
-          <!-- Min Grade Input -->
-          <div class="ba-filter-num">
-            <label>Min Grade</label>
-            <input type="number" id="ba-mod-min-grade" min="0" max="100" placeholder="0">
-          </div>
-
-          <!-- CSV Export Button -->
-          <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
+      <div class="filterbar">
+        <div class="toggle">
+          <span class="on" id="ba-mod-tg-grade">Grade</span>
+          <span id="ba-mod-tg-pct">Percentile</span>
         </div>
-
-        <div class="ba-adv-filter-status">
-          <span id="ba-mod-stu-count" class="badge">Showing <?= count($students_data) ?> students</span>
-        </div>
+        <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
       </div>
+
+      <!-- Dynamic Banding Cards -->
+      <div class="bandrow" id="ba-mod-bandrow"></div>
 
       <!-- Performance Data Table -->
       <div class="tablecard">
@@ -775,7 +1122,7 @@ echo $OUTPUT->header();
             <tr>
               <th style="width:40px;">Band</th>
               <th>Student</th>
-              <th>Grade/Score</th>
+              <th>Grade</th>
               <th>Attendance</th>
               <th>Assignments</th>
               <th>Projects</th>
@@ -784,9 +1131,30 @@ echo $OUTPUT->header();
             </tr>
           </thead>
           <tbody id="ba-mod-stu-body">
-            <!-- Populated and filtered via module.js -->
+            <!-- Populated via module.js -->
           </tbody>
         </table>
+
+        <!-- Student Performance Pagination Controls -->
+        <div class="ba-pagination-bar" id="ba-mod-pagination-bar">
+          <div class="ba-pagination-info" id="ba-mod-pagination-info">
+            <!-- Populated via module.js -->
+          </div>
+          <div class="ba-pagination-actions">
+            <div class="ba-pagination-size-box">
+              <label for="ba-mod-page-size">Rows per page:</label>
+              <select id="ba-mod-page-size" class="ba-pagination-select">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="ba-pagination-btns" id="ba-mod-pagination-btns">
+              <!-- Rendered dynamically via module.js -->
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

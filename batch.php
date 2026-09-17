@@ -25,11 +25,33 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
+require_once(__DIR__ . '/classes/batch_notes_service.php');
 
 require_login();
 
 $context = context_system::instance();
 require_capability('local/batchanalytics:view', $context);
+
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
+if ($action === 'addnote') {
+    require_sesskey();
+
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        $batchid = required_param('batchid', PARAM_INT);
+        $note = required_param('note', PARAM_RAW);
+        $author = optional_param('author', '', PARAM_TEXT);
+        if (trim($author) === '') {
+            $author = fullname($USER);
+        }
+
+        $saved = \local_batchanalytics\batch_notes_service::add_note($batchid, (int)$USER->id, $author, $note);
+        echo json_encode(['success' => true, 'note' => $saved]);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
 
 $id = optional_param('id', 0, PARAM_INT);
 
@@ -62,6 +84,8 @@ if (!$section && $has_bm_section) {
 if ($section && $has_bm_batch && !empty($section->batchid)) {
     $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
 }
+
+$batch_id = $section ? (int)$section->id : ($id > 0 ? (int)$id : 1);
 
 // Extract & normalize batch header fields
 if ($section) {
@@ -330,7 +354,7 @@ if (empty($students_data)) {
 }
 
 // -------------------------------------------------------------------------
-// 5. Initial Review Notes
+// 5. Review Notes
 // -------------------------------------------------------------------------
 $initial_notes = [
     [
@@ -349,6 +373,15 @@ $initial_notes = [
         'body' => 'Batch healthy overall. Attendance at 82%. Placement induction scheduled for D35.'
     ]
 ];
+
+$db_notes = \local_batchanalytics\batch_notes_service::get_notes($batch_id);
+if (!empty($db_notes)) {
+    $display_notes = $db_notes;
+    $has_real_notes = true;
+} else {
+    $display_notes = $initial_notes;
+    $has_real_notes = false;
+}
 
 // Helper formatting functions
 function format_delay_chip($d) {
@@ -388,7 +421,7 @@ $PAGE->requires->js($scripturl);
 echo $OUTPUT->header();
 ?>
 
-<div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container" data-students="<?= s(json_encode($students_data)) ?>">
+<div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container" data-batchid="<?= (int)$batch_id ?>" data-sesskey="<?= sesskey() ?>" data-students="<?= s(json_encode($students_data)) ?>">
 
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
@@ -489,18 +522,16 @@ echo $OUTPUT->header();
                     <td><?= format_delay_chip($r['delay']) ?></td>
                     <td class="actioncell">
                       <?php
-                        if (!empty($r['courseid']) && (int)$r['courseid'] > 0) {
-                            $mod_url = new moodle_url('/local/batchanalytics/module.php', [
-                                'courseid' => (int)$r['courseid'],
-                            ]);
-                        } else {
-                            $mod_url = new moodle_url('/local/batchanalytics/module.php', [
-                                'batchid' => $section ? (int)$section->id : (int)$id,
-                                'module'  => $idx + 1,
-                            ]);
+                        $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);
+                        if ($course_linked) {
+                            $course_linked = $DB->record_exists('course', ['id' => (int)$r['courseid']]);
                         }
                       ?>
-                      <a href="<?= s($mod_url->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                      <?php if ($course_linked): ?>
+                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => (int)$r['courseid']]))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                      <?php else: ?>
+                        <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
+                      <?php endif; ?>
                     </td>
                   </tr>
                 <?php endforeach; ?>
@@ -621,10 +652,10 @@ echo $OUTPUT->header();
             </div>
           </div>
           <div id="ba-note-list">
-            <?php foreach ($initial_notes as $nt): ?>
-              <div class="note-item">
+            <?php foreach ($display_notes as $nt): ?>
+              <div class="note-item<?= empty($has_real_notes) ? ' note-item-demo' : '' ?>">
                 <div class="meta"><b><?= s($nt['who']) ?></b> · <?= s($nt['date']) ?></div>
-                <div class="body"><?= s($nt['body']) ?></div>
+                <div class="body"><?= nl2br(s($nt['body'])) ?></div>
               </div>
             <?php endforeach; ?>
           </div>

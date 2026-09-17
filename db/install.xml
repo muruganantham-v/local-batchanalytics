@@ -135,6 +135,21 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="courseid_uix" UNIQUE="true" FIELDS="courseid"/>
+    </TABLE>
+    <TABLE NAME="local_batchanalytics_batch_notes" COMMENT="Review notes captured for batches">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="batchid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="author" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="body" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="batchid_ix" UNIQUE="false" FIELDS="batchid"/>
       </INDEXES>
     </TABLE>
   </TABLES>
