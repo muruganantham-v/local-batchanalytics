@@ -15,7 +15,7 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool
  */
 function xmldb_local_batchanalytics_upgrade($oldversion) {
-    global $DB;
+    global $CFG, $DB;
 
     $dbman = $DB->get_manager();
 
@@ -256,6 +256,36 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         }
 
         upgrade_plugin_savepoint(true, 2026080300, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026080400) {
+        $table = new xmldb_table('local_batchanalytics_batch_notes');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('author', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('body', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('batchid_ix', XMLDB_INDEX_NOTUNIQUE, ['batchid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026080400, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026080500) {
+        require_once($CFG->libdir . '/accesslib.php');
+        update_capabilities('local_batchanalytics');
+        upgrade_plugin_savepoint(true, 2026080500, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026091700) {
+        upgrade_plugin_savepoint(true, 2026091700, 'local', 'batchanalytics');
     }
 
     return true;
