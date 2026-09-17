@@ -35,15 +35,14 @@ require_capability('local/batchanalytics:view', $context);
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 if ($action === 'addnote') {
     require_sesskey();
+    require_capability('local/batchanalytics:editreviewnotes', $context);
 
     header('Content-Type: application/json; charset=utf-8');
     try {
         $batchid = required_param('batchid', PARAM_INT);
         $note = required_param('note', PARAM_RAW);
-        $author = optional_param('author', '', PARAM_TEXT);
-        if (trim($author) === '') {
-            $author = fullname($USER);
-        }
+        // Strictly use the authenticated logged-in user
+        $author = fullname($USER);
 
         $saved = \local_batchanalytics\batch_notes_service::add_note($batchid, (int)$USER->id, $author, $note);
         echo json_encode(['success' => true, 'note' => $saved]);
@@ -374,13 +373,40 @@ $initial_notes = [
     ]
 ];
 
-$db_notes = \local_batchanalytics\batch_notes_service::get_notes($batch_id);
-if (!empty($db_notes)) {
-    $display_notes = $db_notes;
-    $has_real_notes = true;
+// Check review notes permissions
+$can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context);
+$can_edit_notes = has_capability('local/batchanalytics:editreviewnotes', $context);
+
+if ($can_view_notes) {
+    $db_notes = \local_batchanalytics\batch_notes_service::get_notes($batch_id);
+    if (!empty($db_notes)) {
+        $display_notes = $db_notes;
+        $has_real_notes = true;
+    } else {
+        $display_notes = $initial_notes;
+        $has_real_notes = false;
+    }
 } else {
-    $display_notes = $initial_notes;
+    $display_notes = [];
     $has_real_notes = false;
+}
+
+// Determine logged-in user's identity and role for posting review notes
+$current_author_name = fullname($USER);
+if (is_siteadmin()) {
+    $current_author_role = 'Administrator';
+} else if ($section && !empty($section->pmmanager) && (int)$USER->id === (int)$section->pmmanager) {
+    $current_author_role = 'Program Manager';
+} else if ($section && !empty($section->maacexecutive) && (int)$USER->id === (int)$section->maacexecutive) {
+    $current_author_role = 'SS / MAAC Executive';
+} else {
+    $roles = get_user_roles($context, $USER->id, true);
+    if (!empty($roles)) {
+        $first_role = reset($roles);
+        $current_author_role = role_get_name($first_role, $context);
+    } else {
+        $current_author_role = 'Program Manager';
+    }
 }
 
 // Helper formatting functions
@@ -438,8 +464,10 @@ echo $OUTPUT->header();
     </div>
   <?php endif; ?>
 
-  <!-- Batch Header Card -->
-  <div class="bhead">
+  <div class="shell">
+
+    <!-- Batch Header Card -->
+    <div class="bhead">
         <div class="top">
           <div>
             <h1>Batch <?= s($batchid_label) ?></h1>
@@ -482,7 +510,9 @@ echo $OUTPUT->header();
         <div class="tab active" data-tab="sched">Schedule</div>
         <div class="tab" data-tab="ss">SS Activities</div>
         <div class="tab" data-tab="students">Student Performance</div>
-        <div class="tab" data-tab="notes">Review Notes</div>
+        <?php if ($can_view_notes || $can_edit_notes): ?>
+          <div class="tab" data-tab="notes">Review Notes</div>
+        <?php endif; ?>
       </div>
 
       <!-- Panels Container -->
@@ -594,63 +624,62 @@ echo $OUTPUT->header();
             <table>
               <thead>
                 <tr>
-                  <th>Band</th>
-                  <th>Student</th>
-                  <th>Grade</th>
-                  <th>Attendance</th>
-                  <th>Assignments</th>
-                  <th>Projects</th>
-                  <th>Tests</th>
-                  <th>Merit</th>
+                  <th class="sortable" data-sort="band" title="Sort by Band">Band</th>
+                  <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
+                  <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
+                  <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
+                  <th class="sortable" data-sort="assignments" title="Sort by Assignments">Assignments</th>
+                  <th class="sortable" data-sort="projects" title="Sort by Projects">Projects</th>
+                  <th class="sortable" data-sort="tests" title="Sort by Tests">Tests</th>
+                  <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
                 </tr>
               </thead>
               <tbody id="ba-stuBody">
-                <?php foreach ($students_data as $i => $s): ?>
-                  <tr>
-                    <td><span class="bdot"></span></td>
-                    <td>
-                      <span class="sname"><?= s($s['name']) ?></span><br>
-                      <span class="sid"><?= s($s['id']) ?></span>
-                    </td>
-                    <td><b><?= s($s['grade']) ?></b></td>
-                    <td><?= s($s['attendance']) ?></td>
-                    <td><?= s($s['assignments']) ?></td>
-                    <td><?= format_cell_muted($s['projects']) ?></td>
-                    <td><?= s($s['tests']) ?></td>
-                    <td>
-                      <span class="merit">
-                        <?php if ($s['spot']): ?>
-                          <span class="m m-spot">★ Spot</span>
-                        <?php endif; ?>
-                        <?php if ($s['pt'] === 'nom'): ?>
-                          <span class="m m-ptnom">PT-Nom</span>
-                        <?php elseif ($s['pt'] === 'sel'): ?>
-                          <span class="m m-ptsel">PT-Sel</span>
-                        <?php endif; ?>
-                        <?php if (!$s['spot'] && empty($s['pt'])): ?>
-                          <span class="muted">—</span>
-                        <?php endif; ?>
-                      </span>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
+                <!-- Populated dynamically with pagination via batch.js -->
               </tbody>
             </table>
+
+            <!-- Student Performance Pagination Controls -->
+            <div class="ba-pagination-bar" id="ba-pagination-bar">
+              <div class="ba-pagination-info" id="ba-pagination-info">
+                <!-- Populated via batch.js -->
+              </div>
+              <div class="ba-pagination-actions">
+                <div class="ba-pagination-size-box">
+                  <label for="ba-page-size">Rows per page:</label>
+                  <select id="ba-page-size" class="ba-pagination-select">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="all">All</option>
+                  </select>
+                </div>
+                <div class="ba-pagination-btns" id="ba-pagination-btns">
+                  <!-- Rendered dynamically via batch.js -->
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
+        <?php if ($can_view_notes || $can_edit_notes): ?>
         <!-- 4. Review Notes Panel -->
         <div id="panel-notes" class="panel">
           <div class="panel-note">
             Notes captured by the Program Manager during batch reviews. Newest first. Each note is timestamped with the author.
           </div>
+
+          <?php if ($can_edit_notes): ?>
           <div class="addnote">
             <textarea id="ba-note-text" placeholder="Add a review note for this batch…"></textarea>
-            <div class="row">
-              <span class="who">Posting as <b><?= s($pmname) ?></b> · Program Manager</span>
-              <button type="button" id="ba-btn-addnote" data-author="<?= s($pmname) ?>">Add note</button>
+            <div class="row addnote-row">
+              <span class="who">Posting as <b><?= s($current_author_name) ?></b> · <?= s($current_author_role) ?></span>
+              <button type="button" id="ba-btn-addnote" data-author="<?= s($current_author_name) ?>">Add note</button>
             </div>
           </div>
+          <?php endif; ?>
+
+          <?php if ($can_view_notes): ?>
           <div id="ba-note-list">
             <?php foreach ($display_notes as $nt): ?>
               <div class="note-item<?= empty($has_real_notes) ? ' note-item-demo' : '' ?>">
@@ -659,9 +688,17 @@ echo $OUTPUT->header();
               </div>
             <?php endforeach; ?>
           </div>
+          <?php else: ?>
+          <div class="ba-note-permission-msg" style="padding: 16px; background: #f8fafc; border: 1px dashed var(--line); border-radius: 8px; color: var(--mute, #64748b); font-size: 13px;">
+            <?= s(get_string('nopermissiontoviewnotes', 'local_batchanalytics')) ?>
+          </div>
+          <?php endif; ?>
         </div>
+        <?php endif; ?>
 
   </div> <!-- /.ba-batch-panels -->
+
+  </div> <!-- /.shell -->
 
 </div> <!-- /.local-batchanalytics-wrap -->
 

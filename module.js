@@ -141,6 +141,90 @@
         var perfMode = 'grade'; // 'grade' or 'percentile'
         var currentPage = 1;
         var pageSize = 10;
+        var sortColumn = '';
+        var sortDirection = 'asc';
+
+        // Tag initial order for stable secondary sorting
+        stuData.forEach(function(s, idx) {
+            if (s._origIdx === undefined) {
+                s._origIdx = idx;
+            }
+        });
+
+        function applySort() {
+            if (!sortColumn) return;
+
+            stuData.sort(function(a, b) {
+                var mult = (sortDirection === 'desc') ? -1 : 1;
+                var res = 0;
+
+                switch (sortColumn) {
+                    case 'student':
+                    case 'name':
+                        var nameA = (a.name || '').trim().toLowerCase();
+                        var nameB = (b.name || '').trim().toLowerCase();
+                        res = nameA.localeCompare(nameB);
+                        break;
+                    case 'grade':
+                        var grA = Number(a.grade) || 0;
+                        var grB = Number(b.grade) || 0;
+                        res = grA - grB;
+                        break;
+                    case 'attendance':
+                        var attA = parseFloat(a.attendance) || 0;
+                        var attB = parseFloat(b.attendance) || 0;
+                        res = attA - attB;
+                        break;
+                    case 'assignments':
+                        var asgA = parseFloat(a.assignments) || 0;
+                        var asgB = parseFloat(b.assignments) || 0;
+                        res = asgA - asgB;
+                        break;
+                    case 'projects':
+                        var prjA = (a.projects && a.projects !== '—') ? (parseFloat(a.projects) || 0) : -1;
+                        var prjB = (b.projects && b.projects !== '—') ? (parseFloat(b.projects) || 0) : -1;
+                        res = prjA - prjB;
+                        break;
+                    case 'tests':
+                        var tstA = parseFloat(a.tests) || 0;
+                        var tstB = parseFloat(b.tests) || 0;
+                        res = tstA - tstB;
+                        break;
+                    case 'band':
+                        var bA = Number(a.grade) || 0;
+                        var bB = Number(b.grade) || 0;
+                        res = bA - bB;
+                        break;
+                    case 'merit':
+                        var scoreA = (a.spot ? 10 : 0) + (a.pt === 'sel' ? 5 : (a.pt === 'nom' ? 2 : 0));
+                        var scoreB = (b.spot ? 10 : 0) + (b.pt === 'sel' ? 5 : (b.pt === 'nom' ? 2 : 0));
+                        res = scoreA - scoreB;
+                        break;
+                    default:
+                        res = 0;
+                }
+
+                if (res !== 0) {
+                    return res * mult;
+                }
+                var fallback = (a.name || '').localeCompare(b.name || '');
+                if (fallback !== 0) return fallback;
+                return (a._origIdx - b._origIdx);
+            });
+        }
+
+        function updateSortHeaders() {
+            var ths = container.querySelectorAll('#panel-mstudents th.sortable');
+            ths.forEach(function(th) {
+                var col = th.getAttribute('data-sort');
+                th.classList.remove('sort-asc', 'sort-desc');
+                th.removeAttribute('aria-sort');
+                if (col === sortColumn) {
+                    th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+                    th.setAttribute('aria-sort', sortDirection === 'asc' ? 'ascending' : 'descending');
+                }
+            });
+        }
 
         var tgGrade = document.getElementById('ba-mod-tg-grade');
         var tgPct = document.getElementById('ba-mod-tg-pct');
@@ -283,6 +367,9 @@
                 stuBody.innerHTML = html;
             }
 
+            // Update sort indicators on table headers
+            updateSortHeaders();
+
             // 4. Render Pagination Controls
             renderPaginationButtons(totalPages);
         }
@@ -376,6 +463,7 @@
                 perfMode = 'grade';
                 tgGrade.classList.add('on');
                 tgPct.classList.remove('on');
+                currentPage = 1;
                 renderPerformance();
             });
 
@@ -383,6 +471,7 @@
                 perfMode = 'percentile';
                 tgPct.classList.add('on');
                 tgGrade.classList.remove('on');
+                currentPage = 1;
                 renderPerformance();
             });
         }
@@ -395,6 +484,31 @@
                 renderPerformance();
             });
         }
+
+        // Student Performance Table Header Sorting
+        var sortHeaders = container.querySelectorAll('#panel-mstudents th.sortable');
+        sortHeaders.forEach(function(th) {
+            th.addEventListener('click', function() {
+                var col = this.getAttribute('data-sort');
+                if (!col) return;
+
+                if (sortColumn === col) {
+                    sortDirection = (sortDirection === 'asc') ? 'desc' : 'asc';
+                } else {
+                    sortColumn = col;
+                    // Default names to A-Z (asc), scores/percentages to highest first (desc)
+                    if (col === 'student' || col === 'name') {
+                        sortDirection = 'asc';
+                    } else {
+                        sortDirection = 'desc';
+                    }
+                }
+
+                applySort();
+                currentPage = 1;
+                renderPerformance();
+            });
+        });
 
         // CSV Export
         if (expBtn) {

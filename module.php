@@ -1120,14 +1120,14 @@ echo $OUTPUT->header();
         <table>
           <thead>
             <tr>
-              <th style="width:40px;">Band</th>
-              <th>Student</th>
-              <th>Grade</th>
-              <th>Attendance</th>
-              <th>Assignments</th>
-              <th>Projects</th>
-              <th>Tests</th>
-              <th>Merit</th>
+              <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
+              <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
+              <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
+              <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
+              <th class="sortable" data-sort="assignments" title="Sort by Assignments">Assignments</th>
+              <th class="sortable" data-sort="projects" title="Sort by Projects">Projects</th>
+              <th class="sortable" data-sort="tests" title="Sort by Tests">Tests</th>
+              <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
             </tr>
           </thead>
           <tbody id="ba-mod-stu-body">

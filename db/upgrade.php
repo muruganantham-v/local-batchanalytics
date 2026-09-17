@@ -278,5 +278,11 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080400, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026080500) {
+        require_once($CFG->libdir . '/accesslib.php');
+        update_capabilities('local_batchanalytics');
+        upgrade_plugin_savepoint(true, 2026080500, 'local', 'batchanalytics');
+    }
+
     return true;
 }
