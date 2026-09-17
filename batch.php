@@ -167,27 +167,27 @@ if (!empty($raw_modules)) {
         $mod_idx = (int)($mod['module'] ?? ($idx + 1));
         $m_name = !empty($mod['courseshortname']) ? $mod['courseshortname'] : ($canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx));
         
-        // Resolve Class Mentor
-        $class_mentor = '—';
+        // Resolve Class Mentor(s)
+        $class_mentors_arr = [];
         if (!empty($mod['primarymentor'])) {
-            if (is_numeric($mod['primarymentor'])) {
-                $u = $DB->get_record('user', ['id' => (int)$mod['primarymentor'], 'deleted' => 0]);
-                $class_mentor = $u ? fullname($u) : (string)$mod['primarymentor'];
-            } else {
-                $class_mentor = (string)$mod['primarymentor'];
-            }
+            $u = is_numeric($mod['primarymentor']) ? $DB->get_record('user', ['id' => (int)$mod['primarymentor'], 'deleted' => 0]) : null;
+            $class_mentors_arr[] = $u ? fullname($u) : (string)$mod['primarymentor'];
         }
+        if (!empty($mod['secondarymentor'])) {
+            $u = is_numeric($mod['secondarymentor']) ? $DB->get_record('user', ['id' => (int)$mod['secondarymentor'], 'deleted' => 0]) : null;
+            $class_mentors_arr[] = $u ? fullname($u) : (string)$mod['secondarymentor'];
+        }
+        $class_mentor = !empty($class_mentors_arr) ? implode(', ', $class_mentors_arr) : '—';
 
-        // Resolve Lab Mentor
-        $lab_mentor = '—';
-        if (!empty($mod['labmentor1'])) {
-            if (is_numeric($mod['labmentor1'])) {
-                $u = $DB->get_record('user', ['id' => (int)$mod['labmentor1'], 'deleted' => 0]);
-                $lab_mentor = $u ? fullname($u) : (string)$mod['labmentor1'];
-            } else {
-                $lab_mentor = (string)$mod['labmentor1'];
+        // Resolve Lab Mentor(s)
+        $lab_mentors_arr = [];
+        foreach (['labmentor1', 'labmentor2', 'labmentor3'] as $lf) {
+            if (!empty($mod[$lf])) {
+                $u = is_numeric($mod[$lf]) ? $DB->get_record('user', ['id' => (int)$mod[$lf], 'deleted' => 0]) : null;
+                $lab_mentors_arr[] = $u ? fullname($u) : (string)$mod[$lf];
             }
         }
+        $lab_mentor = !empty($lab_mentors_arr) ? implode(', ', $lab_mentors_arr) : '—';
 
         $p_start = $format_mod_date($mod['plannedstart'] ?? '');
         $p_end   = $format_mod_date($mod['plannedend'] ?? '');
@@ -426,8 +426,10 @@ function format_delay_chip($d) {
     return '<span class="st st-r">+' . (int)$d . 'd</span>';
 }
 
-function format_cell_muted($val) {
-    return ($val === '—' || $val === '') ? '<span class="muted">—</span>' : s($val);
+if (!function_exists('format_cell_muted')) {
+    function format_cell_muted($val) {
+        return ($val === '—' || $val === '') ? '<span class="muted">—</span>' : s($val);
+    }
 }
 
 // -------------------------------------------------------------------------

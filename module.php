@@ -201,38 +201,78 @@ if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
     $courseid = (int)$cur_mod['moodlecourseid'];
 }
 
-// Mentor resolution
-$class_mentor = '—';
-$class_mentor_user = null;
-if (!empty($cur_mod['primarymentor'])) {
-    if (is_numeric($cur_mod['primarymentor'])) {
-        $u = $DB->get_record('user', ['id' => (int)$cur_mod['primarymentor'], 'deleted' => 0]);
+// Mentor resolution (All class mentors and lab mentors from Batch Management)
+$resolve_mentor_record = static function($raw_val, string $role_label) use ($DB): ?array {
+    if (empty($raw_val) || $raw_val === '—' || $raw_val === 0 || $raw_val === '0') {
+        return null;
+    }
+    $mentor_name = '';
+    $mentor_user = null;
+    if (is_numeric($raw_val)) {
+        $u = $DB->get_record('user', ['id' => (int)$raw_val, 'deleted' => 0]);
         if ($u) {
-            $class_mentor = fullname($u);
-            $class_mentor_user = $u;
+            $mentor_name = fullname($u);
+            $mentor_user = $u;
         } else {
-            $class_mentor = (string)$cur_mod['primarymentor'];
+            $mentor_name = (string)$raw_val;
         }
     } else {
-        $class_mentor = (string)$cur_mod['primarymentor'];
+        $mentor_name = trim((string)$raw_val);
+        $parts = explode(' ', $mentor_name);
+        $first = $parts[0];
+        $last = isset($parts[1]) ? implode(' ', array_slice($parts, 1)) : '';
+        $users = $DB->get_records_select(
+            'user',
+            "deleted = 0 AND ((firstname = :f AND lastname = :l) OR CONCAT(firstname, ' ', lastname) = :full)",
+            ['f' => $first, 'l' => $last, 'full' => $mentor_name],
+            '',
+            '*',
+            0,
+            1
+        );
+        if (!empty($users)) {
+            $mentor_user = reset($users);
+        }
     }
+    if ($mentor_name === '') {
+        return null;
+    }
+    return [
+        'name' => $mentor_name,
+        'user' => $mentor_user,
+        'role' => $role_label,
+    ];
+};
+
+$class_mentors = [];
+if (!empty($cur_mod['primarymentor'])) {
+    $m = $resolve_mentor_record($cur_mod['primarymentor'], 'Primary');
+    if ($m) $class_mentors[] = $m;
+}
+if (!empty($cur_mod['secondarymentor'])) {
+    $m = $resolve_mentor_record($cur_mod['secondarymentor'], 'Secondary');
+    if ($m) $class_mentors[] = $m;
 }
 
-$lab_mentor = '—';
-$lab_mentor_user = null;
+$lab_mentors = [];
 if (!empty($cur_mod['labmentor1'])) {
-    if (is_numeric($cur_mod['labmentor1'])) {
-        $u = $DB->get_record('user', ['id' => (int)$cur_mod['labmentor1'], 'deleted' => 0]);
-        if ($u) {
-            $lab_mentor = fullname($u);
-            $lab_mentor_user = $u;
-        } else {
-            $lab_mentor = (string)$cur_mod['labmentor1'];
-        }
-    } else {
-        $lab_mentor = (string)$cur_mod['labmentor1'];
-    }
+    $m = $resolve_mentor_record($cur_mod['labmentor1'], 'Lab 1');
+    if ($m) $lab_mentors[] = $m;
 }
+if (!empty($cur_mod['labmentor2'])) {
+    $m = $resolve_mentor_record($cur_mod['labmentor2'], 'Lab 2');
+    if ($m) $lab_mentors[] = $m;
+}
+if (!empty($cur_mod['labmentor3'])) {
+    $m = $resolve_mentor_record($cur_mod['labmentor3'], 'Lab 3');
+    if ($m) $lab_mentors[] = $m;
+}
+
+// Fallback references for scalar backward compatibility
+$class_mentor = !empty($class_mentors) ? implode(', ', array_column($class_mentors, 'name')) : '—';
+$class_mentor_user = !empty($class_mentors[0]['user']) ? $class_mentors[0]['user'] : null;
+$lab_mentor = !empty($lab_mentors) ? implode(', ', array_column($lab_mentors, 'name')) : '—';
+$lab_mentor_user = !empty($lab_mentors[0]['user']) ? $lab_mentors[0]['user'] : null;
 
 $p_start = $format_mod_date($cur_mod['plannedstart'] ?? '');
 $p_end   = $format_mod_date($cur_mod['plannedend'] ?? '');
@@ -251,9 +291,10 @@ $next_idx = $module_idx < $total_modules ? ($module_idx + 1) : null;
 $prev_name = $prev_idx ? (!empty($raw_modules[$prev_idx - 1]['courseshortname']) ? $raw_modules[$prev_idx - 1]['courseshortname'] : ($canonical_modules[$prev_idx] ?? ('Module ' . $prev_idx))) : null;
 $next_name = $next_idx ? (!empty($raw_modules[$next_idx - 1]['courseshortname']) ? $raw_modules[$next_idx - 1]['courseshortname'] : ($canonical_modules[$next_idx] ?? ('Module ' . $next_idx))) : null;
 
-// Helper function for null cells
-function format_cell_muted($val) {
-    return ($val === '—' || $val === '') ? '<span class="muted">—</span>' : s($val);
+if (!function_exists('format_cell_muted')) {
+    function format_cell_muted($val) {
+        return ($val === '—' || $val === '') ? '<span class="muted">—</span>' : s($val);
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -883,37 +924,55 @@ echo $OUTPUT->header();
   <div class="sec-label">Schedule</div>
   <div class="schedgrid">
     <div class="sc">
-      <div class="k">Class Mentor</div>
-      <?php if ($class_mentor === '—'): ?>
+      <div class="k">Class Mentor<?= count($class_mentors) > 1 ? 's' : '' ?></div>
+      <?php if (empty($class_mentors)): ?>
         <div class="v muted">—</div>
       <?php else: ?>
-        <div class="mentorcell">
-          <?php if (!empty($class_mentor_user) && !empty($class_mentor_user->picture)): ?>
-            <?= $OUTPUT->user_picture($class_mentor_user, ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
-          <?php else: ?>
-            <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#663399,#1b6ec2);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
-              <?= s(strtoupper(substr($class_mentor, 0, 1))) ?>
+        <div class="ba-mentors-col">
+          <?php foreach ($class_mentors as $cm): ?>
+            <div class="mentorcell">
+              <?php if (!empty($cm['user']) && !empty($cm['user']->picture)): ?>
+                <?= $OUTPUT->user_picture($cm['user'], ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
+              <?php else: ?>
+                <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#663399,#1b6ec2);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
+                  <?= s(strtoupper(substr($cm['name'], 0, 1))) ?>
+                </div>
+              <?php endif; ?>
+              <div class="mentor-meta">
+                <span class="v"><?= s($cm['name']) ?></span>
+                <?php if (count($class_mentors) > 1): ?>
+                  <span class="mentor-role-tag"><?= s($cm['role']) ?></span>
+                <?php endif; ?>
+              </div>
             </div>
-          <?php endif; ?>
-          <span class="v"><?= s($class_mentor) ?></span>
+          <?php endforeach; ?>
         </div>
       <?php endif; ?>
     </div>
 
     <div class="sc">
-      <div class="k">Lab Mentor</div>
-      <?php if ($lab_mentor === '—'): ?>
+      <div class="k">Lab Mentor<?= count($lab_mentors) > 1 ? 's' : '' ?></div>
+      <?php if (empty($lab_mentors)): ?>
         <div class="v muted">—</div>
       <?php else: ?>
-        <div class="mentorcell">
-          <?php if (!empty($lab_mentor_user) && !empty($lab_mentor_user->picture)): ?>
-            <?= $OUTPUT->user_picture($lab_mentor_user, ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
-          <?php else: ?>
-            <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2e7d32,#1e8e4e);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
-              <?= s(strtoupper(substr($lab_mentor, 0, 1))) ?>
+        <div class="ba-mentors-col">
+          <?php foreach ($lab_mentors as $lm): ?>
+            <div class="mentorcell">
+              <?php if (!empty($lm['user']) && !empty($lm['user']->picture)): ?>
+                <?= $OUTPUT->user_picture($lm['user'], ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
+              <?php else: ?>
+                <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2e7d32,#1e8e4e);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
+                  <?= s(strtoupper(substr($lm['name'], 0, 1))) ?>
+                </div>
+              <?php endif; ?>
+              <div class="mentor-meta">
+                <span class="v"><?= s($lm['name']) ?></span>
+                <?php if (count($lab_mentors) > 1): ?>
+                  <span class="mentor-role-tag"><?= s($lm['role']) ?></span>
+                <?php endif; ?>
+              </div>
             </div>
-          <?php endif; ?>
-          <span class="v"><?= s($lab_mentor) ?></span>
+          <?php endforeach; ?>
         </div>
       <?php endif; ?>
     </div>
