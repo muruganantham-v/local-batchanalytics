@@ -61,6 +61,7 @@ function initNewBatchAnalytics() {
     setVal("stat-lab-mentors", stats.labMentors);
     setVal("stat-on-schedule", stats.onSchedule);
     setVal("stat-delayed", stats.delayed);
+    setVal("stat-early", stats.early ?? 0);
     setVal("stat-total-students", stats.totalStudents);
   }
 
@@ -180,6 +181,16 @@ function initNewBatchAnalytics() {
       return true;
     });
 
+    // Ensure batches are ordered with oldest date first
+    filtered.sort((a, b) => {
+      const tsA = a.startdateTimestamp || 0;
+      const tsB = b.startdateTimestamp || 0;
+      if (tsA === tsB) return (a.id || 0) - (b.id || 0);
+      if (tsA === 0) return 1;
+      if (tsB === 0) return -1;
+      return tsA - tsB; // Oldest date first
+    });
+
     const totalItems = filtered.length;
     const totalPages = Math.ceil(totalItems / pageSize) || 1;
     if (currentPage > totalPages) currentPage = totalPages;
@@ -203,43 +214,65 @@ function initNewBatchAnalytics() {
     tbody.innerHTML = items
       .map((b, idx) => {
         const siNo = startIndex + idx + 1;
-        const modeLower = b.mode.toLowerCase();
+        const modeLower = (b.mode || "").toLowerCase();
         const modeBadgeClass = modeLower === "online" ? "ba-badge-green" : (modeLower === "offline" ? "ba-badge-blue" : "ba-badge-purple");
         const typeBadgeClass = "ba-badge-gray";
 
         let statusHtml = "";
         if (b.status === "delayed") {
-          statusHtml = `<span class="ba-status-delayed"><span class="ba-status-dot dot-red"></span> ${escapeHtml(b.statusLabel)}</span>`;
+          statusHtml = `<span class="ba-status-pill status-delayed"><span class="ba-beacon-dot dot-red"></span> ${escapeHtml(b.statusLabel)}</span>`;
+        } else if (b.status === "early") {
+          statusHtml = `<span class="ba-status-pill status-early"><span class="ba-beacon-dot dot-blue"></span> ${escapeHtml(b.statusLabel)}</span>`;
         } else {
-          statusHtml = `<span class="ba-status-onschedule"><span class="ba-status-dot dot-green"></span> On schedule</span>`;
+          statusHtml = `<span class="ba-status-pill status-ok"><span class="ba-beacon-dot dot-green"></span> On schedule</span>`;
         }
 
-          let batchUrl = "";
-          if (b.sectionId && b.sectionId > 0) {
-            batchUrl = `batch.php?id=${encodeURIComponent(b.sectionId)}`;
-          } else if (b.id && b.id > 0) {
-            batchUrl = `batch.php?id=${encodeURIComponent(b.id)}`;
-          } else {
-            batchUrl = "batch.php";
-          }
+        let batchUrl = "";
+        const secId = b.sectionId && b.sectionId > 0 ? b.sectionId : (b.id && b.id > 0 ? b.id : 0);
+        if (secId > 0) {
+          batchUrl = `batch.php?id=${encodeURIComponent(secId)}`;
+        } else {
+          batchUrl = "batch.php";
+        }
 
-          return `
-            <tr>
-              <td class="td-sno">${siNo}</td>
-              <td class="td-batch-id"><strong>${escapeHtml(b.batchId)}</strong></td>
-              <td class="td-course-name">${escapeHtml(b.courseName)}</td>
-              <td><span class="ba-badge ${modeBadgeClass}">${escapeHtml(b.mode)}</span></td>
-              <td><span class="ba-badge ${typeBadgeClass}">${escapeHtml(b.type)}</span></td>
-              <td class="td-date">${escapeHtml(b.startDate)}</td>
-              <td class="td-module">${escapeHtml(b.currentModule)}</td>
-              <td>${statusHtml}</td>
-              <td style="text-align:center;">
-                <a href="${batchUrl}" class="ba-new-view-btn">View Batch</a>
-              </td>
-            </tr>
-          `;
-        })
-        .join("");
+        let moduleUrl = "";
+        if (secId > 0 && b.moduleIdx && b.courseId) {
+          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}&courseid=${encodeURIComponent(b.courseId)}`;
+        } else if (secId > 0 && b.moduleIdx) {
+          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}`;
+        }
+
+        const moduleHtml = moduleUrl
+          ? `<a href="${moduleUrl}" class="ba-module-chip" title="View Module Analytics"><span class="chip-icon">📘</span> <span class="chip-name">${escapeHtml(b.currentModule || "N/A")}</span></a>`
+          : `<span class="ba-module-chip static"><span class="chip-icon">📘</span> <span class="chip-name">${escapeHtml(b.currentModule || "N/A")}</span></span>`;
+
+        return `
+          <tr>
+            <td class="td-sno">${siNo}</td>
+            <td class="td-batch-id">
+              <a href="${batchUrl}" class="ba-batch-id-pill" title="View Batch Overview">
+                <span class="batch-hash">#</span><strong>${escapeHtml(b.batchId)}</strong>
+              </a>
+            </td>
+            <td class="td-course-name">
+              <span class="course-title">${escapeHtml(b.courseName)}</span>
+              ${b.studentCount ? `<span class="course-meta">${b.studentCount} Students Enrolled</span>` : ''}
+            </td>
+            <td><span class="ba-badge ${modeBadgeClass}"><span class="badge-dot"></span> ${escapeHtml(b.mode)}</span></td>
+            <td><span class="ba-badge ${typeBadgeClass}">${escapeHtml(b.type)}</span></td>
+            <td class="td-date"><span class="date-icon">📅</span> ${escapeHtml(b.startDate)}</td>
+            <td class="td-module">${moduleHtml}</td>
+            <td>${statusHtml}</td>
+            <td style="text-align:center;">
+              <a href="${batchUrl}" class="ba-new-view-btn">
+                <span class="btn-lbl">View Batch</span>
+                <span class="btn-arr">→</span>
+              </a>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
     }
 
   function renderPagination(totalItems, startIndex, pageItemCount, totalPages) {

@@ -777,8 +777,8 @@ if ($action === 'getnewbatchdata') {
     try {
         require_sesskey();
 
-        // Fetch all batches
-        $batches = $DB->get_records('local_bm_batch', null, 'id ASC');
+        // Fetch all batches sorted by startdate ASC (oldest date first)
+        $batches = $DB->get_records('local_bm_batch', null, 'startdate ASC, id ASC');
         // Fetch all class sections
         $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
         $sectionsbybatch = [];
@@ -795,6 +795,7 @@ if ($action === 'getnewbatchdata') {
         $hybridcount = 0;
         $onschedulecount = 0;
         $delayedcount = 0;
+        $earlycount = 0;
         $classmentors = [];
         $labmentors = [];
 
@@ -808,66 +809,85 @@ if ($action === 'getnewbatchdata') {
                 $hybridcount++;
             }
 
-            $sec = isset($sectionsbybatch[$b->id]) ? $sectionsbybatch[$b->id][0] : null;
+            $batch_sections = $sectionsbybatch[$b->id] ?? [];
+            $sec = !empty($batch_sections) ? $batch_sections[0] : null;
             $currentmodule = 'N/A';
             $status = 'on_schedule';
             $statuslabel = 'On schedule';
             $delaydays = 0;
+            $totaldelta = 0;
             $allcompleted = true;
             $anyinprogress = false;
             $currentmoduleidx = 1;
             $currentcourseid = 0;
 
-            if ($sec && !empty($sec->moduledata)) {
-                $mdata = json_decode($sec->moduledata, true);
-                if (is_array($mdata)) {
-                    foreach ($mdata as $m_i => $m) {
-                        if (!empty($m['primarymentor'])) {
-                            $classmentors[$m['primarymentor']] = true;
-                        }
-                        if (!empty($m['secondarymentor'])) {
-                            $classmentors[$m['secondarymentor']] = true;
-                        }
-                        if (!empty($m['labmentor1'])) {
-                            $labmentors[$m['labmentor1']] = true;
-                        }
-                        if (!empty($m['labmentor2'])) {
-                            $labmentors[$m['labmentor2']] = true;
-                        }
-                        if (!empty($m['labmentor3'])) {
-                            $labmentors[$m['labmentor3']] = true;
-                        }
+            foreach ($batch_sections as $curr_sec) {
+                if (!empty($curr_sec->moduledata)) {
+                    $mdata = json_decode($curr_sec->moduledata, true);
+                    if (is_array($mdata)) {
+                        foreach ($mdata as $m_i => $m) {
+                            if (!empty($m['primarymentor'])) {
+                                $classmentors[$m['primarymentor']] = true;
+                            }
+                            if (!empty($m['secondarymentor'])) {
+                                $classmentors[$m['secondarymentor']] = true;
+                            }
+                            if (!empty($m['labmentor1'])) {
+                                $labmentors[$m['labmentor1']] = true;
+                            }
+                            if (!empty($m['labmentor2'])) {
+                                $labmentors[$m['labmentor2']] = true;
+                            }
+                            if (!empty($m['labmentor3'])) {
+                                $labmentors[$m['labmentor3']] = true;
+                            }
 
-                        $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
-                        if (!$isdone) {
-                            $allcompleted = false;
-                        }
-                        if ($currentmodule === 'N/A' && (!$isdone || count($mdata) === 1)) {
-                            $anyinprogress = true;
-                            $mname = !empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . ($m['module'] ?? ($m_i + 1)));
-                            $currentmodule = $mname;
-                            $currentmoduleidx = (int)($m['module'] ?? ($m_i + 1));
-                            $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
-                            $delta = (int)($m['scheduledelta'] ?? 0);
-                            if ($delta > 0) {
-                                $status = 'delayed';
-                                $delaydays = $delta;
-                                $statuslabel = 'Delayed by ' . $delta . ' day' . ($delta > 1 ? 's' : '');
+                            // Accumulate schedule delta from all modules in the batch
+                            if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
+                                $totaldelta += (int)round((float)$m['scheduledelta']);
+                            } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
+                                $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
+                                $totaldelta += $diffdays;
+                            }
+
+                            $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
+                            if (!$isdone) {
+                                $allcompleted = false;
+                            }
+                            if ($currentmodule === 'N/A' && (!$isdone || count($mdata) === 1)) {
+                                $anyinprogress = true;
+                                $mname = !empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . ($m['module'] ?? ($m_i + 1)));
+                                $currentmodule = $mname;
+                                $currentmoduleidx = (int)($m['module'] ?? ($m_i + 1));
+                                $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
                             }
                         }
-                    }
-                    if ($currentmodule === 'N/A' && !empty($mdata)) {
-                        $lastm = end($mdata);
-                        $currentmodule = (!empty($lastm['courseshortname']) ? $lastm['courseshortname'] : 'Completed');
-                        $currentmoduleidx = count($mdata);
-                        $currentcourseid = (int)($lastm['moodlecourseid'] ?? 0);
+                        if ($currentmodule === 'N/A' && !empty($mdata)) {
+                            $lastm = end($mdata);
+                            $currentmodule = (!empty($lastm['courseshortname']) ? $lastm['courseshortname'] : 'Completed');
+                            $currentmoduleidx = count($mdata);
+                            $currentcourseid = (int)($lastm['moodlecourseid'] ?? 0);
+                        }
                     }
                 }
             }
 
-            if ($status === 'delayed') {
+            // Determine status based on total accumulated schedule delta
+            if ($totaldelta > 0) {
+                $status = 'delayed';
+                $delaydays = $totaldelta;
+                $statuslabel = 'Delayed by ' . $totaldelta . ' day' . ($totaldelta > 1 ? 's' : '');
                 $delayedcount++;
+            } else if ($totaldelta < 0) {
+                $status = 'early';
+                $delaydays = $totaldelta;
+                $earlydays = abs($totaldelta);
+                $statuslabel = 'Early by ' . $earlydays . ' day' . ($earlydays > 1 ? 's' : '');
+                $earlycount++;
             } else {
+                $status = 'on_schedule';
+                $delaydays = 0;
+                $statuslabel = 'On schedule';
                 $onschedulecount++;
             }
 
@@ -884,6 +904,7 @@ if ($action === 'getnewbatchdata') {
                 'type' => $b->submode ?: 'Regular',
                 'startDate' => $startformatted,
                 'year' => $year,
+                'startdateTimestamp' => !empty($b->startdate) ? (int)$b->startdate : 0,
                 'currentModule' => $currentmodule,
                 'moduleIdx' => $currentmoduleidx,
                 'courseId' => $currentcourseid,
@@ -895,6 +916,22 @@ if ($action === 'getnewbatchdata') {
                 'sectionId' => $sec ? (int)$sec->id : 0
             ];
         }
+
+        // Sort batchlist with oldest date first (ascending order)
+        usort($batchlist, static function($a, $b) {
+            $tsA = (int)($a['startdateTimestamp'] ?? 0);
+            $tsB = (int)($b['startdateTimestamp'] ?? 0);
+            if ($tsA === $tsB) {
+                return $a['id'] <=> $b['id'];
+            }
+            if ($tsA === 0) {
+                return 1;
+            }
+            if ($tsB === 0) {
+                return -1;
+            }
+            return $tsA <=> $tsB; // Oldest date first
+        });
 
         $years = array_values(array_unique(array_column($batchlist, 'year')));
         sort($years);
@@ -914,6 +951,7 @@ if ($action === 'getnewbatchdata') {
                 'labMentors' => count($labmentors),
                 'onSchedule' => $onschedulecount,
                 'delayed' => $delayedcount,
+                'early' => $earlycount,
                 'totalStudents' => $studentcount
             ],
             'batches' => $batchlist,
@@ -958,120 +996,130 @@ echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Top-Level Primary Navigation Bar (Old vs New Batch Analytics)
 echo '<div class="ba-top-nav-tabs-bar">';
-echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="new">New Batch Analytics</button>';
-echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="old">Old Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="new"><span class="ba-tab-icon">⚡</span> New Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="old"><span class="ba-tab-icon">📁</span> Old Batch Analytics</button>';
 echo '</div>';
 
 // NEW BATCH ANALYTICS TAB PANE (Active by default)
 echo '<div id="ba-top-tab-new" class="ba-top-tab-pane active">';
 echo '  <div class="ba-new-dashboard">';
 
-echo '    <!-- Stat Cards Grid -->';
-echo '    <div class="ba-new-stats-grid" id="ba-new-stats-grid">';
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Running Batches</span>';
-echo '          <span class="ba-new-stat-icon icon-blue">📊</span>';
+echo '    <!-- Stat Cards Grid (7 Cards: 3 Delivery Cards + 4 Metrics Cards) -->';
+echo '    <div class="ba-new-stats-container" id="ba-new-stats-grid">';
+echo '      <div class="ba-stats-row-top">';
+echo '        <div class="ba-new-stat-card card-blue">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Running Batches</span>';
+echo '            <span class="ba-new-stat-icon icon-blue">📊</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-running-batches">--</div>';
+echo '          <div class="ba-new-stat-footer">Total Active Batches</div>';
 echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-running-batches">--</div>';
-echo '        <div class="ba-new-stat-footer">Total Active Batches</div>';
+
+echo '        <div class="ba-new-stat-card card-green">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Online Batches</span>';
+echo '            <span class="ba-new-stat-icon icon-green">💻</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-online-batches">--</div>';
+echo '          <div class="ba-new-stat-footer">Virtual Classrooms</div>';
+echo '        </div>';
+
+echo '        <div class="ba-new-stat-card card-purple">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Offline Batches</span>';
+echo '            <span class="ba-new-stat-icon icon-purple">🏫</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-offline-batches">--</div>';
+echo '          <div class="ba-new-stat-footer">In-Person Campus</div>';
+echo '        </div>';
 echo '      </div>';
 
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Online Batches</span>';
-echo '          <span class="ba-new-stat-icon icon-green">💻</span>';
+echo '      <div class="ba-stats-row-bottom">';
+echo '        <div class="ba-new-stat-card card-teal">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Class Mentors</span>';
+echo '            <span class="ba-new-stat-icon icon-teal">👨‍🏫</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-class-mentors">--</div>';
+echo '          <div class="ba-new-stat-footer">Active Instructors</div>';
 echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-online-batches">--</div>';
-echo '        <div class="ba-new-stat-footer">Virtual Classrooms</div>';
-echo '      </div>';
 
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Offline Batches</span>';
-echo '          <span class="ba-new-stat-icon icon-purple">🏫</span>';
+echo '        <div class="ba-new-stat-card card-indigo">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Lab Mentors</span>';
+echo '            <span class="ba-new-stat-icon icon-indigo">🔬</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-lab-mentors">--</div>';
+echo '          <div class="ba-new-stat-footer">Technical Assistants</div>';
 echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-offline-batches">--</div>';
-echo '        <div class="ba-new-stat-footer">In-Person Campus</div>';
-echo '      </div>';
 
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Class Mentors</span>';
-echo '          <span class="ba-new-stat-icon icon-teal">👨‍🏫</span>';
+echo '        <div class="ba-new-stat-card card-emerald">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Schedule Status</span>';
+echo '            <span class="ba-new-stat-icon icon-emerald">⏱️</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value"><span id="stat-on-schedule" class="text-success" title="On Schedule">--</span> <span class="stat-sep">/</span> <span id="stat-delayed" class="text-danger" title="Delayed">--</span> <span class="stat-sep">/</span> <span id="stat-early" class="text-primary" title="Early">--</span></div>';
+echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-green"></span> On Schedule / <span class="badge-status-dot dot-red"></span> Delayed / <span class="badge-status-dot dot-blue"></span> Early</div>';
 echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-class-mentors">--</div>';
-echo '        <div class="ba-new-stat-footer">Active Instructors</div>';
-echo '      </div>';
 
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Lab Mentors</span>';
-echo '          <span class="ba-new-stat-icon icon-indigo">🔬</span>';
+echo '        <div class="ba-new-stat-card card-orange">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Total Students</span>';
+echo '            <span class="ba-new-stat-icon icon-orange">👥</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value" id="stat-total-students">--</div>';
+echo '          <div class="ba-new-stat-footer">Enrolled Learners</div>';
 echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-lab-mentors">--</div>';
-echo '        <div class="ba-new-stat-footer">Technical Assistants</div>';
-echo '      </div>';
-
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Schedule Status</span>';
-echo '          <span class="ba-new-stat-icon icon-emerald">⏱️</span>';
-echo '        </div>';
-echo '        <div class="ba-new-stat-value"><span id="stat-on-schedule" class="text-success">--</span> / <span id="stat-delayed" class="text-danger">--</span></div>';
-echo '        <div class="ba-new-stat-footer">On Schedule / Delayed</div>';
-echo '      </div>';
-
-echo '      <div class="ba-new-stat-card">';
-echo '        <div class="ba-new-stat-header">';
-echo '          <span class="ba-new-stat-title">Total Students</span>';
-echo '          <span class="ba-new-stat-icon icon-orange">👥</span>';
-echo '        </div>';
-echo '        <div class="ba-new-stat-value" id="stat-total-students">--</div>';
-echo '        <div class="ba-new-stat-footer">Enrolled Learners</div>';
 echo '      </div>';
 echo '    </div>';
 
 echo '    <!-- Search & Filters Controls Card -->';
 echo '    <div class="ba-new-card ba-new-controls-card">';
-echo '      <div class="ba-new-search-row">';
+echo '      <div class="ba-new-controls-header">';
+echo '        <div class="ba-controls-title-wrap">';
+echo '          <span class="ba-controls-badge">⚡ Filter & Search</span>';
+echo '          <span class="ba-controls-subtitle">Filter cohorts across programs, dates, and delivery modes</span>';
+echo '        </div>';
+echo '        <button id="ba-new-reset-btn" type="button" class="ba-new-btn-secondary" title="Clear all active filters"><span class="btn-icon">🔄</span> Reset Filters</button>';
+echo '      </div>';
+echo '      <div class="ba-new-controls-body">';
 echo '        <div class="ba-new-search-box">';
 echo '          <span class="ba-search-icon">🔍</span>';
-echo '          <input type="text" id="ba-new-search-input" placeholder="Search batch name or course..." />';
+echo '          <input type="text" id="ba-new-search-input" placeholder="Search by batch name, course title, or module..." />';
 echo '        </div>';
-echo '      </div>';
-echo '      <div class="ba-new-filters-row">';
-echo '        <div class="ba-new-filter-group">';
-echo '          <label for="ba-filter-year">Year</label>';
-echo '          <select id="ba-filter-year" class="ba-new-select"><option value="">All Years</option></select>';
-echo '        </div>';
-echo '        <div class="ba-new-filter-group">';
-echo '          <label for="ba-filter-batch">Batch No.</label>';
-echo '          <select id="ba-filter-batch" class="ba-new-select"><option value="">All Batches</option></select>';
-echo '        </div>';
-echo '        <div class="ba-new-filter-group">';
-echo '          <label for="ba-filter-course">Course</label>';
-echo '          <select id="ba-filter-course" class="ba-new-select"><option value="">All Courses</option></select>';
-echo '        </div>';
-echo '        <div class="ba-new-filter-group">';
-echo '          <label for="ba-filter-mode">Mode</label>';
-echo '          <select id="ba-filter-mode" class="ba-new-select"><option value="">All Modes</option></select>';
-echo '        </div>';
-echo '        <div class="ba-new-filter-actions">';
-echo '          <button id="ba-new-reset-btn" type="button" class="ba-new-btn-secondary">Reset Filters</button>';
+echo '        <div class="ba-new-filters-row">';
+echo '          <div class="ba-new-filter-group">';
+echo '            <label for="ba-filter-year">Year</label>';
+echo '            <select id="ba-filter-year" class="ba-new-select"><option value="">All Years</option></select>';
+echo '          </div>';
+echo '          <div class="ba-new-filter-group">';
+echo '            <label for="ba-filter-batch">Batch No.</label>';
+echo '            <select id="ba-filter-batch" class="ba-new-select"><option value="">All Batches</option></select>';
+echo '          </div>';
+echo '          <div class="ba-new-filter-group">';
+echo '            <label for="ba-filter-course">Course</label>';
+echo '            <select id="ba-filter-course" class="ba-new-select"><option value="">All Courses</option></select>';
+echo '          </div>';
+echo '          <div class="ba-new-filter-group">';
+echo '            <label for="ba-filter-mode">Mode</label>';
+echo '            <select id="ba-filter-mode" class="ba-new-select"><option value="">All Modes</option></select>';
+echo '          </div>';
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';
 
 echo '    <!-- Main Table Container -->';
 echo '    <div class="ba-new-card ba-new-table-card">';
-echo '      <div class="ba-new-subtabs">';
-echo '        <button type="button" class="ba-new-subtab active" data-subtab="running">';
-echo '          Current Running Batches (<span id="ba-cnt-running">0</span>)';
-echo '        </button>';
-echo '        <button type="button" class="ba-new-subtab" data-subtab="completed">';
-echo '          Completed Batches (<span id="ba-cnt-completed">0</span>)';
-echo '        </button>';
+echo '      <div class="ba-new-subtabs-wrap">';
+echo '        <div class="ba-new-subtabs">';
+echo '          <button type="button" class="ba-new-subtab active" data-subtab="running">';
+echo '            <span class="subtab-dot dot-running"></span> Current Running Batches <span class="ba-count-pill" id="ba-cnt-running">0</span>';
+echo '          </button>';
+echo '          <button type="button" class="ba-new-subtab" data-subtab="completed">';
+echo '            <span class="subtab-dot dot-completed"></span> Completed Batches <span class="ba-count-pill" id="ba-cnt-completed">0</span>';
+echo '          </button>';
+echo '        </div>';
 echo '      </div>';
 
 echo '      <div class="ba-new-table-wrapper">';
