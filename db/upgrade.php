@@ -15,7 +15,7 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool
  */
 function xmldb_local_batchanalytics_upgrade($oldversion) {
-    global $DB;
+    global $CFG, $DB;
 
     $dbman = $DB->get_manager();
 
@@ -276,6 +276,16 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         }
 
         upgrade_plugin_savepoint(true, 2026080400, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026080500) {
+        require_once($CFG->libdir . '/accesslib.php');
+        update_capabilities('local_batchanalytics');
+        upgrade_plugin_savepoint(true, 2026080500, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026091700) {
+        upgrade_plugin_savepoint(true, 2026091700, 'local', 'batchanalytics');
     }
 
     return true;
