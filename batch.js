@@ -261,9 +261,27 @@
                 else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
                 if (!meritHtml) meritHtml = '<span class="muted">—</span>';
 
+                var avatarHtml = '';
+                var studentInitials = escapeHtml(s.initials || (s.name ? s.name.charAt(0).toUpperCase() : '?'));
+                if (s.profileimageurl) {
+                    avatarHtml = '<div class="ba-avatar-wrap">' +
+                        '<img src="' + escapeHtml(s.profileimageurl) + '" class="ba-student-avatar" alt="' + escapeHtml(s.name) + '" onerror="this.onerror=null;this.parentElement.innerHTML=\'<span class=\\\'ba-avatar-initials\\\'>' + studentInitials + '</span>\';">' +
+                    '</div>';
+                } else {
+                    avatarHtml = '<div class="ba-avatar-wrap"><span class="ba-avatar-initials">' + studentInitials + '</span></div>';
+                }
+
                 html += '<tr>' +
                     '<td><span class="bdot" style="background:' + dotColors[b] + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
-                    '<td><span class="sname">' + escapeHtml(s.name) + '</span><br><span class="sid">' + escapeHtml(s.id) + '</span></td>' +
+                    '<td>' +
+                        '<div class="ba-student-cell">' +
+                            avatarHtml +
+                            '<div class="ba-student-info">' +
+                                '<span class="sname">' + escapeHtml(s.name) + '</span>' +
+                                '<span class="sid">' + escapeHtml(s.id) + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</td>' +
                     '<td><b>' + escapeHtml(s.grade) + '</b></td>' +
                     '<td>' + escapeHtml(s.attendance || '—') + '</td>' +
                     '<td>' + escapeHtml(s.assignments || '—') + '</td>' +

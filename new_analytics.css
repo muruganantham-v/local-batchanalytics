@@ -7,6 +7,21 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+/* Remove page title "Batch Analytics" on index, batch, and module pages */
+body#page-local-batchanalytics-index #page-header,
+body#page-local-batchanalytics-index .page-header-headings,
+body#page-local-batchanalytics-index #page-header h1,
+body#page-local-batchanalytics-batch #page-header,
+body#page-local-batchanalytics-batch .page-header-headings,
+body#page-local-batchanalytics-batch #page-header h1,
+body#page-local-batchanalytics-module #page-header,
+body#page-local-batchanalytics-module .page-header-headings,
+body#page-local-batchanalytics-module #page-header h1,
+.path-local-batchanalytics #page-header .page-header-headings,
+.path-local-batchanalytics #page-header h1.h2 {
+  display: none !important;
+}
+
 /* ==================== ROOT CONTAINER & TYPOGRAPHY ==================== */
 .ba-new-dashboard {
   display: flex;
@@ -138,6 +153,7 @@
 .ba-new-stat-card.card-indigo::before  { background: linear-gradient(90deg, #6366f1, #818cf8); }
 .ba-new-stat-card.card-emerald::before { background: linear-gradient(90deg, #059669, #10b981); }
 .ba-new-stat-card.card-orange::before  { background: linear-gradient(90deg, #f97316, #fb923c); }
+.ba-new-stat-card.card-red::before     { background: linear-gradient(90deg, #ef4444, #f87171); }
 
 .ba-new-stat-header {
   display: flex;
@@ -177,6 +193,7 @@
 .icon-indigo  { background: #eef2ff; border: 1px solid #e0e7ff; }
 .icon-emerald { background: #ecfdf5; border: 1px solid #d1fae5; }
 .icon-orange  { background: #fff7ed; border: 1px solid #ffedd5; }
+.icon-red     { background: #fef2f2; border: 1px solid #fee2e2; }
 
 .ba-new-stat-value {
   font-size: 28px;
@@ -209,9 +226,11 @@
   display: inline-block;
 }
 
-.badge-status-dot.dot-green { background: #16a34a; }
-.badge-status-dot.dot-red   { background: #dc2626; }
-.badge-status-dot.dot-blue  { background: #0284c7; }
+.badge-status-dot.dot-green  { background: #16a34a; }
+.badge-status-dot.dot-red    { background: #dc2626; }
+.badge-status-dot.dot-blue   { background: #0284c7; }
+.badge-status-dot.dot-purple { background: #8b5cf6; }
+.badge-status-dot.dot-orange { background: #f97316; }
 
 .text-success { color: #16a34a !important; }
 .text-danger  { color: #dc2626 !important; }
@@ -831,3 +850,569 @@
   color: #64748b;
   font-size: 14.5px;
 }
+
+/* ==================== BATCH & MODULE PAGES DESIGN SYSTEM ==================== */
+
+/* Outer Shell / Canvas Alignment */
+.ba-batch-page .shell,
+.ba-module-page .shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Breadcrumb Bar */
+.ba-batch-page .crumbbar,
+.ba-module-page .crumbbar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 20px !important;
+  font-size: 13.5px !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+.ba-batch-page .crumbbar a,
+.ba-module-page .crumbbar a {
+  color: #0284c7 !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+  transition: color 0.15s ease !important;
+}
+
+.ba-batch-page .crumbbar a:hover,
+.ba-module-page .crumbbar a:hover {
+  color: #0369a1 !important;
+  text-decoration: underline !important;
+}
+
+.ba-batch-page .crumbbar b,
+.ba-module-page .crumbbar b {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+/* Header Cards (.bhead & .mhead) */
+.ba-batch-page .bhead,
+.ba-module-page .mhead {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  padding: 24px 28px !important;
+  margin-bottom: 24px !important;
+  box-shadow: 0 2px 8px -1px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.ba-batch-page .bhead::before,
+.ba-module-page .mhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+}
+
+.ba-batch-page .bhead h1,
+.ba-module-page .mhead h1 {
+  font-size: 24px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  letter-spacing: -0.4px !important;
+  margin: 0 0 10px 0 !important;
+}
+
+/* Pills & Badges in Header */
+.ba-batch-page .idrow {
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  margin-bottom: 10px !important;
+}
+
+.ba-batch-page .pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 12px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+}
+
+.ba-batch-page .pill-course {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+.ba-batch-page .mode-offline,
+.ba-batch-page .mode-classroom {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+
+.ba-batch-page .mode-online {
+  background: #eff6ff !important;
+  color: #0284c7 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+.ba-batch-page .type-regular,
+.ba-batch-page .type-int,
+.ba-batch-page .type-wp {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.ba-batch-page .pill-date {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.ba-batch-page .curmod,
+.ba-module-page .mhead .meta {
+  font-size: 13.5px !important;
+  color: #64748b !important;
+  margin-top: 6px !important;
+}
+
+.ba-batch-page .curmod b,
+.ba-module-page .mhead .meta b {
+  color: #0f172a !important;
+}
+
+/* Status Chips */
+.ba-batch-page .status-chip,
+.ba-module-page .status-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 6px 14px !important;
+  border-radius: 20px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
+.ba-batch-page .status-chip.g,
+.ba-module-page .status-chip.g {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+.ba-batch-page .status-chip.g::before,
+.ba-module-page .status-chip.g::before {
+  background: #10b981 !important;
+}
+
+.ba-batch-page .status-chip.a,
+.ba-module-page .status-chip.a {
+  background: #fffbeb !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+}
+.ba-batch-page .status-chip.a::before,
+.ba-module-page .status-chip.a::before {
+  background: #f59e0b !important;
+}
+
+.ba-batch-page .status-chip.r,
+.ba-module-page .status-chip.r {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fecaca !important;
+}
+.ba-batch-page .status-chip.r::before,
+.ba-module-page .status-chip.r::before {
+  background: #ef4444 !important;
+}
+
+/* People Section (PM & SSE) */
+.ba-batch-page .people,
+.ba-module-page .people {
+  display: flex !important;
+  gap: 36px !important;
+  margin-top: 20px !important;
+  padding-top: 18px !important;
+  border-top: 1px solid #f1f5f9 !important;
+  flex-wrap: wrap !important;
+}
+
+.ba-batch-page .person .role,
+.ba-module-page .person .role {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  color: #64748b !important;
+  margin-bottom: 6px !important;
+}
+
+.ba-batch-page .pwrap,
+.ba-module-page .pwrap {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.ba-batch-page .pav,
+.ba-module-page .pav {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+  border: 2px solid #ffffff !important;
+}
+
+.ba-batch-page .person .name,
+.ba-module-page .person .name {
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+/* Module Action Buttons */
+.ba-module-page .maac-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 18px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  background: #0284c7 !important;
+  border-radius: 8px !important;
+  text-decoration: none !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3) !important;
+  border: none !important;
+  cursor: pointer !important;
+}
+
+.ba-module-page .maac-btn:hover {
+  background: #0369a1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(2, 132, 199, 0.35) !important;
+}
+
+.ba-module-page .navbtns a,
+.ba-module-page .navbtns button {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 6px 14px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.ba-module-page .navbtns a:hover {
+  background: #ffffff !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Section Headings with Vertical Accent Bar */
+.ba-module-page .sec-label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin: 28px 0 14px 0 !important;
+}
+
+.ba-module-page .sec-label::before {
+  content: "" !important;
+  width: 4px !important;
+  height: 16px !important;
+  background: linear-gradient(180deg, #0284c7, #0369a1) !important;
+  border-radius: 2px !important;
+  display: inline-block !important;
+}
+
+.ba-module-page .sec-label .subx {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #64748b !important;
+  margin-left: 4px !important;
+}
+
+/* 8-Cell Schedule Grid in Module Page */
+.ba-module-page .schedgrid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 14px !important;
+  margin-bottom: 24px !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .ba-module-page .schedgrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+.ba-module-page .schedgrid .sc {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 14px 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+  transition: all 0.15s ease !important;
+}
+
+.ba-module-page .schedgrid .sc:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04) !important;
+}
+
+.ba-module-page .schedgrid .sc .k {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: #64748b !important;
+  margin-bottom: 6px !important;
+}
+
+.ba-module-page .schedgrid .sc .v {
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+/* Navigation Tabs in Batch & Module (Pill Bar Style) */
+.ba-batch-page .tabs,
+.ba-module-page .tabs {
+  display: inline-flex !important;
+  background: #f1f5f9 !important;
+  border-radius: 12px !important;
+  padding: 5px !important;
+  gap: 4px !important;
+  border: 1px solid #e2e8f0 !important;
+  margin-bottom: 24px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.ba-batch-page .tab,
+.ba-module-page .tab {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 9px 20px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  margin-bottom: 0 !important;
+  outline: none !important;
+}
+
+.ba-batch-page .tab:hover:not(.active),
+.ba-module-page .tab:hover:not(.active) {
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+}
+
+.ba-batch-page .tab.active,
+.ba-module-page .tab.active {
+  color: #0284c7 !important;
+  background: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  border-bottom: none !important;
+}
+
+/* Table Cards & Tables in Batch & Module */
+.ba-batch-page .tablecard,
+.ba-module-page .tablecard,
+.ba-module-page .ba-tracker-wrap {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
+  overflow: hidden !important;
+}
+
+.ba-batch-page thead th,
+.ba-module-page thead th {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.ba-batch-page tbody td,
+.ba-module-page tbody td {
+  padding: 14px 16px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  color: #1e293b !important;
+  font-size: 13.5px !important;
+}
+
+.ba-batch-page tbody tr:hover,
+.ba-module-page tbody tr:hover {
+  background: #f8fafc !important;
+}
+
+.ba-batch-page .viewbtn {
+  padding: 7px 16px !important;
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border: 1px solid #0284c7 !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2) !important;
+  text-decoration: none !important;
+}
+
+.ba-batch-page .viewbtn:hover:not(:disabled):not(.disabled) {
+  background: #0369a1 !important;
+  border-color: #0369a1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.ba-batch-page .viewbtn:disabled,
+.ba-batch-page .viewbtn.disabled {
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+/* Tracker Category Buttons in Module */
+.ba-module-page .ba-tracker-cat-btn {
+  padding: 7px 16px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  color: #475569 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.ba-module-page .ba-tracker-cat-btn:hover {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.ba-module-page .ba-tracker-cat-btn.active {
+  background: #0284c7 !important;
+  border-color: #0284c7 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25) !important;
+}
+
+/* Student Performance Band Cards */
+.ba-batch-page .band,
+.ba-module-page .band {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  padding: 18px 20px !important;
+  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+.ba-batch-page .band:hover,
+.ba-module-page .band:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 16px -2px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Toggle Switch (Grade / Percentile) */
+.ba-batch-page .toggle,
+.ba-module-page .toggle {
+  display: inline-flex !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  padding: 3px !important;
+  gap: 2px !important;
+}
+
+.ba-batch-page .toggle span,
+.ba-module-page .toggle span {
+  padding: 6px 16px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  background: transparent !important;
+}
+
+.ba-batch-page .toggle span:hover:not(.on),
+.ba-module-page .toggle span:hover:not(.on) {
+  color: #0f172a !important;
+}
+
+.ba-batch-page .toggle span.on,
+.ba-module-page .toggle span.on {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.25) !important;
+}
+
+.ba-batch-page .exp,
+.ba-module-page .exp {
+  padding: 8px 18px !important;
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border: 1px solid #0284c7 !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.2) !important;
+}
+.ba-batch-page .exp:hover,
+.ba-module-page .exp:hover {
+  background: #0369a1 !important;
+  border-color: #0369a1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 6px rgba(2, 132, 199, 0.3) !important;
+  color: #ffffff !important;
+}
+
+
