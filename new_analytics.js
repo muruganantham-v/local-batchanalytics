@@ -36,6 +36,10 @@ function initNewBatchAnalytics() {
     .then((data) => {
       if (data.error) {
         console.error("Failed to load new batch data:", data.error);
+        const tbody = document.getElementById("ba-new-table-body");
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="9" class="ba-new-empty" style="color: #ef4444;">Failed to load batch data: ${escapeHtml(data.error)}</td></tr>`;
+        }
         return;
       }
       rawData = data;
@@ -46,6 +50,10 @@ function initNewBatchAnalytics() {
     })
     .catch((err) => {
       console.error("Error fetching new batch data:", err);
+      const tbody = document.getElementById("ba-new-table-body");
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="9" class="ba-new-empty" style="color: #ef4444;">Error fetching batch data. Please try refreshing the page.</td></tr>`;
+      }
     });
 
   function renderStats(stats) {
@@ -167,8 +175,8 @@ function initNewBatchAnalytics() {
       if (currentSubTab === "running" && b.isCompleted) return false;
 
       if (searchTerm) {
-        const matchesName = b.batchId.toLowerCase().includes(searchTerm);
-        const matchesCourse = b.courseName.toLowerCase().includes(searchTerm);
+        const matchesName = (b.batchId || "").toString().toLowerCase().includes(searchTerm);
+        const matchesCourse = (b.courseName || "").toLowerCase().includes(searchTerm);
         const matchesModule = (b.currentModule || "").toLowerCase().includes(searchTerm);
         if (!matchesName && !matchesCourse && !matchesModule) return false;
       }

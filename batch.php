@@ -124,10 +124,7 @@ if ($section) {
     // Module tracking decoding
     $raw_modules = [];
     if (!empty($section->moduledata)) {
-        $decoded = json_decode($section->moduledata, true);
-        if (is_array($decoded)) {
-            $raw_modules = $decoded;
-        }
+        $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
     }
 } else {
     // Graceful fallback sample data conforming to prototype
@@ -169,9 +166,9 @@ $format_mod_date = static function($val): string {
 };
 
 if (!empty($raw_modules)) {
-    foreach ($raw_modules as $idx => $mod) {
-        $mod_idx = (int)($mod['module'] ?? ($idx + 1));
-        $m_name = !empty($mod['courseshortname']) ? $mod['courseshortname'] : ($canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx));
+    foreach ($raw_modules as $mod) {
+        $mod_idx = (int)($mod['module'] ?? 1);
+        $m_name = !empty($mod['name']) ? $mod['name'] : (!empty($mod['courseshortname']) ? $mod['courseshortname'] : ($canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx)));
         
         // Resolve Class Mentor(s)
         $class_mentors_arr = [];

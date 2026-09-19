@@ -777,17 +777,53 @@ if ($action === 'getnewbatchdata') {
     try {
         require_sesskey();
 
+        $dbman = $DB->get_manager();
+        $has_bm_batch = $dbman->table_exists('local_bm_batch');
+        $has_bm_section = $dbman->table_exists('local_bm_classsection');
+        $has_bm_student = $dbman->table_exists('local_bm_student');
+
+        if (!$has_bm_batch) {
+            echo json_encode([
+                'stats' => [
+                    'runningBatches' => 0,
+                    'totalBatches' => 0,
+                    'completedBatches' => 0,
+                    'onlineBatches' => 0,
+                    'offlineBatches' => 0,
+                    'classMentors' => 0,
+                    'labMentors' => 0,
+                    'onSchedule' => 0,
+                    'delayed' => 0,
+                    'early' => 0,
+                    'totalStudents' => 0
+                ],
+                'batches' => [],
+                'filters' => [
+                    'years' => [],
+                    'courses' => [],
+                    'modes' => [],
+                    'batchNames' => []
+                ]
+            ]);
+            die();
+        }
+
         // Fetch all batches sorted by startdate ASC (oldest date first)
         $batches = $DB->get_records('local_bm_batch', null, 'startdate ASC, id ASC');
-        // Fetch all class sections
-        $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
+
+        // Fetch all class sections if table exists
         $sectionsbybatch = [];
-        foreach ($sections as $sec) {
-            $sectionsbybatch[$sec->batchid][] = $sec;
+        if ($has_bm_section) {
+            $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
+            foreach ($sections as $sec) {
+                $sectionsbybatch[$sec->batchid][] = $sec;
+            }
         }
 
         // Fetch total unique students
-        $studentcount = $DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}");
+        $studentcount = $has_bm_student
+            ? (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}")
+            : 0;
 
         $batchlist = [];
         $onlinecount = 0;
@@ -799,8 +835,23 @@ if ($action === 'getnewbatchdata') {
         $classmentors = [];
         $labmentors = [];
 
+        // Helper to resolve mentor IDs to user names and filter invalid placeholders
+        $resolve_mentor = static function($val) use ($DB) {
+            $val = trim((string)$val);
+            if ($val === '' || $val === '0' || $val === '—' || strcasecmp($val, 'none') === 0 || strcasecmp($val, 'null') === 0) {
+                return null;
+            }
+            if (is_numeric($val)) {
+                $u = $DB->get_record('user', ['id' => (int)$val, 'deleted' => 0], 'id, firstname, lastname');
+                if ($u) {
+                    return fullname($u);
+                }
+            }
+            return $val;
+        };
+
         foreach ($batches as $b) {
-            $mode = $b->deliverymode;
+            $mode = trim((string)($b->deliverymode ?? ''));
             if (strcasecmp($mode, 'Online') === 0) {
                 $onlinecount++;
             } else if (strcasecmp($mode, 'Offline') === 0) {
@@ -811,66 +862,77 @@ if ($action === 'getnewbatchdata') {
 
             $batch_sections = $sectionsbybatch[$b->id] ?? [];
             $sec = !empty($batch_sections) ? $batch_sections[0] : null;
+
             $currentmodule = 'N/A';
+            $currentmoduleidx = 1;
+            $currentcourseid = 0;
             $status = 'on_schedule';
             $statuslabel = 'On schedule';
             $delaydays = 0;
             $totaldelta = 0;
-            $allcompleted = true;
-            $anyinprogress = false;
-            $currentmoduleidx = 1;
-            $currentcourseid = 0;
+            $batch_has_modules = false;
+            $batch_all_completed = true;
+            $last_valid_module = null;
 
             foreach ($batch_sections as $curr_sec) {
-                if (!empty($curr_sec->moduledata)) {
-                    $mdata = json_decode($curr_sec->moduledata, true);
-                    if (is_array($mdata)) {
-                        foreach ($mdata as $m_i => $m) {
-                            if (!empty($m['primarymentor'])) {
-                                $classmentors[$m['primarymentor']] = true;
-                            }
-                            if (!empty($m['secondarymentor'])) {
-                                $classmentors[$m['secondarymentor']] = true;
-                            }
-                            if (!empty($m['labmentor1'])) {
-                                $labmentors[$m['labmentor1']] = true;
-                            }
-                            if (!empty($m['labmentor2'])) {
-                                $labmentors[$m['labmentor2']] = true;
-                            }
-                            if (!empty($m['labmentor3'])) {
-                                $labmentors[$m['labmentor3']] = true;
-                            }
+                $modules = \local_batchanalytics\util::decode_module_data($curr_sec->moduledata ?? '', true);
+                if (empty($modules)) {
+                    continue;
+                }
+                $batch_has_modules = true;
 
-                            // Accumulate schedule delta from all modules in the batch
-                            if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
-                                $totaldelta += (int)round((float)$m['scheduledelta']);
-                            } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
-                                $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
-                                $totaldelta += $diffdays;
-                            }
+                foreach ($modules as $m) {
+                    $last_valid_module = $m;
 
-                            $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
-                            if (!$isdone) {
-                                $allcompleted = false;
-                            }
-                            if ($currentmodule === 'N/A' && (!$isdone || count($mdata) === 1)) {
-                                $anyinprogress = true;
-                                $mname = !empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . ($m['module'] ?? ($m_i + 1)));
-                                $currentmodule = $mname;
-                                $currentmoduleidx = (int)($m['module'] ?? ($m_i + 1));
-                                $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
+                    // Class Mentors
+                    foreach (['primarymentor', 'secondarymentor'] as $cmk) {
+                        if (!empty($m[$cmk])) {
+                            $resolved = $resolve_mentor($m[$cmk]);
+                            if ($resolved !== null) {
+                                $classmentors[$resolved] = true;
                             }
                         }
-                        if ($currentmodule === 'N/A' && !empty($mdata)) {
-                            $lastm = end($mdata);
-                            $currentmodule = (!empty($lastm['courseshortname']) ? $lastm['courseshortname'] : 'Completed');
-                            $currentmoduleidx = count($mdata);
-                            $currentcourseid = (int)($lastm['moodlecourseid'] ?? 0);
+                    }
+
+                    // Lab Mentors
+                    foreach (['labmentor1', 'labmentor2', 'labmentor3'] as $lmk) {
+                        if (!empty($m[$lmk])) {
+                            $resolved = $resolve_mentor($m[$lmk]);
+                            if ($resolved !== null) {
+                                $labmentors[$resolved] = true;
+                            }
                         }
+                    }
+
+                    // Accumulate schedule delta from all modules in the batch
+                    if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
+                        $totaldelta += (int)$m['scheduledelta'];
+                    } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
+                        $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
+                        $totaldelta += $diffdays;
+                    }
+
+                    $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
+                    if (!$isdone) {
+                        $batch_all_completed = false;
+                    }
+
+                    if ($currentmodule === 'N/A' && (!$isdone || count($modules) === 1)) {
+                        $mod_name = !empty($m['name']) ? $m['name'] : (!empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . $m['module']));
+                        $currentmodule = $mod_name;
+                        $currentmoduleidx = (int)$m['module'];
+                        $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
                     }
                 }
             }
+
+            if ($batch_has_modules && $currentmodule === 'N/A' && $last_valid_module !== null) {
+                $currentmodule = !empty($last_valid_module['name']) ? $last_valid_module['name'] : 'Completed';
+                $currentmoduleidx = (int)$last_valid_module['module'];
+                $currentcourseid = (int)($last_valid_module['moodlecourseid'] ?? 0);
+            }
+
+            $is_completed = ($batch_has_modules && $batch_all_completed);
 
             // Determine status based on total accumulated schedule delta
             if ($totaldelta > 0) {
@@ -891,17 +953,19 @@ if ($action === 'getnewbatchdata') {
                 $onschedulecount++;
             }
 
-            $batchstudents = $DB->count_records('local_bm_student', ['batchid' => $b->id]);
+            $batchstudents = $has_bm_student
+                ? (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE batchid = :bid", ['bid' => $b->id])
+                : 0;
 
             $startformatted = !empty($b->startdate) ? userdate($b->startdate, '%d %b %Y') : 'N/A';
             $year = !empty($b->startdate) ? userdate($b->startdate, '%Y') : date('Y');
 
             $batchlist[] = [
                 'id' => (int)$b->id,
-                'batchId' => $b->name,
-                'courseName' => $b->coursename,
-                'mode' => $b->deliverymode ?: 'Offline',
-                'type' => $b->submode ?: 'Regular',
+                'batchId' => (string)($b->name ?? ''),
+                'courseName' => (string)($b->coursename ?? ''),
+                'mode' => !empty($b->deliverymode) ? ucfirst(strtolower($b->deliverymode)) : 'Offline',
+                'type' => !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular',
                 'startDate' => $startformatted,
                 'year' => $year,
                 'startdateTimestamp' => !empty($b->startdate) ? (int)$b->startdate : 0,
@@ -912,8 +976,8 @@ if ($action === 'getnewbatchdata') {
                 'statusLabel' => $statuslabel,
                 'delayDays' => $delaydays,
                 'studentCount' => $batchstudents,
-                'isCompleted' => $allcompleted && !$anyinprogress,
-                'sectionId' => $sec ? (int)$sec->id : 0
+                'isCompleted' => $is_completed,
+                'sectionId' => $sec ? (int)$sec->id : (int)$b->id
             ];
         }
 
@@ -933,18 +997,30 @@ if ($action === 'getnewbatchdata') {
             return $tsA <=> $tsB; // Oldest date first
         });
 
-        $years = array_values(array_unique(array_column($batchlist, 'year')));
+        $activebatches = 0;
+        $completedbatches = 0;
+        foreach ($batchlist as $bl) {
+            if ($bl['isCompleted']) {
+                $completedbatches++;
+            } else {
+                $activebatches++;
+            }
+        }
+
+        $years = array_values(array_unique(array_filter(array_column($batchlist, 'year'))));
         sort($years);
-        $courses = array_values(array_unique(array_column($batchlist, 'courseName')));
+        $courses = array_values(array_unique(array_filter(array_column($batchlist, 'courseName'))));
         sort($courses);
-        $modes = array_values(array_unique(array_column($batchlist, 'mode')));
+        $modes = array_values(array_unique(array_filter(array_column($batchlist, 'mode'))));
         sort($modes);
-        $batchnames = array_values(array_unique(array_column($batchlist, 'batchId')));
+        $batchnames = array_values(array_unique(array_filter(array_column($batchlist, 'batchId'))));
         sort($batchnames);
 
         echo json_encode([
             'stats' => [
-                'runningBatches' => count($batchlist),
+                'runningBatches' => $activebatches,
+                'totalBatches' => count($batchlist),
+                'completedBatches' => $completedbatches,
                 'onlineBatches' => $onlinecount,
                 'offlineBatches' => $offlinecount,
                 'classMentors' => count($classmentors),

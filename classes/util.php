@@ -122,4 +122,137 @@ class util {
             return true;
         }
     }
+
+    /**
+     * Decode moduledata JSON from local_bm_classsection.
+     * Supports both the new slot-object format (module_1 to module_8) and legacy indexed arrays.
+     *
+     * @param string|array|null $moduledata_raw Raw JSON string or array.
+     * @param bool $only_active When true, filters out unconfigured/empty module slots.
+     * @return array Standardized array of module records.
+     */
+    public static function decode_module_data($moduledata_raw, bool $only_active = true): array {
+        if (empty($moduledata_raw)) {
+            return [];
+        }
+        if (is_string($moduledata_raw)) {
+            $decoded = json_decode($moduledata_raw, true);
+        } else if (is_array($moduledata_raw)) {
+            $decoded = $moduledata_raw;
+        } else {
+            return [];
+        }
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        // Check if format is keyed by module_1, module_2, or module1, module2...
+        $is_keyed = false;
+        for ($i = 1; $i <= 8; $i++) {
+            if (isset($decoded['module_' . $i]) || isset($decoded['module' . $i])) {
+                $is_keyed = true;
+                break;
+            }
+        }
+
+        if ($is_keyed) {
+            for ($i = 1; $i <= 8; $i++) {
+                $slot = $decoded['module_' . $i] ?? $decoded['module' . $i] ?? null;
+                if (!is_array($slot)) {
+                    continue;
+                }
+                $prefix = 'module' . $i;
+                $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? $slot[$prefix . '_name'] ?? $slot[$prefix] ?? ''));
+                $cid = (int)($slot['moodlecourseid'] ?? $slot[$prefix . '_moodlecourseid'] ?? 0);
+                $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : (int)($slot[$prefix . '_plannedstart'] ?? 0);
+                $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : (int)($slot[$prefix . '_plannedend'] ?? 0);
+                $pdays = (int)($slot['planneddays'] ?? $slot[$prefix . '_planneddays'] ?? 0);
+                $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : (int)($slot[$prefix . '_actualstart'] ?? 0);
+                $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : (int)($slot[$prefix . '_actualend'] ?? 0);
+                $adays = (int)($slot['actualdays'] ?? $slot[$prefix . '_actualdays'] ?? 0);
+                $delta = isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])
+                    ? (int)$slot['scheduledelta']
+                    : (isset($slot[$prefix . '_scheduledelta']) && is_numeric($slot[$prefix . '_scheduledelta']) ? (int)$slot[$prefix . '_scheduledelta'] : null);
+                $pm = trim((string)($slot['primarymentor'] ?? $slot[$prefix . '_primarymentor'] ?? ''));
+                $sm = trim((string)($slot['secondarymentor'] ?? $slot[$prefix . '_secondarymentor'] ?? ''));
+                $lm1 = trim((string)($slot['labmentor1'] ?? $slot[$prefix . '_labmentor1'] ?? ''));
+                $lm2 = trim((string)($slot['labmentor2'] ?? $slot[$prefix . '_labmentor2'] ?? ''));
+                $lm3 = trim((string)($slot['labmentor3'] ?? $slot[$prefix . '_labmentor3'] ?? ''));
+
+                $has_data = ($name !== '' || $cid > 0 || $pstart > 0 || $astart > 0 || $pdays > 0 || ($pm !== '' && $pm !== '0' && $pm !== '—'));
+                if ($only_active && !$has_data) {
+                    continue;
+                }
+
+                $normalized[] = [
+                    'module' => $i,
+                    'name' => $name,
+                    'courseshortname' => $name,
+                    'moodlecourseid' => $cid,
+                    'plannedstart' => $pstart,
+                    'plannedend' => $pend,
+                    'planneddays' => $pdays,
+                    'actualstart' => $astart,
+                    'actualend' => $aend,
+                    'actualdays' => $adays,
+                    'scheduledelta' => $delta,
+                    'primarymentor' => $pm,
+                    'secondarymentor' => $sm,
+                    'labmentor1' => $lm1,
+                    'labmentor2' => $lm2,
+                    'labmentor3' => $lm3,
+                ];
+            }
+        } else {
+            foreach ($decoded as $pos => $slot) {
+                if (!is_array($slot)) {
+                    continue;
+                }
+                $modnum = isset($slot['module']) && is_numeric($slot['module']) ? (int)$slot['module'] : ($pos + 1);
+                $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? ''));
+                $cid = (int)($slot['moodlecourseid'] ?? 0);
+                $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : 0;
+                $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : 0;
+                $pdays = (int)($slot['planneddays'] ?? 0);
+                $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : 0;
+                $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : 0;
+                $adays = (int)($slot['actualdays'] ?? 0);
+                $delta = isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta']) ? (int)$slot['scheduledelta'] : null;
+                $pm = trim((string)($slot['primarymentor'] ?? ''));
+                $sm = trim((string)($slot['secondarymentor'] ?? ''));
+                $lm1 = trim((string)($slot['labmentor1'] ?? ''));
+                $lm2 = trim((string)($slot['labmentor2'] ?? ''));
+                $lm3 = trim((string)($slot['labmentor3'] ?? ''));
+
+                $has_data = ($name !== '' || $cid > 0 || $pstart > 0 || $astart > 0 || $pdays > 0 || ($pm !== '' && $pm !== '0' && $pm !== '—'));
+                if ($only_active && !$has_data) {
+                    continue;
+                }
+
+                $normalized[] = [
+                    'module' => $modnum,
+                    'name' => $name,
+                    'courseshortname' => $name,
+                    'moodlecourseid' => $cid,
+                    'plannedstart' => $pstart,
+                    'plannedend' => $pend,
+                    'planneddays' => $pdays,
+                    'actualstart' => $astart,
+                    'actualend' => $aend,
+                    'actualdays' => $adays,
+                    'scheduledelta' => $delta,
+                    'primarymentor' => $pm,
+                    'secondarymentor' => $sm,
+                    'labmentor1' => $lm1,
+                    'labmentor2' => $lm2,
+                    'labmentor3' => $lm3,
+                ];
+            }
+        }
+
+        return $normalized;
+    }
 }
+

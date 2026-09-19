@@ -87,15 +87,13 @@ if ($courseid > 0 && $has_bm_section) {
     $all_sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
     foreach ($all_sections as $sec) {
         if (!empty($sec->moduledata)) {
-            $mdata_list = json_decode($sec->moduledata, true);
-            if (is_array($mdata_list)) {
-                foreach ($mdata_list as $m_idx => $m_info) {
-                    if (isset($m_info['moodlecourseid']) && (int)$m_info['moodlecourseid'] === $courseid) {
-                        $section = $sec;
-                        $batchid = (int)$sec->id;
-                        $module_idx = $m_idx + 1;
-                        break 2;
-                    }
+            $mdata_list = \local_batchanalytics\util::decode_module_data($sec->moduledata, false);
+            foreach ($mdata_list as $m_info) {
+                if (isset($m_info['moodlecourseid']) && (int)$m_info['moodlecourseid'] === $courseid) {
+                    $section = $sec;
+                    $batchid = (int)$sec->id;
+                    $module_idx = (int)($m_info['module'] ?? 1);
+                    break 2;
                 }
             }
         }
@@ -168,10 +166,7 @@ if ($section) {
 
     $raw_modules = [];
     if (!empty($section->moduledata)) {
-        $decoded = json_decode($section->moduledata, true);
-        if (is_array($decoded)) {
-            $raw_modules = $decoded;
-        }
+        $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
     }
 } else {
     $is_sample_data = true;
@@ -200,7 +195,7 @@ if ($module_idx > $total_modules) $module_idx = $total_modules;
 
 // Current active module record
 $cur_mod = $raw_modules[$module_idx - 1] ?? [];
-$mod_name = !empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx));
+$mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
 $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : ($canonical_days[$module_idx] ?? 10);
 
 if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
