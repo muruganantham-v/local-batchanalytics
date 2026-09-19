@@ -6373,6 +6373,8 @@ input:checked+.ba-slider:before {
 .ba-batch-page .st-r::before { background: var(--red); }
 .ba-batch-page .st-n { background: #eef1f4; color: #8a9097; }
 .ba-batch-page .st-n::before { background: #b3b9bf; }
+.ba-batch-page .st-b { background: #e0f2fe; color: #0369a1; }
+.ba-batch-page .st-b::before { background: #0284c7; }
 
 .ba-batch-page .muted { color: #b3b9bf; }
 .ba-batch-page table .val,
@@ -7109,6 +7111,13 @@ input:checked+.ba-slider:before {
 .ba-module-page .st-n::before {
   background: #b3b9bf;
 }
+.ba-module-page .st-b {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.ba-module-page .st-b::before {
+  background: #0284c7;
+}
 
 /* Module KPIs (Course Metrics from LMS) */
 .ba-module-page .ba-course-metric-title {
@@ -7776,4 +7785,150 @@ input:checked+.ba-slider:before {
   color: var(--brand, #1b6ec2);
   font-size: 10px;
 }
+
+/* ==========================================================================
+   User Avatars & Profile Picture Displays (batch.php & module.php)
+   ========================================================================== */
+.ba-user-avatar {
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ba-batch-page .pav,
+.ba-module-page .pav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+
+.ba-batch-page .pav img,
+.ba-batch-page .pav .userpicture,
+.ba-batch-page .pav .userinitials,
+.ba-module-page .pav img,
+.ba-module-page .pav .userpicture,
+.ba-module-page .pav .userinitials {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.ba-avatar-wrap {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.ba-student-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.ba-avatar-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.ba-student-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ba-student-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ba-student-info .sname {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 13.5px;
+}
+
+.ba-student-info .sid {
+  font-size: 11px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.ba-batch-page .ba-mentors-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.ba-table-mentor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.ba-table-mentor span:last-child {
+  white-space: nowrap;
+}
+
+.ba-mentor-mini-avatar,
+.ba-table-mentor .userpicture,
+.ba-table-mentor .userinitials,
+.ba-table-mentor .ba-user-avatar {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  flex-shrink: 0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 24px !important;
+  text-align: center !important;
+}
+
 

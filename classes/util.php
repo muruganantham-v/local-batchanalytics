@@ -254,5 +254,142 @@ class util {
 
         return $normalized;
     }
+
+    /**
+     * Get user profile details (name, profile picture URL, user object) by userid or user object.
+     * Caches in memory to avoid duplicate DB queries.
+     *
+     * @param int|string|\stdClass|null $userorid User ID, username, or user record.
+     * @param int $size 1 for large (f1 ~100px), 2 for small (f2 ~35px)
+     * @return array ['user' => \stdClass|null, 'userid' => int, 'name' => string, 'initials' => string, 'profileimageurl' => string]
+     */
+    public static function get_user_profile_data($userorid, int $size = 2): array {
+        global $DB, $PAGE;
+
+        static $cache = [];
+
+        $user = null;
+        $userid = 0;
+
+        if (is_object($userorid) && isset($userorid->id)) {
+            $user = $userorid;
+            $userid = (int)$user->id;
+        } else if (is_numeric($userorid) && (int)$userorid > 0) {
+            $userid = (int)$userorid;
+        } else if (is_string($userorid) && trim($userorid) !== '' && trim($userorid) !== '—') {
+            $identifier = trim($userorid);
+            if (is_numeric($identifier)) {
+                $userid = (int)$identifier;
+            } else {
+                // Try looking up by username or idnumber
+                $matched = $DB->get_record_select(
+                    'user',
+                    'deleted = 0 AND (username = :u OR idnumber = :id)',
+                    ['u' => $identifier, 'id' => $identifier],
+                    '*',
+                    IGNORE_MULTIPLE
+                );
+                if ($matched) {
+                    $user = $matched;
+                    $userid = (int)$user->id;
+                }
+            }
+        }
+
+        if ($userid > 0 && isset($cache[$userid][$size])) {
+            return $cache[$userid][$size];
+        }
+
+        // Ensure we have a complete user record with picture fields
+        if (!$user && $userid > 0) {
+            $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+        } else if ($user && (!property_exists($user, 'picture') || !property_exists($user, 'imagealt'))) {
+            $fresh = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+            if ($fresh) {
+                $user = $fresh;
+            }
+        }
+
+        $name = $user ? fullname($user) : '';
+        $initials = '';
+        if ($name !== '') {
+            $parts = preg_split('/\s+/', trim($name));
+            if (count($parts) >= 2) {
+                $initials = strtoupper(mb_substr($parts[0], 0, 1) . mb_substr(end($parts), 0, 1));
+            } else {
+                $initials = strtoupper(mb_substr($name, 0, 1));
+            }
+        }
+
+        $profileurl = '';
+        if ($user) {
+            try {
+                $up = new \user_picture($user);
+                $up->size = $size;
+                $profileurl = $up->get_url($PAGE)->out(false);
+            } catch (\Throwable $e) {
+                $profileurl = '';
+            }
+        }
+
+        $data = [
+            'user' => $user,
+            'userid' => $userid,
+            'name' => $name,
+            'initials' => $initials ?: '?',
+            'profileimageurl' => $profileurl,
+        ];
+
+        if ($userid > 0) {
+            $cache[$userid][$size] = $data;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Render user avatar HTML.
+     * Uses Moodle $OUTPUT->user_picture if user object exists,
+     * with graceful styled initials fallback.
+     *
+     * @param int|string|\stdClass|null $userorid
+     * @param int $size Pixel size (e.g. 35, 38, 30, 24)
+     * @param string $extraclass Optional CSS class
+     * @param string|null $fallbackname Optional name if user record is missing
+     * @return string HTML markup
+     */
+    public static function render_user_avatar($userorid, int $size = 35, string $extraclass = '', ?string $fallbackname = null): string {
+        global $OUTPUT;
+
+        $profile = self::get_user_profile_data($userorid, $size <= 40 ? 2 : 1);
+        $user = $profile['user'];
+        $name = $profile['name'] ?: ($fallbackname ?: '');
+        $initials = $profile['initials'];
+        if ($initials === '?' && $name !== '') {
+            $parts = preg_split('/\s+/', trim($name));
+            $initials = count($parts) >= 2
+                ? strtoupper(mb_substr($parts[0], 0, 1) . mb_substr(end($parts), 0, 1))
+                : strtoupper(mb_substr($name, 0, 1));
+        }
+
+        if ($user && $OUTPUT) {
+            try {
+                return $OUTPUT->user_picture($user, [
+                    'size' => $size,
+                    'link' => false,
+                    'class' => trim('ba-user-avatar ' . $extraclass),
+                ]);
+            } catch (\Throwable $e) {
+                // Fall back to image tag or initials markup
+            }
+        }
+
+        if (!empty($profile['profileimageurl'])) {
+            return '<img src="' . s($profile['profileimageurl']) . '" class="ba-user-avatar ' . s($extraclass) . '" style="width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;object-fit:cover;" alt="' . s($name) . '">';
+        }
+
+        $fontsize = max(10, (int)round($size * 0.42));
+        return '<span class="ba-user-avatar ba-avatar-initials ' . s($extraclass) . '" style="display:inline-flex;align-items:center;justify-content:center;width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;font-size:' . $fontsize . 'px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366f1,#8b5cf6);flex-shrink:0;" title="' . s($name) . '">' . s($initials) . '</span>';
+    }
 }
 

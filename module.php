@@ -150,19 +150,31 @@ $format_mod_date = static function($val): string {
 // Extract & normalize header fields
 if ($section) {
     $batchname = $section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id);
-    $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : '';
-    if ($pmname === '' && !empty($section->pmmanager)) {
-        $pmuser = $DB->get_record('user', ['id' => $section->pmmanager, 'deleted' => 0]);
-        if ($pmuser) $pmname = fullname($pmuser);
+    // Program Manager resolution: prioritize resolving by userid
+    $pmuser = null;
+    if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
+        $pmprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
+        if (!empty($pmprofile['user'])) {
+            $pmuser = $pmprofile['user'];
+            $pmname = $pmprofile['name'];
+        }
     }
-    $pmname = $pmname ?: 'Ravi Kumar';
+    if (empty($pmname)) {
+        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : 'Ravi Kumar';
+    }
 
-    $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : '';
-    if ($ssename === '' && !empty($section->maacexecutive)) {
-        $sseuser = $DB->get_record('user', ['id' => $section->maacexecutive, 'deleted' => 0]);
-        if ($sseuser) $ssename = fullname($sseuser);
+    // MAAC Executive (SSE) resolution: prioritize resolving by userid
+    $sseuser = null;
+    if (!empty($section->maacexecutive) && is_numeric($section->maacexecutive) && (int)$section->maacexecutive > 0) {
+        $sseprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
+        if (!empty($sseprofile['user'])) {
+            $sseuser = $sseprofile['user'];
+            $ssename = $sseprofile['name'];
+        }
     }
-    $ssename = $ssename ?: 'Anitha S';
+    if (empty($ssename)) {
+        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : 'Anitha S';
+    }
 
     $raw_modules = [];
     if (!empty($section->moduledata)) {
@@ -172,7 +184,9 @@ if ($section) {
     $is_sample_data = true;
     $batchname = '26011B';
     $pmname = 'Ravi Kumar';
+    $pmuser = null;
     $ssename = 'Anitha S';
+    $sseuser = null;
     $raw_modules = [];
 }
 
@@ -201,23 +215,19 @@ $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] :
 if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
     $courseid = (int)$cur_mod['moodlecourseid'];
 }
+if ($courseid > 0 && !$DB->record_exists('course', ['id' => $courseid])) {
+    $courseid = 0;
+}
 
 // Mentor resolution (All class mentors and lab mentors from Batch Management)
 $resolve_mentor_record = static function($raw_val, string $role_label) use ($DB): ?array {
     if (empty($raw_val) || $raw_val === '—' || $raw_val === 0 || $raw_val === '0') {
         return null;
     }
-    $mentor_name = '';
-    $mentor_user = null;
-    if (is_numeric($raw_val)) {
-        $u = $DB->get_record('user', ['id' => (int)$raw_val, 'deleted' => 0]);
-        if ($u) {
-            $mentor_name = fullname($u);
-            $mentor_user = $u;
-        } else {
-            $mentor_name = (string)$raw_val;
-        }
-    } else {
+    $profile = \local_batchanalytics\util::get_user_profile_data($raw_val);
+    $mentor_name = $profile['name'];
+    $mentor_user = $profile['user'];
+    if (!$mentor_user && !is_numeric($raw_val)) {
         $mentor_name = trim((string)$raw_val);
         $parts = explode(' ', $mentor_name);
         $first = $parts[0];
@@ -233,15 +243,18 @@ $resolve_mentor_record = static function($raw_val, string $role_label) use ($DB)
         );
         if (!empty($users)) {
             $mentor_user = reset($users);
+            $mentor_name = fullname($mentor_user);
         }
     }
     if ($mentor_name === '') {
         return null;
     }
     return [
-        'name' => $mentor_name,
-        'user' => $mentor_user,
-        'role' => $role_label,
+        'name'            => $mentor_name,
+        'user'            => $mentor_user,
+        'profileimageurl' => $profile['profileimageurl'] ?? '',
+        'initials'        => $profile['initials'] ?? '',
+        'role'            => $role_label,
     ];
 };
 
@@ -304,8 +317,8 @@ if (!function_exists('format_cell_muted')) {
 $students_data = [];
 
 if ($section && $has_bm_student) {
-    $userfields = \core_user\fields::for_name()->get_sql('u', false, '', '', false)->selects;
-    $sql = "SELECT u.id, u.idnumber, u.email, {$userfields}
+    $userfields = \core_user\fields::for_userpic()->get_sql('u', false, '', '', false)->selects;
+    $sql = "SELECT u.id, u.idnumber, {$userfields}
               FROM {local_bm_student} s
               JOIN {user} u ON u.id = s.userid
              WHERE s.classsectionid = :csid AND u.deleted = 0
@@ -323,18 +336,23 @@ if ($section && $has_bm_student) {
             if ($m[1] === 'nom') $merit_labels[] = 'PT-Nom';
             if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
 
+            $profile = \local_batchanalytics\util::get_user_profile_data($st, 2);
+
             $students_data[] = [
-                'name'           => fullname($st),
-                'id'             => !empty($st->idnumber) ? $st->idnumber : ('ST_' . $st->id),
-                'grade'          => $g,
-                'completion_pct' => min(100, $g + 5),
-                'attendance'     => (70 + ($i % 25)) . '%',
-                'assignments'    => (60 + ($i % 35)) . '%',
-                'projects'       => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-                'tests'          => (62 + ($i % 30)) . '%',
-                'spot'           => !empty($m[0]),
-                'pt'             => $m[1] ?: '',
-                'merit_text'     => implode(', ', $merit_labels),
+                'userid'          => (int)$st->id,
+                'name'            => $profile['name'],
+                'profileimageurl' => $profile['profileimageurl'],
+                'initials'        => $profile['initials'],
+                'id'              => !empty($st->idnumber) ? $st->idnumber : ('ST_' . $st->id),
+                'grade'           => $g,
+                'completion_pct'  => min(100, $g + 5),
+                'attendance'      => (70 + ($i % 25)) . '%',
+                'assignments'     => (60 + ($i % 35)) . '%',
+                'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
+                'tests'           => (62 + ($i % 30)) . '%',
+                'spot'            => !empty($m[0]),
+                'pt'              => $m[1] ?: '',
+                'merit_text'      => implode(', ', $merit_labels),
             ];
             $i++;
         }
@@ -355,17 +373,20 @@ if (empty($students_data)) {
         if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
 
         $students_data[] = [
-            'name'           => $b_names[$i],
-            'id'             => $b_ids[$i],
-            'grade'          => $b_grade[$i],
-            'completion_pct' => min(100, $b_grade[$i] + 6),
-            'attendance'     => (70 + ($i % 25)) . '%',
-            'assignments'    => (60 + ($i % 35)) . '%',
-            'projects'       => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-            'tests'          => (62 + ($i % 30)) . '%',
-            'spot'           => !empty($m[0]),
-            'pt'             => $m[1] ?: '',
-            'merit_text'     => implode(', ', $merit_labels),
+            'userid'          => 0,
+            'name'            => $b_names[$i],
+            'profileimageurl' => '',
+            'initials'        => strtoupper(substr($b_names[$i], 0, 1)),
+            'id'              => $b_ids[$i],
+            'grade'           => $b_grade[$i],
+            'completion_pct'  => min(100, $b_grade[$i] + 6),
+            'attendance'      => (70 + ($i % 25)) . '%',
+            'assignments'     => (60 + ($i % 35)) . '%',
+            'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
+            'tests'           => (62 + ($i % 30)) . '%',
+            'spot'            => !empty($m[0]),
+            'pt'              => $m[1] ?: '',
+            'merit_text'      => implode(', ', $merit_labels),
         ];
     }
 }
@@ -787,20 +808,100 @@ if (empty($activity_categories)) {
 }
 
 // -------------------------------------------------------------------------
-// 6. Tab 2: SS Activities (Module Level)
+// 6. Tab 2: SS Activities (Module Level, filtered by module planned date range)
 // -------------------------------------------------------------------------
-$ss_module_activities = [
-    ['activity' => 'Spot Award distribution',         'planned' => '16 Sep 2026', 'actual' => '16 Sep 2026', 'status' => 'done'],
-    ['activity' => 'Mid-module survey completed',     'planned' => '25 Sep 2026', 'actual' => '—',           'status' => 'pending'],
-    ['activity' => 'Red-case follow-up (module)',     'planned' => '22 Sep 2026', 'actual' => '—',           'status' => 'over'],
-    ['activity' => 'Soft-skill session (module)',     'planned' => '05 Oct 2026', 'actual' => '—',           'status' => 'pending'],
+$ss_module_activities = [];
+
+$mod_p_start_raw = $cur_mod['plannedstart'] ?? 0;
+$mod_p_end_raw = $cur_mod['plannedend'] ?? 0;
+
+$mod_p_start_ts = 0;
+if (is_numeric($mod_p_start_raw) && (int)$mod_p_start_raw > 100000) {
+    $mod_p_start_ts = (int)$mod_p_start_raw;
+} else if (!empty($mod_p_start_raw) && $mod_p_start_raw !== '—') {
+    $parsed = strtotime($mod_p_start_raw);
+    if ($parsed !== false) $mod_p_start_ts = $parsed;
+}
+
+$mod_p_end_ts = 0;
+if (is_numeric($mod_p_end_raw) && (int)$mod_p_end_raw > 100000) {
+    $mod_p_end_ts = (int)$mod_p_end_raw;
+} else if (!empty($mod_p_end_raw) && $mod_p_end_raw !== '—') {
+    $parsed = strtotime($mod_p_end_raw);
+    if ($parsed !== false) $mod_p_end_ts = $parsed;
+}
+
+$today_mid = strtotime('today midnight');
+$today_next = $today_mid + 86400;
+
+$softskills_items_def = [
+    ['key' => 'ss_induction', 'label' => 'SS Induction'],
+    ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
+    ['key' => 'placement_induction', 'label' => 'Placement Induction'],
+    ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
+    ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
+    ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
+    ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
+    ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
+    ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
+    ['key' => 'feedback_1', 'label' => 'Feed back 1'],
+    ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
+    ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
+    ['key' => 'feedback_2', 'label' => 'Feed back 2'],
+    ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
+    ['key' => 'pet_1', 'label' => 'PET 1'],
+    ['key' => 'disha_1', 'label' => 'Disha 1'],
+    ['key' => 'disha_2', 'label' => 'Disha 2'],
+    ['key' => 'disha_3', 'label' => 'Disha 3'],
+    ['key' => 'feedback_3', 'label' => 'Feed back 3'],
+    ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
+    ['key' => 'pet_2', 'label' => 'PET 2'],
+    ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
+    ['key' => 'pet_3', 'label' => 'PET 3'],
+    ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
+    ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
+    ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
 ];
 
-$ss_status_styles = [
-    'done'    => ['st-g', 'Done'],
-    'pending' => ['st-a', 'Pending'],
-    'over'    => ['st-r', 'Overdue']
-];
+$ss_mod_raw = $section ? json_decode($section->softskillsdata ?? '{}', true) : [];
+
+if (is_array($ss_mod_raw) && $mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
+    $range_start = strtotime('today midnight', $mod_p_start_ts);
+    $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
+
+    foreach ($softskills_items_def as $item) {
+        $k = $item['key'];
+        $p = (int)($ss_mod_raw[$k . '_planned'] ?? 0);
+        $a = (int)($ss_mod_raw[$k . '_actual'] ?? 0);
+
+        // Filter: activity planned date falls between module planned start and end date
+        if ($p >= $range_start && $p <= $range_end) {
+            if ($a > 0) {
+                $status = 'g';
+                $label = 'Completed';
+            } else if ($p < $today_mid) {
+                $days = max(1, floor(($today_mid - $p) / 86400));
+                $status = 'r';
+                $label = "Overdue ({$days}d)";
+            } else if ($p < $today_next) {
+                $status = 'a';
+                $label = 'Due today';
+            } else {
+                $days = max(1, floor(($p - $today_mid) / 86400));
+                $status = 'b';
+                $label = "Upcoming ({$days}d)";
+            }
+
+            $ss_module_activities[] = [
+                'activity' => $item['label'],
+                'planned'  => date('d M Y', $p),
+                'actual'   => $a > 0 ? date('d M Y', $a) : '—',
+                'status'   => $status,
+                'label'    => $label,
+            ];
+        }
+    }
+}
 
 // -------------------------------------------------------------------------
 // 7. Page Setup & HTML Output
@@ -818,8 +919,10 @@ $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
+$newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
 $scripturl = new moodle_url('/local/batchanalytics/module.js', ['v' => filemtime(__DIR__ . '/module.js')]);
 $PAGE->requires->css($styleurl);
+$PAGE->requires->css($newstyleurl);
 $PAGE->requires->js($scripturl);
 
 echo $OUTPUT->header();
@@ -832,13 +935,13 @@ echo $OUTPUT->header();
      data-students="<?= s(json_encode($students_data)) ?>"
      data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
-  <!-- Breadcrumb Bar -->
+  <!-- Breadcrumb Bar in New UI Style -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
-      &nbsp;›&nbsp;
+      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>"><span style="margin-right:3px;">🏠</span> Home</a>
+      <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', ['id' => $batchid]))->out(false)) ?>"><?= s($batchname) ?></a>
-      &nbsp;›&nbsp;
+      <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <b><?= s($mod_name) ?></b>
     </span>
   </div>
@@ -903,8 +1006,8 @@ echo $OUTPUT->header();
       <div class="person">
         <div class="role">Program Manager</div>
         <div class="pwrap">
-          <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#cc0066,#663399);color:#fff;font-weight:700;font-size:14px;border-radius:50%;width:38px;height:38px;">
-            <?= s(strtoupper(substr($pmname, 0, 1))) ?>
+          <div class="pav">
+            <?= \local_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
           </div>
           <span class="name"><?= s($pmname) ?></span>
         </div>
@@ -912,8 +1015,8 @@ echo $OUTPUT->header();
       <div class="person">
         <div class="role">SS / MAAC Executive</div>
         <div class="pwrap">
-          <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1b6ec2,#1559a0);color:#fff;font-weight:700;font-size:14px;border-radius:50%;width:38px;height:38px;">
-            <?= s(strtoupper(substr($ssename, 0, 1))) ?>
+          <div class="pav">
+            <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
           </div>
           <span class="name"><?= s($ssename) ?></span>
         </div>
@@ -932,13 +1035,7 @@ echo $OUTPUT->header();
         <div class="ba-mentors-col">
           <?php foreach ($class_mentors as $cm): ?>
             <div class="mentorcell">
-              <?php if (!empty($cm['user']) && !empty($cm['user']->picture)): ?>
-                <?= $OUTPUT->user_picture($cm['user'], ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
-              <?php else: ?>
-                <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#663399,#1b6ec2);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
-                  <?= s(strtoupper(substr($cm['name'], 0, 1))) ?>
-                </div>
-              <?php endif; ?>
+              <?= \local_batchanalytics\util::render_user_avatar($cm['user'] ?? null, 30, 'pav', $cm['name']) ?>
               <div class="mentor-meta">
                 <span class="v"><?= s($cm['name']) ?></span>
                 <?php if (count($class_mentors) > 1): ?>
@@ -959,13 +1056,7 @@ echo $OUTPUT->header();
         <div class="ba-mentors-col">
           <?php foreach ($lab_mentors as $lm): ?>
             <div class="mentorcell">
-              <?php if (!empty($lm['user']) && !empty($lm['user']->picture)): ?>
-                <?= $OUTPUT->user_picture($lm['user'], ['size' => 30, 'link' => false, 'class' => 'pav']) ?>
-              <?php else: ?>
-                <div class="pav" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2e7d32,#1e8e4e);color:#fff;font-weight:700;font-size:12px;border-radius:50%;width:30px;height:30px;flex-shrink:0;">
-                  <?= s(strtoupper(substr($lm['name'], 0, 1))) ?>
-                </div>
-              <?php endif; ?>
+              <?= \local_batchanalytics\util::render_user_avatar($lm['user'] ?? null, 30, 'pav', $lm['name']) ?>
               <div class="mentor-meta">
                 <span class="v"><?= s($lm['name']) ?></span>
                 <?php if (count($lab_mentors) > 1): ?>
@@ -1023,48 +1114,50 @@ echo $OUTPUT->header();
     </div>
   </div>
 
-  <!-- Module KPIs (Course Metrics from Gradebook) -->
+  <!-- Module KPIs (Course Metrics from Gradebook) in New UI Style -->
   <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · click any metric to view student details</span></div>
-  <div class="ba-course-metrics-grid" style="margin-bottom: 25px;">
+  <div class="ba-stats-row-bottom" style="margin-bottom: 25px;">
+    <?php
+      $kpi_themes = ['card-blue', 'card-green', 'card-purple', 'card-cyan', 'card-indigo', 'card-teal', 'card-orange'];
+      $kpi_icon_themes = ['icon-blue', 'icon-green', 'icon-purple', 'icon-cyan', 'icon-indigo', 'icon-teal', 'icon-orange'];
+      $kpi_theme_idx = 0;
+    ?>
     <?php foreach ($module_kpis as $kpi): ?>
-      <div class="ba-course-metric-card" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>">
-        <div class="ba-course-metric-header">
-          <div class="ba-course-metric-icon" style="background:<?= s($kpi['icon_bg']) ?>;">
-            <?= $kpi['icon_svg'] ?>
-          </div>
-          <div class="ba-course-metric-title"><?= s($kpi['label']) ?></div>
+      <?php
+        $theme_class = $kpi_themes[$kpi_theme_idx % count($kpi_themes)];
+        $icon_theme = $kpi_icon_themes[$kpi_theme_idx % count($kpi_icon_themes)];
+        $kpi_theme_idx++;
+      ?>
+      <div class="ba-new-stat-card <?= $theme_class ?>" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
+        <div class="ba-new-stat-header">
+          <span class="ba-new-stat-title"><?= s($kpi['label']) ?></span>
+          <span class="ba-new-stat-icon <?= $icon_theme ?>"><?= $kpi['icon_svg'] ?></span>
         </div>
-        <div class="ba-course-metric-stats">
+        <div class="ba-new-stat-value">
           <?php if ($kpi['isMaac']): ?>
-            <div class="stat-box" style="width:100%; text-align:center; align-items:center;">
-              <span class="lbl">Avg MAAC Rating</span>
-              <span class="val"><?= s($kpi['avgGradeFormatted']) ?></span>
-            </div>
-          <?php elseif ($kpi['isAttendance']): ?>
-            <div class="stat-box" style="width:100%; text-align:center; align-items:center;">
-              <span class="lbl">Avg Grade</span>
-              <span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span>
-            </div>
+            <?= s($kpi['avgGradeFormatted']) ?>
           <?php else: ?>
-            <div class="stat-box">
-              <span class="lbl">Avg Grade</span>
-              <span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span>
-            </div>
-            <div class="stat-box">
-              <span class="lbl">Completion</span>
-              <span class="val <?= s($kpi['compClass']) ?>"><?= s($kpi['avgCompFormatted']) ?>%</span>
-            </div>
+            <?= s($kpi['avgGradeFormatted']) ?>%
+          <?php endif; ?>
+        </div>
+        <div class="ba-new-stat-footer">
+          <?php if ($kpi['isMaac']): ?>
+            <span class="badge-status-dot dot-purple"></span> Avg MAAC Rating
+          <?php elseif ($kpi['isAttendance']): ?>
+            <span class="badge-status-dot dot-blue"></span> Avg Attendance
+          <?php else: ?>
+            <span class="badge-status-dot <?= ($kpi['avgCompletion'] >= 75) ? 'dot-green' : (($kpi['avgCompletion'] >= 50) ? 'dot-orange' : 'dot-red') ?>"></span> Completion <?= s($kpi['avgCompFormatted']) ?>%
           <?php endif; ?>
         </div>
       </div>
     <?php endforeach; ?>
   </div>
 
-  <!-- Navigation Tabs -->
-  <div class="tabs ba-module-tabs">
-    <div class="tab active" data-tab="mentor">Mentor Activities</div>
-    <div class="tab" data-tab="ssact">SS Activities</div>
-    <div class="tab" data-tab="mstudents">Student Performance</div>
+  <!-- Navigation Tabs in New UI Pill Style -->
+  <div class="tabs ba-module-tabs ba-top-nav-tabs-bar">
+    <button type="button" class="tab ba-top-nav-tab active" data-tab="mentor"><span class="ba-tab-icon">🎯</span> Mentor Activities</button>
+    <button type="button" class="tab ba-top-nav-tab" data-tab="ssact"><span class="ba-tab-icon">📋</span> SS Activities</button>
+    <button type="button" class="tab ba-top-nav-tab" data-tab="mstudents"><span class="ba-tab-icon">👥</span> Student Performance</button>
   </div>
 
   <div class="ba-module-panels">
@@ -1131,7 +1224,7 @@ echo $OUTPUT->header();
     <!-- 2. SS Activities Panel (Module Level) -->
     <div id="panel-ssact" class="panel">
       <div class="panel-note">
-        Module-level student-success activities (distinct from batch-level SS activities). Actual date auto-fills when marked done.
+        Soft skill activities scheduled between this module's planned start date (<b><?= s($p_start) ?></b>) and planned end date (<b><?= s($p_end) ?></b>).
       </div>
       <div class="tablecard">
         <table>
@@ -1144,15 +1237,18 @@ echo $OUTPUT->header();
             </tr>
           </thead>
           <tbody>
-            <?php foreach ($ss_module_activities as $r): ?>
-              <?php $st = $ss_status_styles[$r['status']] ?? ['st-n', 'Pending']; ?>
-              <tr>
-                <td><span class="val"><?= s($r['activity']) ?></span></td>
-                <td class="date"><?= s($r['planned']) ?></td>
-                <td class="date"><?= format_cell_muted($r['actual']) ?></td>
-                <td><span class="st <?= s($st[0]) ?>"><?= s($st[1]) ?></span></td>
-              </tr>
-            <?php endforeach; ?>
+            <?php if (empty($ss_module_activities)): ?>
+              <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;">No soft skill activities scheduled during this module's duration (<?= s($p_start) ?> – <?= s($p_end) ?>).</td></tr>
+            <?php else: ?>
+              <?php foreach ($ss_module_activities as $r): ?>
+                <tr>
+                  <td><span class="val"><?= s($r['activity']) ?></span></td>
+                  <td class="date"><?= s($r['planned']) ?></td>
+                  <td class="date"><?= format_cell_muted($r['actual']) ?></td>
+                  <td><span class="st st-<?= s($r['status']) ?>"><?= s($r['label']) ?></span></td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
           </tbody>
         </table>
       </div>
