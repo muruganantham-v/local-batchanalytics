@@ -32,6 +32,27 @@
         var tabs = container.querySelectorAll('.ba-batch-tabs .tab');
         var panels = container.querySelectorAll('.ba-batch-panels .panel');
 
+        // ===================== CRM Data State =====================
+        var CRM_INDEX_URL = container.getAttribute('data-crm-index-url') || '';
+        var CRM_SESSKEY  = container.getAttribute('data-sesskey') || '';
+        var CRM_CAN_MANAGE = container.getAttribute('data-can-manage') === '1';
+        var CRM_FIELDS = [];
+        try {
+            CRM_FIELDS = JSON.parse(container.getAttribute('data-crm-fields') || '[]');
+        } catch(e) { CRM_FIELDS = []; }
+        var CRM_RESTRICTED = CRM_FIELDS.filter(function(f){ return f.restricted; }).map(function(f){ return f.key; });
+        var CRM_COLS = (CRM_CAN_MANAGE ? CRM_FIELDS : CRM_FIELDS.filter(function(f){ return !f.restricted; }))
+            .map(function(f){ return { h: f.label, k: f.key, num: !!f.numeric, type: f.type || 'text' }; });
+
+        var PTF_CACHE  = {};
+        var PTF_PENDING = {};
+        var PTF_FAILED  = {};
+        var CRM_FAILURE_SHOWN = false;
+        var CRM_PANEL_BUILT  = false;
+        var CRM_CURRENT_PAGE = 1;
+        var CRM_PAGE_SIZE = '10';
+        // ==========================================================
+
         tabs.forEach(function(tab) {
             tab.addEventListener('click', function() {
                 var targetId = this.getAttribute('data-tab');
@@ -42,6 +63,11 @@
                 var activePanel = document.getElementById('panel-' + targetId);
                 if (activePanel) {
                     activePanel.classList.add('active');
+                }
+
+                // Trigger CRM panel build on first open
+                if (targetId === 'crm') {
+                    baBatchCrm.render();
                 }
             });
         });
@@ -554,6 +580,460 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
         }
+
+        // ===================== CRM DATA TAB =====================
+        /**
+         * baBatchCrm — self-contained CRM Data tab controller for batch.php.
+         * Mirrors renderPtf() / fetchUnifiedData() from simple.js but scoped
+         * to the students already loaded on this batch page.
+         */
+        var baBatchCrm = (function() {
+
+            function _formatCrmDate(val) {
+                if (!val || val === '-') return '-';
+                var d = new Date(val);
+                return isNaN(d.getTime()) ? val : d.toLocaleDateString();
+            }
+
+            function _uid(username) {
+                return (username || '').replace(/[^a-z0-9]/gi, '');
+            }
+
+            // Build the table header once
+            function _buildHeader() {
+                var thead = document.getElementById('ba-crm-thead');
+                if (!thead) return;
+                var html = '<tr><th style="position:sticky;left:0;background:#f1f5f9;z-index:2;border-right:2px solid #e2e8f0;">Student</th>';
+                CRM_COLS.forEach(function(c) {
+                    html += '<th>' + escapeHtml(c.h) + '</th>';
+                });
+                html += '</tr>';
+                thead.innerHTML = html;
+            }
+
+            // Build all student rows (or rebuild after filter reset)
+            function _buildRows() {
+                var tbody = document.getElementById('ba-crm-tbody');
+                if (!tbody) return;
+
+                if (!studentsData.length) {
+                    tbody.innerHTML = '<tr><td colspan="' + (CRM_COLS.length + 1) + '" style="text-align:center;padding:24px;color:#94a3b8;">No students found for this batch.</td></tr>';
+                    return;
+                }
+
+                var toFetch = [];
+                var html = '';
+                studentsData.forEach(function(s) {
+                    var u = s.username || '';
+                    var uid = _uid(u);
+                    html += '<tr id="ba-crm-row-' + escapeHtml(uid) + '">';
+                    html += '<td style="position:sticky;left:0;background:#fff;z-index:1;border-right:1px solid #eee;min-width:160px;">' +
+                            '<b>' + escapeHtml(s.name) + '</b><br>' +
+                            '<small style="color:#888;">' + escapeHtml(u || s.id || '-') + '</small></td>';
+
+                    if (PTF_FAILED[u]) {
+                        CRM_COLS.forEach(function() { html += '<td style="color:#e53e3e;font-size:12px;">CRM unavailable</td>'; });
+                    } else if (PTF_CACHE[u]) {
+                        // Will be filled after innerHTML, see _fillCachedRows()
+                        CRM_COLS.forEach(function() { html += '<td class="ba-crm-loading">...</td>'; });
+                    } else {
+                        CRM_COLS.forEach(function() { html += '<td class="ba-crm-loading">...</td>'; });
+                        if (u) toFetch.push(u);
+                    }
+                    html += '</tr>';
+                });
+                tbody.innerHTML = html;
+
+                // Fill already-cached rows immediately
+                studentsData.forEach(function(s) {
+                    var u = s.username || '';
+                    if (PTF_CACHE[u]) {
+                        var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                        if (tr) _fillRow(tr, PTF_CACHE[u]);
+                    }
+                });
+
+                _updateFilterOptions();
+                _applyFilters();
+                if (toFetch.length) _fetch(toFetch);
+            }
+
+            // Fill a single row with CRM data
+            function _fillRow(tr, data) {
+                var company = data.placed_company || 'Not Placed';
+                var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                var statusHtml = isPlaced
+                    ? '<span class="st st-g">Placed</span>'
+                    : '<span class="st st-r">Not Placed</span>';
+
+                // Remove all cells after the sticky student cell
+                while (tr.children.length > 1) tr.removeChild(tr.lastChild);
+
+                CRM_COLS.forEach(function(c) {
+                    var td = document.createElement('td');
+                    if (c.k === 'CALC_STATUS') {
+                        td.innerHTML = statusHtml;
+                    } else if (c.type === 'lookup') {
+                        td.textContent = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || '-');
+                    } else if (c.type === 'date') {
+                        td.textContent = data[c.k] ? _formatCrmDate(data[c.k]) : '-';
+                    } else {
+                        td.textContent = data[c.k] || '-';
+                    }
+                    tr.appendChild(td);
+                });
+            }
+
+            // Fetch CRM data in chunks of 10 from index.php
+            function _fetch(users) {
+                var chunkSize = 10;
+                var uncached = users.filter(function(u) {
+                    return u && !PTF_CACHE[u] && !PTF_PENDING[u] && !PTF_FAILED[u];
+                });
+                if (!uncached.length) return;
+
+                for (var i = 0; i < uncached.length; i += chunkSize) {
+                    (function(chunk) {
+                        var body = 'sesskey=' + encodeURIComponent(CRM_SESSKEY) +
+                                   '&payload=' + encodeURIComponent(JSON.stringify({ usernames: chunk }));
+
+                        var p = fetch(CRM_INDEX_URL + '?action=getptfdata', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: body
+                        })
+                        .then(function(res) { return res.json(); })
+                        .then(function(result) {
+                            if (!result || result.error) {
+                                _markFailed(chunk, result ? result.error : 'CRM data unavailable');
+                                return;
+                            }
+                            if (!result.students) {
+                                _markFailed(chunk, 'CRM returned an invalid response');
+                                return;
+                            }
+                            result.students.forEach(function(d) {
+                                var u = d.username;
+                                PTF_CACHE[u] = d.data
+                                    ? Object.assign({}, d.data, { placed_company: d.placed_company, CTC: d.CTC })
+                                    : d;
+                                var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                                if (tr) _fillRow(tr, PTF_CACHE[u]);
+                            });
+                            _updateFilterOptions();
+                            _applyFilters();
+                        })
+                        .catch(function(e) {
+                            _markFailed(chunk, e.message || 'CRM request failed');
+                        })
+                        .finally(function() {
+                            chunk.forEach(function(u) { delete PTF_PENDING[u]; });
+                        });
+
+                        chunk.forEach(function(u) { PTF_PENDING[u] = p; });
+                    })(uncached.slice(i, i + chunkSize));
+                }
+            }
+
+            function _markFailed(chunk, msg) {
+                chunk.forEach(function(u) { PTF_FAILED[u] = msg || 'CRM unavailable'; });
+                if (!CRM_FAILURE_SHOWN) {
+                    CRM_FAILURE_SHOWN = true;
+                    var retryBtn = document.getElementById('ba-crm-retry-btn');
+                    if (retryBtn) { retryBtn.style.display = ''; retryBtn.classList.remove('disabled'); }
+                }
+                // Refresh failed row cells
+                chunk.forEach(function(u) {
+                    var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                    if (!tr) return;
+                    while (tr.children.length > 1) tr.removeChild(tr.lastChild);
+                    CRM_COLS.forEach(function() {
+                        var td = document.createElement('td');
+                        td.style.cssText = 'color:#e53e3e;font-size:12px;';
+                        td.textContent = 'CRM unavailable';
+                        tr.appendChild(td);
+                    });
+                });
+            }
+
+            function _updateFilterOptions() {
+                var yopSet = new Set();
+                var stateSet = new Set();
+                var petSet = new Set();
+
+                Object.values(PTF_CACHE).forEach(function(d) {
+                    if (d.BE_BTech_YoP && d.BE_BTech_YoP !== '-') yopSet.add(d.BE_BTech_YoP);
+                    if (d.ME_MTech_YoP && d.ME_MTech_YoP !== '-') yopSet.add(d.ME_MTech_YoP);
+                    if (d.Home_State && d.Home_State !== '-') stateSet.add(d.Home_State);
+                    if (d.Placement_Eli && d.Placement_Eli !== '-') petSet.add(d.Placement_Eli);
+                });
+
+                var renderCbList = function(id, items) {
+                    var c = document.getElementById(id);
+                    if (!c) return;
+                    var checked = Array.from(c.querySelectorAll('input:checked')).map(function(cb){ return cb.value; });
+                    if (!items.length) { c.innerHTML = '<span style="color:#94a3b8;">No data yet</span>'; return; }
+                    var html = '';
+                    Array.from(items).sort().forEach(function(item) {
+                        var chk = checked.indexOf(item) !== -1 ? 'checked' : '';
+                        html += '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:5px;font-size:12px;">'
+                              + '<input type="checkbox" value="' + escapeHtml(item) + '" class="' + id.replace('ba-crm-f-', 'ba-crm-cb-') + '" onchange="baBatchCrm.applyFilters()" ' + chk + '> '
+                              + escapeHtml(item) + '</label>';
+                    });
+                    c.innerHTML = html;
+                };
+
+                renderCbList('ba-crm-f-yop-list', yopSet);
+                renderCbList('ba-crm-f-state-list', stateSet);
+
+                // PET dropdown
+                var petSel = document.getElementById('ba-crm-f-pet');
+                if (petSel) {
+                    var cur = petSel.value;
+                    var opts = '<option value="">All</option>';
+                    Array.from(petSet).sort().forEach(function(p) {
+                        opts += '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
+                    });
+                    petSel.innerHTML = opts;
+                    petSel.value = cur;
+                }
+            }
+
+            function _applyFilters() {
+                var searchEl   = document.getElementById('ba-crm-f-search');
+                var placEl     = document.getElementById('ba-crm-f-placement');
+                var petEl      = document.getElementById('ba-crm-f-pet');
+                var maacMinEl  = document.getElementById('ba-crm-f-maac-min');
+                var maacMaxEl  = document.getElementById('ba-crm-f-maac-max');
+                var advcMinEl  = document.getElementById('ba-crm-f-advc-min');
+                var advcMaxEl  = document.getElementById('ba-crm-f-advc-max');
+
+                var search    = searchEl  ? searchEl.value.toLowerCase() : '';
+                var placement = placEl    ? placEl.value : '';
+                var pet       = petEl     ? petEl.value : '';
+                var maacMin   = maacMinEl ? (parseFloat(maacMinEl.value) || 0)  : 0;
+                var maacMax   = maacMaxEl ? (parseFloat(maacMaxEl.value) || 10) : 10;
+                var advcMin   = advcMinEl ? (parseFloat(advcMinEl.value) || 0)  : 0;
+                var advcMax   = advcMaxEl ? (parseFloat(advcMaxEl.value) || 100): 100;
+
+                var yopChecked   = Array.from(document.querySelectorAll('.ba-crm-cb-yop-list:checked')).map(function(cb){ return cb.value; });
+                var stateChecked = Array.from(document.querySelectorAll('.ba-crm-cb-state-list:checked')).map(function(cb){ return cb.value; });
+
+                var matchingRows = [];
+                studentsData.forEach(function(s) {
+                    var uid = _uid(s.username || '');
+                    var tr  = document.getElementById('ba-crm-row-' + uid);
+                    if (!tr) return;
+
+                    var show = true;
+                    var name = (s.name || '').toLowerCase();
+                    var uname = (s.username || '').toLowerCase();
+                    if (search && name.indexOf(search) === -1 && uname.indexOf(search) === -1) show = false;
+
+                    var data = s.username ? PTF_CACHE[s.username] : null;
+                    if (show && data) {
+                        var company = data.placed_company || 'Not Placed';
+                        var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                        if (placement && placement !== (isPlaced ? 'Placed' : 'Not Placed')) show = false;
+                        if (show && pet && data.Placement_Eli !== pet) show = false;
+                        var maac = parseFloat(data.MAAC_Rating) || 0;
+                        if (show && (maac < maacMin || maac > maacMax)) show = false;
+                        var advc = parseFloat(data.Advanced_C_Score) || 0;
+                        if (show && (advc < advcMin || advc > advcMax)) show = false;
+                        if (show && yopChecked.length) {
+                            if (yopChecked.indexOf(data.BE_BTech_YoP) === -1 && yopChecked.indexOf(data.ME_MTech_YoP) === -1) show = false;
+                        }
+                        if (show && stateChecked.length) {
+                            if (stateChecked.indexOf(data.Home_State) === -1) show = false;
+                        }
+                    } else if (show && !data) {
+                        // While loading, hide from strict filter pass
+                        if (placement || pet || yopChecked.length || stateChecked.length || maacMin > 0 || advcMin > 0) show = false;
+                    }
+
+                    tr.setAttribute('data-crm-filter-match', show ? '1' : '0');
+                    if (show) matchingRows.push(tr);
+                });
+
+                var matchCount = matchingRows.length;
+                var isAll = (CRM_PAGE_SIZE === 'all');
+                var sizeNum = isAll ? (matchCount || 1) : parseInt(CRM_PAGE_SIZE, 10);
+                var totalPages = Math.max(1, Math.ceil(matchCount / sizeNum));
+                CRM_CURRENT_PAGE = Math.min(Math.max(CRM_CURRENT_PAGE, 1), totalPages);
+
+                var startIdx = matchCount === 0 ? 0 : (CRM_CURRENT_PAGE - 1) * sizeNum;
+                var endIdx = isAll ? matchCount : Math.min(startIdx + sizeNum, matchCount);
+                studentsData.forEach(function(s) {
+                    var tr = document.getElementById('ba-crm-row-' + _uid(s.username || ''));
+                    if (tr) tr.style.display = 'none';
+                });
+                matchingRows.slice(startIdx, endIdx).forEach(function(tr) {
+                    tr.style.display = '';
+                });
+
+                var summary = matchCount === 0
+                    ? 'No students to display'
+                    : ('Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + matchCount + ' students');
+                var countEl = document.getElementById('ba-crm-count');
+                if (countEl) countEl.textContent = summary;
+                var paginationInfo = document.getElementById('ba-crm-pagination-info');
+                if (paginationInfo) paginationInfo.textContent = summary;
+                _renderPaginationButtons(totalPages);
+            }
+
+            function _renderPaginationButtons(totalPages) {
+                var paginationBtns = document.getElementById('ba-crm-pagination-btns');
+                if (!paginationBtns) return;
+
+                if (totalPages <= 1 || CRM_PAGE_SIZE === 'all') {
+                    paginationBtns.innerHTML = '';
+                    return;
+                }
+
+                var btnsHtml = '<button type="button" class="ba-pg-btn" id="ba-crm-pg-prev" ' +
+                    (CRM_CURRENT_PAGE <= 1 ? 'disabled' : '') + ' aria-label="Previous page">‹ Prev</button>';
+                var pages = [];
+                if (totalPages <= 7) {
+                    for (var i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                    pages.push(1);
+                    if (CRM_CURRENT_PAGE > 3) pages.push('...');
+                    var startP = Math.max(2, CRM_CURRENT_PAGE - 1);
+                    var endP = Math.min(totalPages - 1, CRM_CURRENT_PAGE + 1);
+                    for (var j = startP; j <= endP; j++) pages.push(j);
+                    if (CRM_CURRENT_PAGE < totalPages - 2) pages.push('...');
+                    pages.push(totalPages);
+                }
+
+                pages.forEach(function(p) {
+                    if (p === '...') {
+                        btnsHtml += '<span class="ba-pg-ellipsis">…</span>';
+                    } else {
+                        btnsHtml += '<button type="button" class="ba-pg-btn ' + (p === CRM_CURRENT_PAGE ? 'active' : '') +
+                            '" data-crm-page="' + p + '">' + p + '</button>';
+                    }
+                });
+                btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-crm-pg-next" ' +
+                    (CRM_CURRENT_PAGE >= totalPages ? 'disabled' : '') + ' aria-label="Next page">Next ›</button>';
+                paginationBtns.innerHTML = btnsHtml;
+
+                var prevBtn = document.getElementById('ba-crm-pg-prev');
+                if (prevBtn && !prevBtn.disabled) prevBtn.addEventListener('click', function() {
+                    CRM_CURRENT_PAGE--;
+                    _applyFilters();
+                });
+                var nextBtn = document.getElementById('ba-crm-pg-next');
+                if (nextBtn && !nextBtn.disabled) nextBtn.addEventListener('click', function() {
+                    CRM_CURRENT_PAGE++;
+                    _applyFilters();
+                });
+                paginationBtns.querySelectorAll('button[data-crm-page]').forEach(function(pageBtn) {
+                    pageBtn.addEventListener('click', function() {
+                        CRM_CURRENT_PAGE = parseInt(this.getAttribute('data-crm-page'), 10);
+                        _applyFilters();
+                    });
+                });
+            }
+
+            // -------- Public API --------
+            return {
+                render: function() {
+                    if (!CRM_PANEL_BUILT) {
+                        CRM_PANEL_BUILT = true;
+                        _buildHeader();
+                        _buildRows();
+                    } else {
+                        _applyFilters();
+                    }
+                },
+
+                applyFilters: function() {
+                    CRM_CURRENT_PAGE = 1;
+                    _applyFilters();
+                },
+
+                resetFilters: function() {
+                    var ids = ['ba-crm-f-search', 'ba-crm-f-placement', 'ba-crm-f-pet'];
+                    ids.forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = '';
+                    });
+                    var ranges = {
+                        'ba-crm-f-maac-min': 0,  'ba-crm-f-maac-max': 10,
+                        'ba-crm-f-advc-min': 0,  'ba-crm-f-advc-max': 100
+                    };
+                    Object.keys(ranges).forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = ranges[id];
+                    });
+                    document.querySelectorAll('.ba-crm-cb-yop-list, .ba-crm-cb-state-list').forEach(function(cb){ cb.checked = false; });
+                    CRM_CURRENT_PAGE = 1;
+                    _applyFilters();
+                },
+
+                retryCrm: function() {
+                    var failed = Object.keys(PTF_FAILED);
+                    if (!failed.length) return;
+                    PTF_FAILED = {};
+                    CRM_FAILURE_SHOWN = false;
+                    var retryBtn = document.getElementById('ba-crm-retry-btn');
+                    if (retryBtn) retryBtn.style.display = 'none';
+                    CRM_CURRENT_PAGE = 1;
+                    _buildRows();
+                },
+
+                exportCsv: function() {
+                    var headers = ['Student Name', 'Username'];
+                    CRM_COLS.forEach(function(c) { headers.push(c.h); });
+                    var rows = [headers.map(function(h){ return '"' + h.replace(/"/g, '""') + '"'; }).join(',')];
+
+                    studentsData.forEach(function(s) {
+                        var uid = _uid(s.username || '');
+                        var tr = document.getElementById('ba-crm-row-' + uid);
+                        if (tr && tr.getAttribute('data-crm-filter-match') !== '1') return;
+
+                        var row = [
+                            '"' + (s.name || '').replace(/"/g, '""') + '"',
+                            '"' + (s.username || '').replace(/"/g, '""') + '"'
+                        ];
+                        var data = s.username ? PTF_CACHE[s.username] : null;
+                        CRM_COLS.forEach(function(c) {
+                            var val = '-';
+                            if (data) {
+                                if (c.type === 'lookup') val = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || '-');
+                                else if (c.type === 'date') val = data[c.k] ? _formatCrmDate(data[c.k]) : '-';
+                                else if (c.k === 'CALC_STATUS') val = (data.placed_company && data.placed_company !== 'Not Placed') ? 'Placed' : 'Not Placed';
+                                else val = data[c.k] || '-';
+                            }
+                            row.push('"' + String(val).replace(/"/g, '""') + '"');
+                        });
+                        rows.push(row.join(','));
+                    });
+
+                    var blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    var link = document.createElement('a');
+                    link.setAttribute('href', URL.createObjectURL(blob));
+                    link.setAttribute('download', 'batch_crm_data.csv');
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+        })();
+
+        var crmPageSizeSelect = document.getElementById('ba-crm-page-size');
+        if (crmPageSizeSelect) {
+            crmPageSizeSelect.addEventListener('change', function() {
+                CRM_PAGE_SIZE = this.value;
+                CRM_CURRENT_PAGE = 1;
+                baBatchCrm.render();
+            });
+        }
+
+        // Expose to global scope so inline onclick handlers in the CRM panel can reach it
+        window.baBatchCrm = baBatchCrm;
+        // ===========================================================
 
         // Initial render
         renderPerformance();

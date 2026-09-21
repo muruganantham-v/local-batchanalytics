@@ -852,13 +852,7 @@ if ($action === 'getnewbatchdata') {
 
         foreach ($batches as $b) {
             $mode = trim((string)($b->deliverymode ?? ''));
-            if (strcasecmp($mode, 'Online') === 0) {
-                $onlinecount++;
-            } else if (strcasecmp($mode, 'Offline') === 0) {
-                $offlinecount++;
-            } else {
-                $hybridcount++;
-            }
+            $normalizedmode = $mode !== '' ? ucfirst(strtolower($mode)) : 'Offline';
 
             $batch_sections = $sectionsbybatch[$b->id] ?? [];
             $sec = !empty($batch_sections) ? $batch_sections[0] : null;
@@ -873,6 +867,8 @@ if ($action === 'getnewbatchdata') {
             $batch_has_modules = false;
             $batch_all_completed = true;
             $last_valid_module = null;
+            $batchclassmentors = [];
+            $batchlabmentors = [];
 
             foreach ($batch_sections as $curr_sec) {
                 $modules = \local_batchanalytics\util::decode_module_data($curr_sec->moduledata ?? '', true);
@@ -890,6 +886,7 @@ if ($action === 'getnewbatchdata') {
                             $resolved = $resolve_mentor($m[$cmk]);
                             if ($resolved !== null) {
                                 $classmentors[$resolved] = true;
+                                $batchclassmentors[$resolved] = true;
                             }
                         }
                     }
@@ -900,6 +897,7 @@ if ($action === 'getnewbatchdata') {
                             $resolved = $resolve_mentor($m[$lmk]);
                             if ($resolved !== null) {
                                 $labmentors[$resolved] = true;
+                                $batchlabmentors[$resolved] = true;
                             }
                         }
                     }
@@ -964,7 +962,7 @@ if ($action === 'getnewbatchdata') {
                 'id' => (int)$b->id,
                 'batchId' => (string)($b->name ?? ''),
                 'courseName' => (string)($b->coursename ?? ''),
-                'mode' => !empty($b->deliverymode) ? ucfirst(strtolower($b->deliverymode)) : 'Offline',
+                'mode' => $normalizedmode,
                 'type' => !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular',
                 'startDate' => $startformatted,
                 'year' => $year,
@@ -976,6 +974,8 @@ if ($action === 'getnewbatchdata') {
                 'statusLabel' => $statuslabel,
                 'delayDays' => $delaydays,
                 'studentCount' => $batchstudents,
+                'classMentors' => array_values(array_keys($batchclassmentors)),
+                'labMentors' => array_values(array_keys($batchlabmentors)),
                 'isCompleted' => $is_completed,
                 'sectionId' => $sec ? (int)$sec->id : (int)$b->id
             ];
@@ -999,11 +999,21 @@ if ($action === 'getnewbatchdata') {
 
         $activebatches = 0;
         $completedbatches = 0;
+        $onlinecount = 0;
+        $offlinecount = 0;
+        $hybridcount = 0;
         foreach ($batchlist as $bl) {
             if ($bl['isCompleted']) {
                 $completedbatches++;
             } else {
                 $activebatches++;
+                if (strcasecmp((string)($bl['mode'] ?? ''), 'Online') === 0) {
+                    $onlinecount++;
+                } else if (strcasecmp((string)($bl['mode'] ?? ''), 'Offline') === 0) {
+                    $offlinecount++;
+                } else {
+                    $hybridcount++;
+                }
             }
         }
 
@@ -1656,10 +1666,10 @@ echo '</div>';
 echo '<div id="ba-top-tab-new" class="ba-top-tab-pane" style="display:none">';
 echo '  <div class="ba-new-dashboard">';
 
-echo '    <!-- Stat Cards Grid (7 Cards: 3 Delivery Cards + 4 Metrics Cards) -->';
+echo '    <!-- Stat Cards Grid (9 Cards: 3 Delivery Cards + 6 Metrics Cards) -->';
 echo '    <div class="ba-new-stats-container" id="ba-new-stats-grid">';
 echo '      <div class="ba-stats-row-top">';
-echo '        <div class="ba-new-stat-card card-blue">';
+echo '        <div class="ba-new-stat-card ba-new-stat-filter card-blue is-active" data-batch-filter="running" role="button" tabindex="0" aria-pressed="true">';
 echo '          <div class="ba-new-stat-header">';
 echo '            <span class="ba-new-stat-title">Running Batches</span>';
 echo '            <span class="ba-new-stat-icon icon-blue">📊</span>';
@@ -1668,7 +1678,7 @@ echo '          <div class="ba-new-stat-value" id="stat-running-batches">--</div
 echo '          <div class="ba-new-stat-footer">Total Active Batches</div>';
 echo '        </div>';
 
-echo '        <div class="ba-new-stat-card card-green">';
+echo '        <div class="ba-new-stat-card ba-new-stat-filter card-green" data-batch-filter="online" role="button" tabindex="0" aria-pressed="false">';
 echo '          <div class="ba-new-stat-header">';
 echo '            <span class="ba-new-stat-title">Online Batches</span>';
 echo '            <span class="ba-new-stat-icon icon-green">💻</span>';
@@ -1677,7 +1687,7 @@ echo '          <div class="ba-new-stat-value" id="stat-online-batches">--</div>
 echo '          <div class="ba-new-stat-footer">Virtual Classrooms</div>';
 echo '        </div>';
 
-echo '        <div class="ba-new-stat-card card-purple">';
+echo '        <div class="ba-new-stat-card ba-new-stat-filter card-purple" data-batch-filter="offline" role="button" tabindex="0" aria-pressed="false">';
 echo '          <div class="ba-new-stat-header">';
 echo '            <span class="ba-new-stat-title">Offline Batches</span>';
 echo '            <span class="ba-new-stat-icon icon-purple">🏫</span>';
@@ -1706,15 +1716,32 @@ echo '          <div class="ba-new-stat-value" id="stat-lab-mentors">--</div>';
 echo '          <div class="ba-new-stat-footer">Technical Assistants</div>';
 echo '        </div>';
 
-echo '        <div class="ba-new-stat-card card-emerald">';
+echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-emerald" data-schedule-filter="on_schedule" aria-pressed="false">';
 echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Schedule Status</span>';
-echo '            <span class="ba-new-stat-icon icon-emerald">⏱️</span>';
+echo '            <span class="ba-new-stat-title">On Schedule</span>';
+echo '            <span class="ba-new-stat-icon icon-emerald">&#10003;</span>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value"><span id="stat-on-schedule" class="text-success" title="On Schedule">--</span> <span class="stat-sep">/</span> <span id="stat-delayed" class="text-danger" title="Delayed">--</span> <span class="stat-sep">/</span> <span id="stat-early" class="text-primary" title="Early">--</span></div>';
-echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-green"></span> On Schedule / <span class="badge-status-dot dot-red"></span> Delayed / <span class="badge-status-dot dot-blue"></span> Early</div>';
-echo '        </div>';
+echo '          <div class="ba-new-stat-value text-success" id="stat-on-schedule">--</div>';
+echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-green"></span> On track running batches</div>';
+echo '        </button>';
 
+echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-red" data-schedule-filter="delayed" aria-pressed="false">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Delayed</span>';
+echo '            <span class="ba-new-stat-icon icon-red">&#9888;</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value text-danger" id="stat-delayed">--</div>';
+echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-red"></span> Needs attention</div>';
+echo '        </button>';
+
+echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-cyan" data-schedule-filter="early" aria-pressed="false">';
+echo '          <div class="ba-new-stat-header">';
+echo '            <span class="ba-new-stat-title">Early</span>';
+echo '            <span class="ba-new-stat-icon icon-cyan">&#8593;</span>';
+echo '          </div>';
+echo '          <div class="ba-new-stat-value text-primary" id="stat-early">--</div>';
+echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-blue"></span> Ahead of planned schedule</div>';
+echo '        </button>';
 echo '        <div class="ba-new-stat-card card-orange">';
 echo '          <div class="ba-new-stat-header">';
 echo '            <span class="ba-new-stat-title">Total Students</span>';

@@ -92,7 +92,7 @@ body#page-local-batchanalytics-module #page-header h1,
 
 .ba-stats-row-bottom {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 18px;
 }
 
@@ -142,6 +142,28 @@ body#page-local-batchanalytics-module #page-header h1,
 
 .ba-new-stat-card:hover::before {
   height: 4.5px;
+}
+
+.ba-new-stat-filter {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ba-new-stat-filter.is-active {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35), 0 10px 24px -4px rgba(0, 0, 0, 0.08);
+}
+
+.ba-new-stat-filter.is-active::before {
+  height: 4.5px;
+}
+
+.ba-new-stat-filter:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 3px;
 }
 
 /* Card Accent Themes */
@@ -236,6 +258,28 @@ body#page-local-batchanalytics-module #page-header h1,
 .text-danger  { color: #dc2626 !important; }
 .text-primary { color: #0284c7 !important; }
 
+.ba-schedule-status-filter {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ba-schedule-status-filter.is-active {
+  box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.26), 0 10px 24px -4px rgba(0, 0, 0, 0.08);
+}
+
+.ba-schedule-status-filter.is-active::before {
+  height: 4.5px;
+}
+
+.ba-schedule-status-filter:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 3px;
+}
 /* ==================== SEARCH & FILTERS CARD ==================== */
 .ba-new-card {
   background: #ffffff;
@@ -907,7 +951,6 @@ body#page-local-batchanalytics-module #page-header h1,
   overflow: hidden !important;
 }
 
-.ba-batch-page .bhead::before,
 .ba-module-page .mhead::before {
   content: "";
   position: absolute;
@@ -1257,6 +1300,13 @@ body#page-local-batchanalytics-module #page-header h1,
   border-radius: 14px !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
   overflow: hidden !important;
+}
+
+/* The CRM table contains a configurable, potentially wide set of columns. */
+.ba-batch-page #panel-crm .tablecard {
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ba-batch-page thead th,

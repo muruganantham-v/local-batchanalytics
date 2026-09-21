@@ -19,6 +19,8 @@ function initNewBatchAnalytics() {
 
   let rawData = null;
   let currentSubTab = "running";
+  let currentStatFilter = "running";
+  let currentScheduleFilter = "";
   let currentPage = 1;
   const pageSize = 10;
 
@@ -43,7 +45,7 @@ function initNewBatchAnalytics() {
         return;
       }
       rawData = data;
-      renderStats(data.stats);
+      renderStats(data.stats, data.batches);
       populateFilters(data.filters);
       setupEventListeners();
       applyAndRender();
@@ -56,21 +58,54 @@ function initNewBatchAnalytics() {
       }
     });
 
-  function renderStats(stats) {
+  function renderStats(stats, batches) {
     if (!stats) return;
-    const setVal = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = val ?? 0;
+    const runningBatches = Array.isArray(batches) ? batches.filter((b) => !b.isCompleted) : [];
+
+    setStatValue("stat-running-batches", stats.runningBatches);
+    setStatValue("stat-online-batches", stats.onlineBatches);
+    setStatValue("stat-offline-batches", stats.offlineBatches);
+    renderContextStats(runningBatches);
+  }
+
+  function setStatValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val ?? 0;
+  }
+
+  function renderContextStats(batches) {
+    const scopedBatches = Array.isArray(batches) ? batches : [];
+    const statusCounts = scopedBatches.reduce((counts, b) => {
+      if (b.status === "delayed") {
+        counts.delayed += 1;
+      } else if (b.status === "early") {
+        counts.early += 1;
+      } else {
+        counts.onSchedule += 1;
+      }
+      return counts;
+    }, { onSchedule: 0, delayed: 0, early: 0 });
+
+    const countUnique = (field) => {
+      const values = new Set();
+      scopedBatches.forEach((b) => {
+        const items = Array.isArray(b[field]) ? b[field] : [];
+        items.forEach((item) => {
+          const name = String(item || "").trim();
+          if (name) values.add(name);
+        });
+      });
+      return values.size;
     };
-    setVal("stat-running-batches", stats.runningBatches);
-    setVal("stat-online-batches", stats.onlineBatches);
-    setVal("stat-offline-batches", stats.offlineBatches);
-    setVal("stat-class-mentors", stats.classMentors);
-    setVal("stat-lab-mentors", stats.labMentors);
-    setVal("stat-on-schedule", stats.onSchedule);
-    setVal("stat-delayed", stats.delayed);
-    setVal("stat-early", stats.early ?? 0);
-    setVal("stat-total-students", stats.totalStudents);
+
+    const totalStudents = scopedBatches.reduce((sum, b) => sum + (parseInt(b.studentCount, 10) || 0), 0);
+
+    setStatValue("stat-class-mentors", countUnique("classMentors"));
+    setStatValue("stat-lab-mentors", countUnique("labMentors"));
+    setStatValue("stat-on-schedule", statusCounts.onSchedule);
+    setStatValue("stat-delayed", statusCounts.delayed);
+    setStatValue("stat-early", statusCounts.early);
+    setStatValue("stat-total-students", totalStudents);
   }
 
   function populateFilters(filters) {
@@ -128,6 +163,12 @@ function initNewBatchAnalytics() {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
+        currentSubTab = "running";
+        currentStatFilter = "running";
+        currentScheduleFilter = "";
+        setActiveSubtab();
+        setActiveStatCard();
+        setActiveScheduleCard();
         currentPage = 1;
         applyAndRender();
       });
@@ -139,9 +180,74 @@ function initNewBatchAnalytics() {
         subtabs.forEach((t) => t.classList.remove("active"));
         this.classList.add("active");
         currentSubTab = this.dataset.subtab;
+        if (currentSubTab !== "running") {
+          currentStatFilter = "";
+          currentScheduleFilter = "";
+          setActiveStatCard();
+          setActiveScheduleCard();
+        }
         currentPage = 1;
         applyAndRender();
       });
+    });
+
+    document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
+      card.addEventListener("click", function () {
+        const modeSelect = document.getElementById("ba-filter-mode");
+        currentStatFilter = this.dataset.batchFilter || "running";
+        currentScheduleFilter = "";
+        currentSubTab = "running";
+        if (modeSelect) {
+          modeSelect.value = currentStatFilter === "running" ? "" :
+            currentStatFilter.charAt(0).toUpperCase() + currentStatFilter.slice(1);
+        }
+        setActiveSubtab();
+        setActiveStatCard();
+        setActiveScheduleCard();
+        currentPage = 1;
+        applyAndRender();
+      });
+      card.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          this.click();
+        }
+      });
+    });
+
+    document.querySelectorAll(".ba-schedule-status-filter").forEach((card) => {
+      card.addEventListener("click", function () {
+        currentScheduleFilter = this.dataset.scheduleFilter || "";
+        currentStatFilter = currentStatFilter || "running";
+        currentSubTab = "running";
+        setActiveSubtab();
+        setActiveStatCard();
+        setActiveScheduleCard();
+        currentPage = 1;
+        applyAndRender();
+      });
+    });
+  }
+
+  function setActiveSubtab() {
+    document.querySelectorAll(".ba-new-subtab").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.subtab === currentSubTab);
+    });
+  }
+
+  function setActiveStatCard() {
+    document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
+      const isActive = card.dataset.batchFilter === currentStatFilter;
+      card.classList.toggle("is-active", isActive);
+      card.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+  }
+
+  function setActiveScheduleCard() {
+    document.querySelectorAll(".ba-schedule-status-filter").forEach((card) => {
+      const isActive = card.dataset.scheduleFilter === currentScheduleFilter;
+      card.classList.toggle("is-active", isActive);
+      card.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
   }
 
@@ -185,9 +291,12 @@ function initNewBatchAnalytics() {
       if (batchVal && b.batchId !== batchVal) return false;
       if (courseVal && b.courseName !== courseVal) return false;
       if (modeVal && b.mode !== modeVal) return false;
+      if (currentSubTab === "running" && currentScheduleFilter && b.status !== currentScheduleFilter) return false;
 
       return true;
     });
+
+    renderContextStats(filtered);
 
     // Ensure batches are ordered with oldest date first
     filtered.sort((a, b) => {

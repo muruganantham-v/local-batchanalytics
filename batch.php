@@ -402,12 +402,31 @@ $students_data = [];
 
 if ($section && $has_bm_student) {
     $userfields = \core_user\fields::for_userpic()->get_sql('u', false, '', '', false)->selects;
-    $sql = "SELECT u.id, u.idnumber, {$userfields}
+    $sql = "SELECT u.id, u.idnumber, u.username, {$userfields}
               FROM {local_bm_student} s
               JOIN {user} u ON u.id = s.userid
              WHERE s.classsectionid = :csid AND u.deleted = 0
              ORDER BY u.firstname, u.lastname";
     $db_students = $DB->get_records_sql($sql, ['csid' => $section->id]);
+
+    // Fallback: if no students found via local_bm_student, try course enrolment for linked modules
+    if (empty($db_students) && !empty($raw_modules)) {
+        $linked_course_ids = array_filter(array_column($raw_modules, 'moodlecourseid'));
+        if (!empty($linked_course_ids)) {
+            $student_role = $DB->get_record('role', ['shortname' => 'student']);
+            if ($student_role) {
+                foreach (array_unique($linked_course_ids) as $cid) {
+                    $coursecontext = context_course::instance((int)$cid, IGNORE_MISSING);
+                    if (!$coursecontext) continue;
+                    $enrolled = get_role_users($student_role->id, $coursecontext, false, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
+                    foreach ($enrolled as $eu) {
+                        $db_students[$eu->id] = $eu;
+                    }
+                }
+            }
+        }
+    }
+
     if (!empty($db_students)) {
         $sample_grades = [82, 58, 36, 44, 74, 61, 32, 39, 88, 91, 66, 71];
         $sample_merits = [[1, 'sel'], [0, 'nom'], [0, 0], [0, 0], [1, 0], [1, 'nom'], [0, 0], [0, 0], [1, 'sel'], [1, 'sel'], [0, 'nom'], [1, 0]];
@@ -424,6 +443,7 @@ if ($section && $has_bm_student) {
 
             $students_data[] = [
                 'userid'          => (int)$st->id,
+                'username'        => !empty($st->username) ? $st->username : '',
                 'name'            => $profile['name'],
                 'profileimageurl' => $profile['profileimageurl'],
                 'initials'        => $profile['initials'],
@@ -579,10 +599,21 @@ $PAGE->requires->css($styleurl);
 $PAGE->requires->css($newstyleurl);
 $PAGE->requires->js($scripturl);
 
+// Use the same configured CRM field list and explicit capability check as index.php.
+$crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
+$batch_can_manage = is_siteadmin($USER->id) || has_capability('local/batchanalytics:manage', $context);
+$crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
+
 echo $OUTPUT->header();
 ?>
 
-<div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container" data-batchid="<?= (int)$batch_id ?>" data-sesskey="<?= sesskey() ?>" data-students="<?= s(json_encode($students_data)) ?>">
+<div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"
+  data-batchid="<?= (int)$batch_id ?>"
+  data-sesskey="<?= sesskey() ?>"
+  data-students="<?= s(json_encode($students_data)) ?>"
+  data-crm-fields="<?= htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) ?>"
+  data-can-manage="<?= $batch_can_manage ? '1' : '0' ?>"
+  data-crm-index-url="<?= s($crm_index_url) ?>">
 
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
@@ -640,45 +671,6 @@ echo $OUTPUT->header();
         </div>
       </div>
 
-      <!-- 4 Glance Stat Cards in New Batch Analytics Style -->
-      <div class="ba-stats-row-bottom" style="margin-bottom: 24px;">
-        <div class="ba-new-stat-card card-blue">
-          <div class="ba-new-stat-header">
-            <span class="ba-new-stat-title">Configured Modules</span>
-            <span class="ba-new-stat-icon icon-blue">📚</span>
-          </div>
-          <div class="ba-new-stat-value"><?= count($schedule_rows) ?></div>
-          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-blue"></span> Active curriculum sequence</div>
-        </div>
-
-        <div class="ba-new-stat-card <?= ($batch_max_delay > 0) ? 'card-red' : 'card-green' ?>">
-          <div class="ba-new-stat-header">
-            <span class="ba-new-stat-title">Schedule Health</span>
-            <span class="ba-new-stat-icon <?= ($batch_max_delay > 0) ? 'icon-red' : 'icon-green' ?>"><?= ($batch_max_delay > 0) ? '⚠️' : '✅' ?></span>
-          </div>
-          <div class="ba-new-stat-value <?= ($batch_max_delay > 0) ? 'text-danger' : 'text-success' ?>"><?= ($batch_max_delay > 0) ? ('+' . $batch_max_delay . 'd') : 'On track' ?></div>
-          <div class="ba-new-stat-footer"><span class="badge-status-dot <?= ($batch_max_delay > 0) ? 'dot-red' : 'dot-green' ?>"></span> <?= ($batch_max_delay > 0) ? 'Behind schedule' : 'All milestones on schedule' ?></div>
-        </div>
-
-        <div class="ba-new-stat-card card-purple">
-          <div class="ba-new-stat-header">
-            <span class="ba-new-stat-title">Enrolled Students</span>
-            <span class="ba-new-stat-icon icon-purple">👥</span>
-          </div>
-          <div class="ba-new-stat-value"><?= count($students_data) ?></div>
-          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-purple"></span> Active cohort learners</div>
-        </div>
-
-        <div class="ba-new-stat-card card-orange">
-          <div class="ba-new-stat-header">
-            <span class="ba-new-stat-title">Soft Skill Activities</span>
-            <span class="ba-new-stat-icon icon-orange">🎯</span>
-          </div>
-          <div class="ba-new-stat-value"><?= count($ss_activities) ?></div>
-          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-orange"></span> Scheduled milestones</div>
-        </div>
-      </div>
-
       <!-- Navigation Tabs in New UI Pill Style -->
       <div class="tabs ba-batch-tabs ba-top-nav-tabs-bar">
         <button type="button" class="tab ba-top-nav-tab active" data-tab="sched"><span class="ba-tab-icon">📅</span> Schedule</button>
@@ -687,6 +679,7 @@ echo $OUTPUT->header();
         <?php if ($can_view_notes || $can_edit_notes): ?>
           <button type="button" class="tab ba-top-nav-tab" data-tab="notes"><span class="ba-tab-icon">📝</span> Review Notes</button>
         <?php endif; ?>
+        <button type="button" class="tab ba-top-nav-tab" data-tab="crm" id="ba-crm-tab-btn"><span class="ba-tab-icon">📊</span> CRM Data</button>
       </div>
 
       <!-- Panels Container -->
@@ -852,6 +845,130 @@ echo $OUTPUT->header();
                 </div>
                 <div class="ba-pagination-btns" id="ba-pagination-btns">
                   <!-- Rendered dynamically via batch.js -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. CRM Data Panel -->
+        <div id="panel-crm" class="panel">
+          <div class="panel-note">
+            CRM data for all students in this batch, fetched live from Zoho CRM. Use the filters to narrow by placement status, PET eligibility, scores, and more.
+          </div>
+
+          <!-- CRM Filter + Table Layout -->
+          <div class="ba-crm-layout" style="display:flex; gap:18px; align-items:flex-start;">
+
+            <!-- Filter Sidebar -->
+            <div class="ba-crm-sidebar" style="min-width:220px; max-width:240px; flex-shrink:0; background:var(--card,#fff); border:1px solid var(--line,#e2e8f0); border-radius:10px; padding:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <span style="font-weight:700; font-size:13px; color:var(--txt,#1e293b);">Filters</span>
+                <span onclick="baBatchCrm.resetFilters()" style="cursor:pointer; color:var(--accent,#4f46e5); font-size:12px; font-weight:600;">Reset All</span>
+              </div>
+
+              <!-- Search -->
+              <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Search Name / ID</label>
+                <input type="text" id="ba-crm-f-search" placeholder="Search..." oninput="baBatchCrm.applyFilters()"
+                  style="width:100%; box-sizing:border-box; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+              </div>
+
+              <!-- Placement Status -->
+              <div style="margin-bottom:12px;" id="ba-crm-placement-wrap">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Placement Status</label>
+                <select id="ba-crm-f-placement" onchange="baBatchCrm.applyFilters()"
+                  style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+                  <option value="">All</option>
+                  <option value="Placed">Placed</option>
+                  <option value="Not Placed">Not Placed</option>
+                </select>
+              </div>
+
+              <!-- PET Status -->
+              <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">PET Status</label>
+                <select id="ba-crm-f-pet" onchange="baBatchCrm.applyFilters()"
+                  style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+                  <option value="">All</option>
+                </select>
+              </div>
+
+              <!-- MAAC Rating Range -->
+              <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">MAAC Rating</label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="number" id="ba-crm-f-maac-min" value="0" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()"
+                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
+                  <span style="color:#94a3b8;">–</span>
+                  <input type="number" id="ba-crm-f-maac-max" value="10" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()"
+                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Max">
+                </div>
+              </div>
+
+              <!-- Adv C Mock Score -->
+              <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Adv C Mock Score</label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="number" id="ba-crm-f-advc-min" value="0" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()"
+                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
+                  <span style="color:#94a3b8;">–</span>
+                  <input type="number" id="ba-crm-f-advc-max" value="100" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()"
+                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Max">
+                </div>
+              </div>
+
+              <!-- Year of Passing -->
+              <div style="margin-bottom:12px;" id="ba-crm-yop-wrap">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Year of Passing</label>
+                <div id="ba-crm-f-yop-list" style="max-height:110px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
+                  <span style="color:#94a3b8;">Loading CRM data...</span>
+                </div>
+              </div>
+
+              <!-- Home State -->
+              <div style="margin-bottom:4px;" id="ba-crm-state-wrap">
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Home State</label>
+                <div id="ba-crm-f-state-list" style="max-height:130px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
+                  <span style="color:#94a3b8;">Loading CRM data...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Main Table Area -->
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span id="ba-crm-count" style="font-weight:600; font-size:13px; color:#64748b;">Loading students...</span>
+                <div style="display:flex; gap:8px;">
+                  <button type="button" id="ba-crm-retry-btn" onclick="baBatchCrm.retryCrm()" class="viewbtn disabled" style="display:none;">Retry CRM Data</button>
+                  <button type="button" id="ba-crm-export-btn" onclick="baBatchCrm.exportCsv()" class="exp">Export CSV</button>
+                </div>
+              </div>
+              <div class="tablecard" style="overflow-x:auto;">
+                <table id="ba-crm-table" style="min-width:700px;">
+                  <thead id="ba-crm-thead"><tr><th>Student</th></tr></thead>
+                  <tbody id="ba-crm-tbody">
+                    <tr><td colspan="20" style="text-align:center; padding:24px; color:#94a3b8;">Click the CRM Data tab to load student CRM data.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ba-pagination-bar" id="ba-crm-pagination-bar">
+                <div class="ba-pagination-info" id="ba-crm-pagination-info">
+                  <!-- Populated via batch.js -->
+                </div>
+                <div class="ba-pagination-actions">
+                  <div class="ba-pagination-size-box">
+                    <label for="ba-crm-page-size">Rows per page:</label>
+                    <select id="ba-crm-page-size" class="ba-pagination-select">
+                      <option value="10" selected>10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="all">All</option>
+                    </select>
+                  </div>
+                  <div class="ba-pagination-btns" id="ba-crm-pagination-btns">
+                    <!-- Rendered dynamically via batch.js -->
+                  </div>
                 </div>
               </div>
             </div>
