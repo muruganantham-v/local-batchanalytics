@@ -1,8 +1,11 @@
 /**
  * Task Dashboard JavaScript
  *
- * Handles calendar-based soft skill tasks for MAAC Executive and Batch Manager roles,
- * dashboard rendering, role switching, and task completion.
+ * Handles task management by user role:
+ * 1. Program Manager, SS Executive, SS Team: Assigned in Class Section, soft skills planned vs actual, due date from planned date
+ * 2. Mentor: Enrolled courses, activity due date or calendar due tasks
+ * 3. Assistant Manager: Tasks displayed based on start date of Class Section
+ * 4. All: Combined portfolio view
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -14,7 +17,7 @@
 
   let currentTaskData = null;
   let pendingTaskToComplete = null;
-  let activeRoleFilter = "auto";
+  let activeRoleFilter = "pm_ss";
   let currentTodoFilter = "due_first";
 
   function getGreeting(userName) {
@@ -138,12 +141,27 @@
     const initialTodos = getFilteredAndSortedTodos();
     const pendingTotal = (data.todos || []).filter((t) => !t.completed).length;
 
+    // Determine current selected role
+    const currentRole = roleInfo.current_role || activeRoleFilter;
+    activeRoleFilter = currentRole;
+
     root.innerHTML = `
       <div class="task-dashboard-wrap">
         <div class="task-greet">
           <div>
             <h1 id="taskGreetingTitle">${greetingText}</h1>
             <div class="task-sub" id="taskRoleSub">${escapeHtml(roleInfo.subtitle || "Portfolio Overview")}</div>
+          </div>
+          <div class="task-role-switcher-box">
+            <label for="taskRoleSelect" class="task-role-switcher-label">
+              <span class="task-role-icon">👤</span> Switch Role:
+            </label>
+            <select id="taskRoleSelect" class="task-role-dropdown" aria-label="Switch User Role">
+              <option value="pm_ss" ${currentRole === "pm_ss" ? "selected" : ""}>📋 Program Manager, SS Executive, SS Team</option>
+              <option value="mentor" ${currentRole === "mentor" ? "selected" : ""}>🎓 Mentor (Enrolled Courses)</option>
+              <option value="am" ${currentRole === "am" ? "selected" : ""}>🏢 Assistant Manager (Section Start Dates)</option>
+              <option value="all" ${currentRole === "all" ? "selected" : ""}>🌐 All Roles (Combined Overview)</option>
+            </select>
           </div>
         </div>
 
@@ -169,8 +187,8 @@
 
           <div class="ba-new-stat-card card-purple">
             <div class="ba-new-stat-header">
-              <span class="ba-new-stat-title">Assigned Batches</span>
-              <span class="ba-new-stat-icon icon-purple">📁</span>
+              <span class="ba-new-stat-title">${currentRole === "mentor" ? "Active Courses" : "Assigned Batches"}</span>
+              <span class="ba-new-stat-icon icon-purple">${currentRole === "mentor" ? "📚" : "📁"}</span>
             </div>
             <div class="ba-new-stat-value" id="taskGlanceBatches">${glance.batches}</div>
             <div class="ba-new-stat-footer"><span class="badge-status-dot dot-purple"></span> Active in portfolio</div>
@@ -219,7 +237,7 @@
                 <span class="task-ph-bar"></span>
                 Forthcoming
               </h2>
-              <span class="task-filter">Next 7 days</span>
+              <span class="task-filter">Upcoming Schedule</span>
             </div>
             <div id="taskFcList">
               ${renderForthcomingList(forthcoming)}
@@ -242,10 +260,21 @@
       </div>
     `;
 
-    // Bind modal actions, todo item actions, and filter dropdown
+    // Bind modal actions, todo item actions, filter dropdown, and role switcher
     bindModalEvents();
     bindTodoItemEvents();
     bindFilterEvents();
+    bindRoleEvents();
+  }
+
+  function bindRoleEvents() {
+    const roleSelect = document.getElementById("taskRoleSelect");
+    if (!roleSelect) return;
+
+    roleSelect.addEventListener("change", function () {
+      activeRoleFilter = this.value;
+      loadTaskData(activeRoleFilter);
+    });
   }
 
   function bindFilterEvents() {
@@ -273,37 +302,65 @@
 
     return todos
       .map((t) => {
-        const taskKey = `${t.section_id}_${t.activity_key}`;
+        const taskKey = `${t.section_id || t.course_id}_${t.activity_key}`;
         const batchUrl = t.batch_id ? `batch.php?batchid=${encodeURIComponent(t.batch_id)}` : "#";
         const isDone = Boolean(t.completed);
 
+        let metaHtml = "";
+        if (t.role_type === "mentor") {
+          metaHtml = `
+            <span class="task-m-batch">Course: ${escapeHtml(t.course_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-m-sec">Activity Due Date</span>
+          `;
+        } else if (t.role_type === "am") {
+          metaHtml = `
+            <a href="${batchUrl}" class="task-m-batch">Batch ${escapeHtml(t.batch_name || "")}</a>
+            <span class="task-m-dot">·</span>
+            <span class="task-m-sec">Section ${escapeHtml(t.section_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-meta-subtext">Section Start: <strong>${escapeHtml(t.section_start_date_formatted || "—")}</strong></span>
+          `;
+        } else {
+          metaHtml = `
+            <a href="${batchUrl}" class="task-m-batch">Batch ${escapeHtml(t.batch_name || "")}</a>
+            <span class="task-m-dot">·</span>
+            <span class="task-m-sec">Section ${escapeHtml(t.section_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-meta-subtext">Soft Skill Milestone</span>
+          `;
+        }
+
+        let actionHtml = "";
+        if (t.can_complete) {
+          actionHtml = isDone
+            ? '<span class="task-done-tag">✓ Done</span>'
+            : `<button type="button" class="task-mc-btn" data-action="ask-complete" data-taskkey="${escapeHtml(taskKey)}">Mark Complete</button>`;
+        } else if (t.action_url) {
+          actionHtml = `<a href="${escapeHtml(t.action_url)}" target="_blank" class="task-btn-action">${escapeHtml(t.action_label || "View")} ↗</a>`;
+        }
+
         return `
-          <div class="task-todo-item ${isDone ? "done" : ""}" id="task-todo-row-${taskKey}" data-taskkey="${taskKey}" data-sectionid="${t.section_id}" data-activity="${t.activity_key}">
+          <div class="task-todo-item ${isDone ? "done" : ""}" data-taskid="${escapeHtml(taskKey)}">
             <div class="task-body">
               <div class="task-t-wrap">
                 <span class="task-t">${escapeHtml(t.activity_label)}</span>
-                <span class="task-date-highlight ${t.due_class}">
-                  <span class="task-cal-icon">🗓️</span>
-                  <span class="task-date-label">Planned:</span>
-                  <strong class="task-date-val">${escapeHtml(t.planned_date_formatted)}</strong>
-                </span>
+                <div class="task-badges-group">
+                  <span class="task-due ${escapeHtml(t.due_class || "soon")}">
+                    ${escapeHtml(t.due_text)}
+                  </span>
+                  <span class="task-date-highlight">
+                    <span class="task-cal-icon">📅</span>
+                    <strong class="task-date-val">${escapeHtml(t.planned_date_formatted)}</strong>
+                  </span>
+                </div>
               </div>
               <div class="task-m">
-                <span class="task-m-batch">Batch ${escapeHtml(t.batch_name)}</span>
-                <span class="task-m-dot">·</span>
-                <span class="task-m-sec">Section ${escapeHtml(t.section_name)}</span>
+                ${metaHtml}
               </div>
-              <a href="${batchUrl}" class="task-go">Go to batch →</a>
             </div>
             <div class="task-actions">
-              ${
-                isDone
-                  ? '<span class="task-done-tag">✓ Completed</span>'
-                  : `
-                <span class="task-due ${t.due_class}">${escapeHtml(t.due_text)}</span>
-                <button type="button" class="task-mc-btn" data-action="ask-complete" data-taskkey="${taskKey}">Mark Complete</button>
-              `
-              }
+              ${actionHtml}
             </div>
           </div>
         `;
@@ -311,13 +368,38 @@
       .join("");
   }
 
-  function renderForthcomingList(fc) {
-    if (!fc || !fc.length) {
-      return '<div class="task-empty">Nothing in the next 7 days</div>';
+  function renderForthcomingList(forthcoming) {
+    if (!forthcoming || !forthcoming.length) {
+      return '<div class="task-empty">📅 No forthcoming activities scheduled in this period.</div>';
     }
 
-    return fc
+    return forthcoming
       .map((item) => {
+        let metaHtml = "";
+        if (item.role_type === "mentor") {
+          metaHtml = `
+            <span class="task-m-batch">Course: ${escapeHtml(item.course_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-fc-rel-text">${escapeHtml(item.time_relative || "")}</span>
+          `;
+        } else if (item.role_type === "am") {
+          metaHtml = `
+            <span class="task-m-batch">Batch ${escapeHtml(item.batch_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-m-sec">Section ${escapeHtml(item.section_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-fc-rel-text">${escapeHtml(item.time_relative || "")}</span>
+          `;
+        } else {
+          metaHtml = `
+            <span class="task-m-batch">Batch ${escapeHtml(item.batch_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-m-sec">Section ${escapeHtml(item.section_name || "")}</span>
+            <span class="task-m-dot">·</span>
+            <span class="task-fc-rel-text">${escapeHtml(item.time_relative || "")}</span>
+          `;
+        }
+
         return `
           <div class="task-fc-item">
             <div class="task-t-wrap">
@@ -328,11 +410,7 @@
               </span>
             </div>
             <div class="task-m">
-              <span class="task-m-batch">Batch ${escapeHtml(item.batch_name)}</span>
-              <span class="task-m-dot">·</span>
-              <span class="task-m-sec">Section ${escapeHtml(item.section_name)}</span>
-              <span class="task-m-dot">·</span>
-              <span class="task-fc-rel-text">${escapeHtml(item.time_relative)}</span>
+              ${metaHtml}
             </div>
           </div>
         `;
@@ -349,7 +427,7 @@
         const taskKey = this.dataset.taskkey;
         if (currentTaskData && currentTaskData.todos) {
           const task = currentTaskData.todos.find(
-            (t) => `${t.section_id}_${t.activity_key}` === taskKey
+            (t) => `${t.section_id || t.course_id}_${t.activity_key}` === taskKey
           );
           if (task) {
             askComplete(task);
@@ -364,7 +442,7 @@
     const modal = document.getElementById("taskModalOverlay");
     const actName = document.getElementById("taskModalActName");
     if (modal && actName) {
-      actName.textContent = `${task.activity_label} (Batch ${task.batch_name} - ${task.section_name})`;
+      actName.textContent = `${task.activity_label} (${task.batch_name || ""} - ${task.section_name || ""})`;
       modal.classList.add("show");
     }
   }
@@ -492,12 +570,17 @@
 
   function loadTaskData(roleFilter) {
     roleFilter = roleFilter || activeRoleFilter;
+    if (!roleFilter || roleFilter === "auto") {
+      roleFilter = "pm_ss";
+    }
+    activeRoleFilter = roleFilter;
+
     const root = document.getElementById("task-dashboard-root");
     if (!root) {
       return;
     }
 
-    // Show smooth skeleton/loader if not yet rendered
+    // Show smooth loader if not yet rendered
     if (!currentTaskData) {
       root.innerHTML = `
         <div style="padding: 40px; text-align: center; color: #64748b;">
@@ -538,7 +621,7 @@
   document.addEventListener("DOMContentLoaded", function () {
     const taskRoot = document.getElementById("task-dashboard-root");
     if (taskRoot) {
-      loadTaskData("auto");
+      loadTaskData(activeRoleFilter);
     }
 
     // Top-level tab click listener to refresh tasks when Task tab is activated

@@ -6810,6 +6810,7 @@ input:checked+.ba-slider:before {
 .ba-module-page .mhead {
   background: #ffffff;
   border: 1px solid var(--line);
+  border-top: 0;
   border-radius: 14px;
   padding: 22px 26px;
   margin-bottom: 22px;

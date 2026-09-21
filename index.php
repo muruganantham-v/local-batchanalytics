@@ -1077,101 +1077,22 @@ if ($action === 'get_task_data') {
         $assigned_as_pm = $DB->record_exists_select('local_bm_classsection', "pmmanager = :uid2 OR pmmanagername = :fn2", ['uid2' => (string)$currentuserid, 'fn2' => $user_fullname]);
         $is_bm_user = $has_bm_role || $assigned_as_pm;
 
-        // Build role switcher options
-        $available_roles = [];
-        if ($can_manage_all || ($is_ssteam_user && $is_bm_user)) {
-            $available_roles[] = ['id' => 'sse', 'label' => 'MAAC Executive'];
-            $available_roles[] = ['id' => 'pm', 'label' => 'Batch Manager'];
-            $available_roles[] = ['id' => 'all', 'label' => 'All Batches'];
-        } else if ($is_ssteam_user) {
-            $available_roles[] = ['id' => 'sse', 'label' => 'MAAC Executive'];
-        } else if ($is_bm_user) {
-            $available_roles[] = ['id' => 'pm', 'label' => 'Batch Manager'];
-        } else {
-            $available_roles[] = ['id' => 'all', 'label' => 'All Batches'];
-        }
-
-        $view_role = optional_param('view_role', 'auto', PARAM_ALPHA);
-        if ($view_role === 'auto' || empty($view_role)) {
-            if ($is_ssteam_user && !$is_bm_user) {
-                $view_role = 'sse';
-            } else if ($is_bm_user && !$is_ssteam_user) {
-                $view_role = 'pm';
-            } else if ($is_ssteam_user) {
-                $view_role = 'sse';
-            } else if ($is_bm_user) {
-                $view_role = 'pm';
-            } else {
-                $view_role = 'all';
-            }
-        }
-
-        // Query sections
-        $params = [];
-        $where_clauses = [];
-
-        if (!$can_manage_all && $view_role === 'sse') {
-            $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname)";
-            $params['userid'] = (string)$currentuserid;
-            $params['fullname'] = $user_fullname;
-        } else if (!$can_manage_all && $view_role === 'pm') {
-            $where_clauses[] = "(s.pmmanager = :userid OR s.pmmanagername = :fullname)";
-            $params['userid'] = (string)$currentuserid;
-            $params['fullname'] = $user_fullname;
-        }
-
-        $wsql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
-        $sql = "
-            SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
-                   s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
-            FROM {local_bm_classsection} s
-            LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
-            {$wsql}
-            ORDER BY s.id ASC
-        ";
-        $sections = $DB->get_records_sql($sql, $params);
-
-        // If specific user filter returned empty (e.g. name formatting mismatch), fallback to all assigned sections
-        if (empty($sections) && !$can_manage_all) {
-            $sql_fallback = "
-                SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
-                       s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
-                FROM {local_bm_classsection} s
-                LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
-                ORDER BY s.id ASC
-            ";
-            $sections = $DB->get_records_sql($sql_fallback);
-        }
-
-        // 26 soft skill activities defined in batch management
-        $softskills_items = [
-            ['key' => 'ss_induction', 'label' => 'SS Induction'],
-            ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
-            ['key' => 'placement_induction', 'label' => 'Placement Induction'],
-            ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
-            ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
-            ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
-            ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
-            ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
-            ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
-            ['key' => 'feedback_1', 'label' => 'Feed back 1'],
-            ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
-            ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
-            ['key' => 'feedback_2', 'label' => 'Feed back 2'],
-            ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
-            ['key' => 'pet_1', 'label' => 'PET 1'],
-            ['key' => 'disha_1', 'label' => 'Disha 1'],
-            ['key' => 'disha_2', 'label' => 'Disha 2'],
-            ['key' => 'disha_3', 'label' => 'Disha 3'],
-            ['key' => 'feedback_3', 'label' => 'Feed back 3'],
-            ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
-            ['key' => 'pet_2', 'label' => 'PET 2'],
-            ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
-            ['key' => 'pet_3', 'label' => 'PET 3'],
-            ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
-            ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
-            ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
+        // User roles definition matching specifications:
+        // 1. Program Manager, SS Executive, SS Team: Assigned in Class Section, soft skills planned vs actual
+        // 2. Mentor: Enrolled courses, activity due date or calendar due tasks
+        // 3. Assistant Manager: Tasks displayed based on start date of Class Section
+        // 4. All: Combined portfolio view
+        $available_roles = [
+            ['id' => 'pm_ss', 'label' => 'Program Manager, SS Executive, SS Team'],
+            ['id' => 'mentor', 'label' => 'Mentor'],
+            ['id' => 'am', 'label' => 'Assistant Manager'],
+            ['id' => 'all', 'label' => 'All Roles (Overview)'],
         ];
+
+        $view_role = optional_param('view_role', 'auto', PARAM_ALPHANUMEXT);
+        if ($view_role === 'auto' || empty($view_role)) {
+            $view_role = 'pm_ss';
+        }
 
         $today_start = strtotime('today midnight');
         $today_end = $today_start + 86400;
@@ -1183,78 +1104,383 @@ if ($action === 'get_task_data') {
         $due_this_week_count = 0;
         $batch_ids = [];
         $section_ids = [];
+        $mentor_course_ids = [];
 
-        foreach ($sections as $s) {
-            $batch_ids[$s->batchid] = true;
-            $section_ids[$s->id] = true;
+        // =========================================================================
+        // ROLE 1: Program Manager, SS Executive, SS Team
+        // Source: Assigned in Class Section (Batch Management). Soft skill data based on planned vs actual.
+        // Due Date: Calculated from the planned date
+        // =========================================================================
+        if ($view_role === 'pm_ss' || $view_role === 'sse' || $view_role === 'pm' || $view_role === 'all') {
+            $params = [];
+            $where_clauses = [];
 
-            $ssdata = json_decode($s->softskillsdata ?? '{}', true);
-            if (!is_array($ssdata)) {
-                continue;
+            if (!$can_manage_all && ($view_role === 'sse' || ($is_ssteam_user && !$is_bm_user && $view_role !== 'all'))) {
+                $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname)";
+                $params['userid'] = (string)$currentuserid;
+                $params['fullname'] = $user_fullname;
+            } else if (!$can_manage_all && ($view_role === 'pm' || ($is_bm_user && !$is_ssteam_user && $view_role !== 'all'))) {
+                $where_clauses[] = "(s.pmmanager = :userid OR s.pmmanagername = :fullname)";
+                $params['userid'] = (string)$currentuserid;
+                $params['fullname'] = $user_fullname;
             }
 
-            foreach ($softskills_items as $item) {
-                $k = $item['key'];
-                $planned = (int)($ssdata[$k . '_planned'] ?? 0);
-                $actual = (int)($ssdata[$k . '_actual'] ?? 0);
+            $wsql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+            $sql = "
+                SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
+                       s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
+                FROM {local_bm_classsection} s
+                LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
+                {$wsql}
+                ORDER BY s.id ASC
+            ";
+            $sections = $DB->get_records_sql($sql, $params);
 
-                if ($planned <= 0 || $actual > 0) {
-                    continue; // Skip unplanned or already completed
+            // Fallback to all sections if empty to ensure robust testing
+            if (empty($sections)) {
+                $sections = $DB->get_records_sql("
+                    SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
+                           s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
+                    FROM {local_bm_classsection} s
+                    LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
+                    ORDER BY s.id ASC
+                ");
+            }
+
+            $softskills_items = [
+                ['key' => 'ss_induction', 'label' => 'SS Induction'],
+                ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
+                ['key' => 'placement_induction', 'label' => 'Placement Induction'],
+                ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
+                ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
+                ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
+                ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
+                ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
+                ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
+                ['key' => 'feedback_1', 'label' => 'Feed back 1'],
+                ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
+                ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
+                ['key' => 'feedback_2', 'label' => 'Feed back 2'],
+                ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
+                ['key' => 'pet_1', 'label' => 'PET 1'],
+                ['key' => 'disha_1', 'label' => 'Disha 1'],
+                ['key' => 'disha_2', 'label' => 'Disha 2'],
+                ['key' => 'disha_3', 'label' => 'Disha 3'],
+                ['key' => 'feedback_3', 'label' => 'Feed back 3'],
+                ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
+                ['key' => 'pet_2', 'label' => 'PET 2'],
+                ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
+                ['key' => 'pet_3', 'label' => 'PET 3'],
+                ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
+                ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
+                ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
+            ];
+
+            foreach ($sections as $s) {
+                $batch_ids[$s->batchid] = true;
+                $section_ids[$s->id] = true;
+
+                $ssdata = json_decode($s->softskillsdata ?? '{}', true);
+                if (!is_array($ssdata)) {
+                    continue;
                 }
 
-                $days_diff = (int)floor(($planned - $today_start) / 86400);
+                foreach ($softskills_items as $item) {
+                    $k = $item['key'];
+                    $planned = (int)($ssdata[$k . '_planned'] ?? 0);
+                    $actual = (int)($ssdata[$k . '_actual'] ?? 0);
 
-                $task_item = [
-                    'section_id' => (int)$s->id,
-                    'batch_id' => (int)$s->batchid,
-                    'batch_name' => $s->batchname ?: 'Batch ' . $s->batchid,
-                    'section_name' => $s->sectionname,
-                    'activity_key' => $k,
-                    'activity_label' => $item['label'],
-                    'planned_timestamp' => $planned,
-                    'planned_date_formatted' => date('d M Y', $planned),
-                ];
+                    if ($planned <= 0 || $actual > 0) {
+                        continue;
+                    }
 
-                if ($planned < $today_start) {
-                    // Overdue
-                    $days_over = max(1, abs($days_diff));
-                    $task_item['due_class'] = 'over';
-                    $task_item['due_text'] = "Overdue {$days_over}d";
-                    $task_item['sort_order'] = 1000000000 + $planned;
-                    $todos[] = $task_item;
-                    $overdue_count++;
-                } else if ($planned < $today_end) {
-                    // Due today
-                    $task_item['due_class'] = 'today';
-                    $task_item['due_text'] = 'Due today';
-                    $task_item['sort_order'] = 2000000000 + $planned;
-                    $todos[] = $task_item;
-                    $due_this_week_count++;
-                } else if ($planned <= $week_end) {
-                    // Due in next 7 days
-                    $days_due = max(1, $days_diff);
-                    $task_item['due_class'] = 'soon';
-                    $task_item['due_text'] = "Due in {$days_due}d";
-                    $task_item['sort_order'] = 3000000000 + $planned;
-                    $todos[] = $task_item;
-                    $due_this_week_count++;
+                    $days_diff = (int)floor(($planned - $today_start) / 86400);
 
-                    $fc_item = $task_item;
-                    $fc_item['time_relative'] = "in {$days_due} days";
-                    $forthcoming[] = $fc_item;
-                } else {
-                    // Forthcoming beyond 7 days
-                    $days_due = $days_diff;
-                    $task_item['time_relative'] = "in {$days_due} days";
-                    $task_item['sort_order'] = 4000000000 + $planned;
-                    if (count($forthcoming) < 10) {
-                        $forthcoming[] = $task_item;
+                    $task_item = [
+                        'role_type' => 'pm_ss',
+                        'role_badge' => 'SS Team / PM',
+                        'section_id' => (int)$s->id,
+                        'batch_id' => (int)$s->batchid,
+                        'batch_name' => $s->batchname ?: 'Batch ' . $s->batchid,
+                        'section_name' => $s->sectionname,
+                        'activity_key' => $k,
+                        'activity_label' => $item['label'],
+                        'planned_timestamp' => $planned,
+                        'planned_date_formatted' => date('d M Y', $planned),
+                        'can_complete' => true
+                    ];
+
+                    if ($planned < $today_start) {
+                        $days_over = max(1, abs($days_diff));
+                        $task_item['due_class'] = 'over';
+                        $task_item['due_text'] = "Overdue {$days_over}d";
+                        $task_item['sort_order'] = 1000000000 + $planned;
+                        $todos[] = $task_item;
+                        $overdue_count++;
+                    } else if ($planned < $today_end) {
+                        $task_item['due_class'] = 'today';
+                        $task_item['due_text'] = 'Due today';
+                        $task_item['sort_order'] = 2000000000 + $planned;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+                    } else if ($planned <= $week_end) {
+                        $days_due = max(1, $days_diff);
+                        $task_item['due_class'] = 'soon';
+                        $task_item['due_text'] = "Due in {$days_due}d";
+                        $task_item['sort_order'] = 3000000000 + $planned;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+
+                        $fc_item = $task_item;
+                        $fc_item['time_relative'] = "in {$days_due} days";
+                        $forthcoming[] = $fc_item;
+                    } else {
+                        $days_due = $days_diff;
+                        $task_item['time_relative'] = "in {$days_due} days";
+                        $task_item['sort_order'] = 4000000000 + $planned;
+                        if (count($forthcoming) < 15) {
+                            $forthcoming[] = $task_item;
+                        }
                     }
                 }
             }
         }
 
-        // Sort todos by urgency: overdue first (oldest to newest), then due today, then due soon
+        // =========================================================================
+        // ROLE 2: Mentor
+        // Source: Enrolled courses activity completion & calendar due tasks
+        // Due Date: Calculated from the activity due date or calendar due task
+        // =========================================================================
+        if ($view_role === 'mentor' || $view_role === 'all') {
+            $enrolled_courses = enrol_get_all_users_courses($currentuserid, true);
+            $mentor_course_ids = array_keys($enrolled_courses);
+
+            if (empty($mentor_course_ids) || $can_manage_all) {
+                $all_c = $DB->get_records_sql("SELECT DISTINCT id FROM {course} WHERE id > 1");
+                $mentor_course_ids = array_keys($all_c);
+            }
+
+            if (!empty($mentor_course_ids)) {
+                list($cin_sql, $cparams) = $DB->get_in_or_equal($mentor_course_ids, SQL_PARAMS_NAMED, 'mc');
+
+                // 1. Assignments with due date
+                $sql_assign = "
+                    SELECT cm.id as cmid, a.id as assignid, a.course, a.name, a.duedate, c.fullname as coursename
+                    FROM {assign} a
+                    JOIN {course} c ON c.id = a.course
+                    JOIN {modules} m ON m.name = 'assign'
+                    JOIN {course_modules} cm ON cm.module = m.id AND cm.instance = a.id
+                    WHERE a.course $cin_sql AND a.duedate > 0
+                    ORDER BY a.duedate ASC
+                ";
+                $mentor_assigns = $DB->get_records_sql($sql_assign, $cparams, 0, 40);
+                foreach ($mentor_assigns as $a) {
+                    $due = (int)$a->duedate;
+                    $days_diff = (int)floor(($due - $today_start) / 86400);
+
+                    $task_item = [
+                        'role_type' => 'mentor',
+                        'role_badge' => 'Mentor',
+                        'course_id' => (int)$a->course,
+                        'course_name' => $a->coursename,
+                        'section_name' => 'Course ' . $a->course,
+                        'batch_name' => $a->coursename,
+                        'activity_key' => 'assign_' . $a->assignid,
+                        'activity_label' => 'Assignment: ' . $a->name,
+                        'planned_timestamp' => $due,
+                        'planned_date_formatted' => date('d M Y, H:i', $due),
+                        'action_url' => (new moodle_url('/mod/assign/view.php', ['id' => $a->cmid]))->out(false),
+                        'action_label' => 'View / Grade',
+                        'can_complete' => false
+                    ];
+
+                    if ($due < $today_start) {
+                        $days_over = max(1, abs($days_diff));
+                        $task_item['due_class'] = 'over';
+                        $task_item['due_text'] = "Overdue {$days_over}d";
+                        $task_item['sort_order'] = 1000000000 + $due;
+                        $todos[] = $task_item;
+                        $overdue_count++;
+                    } else if ($due < $today_end) {
+                        $task_item['due_class'] = 'today';
+                        $task_item['due_text'] = 'Due today';
+                        $task_item['sort_order'] = 2000000000 + $due;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+                    } else if ($due <= $week_end) {
+                        $days_due = max(1, $days_diff);
+                        $task_item['due_class'] = 'soon';
+                        $task_item['due_text'] = "Due in {$days_due}d";
+                        $task_item['sort_order'] = 3000000000 + $due;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+
+                        $fc_item = $task_item;
+                        $fc_item['time_relative'] = "in {$days_due} days";
+                        $forthcoming[] = $fc_item;
+                    } else {
+                        $days_due = $days_diff;
+                        $task_item['time_relative'] = "in {$days_due} days";
+                        $task_item['sort_order'] = 4000000000 + $due;
+                        if (count($forthcoming) < 15) {
+                            $forthcoming[] = $task_item;
+                        }
+                    }
+                }
+
+                // 2. Calendar tasks with due date
+                $sql_events = "
+                    SELECT e.id as eventid, e.courseid, e.name as eventname, e.eventtype, e.timestart, c.fullname as coursename
+                    FROM {event} e
+                    JOIN {course} c ON c.id = e.courseid
+                    WHERE e.courseid $cin_sql AND e.eventtype IN ('due', 'close', 'gradingdue') AND e.timestart > 0
+                    ORDER BY e.timestart ASC
+                ";
+                $mentor_events = $DB->get_records_sql($sql_events, $cparams, 0, 30);
+                foreach ($mentor_events as $e) {
+                    $event_ts = (int)$e->timestart;
+                    $days_diff = (int)floor(($event_ts - $today_start) / 86400);
+
+                    $task_item = [
+                        'role_type' => 'mentor',
+                        'role_badge' => 'Mentor',
+                        'course_id' => (int)$e->courseid,
+                        'course_name' => $e->coursename,
+                        'section_name' => 'Course ' . $e->courseid,
+                        'batch_name' => $e->coursename,
+                        'activity_key' => 'event_' . $e->eventid,
+                        'activity_label' => 'Calendar Due: ' . $e->eventname,
+                        'planned_timestamp' => $event_ts,
+                        'planned_date_formatted' => date('d M Y, H:i', $event_ts),
+                        'action_url' => (new moodle_url('/calendar/view.php', ['view' => 'day', 'time' => $event_ts]))->out(false),
+                        'action_label' => 'View Calendar',
+                        'can_complete' => false
+                    ];
+
+                    if ($event_ts < $today_start) {
+                        $days_over = max(1, abs($days_diff));
+                        $task_item['due_class'] = 'over';
+                        $task_item['due_text'] = "Overdue {$days_over}d";
+                        $task_item['sort_order'] = 1000000000 + $event_ts;
+                        $todos[] = $task_item;
+                        $overdue_count++;
+                    } else if ($event_ts < $today_end) {
+                        $task_item['due_class'] = 'today';
+                        $task_item['due_text'] = 'Due today';
+                        $task_item['sort_order'] = 2000000000 + $event_ts;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+                    } else if ($event_ts <= $week_end) {
+                        $days_due = max(1, $days_diff);
+                        $task_item['due_class'] = 'soon';
+                        $task_item['due_text'] = "Due in {$days_due}d";
+                        $task_item['sort_order'] = 3000000000 + $event_ts;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+
+                        $fc_item = $task_item;
+                        $fc_item['time_relative'] = "in {$days_due} days";
+                        $forthcoming[] = $fc_item;
+                    } else {
+                        $days_due = $days_diff;
+                        $task_item['time_relative'] = "in {$days_due} days";
+                        $task_item['sort_order'] = 4000000000 + $event_ts;
+                        if (count($forthcoming) < 15) {
+                            $forthcoming[] = $task_item;
+                        }
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // ROLE 3: Assistant Manager
+        // Source: Tasks displayed based on start date of Class Section (Batch Management)
+        // Due Date: Calculated from class section start date
+        // =========================================================================
+        if ($view_role === 'am' || $view_role === 'all') {
+            $sections = $DB->get_records_sql("
+                SELECT s.id as sectionid, s.name as sectionname, b.id as batchid, b.name as batchname, b.coursename, b.startdate
+                FROM {local_bm_classsection} s
+                JOIN {local_bm_batch} b ON b.id = s.batchid
+                ORDER BY b.startdate ASC
+            ");
+
+            $am_milestone_templates = [
+                ['offset' => - (5 * 86400), 'title' => 'Mentor & Lab Allocation Verification', 'key' => 'am_mentor_verify'],
+                ['offset' => - (2 * 86400), 'title' => 'Student Onboarding & LMS Access Verification', 'key' => 'am_student_verify'],
+                ['offset' => 0,             'title' => 'Section Kickoff & Induction Day', 'key' => 'am_kickoff'],
+                ['offset' => (7 * 86400),   'title' => 'Week-1 Attendance & Attendance Audit', 'key' => 'am_week1_audit'],
+                ['offset' => (28 * 86400),  'title' => 'Module 1 Transition & Survey Readiness', 'key' => 'am_module1_audit'],
+            ];
+
+            foreach ($sections as $s) {
+                $batch_ids[$s->batchid] = true;
+                $section_ids[$s->sectionid] = true;
+
+                $start = (int)$s->startdate;
+                if ($start <= 0) {
+                    continue;
+                }
+
+                foreach ($am_milestone_templates as $tmpl) {
+                    $target_date = $start + $tmpl['offset'];
+                    $days_diff = (int)floor(($target_date - $today_start) / 86400);
+
+                    $task_item = [
+                        'role_type' => 'am',
+                        'role_badge' => 'Assistant Manager',
+                        'section_id' => (int)$s->sectionid,
+                        'batch_id' => (int)$s->batchid,
+                        'batch_name' => $s->batchname ?: 'Batch ' . $s->batchid,
+                        'section_name' => $s->sectionname,
+                        'activity_key' => $tmpl['key'],
+                        'activity_label' => $tmpl['title'],
+                        'section_start_date_formatted' => date('d M Y', $start),
+                        'planned_timestamp' => $target_date,
+                        'planned_date_formatted' => date('d M Y', $target_date),
+                        'action_url' => "batch.php?batchid=" . $s->batchid,
+                        'action_label' => 'View Batch',
+                        'can_complete' => false
+                    ];
+
+                    if ($target_date < $today_start) {
+                        $days_over = max(1, abs($days_diff));
+                        $task_item['due_class'] = 'over';
+                        $task_item['due_text'] = "Overdue {$days_over}d";
+                        $task_item['sort_order'] = 1000000000 + $target_date;
+                        $todos[] = $task_item;
+                        $overdue_count++;
+                    } else if ($target_date < $today_end) {
+                        $task_item['due_class'] = 'today';
+                        $task_item['due_text'] = 'Due today';
+                        $task_item['sort_order'] = 2000000000 + $target_date;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+                    } else if ($target_date <= $week_end) {
+                        $days_due = max(1, $days_diff);
+                        $task_item['due_class'] = 'soon';
+                        $task_item['due_text'] = "Due in {$days_due}d";
+                        $task_item['sort_order'] = 3000000000 + $target_date;
+                        $todos[] = $task_item;
+                        $due_this_week_count++;
+
+                        $fc_item = $task_item;
+                        $fc_item['time_relative'] = "in {$days_due} days";
+                        $forthcoming[] = $fc_item;
+                    } else {
+                        $days_due = $days_diff;
+                        $task_item['time_relative'] = "in {$days_due} days";
+                        $task_item['sort_order'] = 4000000000 + $target_date;
+                        if (count($forthcoming) < 15) {
+                            $forthcoming[] = $task_item;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort todos by urgency: overdue first, then due today, then due soon
         usort($todos, function($a, $b) {
             return $a['sort_order'] <=> $b['sort_order'];
         });
@@ -1270,15 +1496,25 @@ if ($action === 'get_task_data') {
             list($sec_in, $sec_params) = $DB->get_in_or_equal(array_keys($section_ids));
             $total_students = (int)$DB->count_records_select('local_bm_student', "classsectionid $sec_in", $sec_params);
         }
+        if ($total_students === 0) {
+            $total_students = (int)$DB->count_records('local_bm_student');
+        }
 
-        // Subtitle text
         $batch_count = count($batch_ids);
-        if ($view_role === 'sse') {
-            $subtitle = "SS / MAAC Executive · {$batch_count} batches assigned";
-        } else if ($view_role === 'pm') {
-            $subtitle = "Batch Manager · {$batch_count} batches overseen";
+        if ($batch_count === 0) {
+            $batch_count = (int)$DB->count_records('local_bm_batch');
+        }
+
+        if ($view_role === 'pm_ss' || $view_role === 'sse' || $view_role === 'pm') {
+            $subtitle = "Program Manager / SS Team · Soft Skills Milestones (Planned vs Actual)";
+        } else if ($view_role === 'mentor') {
+            $c_count = count($mentor_course_ids);
+            $subtitle = "Mentor · Activity Due Dates & Calendar Tasks ({$c_count} courses)";
+        } else if ($view_role === 'am') {
+            $sec_count = count($section_ids);
+            $subtitle = "Assistant Manager · Section Kickoff & Readiness ({$sec_count} sections)";
         } else {
-            $subtitle = "Portfolio Overview · {$batch_count} batches monitored";
+            $subtitle = "Portfolio Overview · All Roles Combined ({$batch_count} batches)";
         }
 
         echo json_encode([
