@@ -400,6 +400,7 @@ $performance_data = (new \local_batchanalytics\student_performance_service())->b
 );
 $students_data = $performance_data['students'];
 $performance_columns = $performance_data['columns'];
+$performance_custom_groups = $performance_data['customgroups'] ?? [];
 
 // -------------------------------------------------------------------------
 // 4. Module KPIs (Course Metrics from LMS Gradebook or Populated Canonical)
@@ -582,6 +583,8 @@ if ($courseid > 0) {
             $total_pct_sum = 0;
             $valid_pct_count = 0;
             $total_comp_sum = 0;
+            $total_final_grade_sum = 0;
+            $valid_final_count = 0;
 
             foreach ($enrolled_students as $student) {
                 $total_earned = 0;
@@ -617,11 +620,28 @@ if ($courseid > 0) {
                     ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
                     : 0;
 
+                if ($cat_key === 'MAAC Ratings') {
+                    $final_grade = $percentage;
+                } else if ($gradable_items_in_cat > 0) {
+                    if ($percentage !== null) {
+                        $final_grade = round(($percentage * $items_completed) / $gradable_items_in_cat, 2);
+                    } else {
+                        $final_grade = 0.0;
+                    }
+                } else {
+                    $final_grade = $percentage;
+                }
+
                 if ($percentage !== null) {
                     $total_pct_sum += $percentage;
                     $valid_pct_count++;
                 }
                 $total_comp_sum += $comp_rate;
+
+                if ($final_grade !== null) {
+                    $total_final_grade_sum += $final_grade;
+                    $valid_final_count++;
+                }
 
                 $cat_data['studentGrades'][] = [
                     'userid' => $student->userid,
@@ -629,6 +649,9 @@ if ($courseid > 0) {
                     'username' => !empty($student->idnumber) ? $student->idnumber : $student->username,
                     'percentage' => $percentage,
                     'completionRate' => $comp_rate,
+                    'itemsCompleted' => $items_completed,
+                    'totalItems' => $gradable_items_in_cat,
+                    'finalGrade' => $final_grade,
                     'totalEarned' => $total_earned
                 ];
             }
@@ -637,8 +660,10 @@ if ($courseid > 0) {
             $isAtt = (stripos($cat_key, 'attend') !== false);
             $avgG = $valid_pct_count > 0 ? ($total_pct_sum / $valid_pct_count) : 0.0;
             $avgC = count($enrolled_students) > 0 ? ($total_comp_sum / count($enrolled_students)) : 0.0;
+            $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
             $avgGFormatted = number_format($avgG, 2);
             $avgCFormatted = number_format($avgC, 2);
+            $avgFinalGFormatted = number_format($avgFinalG, 2);
 
             $val_str = $isMaac ? $avgGFormatted : ($avgGFormatted . '%');
             $sub_str = $isMaac ? 'Avg Rating' : ($isAtt ? 'Avg Attendance' : ('Completion ' . $avgCFormatted . '%'));
@@ -654,6 +679,8 @@ if ($courseid > 0) {
                 'avgGradeFormatted' => $avgGFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
+                'avgFinalGrade' => $avgFinalG,
+                'avgFinalGradeFormatted' => $avgFinalGFormatted,
                 'compClass' => get_ba_comp_class((float)$avgC),
                 'icon_bg' => $style['bg'],
                 'icon_svg' => $style['icon'],
@@ -663,10 +690,13 @@ if ($courseid > 0) {
 
             $kpi_categories_data[$display_name] = [
                 'categoryname' => $display_name,
+                'totalItems' => $gradable_items_in_cat,
                 'avgGrade' => $avgG,
                 'avgGradeFormatted' => $avgGFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
+                'avgFinalGrade' => $avgFinalG,
+                'avgFinalGradeFormatted' => $avgFinalGFormatted,
                 'isMaac' => $isMaac,
                 'isAttendance' => $isAtt,
                 'studentGrades' => $cat_data['studentGrades']
@@ -729,17 +759,33 @@ if (empty($module_kpis)) {
 
         $studentGrades = [];
         $idx = 0;
+        $total_final_grade_sum = 0;
+        $valid_final_count = 0;
         foreach ($pool as $p) {
             $base = isset($p['base_grade']) ? $p['base_grade'] : (60 + (($idx * 7) % 35));
             if ($lbl === 'Project Work') {
                 $gradeVal = null;
                 $compVal = 0.0;
+                $totalItems = 1;
+                $itemsCompleted = 0;
+                $finalVal = 0.0;
             } else if ($lbl === 'Attendance') {
                 $gradeVal = min(100, max(50, $base + 5));
                 $compVal = 100.0;
+                $totalItems = 1;
+                $itemsCompleted = 1;
+                $finalVal = $gradeVal;
             } else {
                 $gradeVal = min(100, max(30, $base + ($idx % 5) - 2));
                 $compVal = min(100, max(0, $m['comp'] + (($idx % 9) - 4)));
+                $totalItems = 5;
+                $itemsCompleted = round(($compVal / 100) * $totalItems);
+                $finalVal = round(($gradeVal * $itemsCompleted) / $totalItems, 2);
+            }
+
+            if ($finalVal !== null) {
+                $total_final_grade_sum += $finalVal;
+                $valid_final_count++;
             }
 
             $studentGrades[] = [
@@ -748,17 +794,25 @@ if (empty($module_kpis)) {
                 'fullname' => $p['fullname'],
                 'percentage' => $gradeVal,
                 'completionRate' => $compVal,
+                'itemsCompleted' => $itemsCompleted,
+                'totalItems' => $totalItems,
+                'finalGrade' => $finalVal,
                 'totalEarned' => $gradeVal
             ];
             $idx++;
         }
 
+        $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
+
         $kpi_categories_data[$lbl] = [
             'categoryname' => $lbl,
+            'totalItems' => ($lbl === 'Project Work' || $lbl === 'Attendance') ? 1 : 5,
             'avgGrade' => $m['avgGrade'],
             'avgGradeFormatted' => number_format($m['avgGrade'], 2),
             'avgCompletion' => $m['comp'],
             'avgCompFormatted' => number_format($m['comp'], 2),
+            'avgFinalGrade' => $avgFinalG,
+            'avgFinalGradeFormatted' => number_format($avgFinalG, 2),
             'isMaac' => $m['isMaac'],
             'isAttendance' => $m['isAtt'],
             'studentGrades' => $studentGrades
@@ -943,6 +997,7 @@ echo $OUTPUT->header();
      data-sesskey="<?= sesskey() ?>"
      data-students="<?= s(json_encode($students_data)) ?>"
      data-performance-columns="<?= s(json_encode($performance_columns)) ?>"
+     data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
      data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
   <!-- Breadcrumb Bar in New UI Style -->
@@ -1124,39 +1179,23 @@ echo $OUTPUT->header();
     </div>
   </div>
 
-  <!-- Module KPIs (Course Metrics from Gradebook) in New UI Style -->
-  <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · click any metric to view student details</span></div>
-  <div class="ba-stats-row-bottom" style="margin-bottom: 25px;">
-    <?php
-      $kpi_themes = ['card-blue', 'card-green', 'card-purple', 'card-cyan', 'card-indigo', 'card-teal', 'card-orange'];
-      $kpi_icon_themes = ['icon-blue', 'icon-green', 'icon-purple', 'icon-cyan', 'icon-indigo', 'icon-teal', 'icon-orange'];
-      $kpi_theme_idx = 0;
-    ?>
+  <!-- Course Metrics (same Gradebook metrics and card layout as the Course tab) -->
+  <div class="ba-section-title">Course Metrics <small style="font-weight:normal;color:#666;font-size:12px">(auto-pulled from LMS; click a metric for student details)</small></div>
+  <div class="ba-course-metrics-grid" style="margin-bottom: 25px;">
     <?php foreach ($module_kpis as $kpi): ?>
-      <?php
-        $theme_class = $kpi_themes[$kpi_theme_idx % count($kpi_themes)];
-        $icon_theme = $kpi_icon_themes[$kpi_theme_idx % count($kpi_icon_themes)];
-        $kpi_theme_idx++;
-      ?>
-      <div class="ba-new-stat-card <?= $theme_class ?>" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-        <div class="ba-new-stat-header">
-          <span class="ba-new-stat-title"><?= s($kpi['label']) ?></span>
-          <span class="ba-new-stat-icon <?= $icon_theme ?>"><?= $kpi['icon_svg'] ?></span>
+      <div class="ba-course-metric-card" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
+        <div class="ba-course-metric-header">
+          <div class="ba-course-metric-icon" style="background:<?= s($kpi['icon_bg']) ?>"><?= $kpi['icon_svg'] ?></div>
+          <div class="ba-course-metric-title"><?= s($kpi['label']) ?></div>
         </div>
-        <div class="ba-new-stat-value">
+        <div class="ba-course-metric-stats">
           <?php if ($kpi['isMaac']): ?>
-            <?= s($kpi['avgGradeFormatted']) ?>
-          <?php else: ?>
-            <?= s($kpi['avgGradeFormatted']) ?>%
-          <?php endif; ?>
-        </div>
-        <div class="ba-new-stat-footer">
-          <?php if ($kpi['isMaac']): ?>
-            <span class="badge-status-dot dot-purple"></span> Avg MAAC Rating
+            <div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG MAAC RATING</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?></span></div>
           <?php elseif ($kpi['isAttendance']): ?>
-            <span class="badge-status-dot dot-blue"></span> Avg Attendance
+            <div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG GRADE</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span></div>
           <?php else: ?>
-            <span class="badge-status-dot <?= ($kpi['avgCompletion'] >= 75) ? 'dot-green' : (($kpi['avgCompletion'] >= 50) ? 'dot-orange' : 'dot-red') ?>"></span> Completion <?= s($kpi['avgCompFormatted']) ?>%
+            <div class="stat-box"><span class="lbl">AVG GRADE</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span></div>
+            <div class="stat-box"><span class="lbl">COMPLETION</span><span class="val <?= s($kpi['compClass']) ?>"><?= s($kpi['avgCompFormatted']) ?>%</span></div>
           <?php endif; ?>
         </div>
       </div>
@@ -1276,6 +1315,7 @@ echo $OUTPUT->header();
           <span id="ba-mod-tg-pct">Percentile</span>
         </div>
         <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
+
       </div>
 
       <!-- Dynamic Banding Cards -->
@@ -1287,10 +1327,15 @@ echo $OUTPUT->header();
           <thead>
             <tr>
               <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
-              <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
-              <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
+              <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
+              <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
               <?php foreach ($performance_columns as $column): ?>
-                <th class="sortable" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+                <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+              <?php endforeach; ?>
+              <?php foreach ($performance_custom_groups as $group): ?>
+                <?php foreach ($group['columns'] as $column): ?>
+                  <th class="ba-performance-custom-col ba-performance-group-<?= s($group['key']) ?>" data-custom-key="<?= s($column['key']) ?>"><?= s($column['label']) ?></th>
+                <?php endforeach; ?>
               <?php endforeach; ?>
               <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
             </tr>

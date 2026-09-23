@@ -1095,7 +1095,7 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-module-page .person .role {
   font-size: 11px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.6px !important;
   color: #64748b !important;
   margin-bottom: 6px !important;
@@ -1232,7 +1232,7 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-module-page .schedgrid .sc .k {
   font-size: 11px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.5px !important;
   color: #64748b !important;
   margin-bottom: 6px !important;
@@ -1309,18 +1309,72 @@ body#page-local-batchanalytics-module #page-header h1,
   -webkit-overflow-scrolling: touch;
 }
 
+/* Student Performance columns come from Gradebook categories and may exceed the page width. */
+.ba-batch-page #panel-students .tablecard,
+.ba-module-page #panel-mstudents .tablecard {
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ba-batch-page #panel-students .tablecard > table,
+.ba-module-page #panel-mstudents .tablecard > table {
+  min-width: 980px;
+}
+
+/* Keep the student identity visible while the dynamic category columns scroll. */
+.ba-batch-page #panel-students .ba-performance-student-head,
+.ba-module-page #panel-mstudents .ba-performance-student-head {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  min-width: 220px;
+  background: #f8fafc;
+  border-right: 2px solid #e2e8f0;
+}
+
+.ba-batch-page #panel-students .ba-performance-student-cell,
+.ba-module-page #panel-mstudents .ba-performance-student-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 220px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+}
+
 .ba-batch-page thead th,
 .ba-module-page thead th {
   background: #f8fafc !important;
   color: #475569 !important;
   font-size: 11.5px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.5px !important;
   padding: 12px 16px !important;
   border-bottom: 1px solid #e2e8f0 !important;
 }
 
+/* Fixed, readable Student Performance columns, matching Advanced Filter behavior. */
+.ba-batch-page #panel-students .ba-performance-overall-head,
+.ba-module-page #panel-mstudents .ba-performance-overall-head {
+  min-width: 120px;
+  width: 120px;
+}
+
+.ba-batch-page #panel-students .ba-performance-group-module,
+.ba-module-page #panel-mstudents .ba-performance-group-module,
+.ba-batch-page #panel-students .ba-performance-custom-col,
+.ba-module-page #panel-mstudents .ba-performance-custom-col {
+  min-width: 160px;
+  width: 160px;
+}
+
+.ba-batch-page #panel-students .ba-performance-custom-trend,
+.ba-module-page #panel-mstudents .ba-performance-custom-trend {
+  min-width: 150px;
+  width: 150px;
+}
 .ba-batch-page tbody td,
 .ba-module-page tbody td {
   padding: 14px 16px !important;
@@ -1466,3 +1520,170 @@ body#page-local-batchanalytics-module #page-header h1,
 }
 
 
+
+
+/* Trend Badges & Trends Modal (Exactly matching Course tab Advanced Filter) */
+.ba-trend-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+}
+
+.ba-trend-badge-up {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.ba-trend-badge-down {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.ba-trend-badge-stable {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.ba-trend-badge-btn {
+  display: inline-flex !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  font: inherit !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+}
+
+.ba-trend-badge-btn:hover {
+  opacity: 0.85 !important;
+}
+
+.trends-modal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10002 !important;
+  animation: fadeIn 0.3s ease !important;
+}
+
+.trends-content {
+  background: #fff !important;
+  border-radius: 12px !important;
+  padding: 30px !important;
+  max-width: 900px !important;
+  width: 90% !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
+}
+
+.trends-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 24px !important;
+  padding-bottom: 16px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.trends-header h3 {
+  margin: 0 !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: #1a1a1a !important;
+}
+
+.close-trends {
+  background: none !important;
+  border: none !important;
+  font-size: 24px !important;
+  cursor: pointer !important;
+  color: #6b7280 !important;
+  padding: 0 !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease !important;
+}
+
+.close-trends:hover {
+  background: #f3f4f6 !important;
+  color: #1a1a1a !important;
+}
+
+.trends-indicator {
+  margin-bottom: 24px !important;
+}
+
+.trends-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 20px !important;
+}
+
+@media (max-width: 768px) {
+  .trends-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.trend-card {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  padding: 20px !important;
+  background: #f9fafb !important;
+  transition: all 0.3s ease !important;
+}
+
+.trend-card:hover {
+  border-color: #d1d5db !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.trend-title {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: #1a1a1a !important;
+  margin-bottom: 16px !important;
+}
+
+.trend-chart {
+  margin-bottom: 16px !important;
+  padding: 12px !important;
+  background: #fff !important;
+  border-radius: 8px !important;
+}
+
+.trend-stats {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  font-size: 14px !important;
+}
+
+.trend-stats div {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
