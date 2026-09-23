@@ -583,6 +583,8 @@ if ($courseid > 0) {
             $total_pct_sum = 0;
             $valid_pct_count = 0;
             $total_comp_sum = 0;
+            $total_final_grade_sum = 0;
+            $valid_final_count = 0;
 
             foreach ($enrolled_students as $student) {
                 $total_earned = 0;
@@ -618,11 +620,28 @@ if ($courseid > 0) {
                     ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
                     : 0;
 
+                if ($cat_key === 'MAAC Ratings') {
+                    $final_grade = $percentage;
+                } else if ($gradable_items_in_cat > 0) {
+                    if ($percentage !== null) {
+                        $final_grade = round(($percentage * $items_completed) / $gradable_items_in_cat, 2);
+                    } else {
+                        $final_grade = 0.0;
+                    }
+                } else {
+                    $final_grade = $percentage;
+                }
+
                 if ($percentage !== null) {
                     $total_pct_sum += $percentage;
                     $valid_pct_count++;
                 }
                 $total_comp_sum += $comp_rate;
+
+                if ($final_grade !== null) {
+                    $total_final_grade_sum += $final_grade;
+                    $valid_final_count++;
+                }
 
                 $cat_data['studentGrades'][] = [
                     'userid' => $student->userid,
@@ -630,6 +649,9 @@ if ($courseid > 0) {
                     'username' => !empty($student->idnumber) ? $student->idnumber : $student->username,
                     'percentage' => $percentage,
                     'completionRate' => $comp_rate,
+                    'itemsCompleted' => $items_completed,
+                    'totalItems' => $gradable_items_in_cat,
+                    'finalGrade' => $final_grade,
                     'totalEarned' => $total_earned
                 ];
             }
@@ -638,8 +660,10 @@ if ($courseid > 0) {
             $isAtt = (stripos($cat_key, 'attend') !== false);
             $avgG = $valid_pct_count > 0 ? ($total_pct_sum / $valid_pct_count) : 0.0;
             $avgC = count($enrolled_students) > 0 ? ($total_comp_sum / count($enrolled_students)) : 0.0;
+            $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
             $avgGFormatted = number_format($avgG, 2);
             $avgCFormatted = number_format($avgC, 2);
+            $avgFinalGFormatted = number_format($avgFinalG, 2);
 
             $val_str = $isMaac ? $avgGFormatted : ($avgGFormatted . '%');
             $sub_str = $isMaac ? 'Avg Rating' : ($isAtt ? 'Avg Attendance' : ('Completion ' . $avgCFormatted . '%'));
@@ -655,6 +679,8 @@ if ($courseid > 0) {
                 'avgGradeFormatted' => $avgGFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
+                'avgFinalGrade' => $avgFinalG,
+                'avgFinalGradeFormatted' => $avgFinalGFormatted,
                 'compClass' => get_ba_comp_class((float)$avgC),
                 'icon_bg' => $style['bg'],
                 'icon_svg' => $style['icon'],
@@ -664,10 +690,13 @@ if ($courseid > 0) {
 
             $kpi_categories_data[$display_name] = [
                 'categoryname' => $display_name,
+                'totalItems' => $gradable_items_in_cat,
                 'avgGrade' => $avgG,
                 'avgGradeFormatted' => $avgGFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
+                'avgFinalGrade' => $avgFinalG,
+                'avgFinalGradeFormatted' => $avgFinalGFormatted,
                 'isMaac' => $isMaac,
                 'isAttendance' => $isAtt,
                 'studentGrades' => $cat_data['studentGrades']
@@ -730,17 +759,33 @@ if (empty($module_kpis)) {
 
         $studentGrades = [];
         $idx = 0;
+        $total_final_grade_sum = 0;
+        $valid_final_count = 0;
         foreach ($pool as $p) {
             $base = isset($p['base_grade']) ? $p['base_grade'] : (60 + (($idx * 7) % 35));
             if ($lbl === 'Project Work') {
                 $gradeVal = null;
                 $compVal = 0.0;
+                $totalItems = 1;
+                $itemsCompleted = 0;
+                $finalVal = 0.0;
             } else if ($lbl === 'Attendance') {
                 $gradeVal = min(100, max(50, $base + 5));
                 $compVal = 100.0;
+                $totalItems = 1;
+                $itemsCompleted = 1;
+                $finalVal = $gradeVal;
             } else {
                 $gradeVal = min(100, max(30, $base + ($idx % 5) - 2));
                 $compVal = min(100, max(0, $m['comp'] + (($idx % 9) - 4)));
+                $totalItems = 5;
+                $itemsCompleted = round(($compVal / 100) * $totalItems);
+                $finalVal = round(($gradeVal * $itemsCompleted) / $totalItems, 2);
+            }
+
+            if ($finalVal !== null) {
+                $total_final_grade_sum += $finalVal;
+                $valid_final_count++;
             }
 
             $studentGrades[] = [
@@ -749,17 +794,25 @@ if (empty($module_kpis)) {
                 'fullname' => $p['fullname'],
                 'percentage' => $gradeVal,
                 'completionRate' => $compVal,
+                'itemsCompleted' => $itemsCompleted,
+                'totalItems' => $totalItems,
+                'finalGrade' => $finalVal,
                 'totalEarned' => $gradeVal
             ];
             $idx++;
         }
 
+        $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
+
         $kpi_categories_data[$lbl] = [
             'categoryname' => $lbl,
+            'totalItems' => ($lbl === 'Project Work' || $lbl === 'Attendance') ? 1 : 5,
             'avgGrade' => $m['avgGrade'],
             'avgGradeFormatted' => number_format($m['avgGrade'], 2),
             'avgCompletion' => $m['comp'],
             'avgCompFormatted' => number_format($m['comp'], 2),
+            'avgFinalGrade' => $avgFinalG,
+            'avgFinalGradeFormatted' => number_format($avgFinalG, 2),
             'isMaac' => $m['isMaac'],
             'isAttendance' => $m['isAtt'],
             'studentGrades' => $studentGrades

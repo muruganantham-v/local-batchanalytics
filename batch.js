@@ -42,16 +42,20 @@
 
         function formatPerformanceCell(student, column) {
             var value = getCategoryValue(student, column);
-            if (value === null || value === undefined) return '<span class="muted">&mdash;</span>';
+            if (value === null || value === undefined || value === '') return '<span class="muted">&mdash;</span>';
+            var num = parseFloat(value);
+            if (isNaN(num)) return '<span class="muted">&mdash;</span>';
             var precision = column.ismaac ? 1 : 2;
             var suffix = column.ismaac ? '' : '%';
-            return '<b>' + Number(value).toFixed(precision) + suffix + '</b>';
+            return '<b>' + num.toFixed(precision) + suffix + '</b>';
         }
 
         function csvPerformanceValue(student, column) {
             var value = getCategoryValue(student, column);
-            if (value === null || value === undefined) return '-';
-            return Number(value).toFixed(column.ismaac ? 1 : 2) + (column.ismaac ? '' : '%');
+            if (value === null || value === undefined || value === '') return '-';
+            var num = parseFloat(value);
+            if (isNaN(num)) return '-';
+            return num.toFixed(column.ismaac ? 1 : 2) + (column.ismaac ? '' : '%');
         }
 
         var perfMode = 'grade'; // 'grade' or 'percentile'
@@ -131,42 +135,541 @@
                 '<span class="ba-maac-group-toggle-label">' + escapeHtml(label) + '</span></button>';
         }
 
-        function trendVisual(value) {
-            var key = String(value || '').trim().toLowerCase();
-            if (key === 'improving' || key === 'up') return { label: 'Improving', icon: '+', className: 'ba-trend-badge-up' };
-            if (key === 'declining' || key === 'down') return { label: 'Declining', icon: '-', className: 'ba-trend-badge-down' };
-            return { label: 'Stable', icon: '=', className: 'ba-trend-badge-stable' };
+        function normalizeTrendKey(value) {
+            var normalized = String(value || '').trim().toLowerCase();
+            if (!normalized || normalized === '-') return '';
+            if (normalized === 'up' || normalized === 'improving') return 'up';
+            if (normalized === 'down' || normalized === 'declining') return 'down';
+            return 'stable';
+        }
+
+        function getTrendVisual(value) {
+            var key = normalizeTrendKey(value);
+            if (!key) return null;
+            if (key === 'up') {
+                return { key: 'up', label: 'Improving', emoji: '\uD83D\uDCC8', className: 'ba-trend-badge-up' };
+            }
+            if (key === 'down') {
+                return { key: 'down', label: 'Declining', emoji: '\uD83D\uDCC9', className: 'ba-trend-badge-down' };
+            }
+            return { key: 'stable', label: 'Stable', emoji: '\u27A1\uFE0F', className: 'ba-trend-badge-stable' };
         }
 
         function renderTrendBadge(student, value) {
             if (value === undefined || value === null || value === '') return '<span class="muted">&mdash;</span>';
-            var visual = trendVisual(value);
-            var badge = '<span class="ba-trend-badge ' + visual.className + '"><span>' + visual.icon + '</span><span>' + visual.label + '</span></span>';
-            return '<button type="button" class="ba-trend-badge-btn" data-performance-trend-userid="' + Number(student.userid || 0) + '" aria-label="View trend details for ' + escapeHtml(student.name || 'student') + '">' + badge + '</button>';
+            var visual = getTrendVisual(value) || { key: 'stable', label: String(value), emoji: '\u27A1\uFE0F', className: 'ba-trend-badge-stable' };
+            var badge = '<span class="ba-trend-badge ' + visual.className + '"><span>' + visual.emoji + '</span><span>' + escapeHtml(visual.label) + '</span></span>';
+            return '<button type="button" class="ba-trend-badge-btn" data-performance-trend-userid="' + Number(student.userid || 0) + '" aria-label="View trend details for ' + escapeHtml(student.name || student.fullname || 'student') + '">' + badge + '</button>';
         }
 
-        function trendMetric(label, points) {
-            points = Array.isArray(points) ? points : [];
-            if (!points.length) return '<div class="trend-stats"><div><span>' + escapeHtml(label) + '</span><strong>No data</strong></div></div>';
-            var latest = points[points.length - 1] || {};
-            var value = latest.grade !== undefined ? Number(latest.grade).toFixed(2) + '%' : (latest.status || 'Recorded');
-            return '<div class="trend-stats"><div><span>Recent records</span><strong>' + points.length + '</strong></div><div><span>Latest</span><strong>' + escapeHtml(value) + '</strong></div></div>';
+        function getStudentTrendRecords(student) {
+            if (!student) return [];
+            var detailsList = student.trend_details;
+            if (Array.isArray(detailsList) && detailsList.length > 0) {
+                if (detailsList[0] && detailsList[0].details) {
+                    return detailsList;
+                }
+                if (detailsList[0] && (detailsList[0].assignments || detailsList[0].attendance || detailsList[0].quizzes)) {
+                    return [{ course: 'Course', details: detailsList[0] }];
+                }
+            } else if (detailsList && typeof detailsList === 'object' && (detailsList.assignments || detailsList.attendance || detailsList.quizzes)) {
+                return [{ course: 'Course', details: detailsList }];
+            }
+            return [];
+        }
+
+        function getRecordTrendDetails(details) {
+            details = details || {};
+            return {
+                assignments: Array.isArray(details.assignments) ? details.assignments : [],
+                quizzes: Array.isArray(details.quizzes) ? details.quizzes : [],
+                projects: Array.isArray(details.projects) ? details.projects : [],
+                attendance: Array.isArray(details.attendance) ? details.attendance : [],
+                overall_trend: details.overall_trend || '',
+                trend_window: Math.max(1, Number(details.trend_window) || 20),
+                attendance_window: Math.max(2, Number(details.attendance_window) || 5)
+            };
+        }
+
+        function calculateCourseTrendComponent(points) {
+            if (!Array.isArray(points) || !points.length) return null;
+            if (points.length === 1) {
+                var grade = parseFloat(points[0].grade);
+                if (isNaN(grade)) return null;
+                var rounded = Math.round(grade * 10) / 10;
+                return { start: rounded, latest: rounded, change: 0 };
+            }
+            if (points.length < 4) {
+                var firstGrade = parseFloat(points[0].grade);
+                var lastGrade = parseFloat(points[points.length - 1].grade);
+                if (isNaN(firstGrade) || isNaN(lastGrade)) return null;
+                return {
+                    start: Math.round(firstGrade * 10) / 10,
+                    latest: Math.round(lastGrade * 10) / 10,
+                    change: Math.round((lastGrade - firstGrade) * 10) / 10
+                };
+            }
+            var split = Math.floor(points.length / 2);
+            var olderGrades = points.slice(0, split).map(function(item) { return parseFloat(item.grade); }).filter(function(g) { return !isNaN(g); });
+            var recentGrades = points.slice(split).map(function(item) { return parseFloat(item.grade); }).filter(function(g) { return !isNaN(g); });
+            if (!olderGrades.length || !recentGrades.length) return null;
+            var olderAverage = olderGrades.reduce(function(sum, g) { return sum + g; }, 0) / olderGrades.length;
+            var recentAverage = recentGrades.reduce(function(sum, g) { return sum + g; }, 0) / recentGrades.length;
+            return {
+                start: Math.round(olderAverage * 10) / 10,
+                latest: Math.round(recentAverage * 10) / 10,
+                change: Math.round((recentAverage - olderAverage) * 10) / 10
+            };
+        }
+
+        function calculateCourseAttendanceSummary(attendancePoints, windowSize) {
+            if (!Array.isArray(attendancePoints) || !attendancePoints.length) return null;
+            var size = windowSize || 5;
+            function countPresent(points) {
+                return points.reduce(function(sum, item) {
+                    var status = item.status ? String(item.status).toUpperCase() : '';
+                    var isPres = Number(item.present) === 1 || status === 'P' || status === 'E';
+                    return sum + (isPres ? 1 : 0);
+                }, 0);
+            }
+            if (attendancePoints.length < 2) {
+                var onlyCount = countPresent(attendancePoints);
+                return {
+                    windowSize: attendancePoints.length,
+                    currentCount: onlyCount,
+                    currentRate: attendancePoints.length ? Math.round((onlyCount / attendancePoints.length) * 100) : 0,
+                    previousWindowSize: 0,
+                    previousCount: 0,
+                    previousRate: 0,
+                    delta: null,
+                    comparisonMode: 'insufficient',
+                    comparisonLabel: 'Need at least 2 sessions for comparison'
+                };
+            }
+            var recent = attendancePoints.slice(-size);
+            var currentCount = countPresent(recent);
+            var currentTotal = recent.length;
+            var previous = attendancePoints.slice(Math.max(0, attendancePoints.length - size * 2), attendancePoints.length - size);
+            var previousCount = countPresent(previous);
+            var previousTotal = previous.length;
+            var minComparablePrevious = Math.max(2, Math.ceil(currentTotal / 2));
+            if (!previousTotal || previousTotal < minComparablePrevious) {
+                var split = Math.floor(attendancePoints.length / 2);
+                var older = attendancePoints.slice(0, split);
+                var newer = attendancePoints.slice(split);
+                if (older.length && newer.length) {
+                    var olderCount = countPresent(older);
+                    var newerCount = countPresent(newer);
+                    return {
+                        windowSize: newer.length,
+                        currentCount: newerCount,
+                        currentRate: Math.round((newerCount / newer.length) * 100),
+                        previousWindowSize: older.length,
+                        previousCount: olderCount,
+                        previousRate: Math.round((olderCount / older.length) * 100),
+                        delta: newerCount - olderCount,
+                        comparisonMode: 'adaptive-half',
+                        comparisonLabel: 'Compared recent half vs earlier half'
+                    };
+                }
+            }
+            return {
+                windowSize: currentTotal,
+                currentCount: currentCount,
+                currentRate: currentTotal ? Math.round((currentCount / currentTotal) * 100) : 0,
+                previousWindowSize: previousTotal,
+                previousCount: previousCount,
+                previousRate: previousTotal ? Math.round((previousCount / previousTotal) * 100) : 0,
+                delta: previousTotal > 0 ? currentCount - previousCount : null,
+                comparisonMode: 'window',
+                comparisonLabel: previousTotal > 0 ? ('Compared last ' + currentTotal + ' vs previous ' + previousTotal) : ''
+            };
+        }
+
+        function calculateCourseOverallTrend(details) {
+            var trendWindow = Math.max(1, Number(details.trend_window) || 20);
+            var attendanceWindow = Math.max(2, Math.min(Number(details.attendance_window) || 5, trendWindow));
+            var changes = [];
+            ['assignments', 'quizzes', 'projects'].forEach(function(key) {
+                var points = Array.isArray(details[key]) ? details[key].slice(-trendWindow) : [];
+                var summary = calculateCourseTrendComponent(points);
+                if (summary && typeof summary.change === 'number' && !isNaN(summary.change)) {
+                    changes.push(summary.change);
+                }
+            });
+            var attendanceSummary = calculateCourseAttendanceSummary(
+                Array.isArray(details.attendance) ? details.attendance.slice(-trendWindow) : [],
+                attendanceWindow
+            );
+            if (attendanceSummary && attendanceSummary.previousWindowSize > 0) {
+                var attendanceChange = attendanceSummary.currentRate - attendanceSummary.previousRate;
+                if (!isNaN(attendanceChange)) {
+                    changes.push(Math.round(attendanceChange * 10) / 10);
+                }
+            }
+            if (!changes.length) {
+                return normalizeTrendKey(details.overall_trend) || 'stable';
+            }
+            var averageChange = changes.reduce(function(sum, val) { return sum + val; }, 0) / changes.length;
+            if (averageChange > 5) return 'up';
+            if (averageChange < -5) return 'down';
+            return 'stable';
+        }
+
+        function calculateCourseCurrentLevel(details) {
+            var trendWindow = Math.max(1, Number(details.trend_window) || 20);
+            var attendanceWindow = Math.max(2, Math.min(Number(details.attendance_window) || 5, trendWindow));
+            var values = [];
+            ['assignments', 'quizzes', 'projects'].forEach(function(key) {
+                var points = Array.isArray(details[key]) ? details[key].slice(-trendWindow) : [];
+                if (!points.length) return;
+                var latest = parseFloat(points[points.length - 1].grade);
+                if (!isNaN(latest)) values.push(latest);
+            });
+            var attendanceSummary = calculateCourseAttendanceSummary(
+                Array.isArray(details.attendance) ? details.attendance.slice(-trendWindow) : [],
+                attendanceWindow
+            );
+            if (attendanceSummary && typeof attendanceSummary.currentRate === 'number' && !isNaN(attendanceSummary.currentRate)) {
+                values.push(attendanceSummary.currentRate);
+            }
+            if (!values.length) return { label: 'Limited Data', score: null };
+            var average = values.reduce(function(sum, val) { return sum + val; }, 0) / values.length;
+            var rounded = Math.round(average);
+            if (average >= 75) return { label: 'Strong', score: rounded };
+            if (average >= 50) return { label: 'Moderate', score: rounded };
+            return { label: 'Low', score: rounded };
+        }
+
+        function renderCourseTrendMiniChart(points) {
+            if (!Array.isArray(points) || !points.length) return '';
+            var safePoints = points.map(function(point, index) {
+                return {
+                    label: point.name || ('Item ' + (index + 1)),
+                    value: Math.max(0, Math.min(100, parseFloat(point.grade) || 0))
+                };
+            });
+            if (!safePoints.length) return '';
+            var width = 320;
+            var height = 80;
+            var leftPadding = 28;
+            var rightPadding = 10;
+            var topPadding = 10;
+            var bottomPadding = 10;
+            var drawableWidth = width - leftPadding - rightPadding;
+            var drawableHeight = height - topPadding - bottomPadding;
+            var step = safePoints.length === 1 ? 0 : drawableWidth / (safePoints.length - 1);
+            var coords = safePoints.map(function(point, index) {
+                var x = leftPadding + step * index;
+                var y = topPadding + ((100 - point.value) / 100) * drawableHeight;
+                return { label: point.label, value: point.value, x: x, y: y };
+            });
+            var path = coords.map(function(p, i) {
+                return (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(2) + ' ' + p.y.toFixed(2);
+            }).join(' ');
+            var area = path + ' L ' + coords[coords.length - 1].x.toFixed(2) + ' ' + (height - bottomPadding).toFixed(2) + ' L ' + coords[0].x.toFixed(2) + ' ' + (height - bottomPadding).toFixed(2) + ' Z';
+            var circles = coords.map(function(p) {
+                var color = p.value >= 75 ? '#667eea' : (p.value >= 60 ? '#fbbf24' : '#ef4444');
+                return '<circle cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="3.5" fill="' + color + '" stroke="' + color + '" stroke-width="1">' +
+                    '<title>' + escapeHtml(p.label) + ': ' + escapeHtml(String(Math.round(p.value * 10) / 10)) + '%</title></circle>';
+            }).join('');
+            var axisLabels = [
+                { value: 100, y: topPadding },
+                { value: 50, y: topPadding + drawableHeight / 2 },
+                { value: 0, y: height - bottomPadding }
+            ].map(function(tick) {
+                return '<g><line x1="' + leftPadding + '" y1="' + tick.y.toFixed(2) + '" x2="' + (width - rightPadding).toFixed(2) + '" y2="' + tick.y.toFixed(2) + '" stroke="#e5e7eb" stroke-width="1"></line>' +
+                    '<text x="' + (leftPadding - 6).toFixed(2) + '" y="' + (tick.y + 4).toFixed(2) + '" text-anchor="end" font-size="10" fill="#94a3b8">' + tick.value + '</text></g>';
+            }).join('');
+            var gradId = 'ba-trend-fill-' + Math.random().toString(36).substr(2, 9);
+            return '<div class="chart-container" style="position: relative; height: 80px; width: 100%;">' +
+                '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="80" role="img" aria-label="Grade trend chart">' +
+                '<defs><linearGradient id="' + gradId + '" x1="0" x2="0" y1="0" y2="1">' +
+                '<stop offset="0%" stop-color="rgba(102, 126, 234, 0.28)"></stop>' +
+                '<stop offset="100%" stop-color="rgba(102, 126, 234, 0.04)"></stop>' +
+                '</linearGradient></defs>' +
+                axisLabels +
+                '<path d="' + area + '" fill="url(#' + gradId + ')"></path>' +
+                '<path d="' + path + '" fill="none" stroke="rgba(102, 126, 234, 1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>' +
+                circles +
+                '</svg></div>';
+        }
+
+        function buildCourseTrendCards(details, trendWindow) {
+            function renderComponentCard(title, icon, points) {
+                var recentPoints = Array.isArray(points) ? points.slice(-trendWindow) : [];
+                if (!recentPoints.length) return '';
+                var summary = calculateCourseTrendComponent(recentPoints);
+                if (!summary) return '';
+                var deltaBg = summary.change >= 0 ? '#f0fdf4' : '#fef2f2';
+                var deltaColor = summary.change >= 0 ? '#10b981' : '#ef4444';
+                return '<div class="trend-card">' +
+                    '<div class="trend-title">' + icon + ' ' + escapeHtml(title) + '</div>' +
+                    '<div class="trend-chart">' + renderCourseTrendMiniChart(recentPoints) + '</div>' +
+                    '<div class="trend-stats">' +
+                    '<div><span style="color: #6b7280;">Start:</span> <strong>' + escapeHtml(String(summary.start)) + '%</strong></div>' +
+                    '<div><span style="color: #6b7280;">Latest:</span> <strong>' + escapeHtml(String(summary.latest)) + '%</strong></div>' +
+                    '<div style="margin-top: 8px; padding: 8px; background: ' + deltaBg + '; border-radius: 6px;">' +
+                    '<strong style="color: ' + deltaColor + '">' + (summary.change >= 0 ? '+' : '') + escapeHtml(String(summary.change)) + '%</strong>' +
+                    '</div></div></div>';
+            }
+            var attendancePoints = Array.isArray(details.attendance) ? details.attendance : [];
+            var attendanceCard = '';
+            if (attendancePoints.length) {
+                var attendanceWindow = Math.max(2, Math.min(Number(details.attendance_window) || 5, trendWindow));
+                var summary = calculateCourseAttendanceSummary(attendancePoints, attendanceWindow);
+                if (summary) {
+                    var deltaColor = '#6b7280';
+                    var deltaBg = '#f3f4f6';
+                    var deltaText = summary.comparisonLabel || 'Need more sessions for comparison';
+                    if (summary.delta !== null) {
+                        if (summary.delta > 0) { deltaColor = '#10b981'; deltaBg = '#f0fdf4'; }
+                        else if (summary.delta < 0) { deltaColor = '#ef4444'; deltaBg = '#fef2f2'; }
+                        else { deltaColor = '#f59e0b'; deltaBg = '#fffbeb'; }
+                        deltaText = summary.comparisonMode === 'adaptive-half'
+                            ? (summary.delta > 0 ? '+' : '') + summary.delta + ' vs earlier ' + summary.previousWindowSize
+                            : (summary.delta > 0 ? '+' : '') + summary.delta + ' vs previous ' + summary.previousWindowSize;
+                    }
+                    var strip = '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">' +
+                        attendancePoints.slice(-10).map(function(point) {
+                            var status = point.status ? String(point.status).toUpperCase() : (Number(point.present) === 1 ? 'P' : 'A');
+                            var color = '#ef4444';
+                            if (status === 'P' || status === 'E') color = '#10b981';
+                            else if (status === 'L') color = '#f59e0b';
+                            return '<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: ' + color + ';">' + escapeHtml(status) + '</span>';
+                        }).join('') + '</div>';
+                    attendanceCard = '<div class="trend-card">' +
+                        '<div class="trend-title">\uD83D\uDC65 Attendance</div>' +
+                        strip +
+                        '<div class="trend-stats">' +
+                        '<div><span style="color: #6b7280;">Last ' + summary.windowSize + ':</span> <strong>' + summary.currentCount + ' attended</strong></div>' +
+                        '<div><span style="color: #6b7280;">Recent rate:</span> <strong>' + summary.currentRate + '%</strong></div>' +
+                        (summary.previousWindowSize > 0 ? '<div><span style="color: #6b7280;">Previous rate:</span> <strong>' + summary.previousRate + '%</strong></div>' : '') +
+                        '<div style="margin-top: 8px; padding: 8px; background: ' + deltaBg + '; border-radius: 6px;">' +
+                        '<strong style="color: ' + deltaColor + '">' + escapeHtml(deltaText) + '</strong>' +
+                        '</div></div></div>';
+                }
+            }
+            var cards = [
+                renderComponentCard('Assignments', '\uD83D\uDCDD', details.assignments),
+                renderComponentCard('Quizzes', '\uD83E\uDDE0', details.quizzes),
+                renderComponentCard('Projects', '\uD83D\uDCCA', details.projects),
+                attendanceCard
+            ].filter(Boolean).join('');
+            return cards;
+        }
+
+        function renderCourseTrendSection(student, record) {
+            var details = getRecordTrendDetails(record.details);
+            var trendWindow = details.trend_window;
+            var visual = getTrendVisual(calculateCourseOverallTrend(details)) || getTrendVisual('stable');
+            var currentLevel = calculateCourseCurrentLevel(details);
+            var cards = buildCourseTrendCards(details, trendWindow);
+            var trendColor = visual.key === 'up' ? '#10b981' : (visual.key === 'down' ? '#ef4444' : '#f59e0b');
+            return '<div class="trends-indicator" style="background: ' + trendColor + '20; border-left: 4px solid ' + trendColor + '; padding: 16px; border-radius: 8px; margin-bottom: 20px;">' +
+                '<div style="display: flex; align-items: center; gap: 12px;">' +
+                '<span style="font-size: 24px;">' + visual.emoji + '</span>' +
+                '<div>' +
+                '<div style="font-size: 13px; color: #6b7280; margin-bottom: 2px;">' + escapeHtml(student.name || student.fullname || student.username || 'Student') + '</div>' +
+                '<div style="font-size: 14px; color: #6b7280;">Overall Trend (last ' + trendWindow + ')</div>' +
+                '<div style="font-size: 18px; font-weight: 700; color: ' + trendColor + '">' + escapeHtml(visual.label) + ' (' + escapeHtml(currentLevel.label) + ')</div>' +
+                (currentLevel.score !== null ? '<div style="font-size: 13px; color: #6b7280;">Current level score: ' + escapeHtml(String(currentLevel.score)) + '%</div>' : '') +
+                '</div></div></div>' +
+                '<div class="trends-grid">' +
+                (cards || '<div class="trend-card"><div class="trend-title">Trend</div><div class="trend-stats"><div>No trend detail is available for this student yet.</div></div></div>') +
+                '</div>';
         }
 
         function openTrendModal(student) {
-            var records = Array.isArray(student.trend_details) ? student.trend_details : [];
+            var records = getStudentTrendRecords(student);
             var existing = document.getElementById('ba-student-performance-trend-modal');
             if (existing) existing.remove();
-            var cards = records.map(function(record) {
-                var details = record.details || {};
-                return '<div class="trend-card"><div class="trend-title">' + escapeHtml(record.course || 'Course') + '</div>' + trendMetric('Assignments', details.assignments) + trendMetric('Quizzes', details.quizzes) + trendMetric('Projects', details.projects) + trendMetric('Attendance', details.attendance) + '</div>';
-            }).join('');
+
             var modal = document.createElement('div');
             modal.className = 'trends-modal';
             modal.id = 'ba-student-performance-trend-modal';
-            modal.innerHTML = '<div class="trends-content"><div class="trends-header"><h3>' + escapeHtml(student.name || 'Student') + ' - Grade Trends</h3><button type="button" class="close-trends" aria-label="Close">x</button></div><div class="trends-grid">' + (cards || '<div class="trend-card"><div class="trend-title">Trend</div><div class="trend-stats"><div>No trend detail is available for this student yet.</div></div></div>') + '</div></div>';
-            modal.addEventListener('click', function(event) { if (event.target === modal || event.target.closest('.close-trends')) modal.remove(); });
+
+            var activeIndex = 0;
+
+            function updateModalContent() {
+                var currentRecord = records.length > 0 ? records[activeIndex] : null;
+                var headerTitle = (currentRecord && currentRecord.course)
+                    ? (currentRecord.course + ' - Grade Trends')
+                    : 'Grade Trends';
+
+                var courseTabsHtml = '';
+                if (records.length > 1) {
+                    courseTabsHtml = '<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">' +
+                        records.map(function(rec, idx) {
+                            var isAct = idx === activeIndex;
+                            var btnBg = isAct ? '#4f46e5' : '#f1f5f9';
+                            var btnColor = isAct ? '#ffffff' : '#475569';
+                            return '<button type="button" class="ba-trend-tab-btn" data-trend-tab-idx="' + idx + '" style="padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid ' + (isAct ? '#4f46e5' : '#e2e8f0') + '; background: ' + btnBg + '; color: ' + btnColor + '; cursor: pointer;">' +
+                                escapeHtml(rec.course || ('Course ' + (idx + 1))) + '</button>';
+                        }).join('') + '</div>';
+                }
+
+                var contentHtml = currentRecord
+                    ? renderCourseTrendSection(student, currentRecord)
+                    : '<div class="trends-grid"><div class="trend-card"><div class="trend-title">Trend</div><div class="trend-stats"><div>No trend detail is available for this student yet.</div></div></div></div>';
+
+                modal.innerHTML = '<div class="trends-content">' +
+                    '<div class="trends-header">' +
+                    '<h3>' + escapeHtml(headerTitle) + '</h3>' +
+                    '<button type="button" class="close-trends" aria-label="Close">x</button>' +
+                    '</div>' +
+                    courseTabsHtml +
+                    contentHtml +
+                    '</div>';
+            }
+
+            updateModalContent();
+
+            modal.addEventListener('click', function(event) {
+                if (event.target === modal || event.target.closest('.close-trends')) {
+                    modal.remove();
+                    return;
+                }
+                var tabBtn = event.target.closest('[data-trend-tab-idx]');
+                if (tabBtn) {
+                    activeIndex = Number(tabBtn.getAttribute('data-trend-tab-idx'));
+                    updateModalContent();
+                }
+            });
+
             document.body.appendChild(modal);
+        }
+
+        function normalizeFeedbackList(value) {
+            if (!value) return [];
+            var list = Array.isArray(value) ? value : [value];
+            var result = [];
+            list.forEach(function(item) {
+                if (typeof item === 'string') {
+                    var trimmed = item.trim();
+                    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                        try {
+                            var parsed = JSON.parse(trimmed);
+                            if (Array.isArray(parsed)) {
+                                parsed.forEach(function(p) {
+                                    if (p && typeof p === 'object') {
+                                        result.push({ date: String(p.date || ''), text: String(p.text || p.label || p.value || '') });
+                                    } else if (p) {
+                                        result.push({ date: '', text: String(p) });
+                                    }
+                                });
+                                return;
+                            }
+                        } catch(e) {}
+                    }
+                    if (trimmed !== '') result.push({ date: '', text: trimmed });
+                } else if (item && typeof item === 'object') {
+                    var text = String(item.text || item.label || item.value || '');
+                    if (text.trim() !== '') {
+                        result.push({ date: String(item.date || ''), text: text });
+                    }
+                }
+            });
+            return result;
+        }
+
+        function formatFeedbackDate(dateStr) {
+            var raw = String(dateStr || '').trim();
+            if (!raw) return 'No date';
+            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            var match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) {
+                var mIdx = Math.max(0, Math.min(11, parseInt(match[2], 10) - 1));
+                return match[3] + '-' + months[mIdx] + '-' + match[1];
+            }
+            return raw;
+        }
+
+        function openFeedbackModal(student, columnKey, columnLabel) {
+            var val = student.custom && student.custom[columnKey];
+            var feedbacks = normalizeFeedbackList(val);
+            var existing = document.getElementById('ba-feedback-modal-dialog');
+            if (existing) existing.remove();
+
+            var cards = feedbacks.length ? feedbacks.map(function(item, idx) {
+                return '<div class="ba-feedback-card" style="display:flex; border:1px solid #dbe5f0; border-radius:8px; margin-bottom:12px; overflow:hidden; background:#fff;">' +
+                    '<div class="ba-feedback-card-left" style="background:#eaf6ff; padding:10px 14px; border-right:1px solid #dbe5f0; min-width:140px; display:flex; flex-direction:column; gap:6px;">' +
+                    '<div class="ba-feedback-card-title" style="color:#0369a1; font-size:13px; font-weight:700;">' + escapeHtml(columnLabel) + ' - ' + (idx + 1) + '</div>' +
+                    '<div class="ba-feedback-card-date" style="color:#0284c7; font-size:11px; display:flex; gap:4px;"><span style="font-weight:700;">Date:</span> <span>' + escapeHtml(formatFeedbackDate(item.date)) + '</span></div>' +
+                    '</div>' +
+                    '<div class="ba-feedback-card-right" style="padding:10px 14px; flex:1; background:#f8fafc; color:#334155; font-size:13px; line-height:1.4; display:flex; align-items:center;">' +
+                    '<div class="ba-feedback-card-text">' + escapeHtml(item.text) + '</div>' +
+                    '</div>' +
+                    '</div>';
+            }).join('') : '<div style="text-align:center; padding:24px; color:#64748b;">No feedback provided yet.</div>';
+
+            var modal = document.createElement('div');
+            modal.className = 'trends-modal';
+            modal.id = 'ba-feedback-modal-dialog';
+            modal.innerHTML = '<div class="trends-content" style="max-width:700px;">' +
+                '<div class="trends-header">' +
+                '<h3>' + escapeHtml(student.name || student.fullname || 'Student') + ' - ' + escapeHtml(columnLabel) + '</h3>' +
+                '<button type="button" class="close-trends" aria-label="Close">x</button>' +
+                '</div>' +
+                '<div style="max-height:60vh; overflow-y:auto; padding:4px;">' + cards + '</div>' +
+                '</div>';
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal || e.target.closest('.close-trends')) {
+                    modal.remove();
+                }
+            });
+            document.body.appendChild(modal);
+        }
+
+        function renderCustomPerformanceCell(student, column, group) {
+            var value = student.custom && student.custom[column.key];
+            if (column.key === 'trend') {
+                return renderTrendBadge(student, value);
+            }
+
+            var isFeedback = (column.type === 'multi_feedback') ||
+                             (column.key && column.key.indexOf('feedback') !== -1) ||
+                             (column.label && column.label.toLowerCase().indexOf('feedback') !== -1);
+            if (isFeedback) {
+                var feedbacks = normalizeFeedbackList(value);
+                if (!feedbacks.length) {
+                    return '<span class="muted">&mdash;</span>';
+                }
+                return '<button type="button" class="ba-btn ba-btn-sm ba-performance-feedback-btn" data-feedback-userid="' + Number(student.userid || 0) + '" data-feedback-colkey="' + escapeHtml(column.key) + '" data-feedback-collabel="' + escapeHtml(column.label) + '" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid #6366f1; color:#6366f1; background:transparent; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">' +
+                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
+                    '</button>';
+            }
+
+            var items = null;
+            if (Array.isArray(value)) {
+                items = value.map(function(item) {
+                    if (item && typeof item === 'object') return item.text || item.label || item.value || '';
+                    return String(item);
+                }).filter(function(s) { return String(s).trim() !== ''; });
+            } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
+                try {
+                    var parsed = JSON.parse(value.trim());
+                    if (Array.isArray(parsed)) {
+                        items = parsed.map(function(item) {
+                            if (item && typeof item === 'object') return item.text || item.label || item.value || '';
+                            return String(item);
+                        }).filter(function(s) { return String(s).trim() !== ''; });
+                    }
+                } catch(e) {}
+            }
+
+            if (items !== null) {
+                if (!items.length) return '<span class="muted">&mdash;</span>';
+                return items.map(function(it) {
+                    return '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; background:#f1f5f9; color:#334155; font-size:11.5px; font-weight:600; margin:2px;">' + escapeHtml(String(it)) + '</span>';
+                }).join(' ');
+            }
+
+            if (value === undefined || value === null || value === '' || value === '-') {
+                return '<span class="muted">&mdash;</span>';
+            }
+            return escapeHtml(String(value));
         }
         function customGroupCells(student) {
             return performanceCustomGroups.map(function(group) {
@@ -174,8 +677,7 @@
                     return '<td class="ba-maac-collapsed-col ba-performance-group-collapsed"></td>';
                 }
                 return (group.columns || []).map(function(column) {
-                    var value = student.custom && student.custom[column.key];
-                    var display = column.key === 'trend' ? renderTrendBadge(student, value) : (value === undefined || value === null || value === '' ? '<span class="muted">&mdash;</span>' : escapeHtml(String(value)));
+                    var display = renderCustomPerformanceCell(student, column, group);
                     var trendClass = column.key === 'trend' ? ' ba-performance-custom-trend' : '';
                     return '<td class="ba-performance-custom-col ba-performance-group-' + escapeHtml(group.key) + trendClass + '">' + display + '</td>';
                 }).join('');
@@ -348,10 +850,14 @@
 
         function getOverallDisplayValue(student, percentiles) {
             if (perfMode === 'percentile') {
-                var percentile = percentiles[student._origIdx];
-                return percentile === undefined ? '&mdash;' : percentile + '%';
+                var percentile = (percentiles && student && student._origIdx !== undefined) ? percentiles[student._origIdx] : undefined;
+                return (percentile === undefined || isNaN(percentile)) ? '&mdash;' : percentile + '%';
             }
-            return student.grade === null || student.grade === undefined ? '&mdash;' : escapeHtml(Number(student.grade).toFixed(2) + '%');
+            if (!student || student.grade === null || student.grade === undefined || student.grade === '') {
+                return '&mdash;';
+            }
+            var num = parseFloat(student.grade);
+            return isNaN(num) ? '&mdash;' : escapeHtml(num.toFixed(2) + '%');
         }
 
         function updateOverallHeading() {
@@ -630,6 +1136,16 @@
                     if (trendStudent) openTrendModal(trendStudent);
                     return;
                 }
+                var feedbackButton = event.target.closest('[data-feedback-userid]');
+                if (feedbackButton) {
+                    event.preventDefault();
+                    var fbUserId = Number(feedbackButton.getAttribute('data-feedback-userid'));
+                    var fbColKey = feedbackButton.getAttribute('data-feedback-colkey');
+                    var fbColLabel = feedbackButton.getAttribute('data-feedback-collabel') || 'Feedback';
+                    var fbStudent = studentsData.find(function(student) { return Number(student.userid) === fbUserId; });
+                    if (fbStudent) openFeedbackModal(fbStudent, fbColKey, fbColLabel);
+                    return;
+                }
                 var toggle = event.target.closest('[data-performance-group-toggle]');
                 if (toggle) {
                     event.preventDefault();
@@ -703,7 +1219,35 @@
                     performanceCustomGroups.forEach(function(group) {
                         if (!performanceCollapsedGroups[group.key]) {
                             (group.columns || []).forEach(function(column) {
-                                row.push((s.custom && s.custom[column.key]) || '-');
+                                var val = s.custom ? s.custom[column.key] : null;
+                                var isFeedback = (column.type === 'multi_feedback') ||
+                                                 (column.key && column.key.indexOf('feedback') !== -1) ||
+                                                 (column.label && column.label.toLowerCase().indexOf('feedback') !== -1);
+                                if (isFeedback) {
+                                    var feedbacks = normalizeFeedbackList(val);
+                                    row.push(feedbacks.length ? feedbacks.map(function(f) { return (f.date ? f.date + ': ' : '') + f.text; }).join(' | ') : '-');
+                                } else if (Array.isArray(val)) {
+                                    var items = val.map(function(item) {
+                                        return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
+                                    }).filter(function(str) { return str.trim() !== ''; });
+                                    row.push(items.length ? items.join(' | ') : '-');
+                                } else if (typeof val === 'string' && val.trim().startsWith('[') && val.trim().endsWith(']')) {
+                                    try {
+                                        var parsed = JSON.parse(val.trim());
+                                        if (Array.isArray(parsed)) {
+                                            var items = parsed.map(function(item) {
+                                                return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
+                                            }).filter(function(str) { return str.trim() !== ''; });
+                                            row.push(items.length ? items.join(' | ') : '-');
+                                        } else {
+                                            row.push(val || '-');
+                                        }
+                                    } catch(e) {
+                                        row.push(val || '-');
+                                    }
+                                } else {
+                                    row.push((val !== undefined && val !== null && val !== '') ? String(val) : '-');
+                                }
                             });
                         }
                     });

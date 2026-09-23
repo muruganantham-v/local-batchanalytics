@@ -96,11 +96,43 @@ class student_performance_service {
             foreach ($customgroups as $group) {
                 foreach ($group['columns'] as $column) {
                     $key = $column['key'];
-                    $student['custom'][$key] = !empty($customvalues[$userid][$key])
-                        ? ($key === 'trend'
-                            ? end($customvalues[$userid][$key])
-                            : implode(' | ', array_unique($customvalues[$userid][$key])))
-                        : '';
+                    $rawvals = $customvalues[$userid][$key] ?? [];
+                    if (empty($rawvals)) {
+                        $student['custom'][$key] = '';
+                        continue;
+                    }
+                    if ($key === 'trend') {
+                        $student['custom'][$key] = end($rawvals);
+                        continue;
+                    }
+                    $flattened = [];
+                    foreach ($rawvals as $val) {
+                        if (is_array($val)) {
+                            foreach ($val as $sub) {
+                                $flattened[] = $sub;
+                            }
+                        } else if (is_string($val)) {
+                            $trimmed = trim($val);
+                            if (str_starts_with($trimmed, '[') && str_ends_with($trimmed, ']')) {
+                                $decoded = json_decode($trimmed, true);
+                                if (is_array($decoded)) {
+                                    foreach ($decoded as $sub) {
+                                        $flattened[] = $sub;
+                                    }
+                                } else {
+                                    $flattened[] = $trimmed;
+                                }
+                            } else {
+                                $flattened[] = $trimmed;
+                            }
+                        } else {
+                            $flattened[] = $val;
+                        }
+                    }
+                    if (!empty($flattened) && is_string($flattened[0])) {
+                        $flattened = array_values(array_unique($flattened));
+                    }
+                    $student['custom'][$key] = !empty($flattened) ? $flattened : '';
                 }
             }
             $student['trend_details'] = $trenddetails[$userid] ?? [];
@@ -153,6 +185,7 @@ class student_performance_service {
                 $groups[$groupkey]['columns'][$columnkey] = [
                     'key' => $columnkey,
                     'label' => (string)($column['label'] ?? $columnkey),
+                    'type' => (string)($column['type'] ?? 'text'),
                 ];
             }
         }
@@ -174,7 +207,7 @@ class student_performance_service {
                 if ($key === 'maac_rating' || $value === '' || $value === null) {
                     continue;
                 }
-                $values[$userid][$key][] = (string)$value;
+                $values[$userid][$key][] = $value;
             }
         }
 
