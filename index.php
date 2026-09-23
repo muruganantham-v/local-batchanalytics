@@ -820,10 +820,92 @@ if ($action === 'getnewbatchdata') {
             }
         }
 
-        // Fetch total unique students
-        $studentcount = $has_bm_student
-            ? (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}")
-            : 0;
+        // Check if user is a Manager (site admin, manage capability, or viewallcourses capability)
+        $currentuserid = (int)$USER->id;
+        $is_manager = is_siteadmin($currentuserid)
+            || has_capability('local/batchanalytics:manage', $context, $currentuserid)
+            || has_capability('local/batchanalytics:viewallcourses', $context, $currentuserid);
+
+        // Non-managers should only see batches corresponding to courses they are enrolled in or assigned to
+        if (!$is_manager) {
+            $user_courses = enrol_get_users_courses($currentuserid, true, ['id', 'fullname', 'shortname']);
+            $user_course_ids = array_map('intval', array_keys($user_courses));
+            $user_course_names = array_map(function($c) { return strtolower(trim($c->fullname)); }, $user_courses);
+            $user_course_shortnames = array_map(function($c) { return strtolower(trim($c->shortname)); }, $user_courses);
+            $user_fullname = trim(fullname($USER));
+
+            $allowed_batch_ids = [];
+
+            // Check class sections for linked module courses and mentor/coordinator assignments
+            if ($has_bm_section) {
+                foreach ($sectionsbybatch as $bid => $s_list) {
+                    foreach ($s_list as $s_item) {
+                        if ((string)$s_item->maacexecutive === (string)$currentuserid
+                            || (string)$s_item->pmmanager === (string)$currentuserid
+                            || $s_item->maacexecutivename === $user_fullname
+                            || $s_item->pmmanagername === $user_fullname) {
+                            $allowed_batch_ids[(int)$bid] = true;
+                            break;
+                        }
+                        $s_modules = \local_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
+                        if (!empty($s_modules)) {
+                            foreach ($s_modules as $sm) {
+                                $mcid = (int)($sm['moodlecourseid'] ?? 0);
+                                if ($mcid > 0 && in_array($mcid, $user_course_ids, true)) {
+                                    $allowed_batch_ids[(int)$bid] = true;
+                                    break 2;
+                                }
+                                $mentors = [
+                                    (string)($sm['primarymentor'] ?? ''),
+                                    (string)($sm['secondarymentor'] ?? ''),
+                                    (string)($sm['labmentor1'] ?? ''),
+                                    (string)($sm['labmentor2'] ?? ''),
+                                    (string)($sm['labmentor3'] ?? '')
+                                ];
+                                if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
+                                    $allowed_batch_ids[(int)$bid] = true;
+                                    break 2;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check batch coursename against enrolled courses
+            foreach ($batches as $b) {
+                $bcoursename = strtolower(trim((string)($b->coursename ?? '')));
+                if ($bcoursename !== '' && (in_array($bcoursename, $user_course_names, true) || in_array($bcoursename, $user_course_shortnames, true))) {
+                    $allowed_batch_ids[(int)$b->id] = true;
+                }
+            }
+
+            // Restrict batches and sections to allowed batches
+            $batches = array_filter($batches, function($b) use ($allowed_batch_ids) {
+                return !empty($allowed_batch_ids[(int)$b->id]);
+            });
+
+            $sectionsbybatch = array_filter($sectionsbybatch, function($bid) use ($allowed_batch_ids) {
+                return !empty($allowed_batch_ids[(int)$bid]);
+            }, ARRAY_FILTER_USE_KEY);
+        }
+
+        // Fetch total unique students (for managers: all; for non-managers: only in accessible batches)
+        if ($has_bm_student) {
+            if ($is_manager) {
+                $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}");
+            } else {
+                $batch_ids_list = array_map('intval', array_keys($batches));
+                if (!empty($batch_ids_list)) {
+                    list($bin_sql, $bparams) = $DB->get_in_or_equal($batch_ids_list, SQL_PARAMS_NAMED, 'bm_b');
+                    $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE batchid $bin_sql", $bparams);
+                } else {
+                    $studentcount = 0;
+                }
+            }
+        } else {
+            $studentcount = 0;
+        }
 
         $batchlist = [];
         $onlinecount = 0;
@@ -1099,9 +1181,50 @@ if ($action === 'get_task_data') {
             ['id' => 'all', 'label' => 'All Roles (Overview)'],
         ];
 
+        // Identify courses where user is enrolled as a teacher/mentor
+        $teacher_courses = enrol_get_users_courses($currentuserid, true);
+        $mentor_course_ids = [];
+        foreach ($teacher_courses as $c) {
+            if ($c->id <= 1) continue;
+            $ccontext = \context_course::instance($c->id, IGNORE_MISSING);
+            if (!$ccontext) continue;
+            if (has_capability('moodle/course:update', $ccontext, $currentuserid)
+                || has_capability('moodle/grade:viewall', $ccontext, $currentuserid)
+                || has_capability('local/batchanalytics:editmaac', $ccontext, $currentuserid)) {
+                $mentor_course_ids[$c->id] = (int)$c->id;
+            }
+        }
+        if ($DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sections_with_modules = $DB->get_records_select('local_bm_classsection', "moduledata IS NOT NULL AND moduledata != ''", null, '', 'id, moduledata');
+            foreach ($sections_with_modules as $swm) {
+                $mdata = json_decode($swm->moduledata, true);
+                if (!is_array($mdata)) continue;
+                foreach ($mdata as $mitem) {
+                    $mcid = (int)($mitem['moodlecourseid'] ?? 0);
+                    if ($mcid <= 1) continue;
+                    $mentors = [
+                        (string)($mitem['primarymentor'] ?? ''),
+                        (string)($mitem['secondarymentor'] ?? ''),
+                        (string)($mitem['labmentor1'] ?? ''),
+                        (string)($mitem['labmentor2'] ?? ''),
+                        (string)($mitem['labmentor3'] ?? '')
+                    ];
+                    if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
+                        $mentor_course_ids[$mcid] = $mcid;
+                    }
+                }
+            }
+        }
+
         $view_role = optional_param('view_role', 'auto', PARAM_ALPHANUMEXT);
         if ($view_role === 'auto' || empty($view_role)) {
-            $view_role = 'pm_ss';
+            if ($can_manage_all) {
+                $view_role = 'all';
+            } else if (!empty($mentor_course_ids) && !$is_ssteam_user && !$is_bm_user) {
+                $view_role = 'mentor';
+            } else {
+                $view_role = 'pm_ss';
+            }
         }
 
         $today_start = strtotime('today midnight');
@@ -1114,7 +1237,6 @@ if ($action === 'get_task_data') {
         $due_this_week_count = 0;
         $batch_ids = [];
         $section_ids = [];
-        $mentor_course_ids = [];
 
         // =========================================================================
         // ROLE 1: Program Manager, SS Executive, SS Team
@@ -1125,14 +1247,22 @@ if ($action === 'get_task_data') {
             $params = [];
             $where_clauses = [];
 
-            if (!$can_manage_all && ($view_role === 'sse' || ($is_ssteam_user && !$is_bm_user && $view_role !== 'all'))) {
-                $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname)";
-                $params['userid'] = (string)$currentuserid;
-                $params['fullname'] = $user_fullname;
-            } else if (!$can_manage_all && ($view_role === 'pm' || ($is_bm_user && !$is_ssteam_user && $view_role !== 'all'))) {
-                $where_clauses[] = "(s.pmmanager = :userid OR s.pmmanagername = :fullname)";
-                $params['userid'] = (string)$currentuserid;
-                $params['fullname'] = $user_fullname;
+            if (!$can_manage_all) {
+                if ($view_role === 'sse' || ($is_ssteam_user && !$is_bm_user && $view_role !== 'all')) {
+                    $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname)";
+                    $params['userid'] = (string)$currentuserid;
+                    $params['fullname'] = $user_fullname;
+                } else if ($view_role === 'pm' || ($is_bm_user && !$is_ssteam_user && $view_role !== 'all')) {
+                    $where_clauses[] = "(s.pmmanager = :userid OR s.pmmanagername = :fullname)";
+                    $params['userid'] = (string)$currentuserid;
+                    $params['fullname'] = $user_fullname;
+                } else if ($is_ssteam_user && $is_bm_user) {
+                    $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname OR s.pmmanager = :userid OR s.pmmanagername = :fullname)";
+                    $params['userid'] = (string)$currentuserid;
+                    $params['fullname'] = $user_fullname;
+                } else {
+                    $where_clauses[] = "1 = 0";
+                }
             }
 
             $wsql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
@@ -1145,17 +1275,6 @@ if ($action === 'get_task_data') {
                 ORDER BY s.id ASC
             ";
             $sections = $DB->get_records_sql($sql, $params);
-
-            // Fallback to all sections if empty to ensure robust testing
-            if (empty($sections)) {
-                $sections = $DB->get_records_sql("
-                    SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
-                           s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
-                    FROM {local_bm_classsection} s
-                    LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
-                    ORDER BY s.id ASC
-                ");
-            }
 
             $softskills_items = [
                 ['key' => 'ss_induction', 'label' => 'SS Induction'],
@@ -1262,16 +1381,14 @@ if ($action === 'get_task_data') {
         // Due Date: Calculated from the activity due date or calendar due task
         // =========================================================================
         if ($view_role === 'mentor' || $view_role === 'all') {
-            $enrolled_courses = enrol_get_all_users_courses($currentuserid, true);
-            $mentor_course_ids = array_keys($enrolled_courses);
-
-            if (empty($mentor_course_ids) || $can_manage_all) {
+            $effective_mentor_courses = array_values($mentor_course_ids);
+            if ($can_manage_all && empty($effective_mentor_courses)) {
                 $all_c = $DB->get_records_sql("SELECT DISTINCT id FROM {course} WHERE id > 1");
-                $mentor_course_ids = array_keys($all_c);
+                $effective_mentor_courses = array_keys($all_c);
             }
 
-            if (!empty($mentor_course_ids)) {
-                list($cin_sql, $cparams) = $DB->get_in_or_equal($mentor_course_ids, SQL_PARAMS_NAMED, 'mc');
+            if (!empty($effective_mentor_courses)) {
+                list($cin_sql, $cparams) = $DB->get_in_or_equal($effective_mentor_courses, SQL_PARAMS_NAMED, 'mc');
 
                 // 1. Assignments with due date
                 $sql_assign = "
@@ -1409,12 +1526,21 @@ if ($action === 'get_task_data') {
         // Due Date: Calculated from class section start date
         // =========================================================================
         if ($view_role === 'am' || $view_role === 'all') {
+            $am_where = "";
+            $am_params = [];
+            if (!$can_manage_all) {
+                $am_where = "WHERE (s.pmmanager = :am_uid OR s.pmmanagername = :am_fn OR s.maacexecutive = :am_uid OR s.maacexecutivename = :am_fn)";
+                $am_params['am_uid'] = (string)$currentuserid;
+                $am_params['am_fn'] = $user_fullname;
+            }
+
             $sections = $DB->get_records_sql("
                 SELECT s.id as sectionid, s.name as sectionname, b.id as batchid, b.name as batchname, b.coursename, b.startdate
                 FROM {local_bm_classsection} s
                 JOIN {local_bm_batch} b ON b.id = s.batchid
+                {$am_where}
                 ORDER BY b.startdate ASC
-            ");
+            ", $am_params);
 
             $am_milestone_templates = [
                 ['offset' => - (5 * 86400), 'title' => 'Mentor & Lab Allocation Verification', 'key' => 'am_mentor_verify'],
@@ -1622,8 +1748,22 @@ if ($action === 'complete_task') {
 
 // ... (HTML Page rendering) ...
 
+$active_top_tab = 'task';
+$page_url_params = [];
+$raw_query = strtolower($_SERVER['QUERY_STRING'] ?? '');
+if (isset($_GET['batchanalysis']) || isset($_GET['batchanalytics']) || optional_param('tab', '', PARAM_ALPHANUMEXT) === 'batchanalysis' || optional_param('view', '', PARAM_ALPHANUMEXT) === 'batchanalysis' || str_contains($raw_query, 'batchanalysis') || str_contains($raw_query, 'batchanalytics')) {
+    $active_top_tab = 'new';
+    $page_url_params = ['batchanalysis' => ''];
+} else if (isset($_GET['old']) || optional_param('tab', '', PARAM_ALPHANUMEXT) === 'old' || str_contains($raw_query, 'old')) {
+    $active_top_tab = 'old';
+    $page_url_params = ['old' => ''];
+} else {
+    $active_top_tab = 'task';
+    $page_url_params = ['task' => ''];
+}
+
 $PAGE->set_context($context);
-$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
+$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php', $page_url_params));
 $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
@@ -1643,27 +1783,31 @@ $PAGE->requires->js($taskscripturl);
 
 echo $OUTPUT->header();
 
+$is_task_active = ($active_top_tab === 'task');
+$is_new_active = ($active_top_tab === 'new');
+$is_old_active = ($active_top_tab === 'old');
+
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
 $mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
 $maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-wrap" data-active-tab="' . $active_top_tab . '" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Top-Level Primary Navigation Bar (Task | New Batch Analytics | Batch Analytics)
 echo '<div class="ba-top-nav-tabs-bar">';
-echo '  <button type="button" class="ba-top-nav-tab active" data-top-tab="task"><span class="ba-tab-icon">📋</span> Task</button>';
-echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="new"><span class="ba-tab-icon">⚡</span> New Batch Analytics</button>';
-echo '  <button type="button" class="ba-top-nav-tab" data-top-tab="old"><span class="ba-tab-icon">📁</span> Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab' . ($is_task_active ? ' active' : '') . '" data-top-tab="task"><span class="ba-tab-icon">📋</span> Task</button>';
+echo '  <button type="button" class="ba-top-nav-tab' . ($is_new_active ? ' active' : '') . '" data-top-tab="new"><span class="ba-tab-icon">⚡</span> New Batch Analytics</button>';
+echo '  <button type="button" class="ba-top-nav-tab' . ($is_old_active ? ' active' : '') . '" data-top-tab="old"><span class="ba-tab-icon">📁</span> Batch Analytics</button>';
 echo '</div>';
 
-// TASK TAB PANE (Active by default on left)
-echo '<div id="ba-top-tab-task" class="ba-top-tab-pane active">';
+// TASK TAB PANE
+echo '<div id="ba-top-tab-task" class="ba-top-tab-pane' . ($is_task_active ? ' active' : '') . '"' . ($is_task_active ? '' : ' style="display:none"') . '>';
 echo '  <div id="task-dashboard-root"></div>';
 echo '</div>';
 
 // NEW BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-new" class="ba-top-tab-pane" style="display:none">';
+echo '<div id="ba-top-tab-new" class="ba-top-tab-pane' . ($is_new_active ? ' active' : '') . '"' . ($is_new_active ? '' : ' style="display:none"') . '>';
 echo '  <div class="ba-new-dashboard">';
 
 echo '    <!-- Stat Cards Grid (9 Cards: 3 Delivery Cards + 6 Metrics Cards) -->';
@@ -1838,7 +1982,7 @@ echo '  </div>';
 echo '</div>'; // #ba-top-tab-new
 
 // OLD BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-old" class="ba-top-tab-pane" style="display:none">';
+echo '<div id="ba-top-tab-old" class="ba-top-tab-pane' . ($is_old_active ? ' active' : '') . '"' . ($is_old_active ? '' : ' style="display:none"') . '>';
 echo '  <div class="ba-top-row">';
 echo '    <div class="ba-search-row">';
 $search_placeholder = 'Search course name (e.g., Advanced C)...';

@@ -35,25 +35,56 @@ document.addEventListener("DOMContentLoaded", function () {
     sessionStorage.removeItem("ba-maac-import-return");
   }
 
-  // Top-Level Primary Tab Switching (Old vs New Batch Analytics)
+  // Top-Level Primary Tab Switching (Task | New Batch Analytics | Batch Analytics)
   const topNavTabs = document.querySelectorAll(".ba-top-nav-tab");
-  topNavTabs.forEach((tabBtn) => {
-    tabBtn.addEventListener("click", function () {
-      const targetTab = this.dataset.topTab;
-      topNavTabs.forEach((btn) => btn.classList.remove("active"));
-      this.classList.add("active");
 
-      document.querySelectorAll(".ba-top-tab-pane").forEach((pane) => {
-        pane.style.display = "none";
-        pane.classList.remove("active");
-      });
-
-      const targetPane = document.getElementById(`ba-top-tab-${targetTab}`);
-      if (targetPane) {
-        targetPane.style.display = "block";
-        targetPane.classList.add("active");
+  function activateTopTab(targetTab, updateUrl = true) {
+    topNavTabs.forEach((btn) => {
+      if (btn.dataset.topTab === targetTab) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
       }
     });
+
+    document.querySelectorAll(".ba-top-tab-pane").forEach((pane) => {
+      pane.style.display = "none";
+      pane.classList.remove("active");
+    });
+
+    const targetPane = document.getElementById(`ba-top-tab-${targetTab}`);
+    if (targetPane) {
+      targetPane.style.display = "block";
+      targetPane.classList.add("active");
+    }
+
+    if (updateUrl && window.history && window.history.pushState) {
+      const cleanPath = window.location.pathname;
+      let query = "?task";
+      if (targetTab === "new") {
+        query = "?batchanalysis";
+      } else if (targetTab === "old") {
+        query = "?old";
+      }
+      window.history.pushState({ topTab: targetTab }, "", cleanPath + query);
+    }
+  }
+
+  topNavTabs.forEach((tabBtn) => {
+    tabBtn.addEventListener("click", function () {
+      activateTopTab(this.dataset.topTab, true);
+    });
+  });
+
+  window.addEventListener("popstate", function () {
+    const search = window.location.search.toLowerCase();
+    if (search.includes("batchanalysis") || search.includes("batchanalytics")) {
+      activateTopTab("new", false);
+    } else if (search.includes("old")) {
+      activateTopTab("old", false);
+    } else {
+      activateTopTab("task", false);
+    }
   });
 
   if (!searchBox || !searchBtn || !batchSelect) {
