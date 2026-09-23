@@ -1095,7 +1095,7 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-module-page .person .role {
   font-size: 11px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.6px !important;
   color: #64748b !important;
   margin-bottom: 6px !important;
@@ -1232,7 +1232,7 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-module-page .schedgrid .sc .k {
   font-size: 11px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.5px !important;
   color: #64748b !important;
   margin-bottom: 6px !important;
@@ -1349,12 +1349,32 @@ body#page-local-batchanalytics-module #page-header h1,
   color: #475569 !important;
   font-size: 11.5px !important;
   font-weight: 700 !important;
-  text-transform: uppercase !important;
+  text-transform: none !important;
   letter-spacing: 0.5px !important;
   padding: 12px 16px !important;
   border-bottom: 1px solid #e2e8f0 !important;
 }
 
+/* Fixed, readable Student Performance columns, matching Advanced Filter behavior. */
+.ba-batch-page #panel-students .ba-performance-overall-head,
+.ba-module-page #panel-mstudents .ba-performance-overall-head {
+  min-width: 120px;
+  width: 120px;
+}
+
+.ba-batch-page #panel-students .ba-performance-group-module,
+.ba-module-page #panel-mstudents .ba-performance-group-module,
+.ba-batch-page #panel-students .ba-performance-custom-col,
+.ba-module-page #panel-mstudents .ba-performance-custom-col {
+  min-width: 160px;
+  width: 160px;
+}
+
+.ba-batch-page #panel-students .ba-performance-custom-trend,
+.ba-module-page #panel-mstudents .ba-performance-custom-trend {
+  min-width: 150px;
+  width: 150px;
+}
 .ba-batch-page tbody td,
 .ba-module-page tbody td {
   padding: 14px 16px !important;

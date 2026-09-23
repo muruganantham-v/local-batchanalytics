@@ -131,6 +131,43 @@
                 '<span class="ba-maac-group-toggle-label">' + escapeHtml(label) + '</span></button>';
         }
 
+        function trendVisual(value) {
+            var key = String(value || '').trim().toLowerCase();
+            if (key === 'improving' || key === 'up') return { label: 'Improving', icon: '+', className: 'ba-trend-badge-up' };
+            if (key === 'declining' || key === 'down') return { label: 'Declining', icon: '-', className: 'ba-trend-badge-down' };
+            return { label: 'Stable', icon: '=', className: 'ba-trend-badge-stable' };
+        }
+
+        function renderTrendBadge(student, value) {
+            if (value === undefined || value === null || value === '') return '<span class="muted">&mdash;</span>';
+            var visual = trendVisual(value);
+            var badge = '<span class="ba-trend-badge ' + visual.className + '"><span>' + visual.icon + '</span><span>' + visual.label + '</span></span>';
+            return '<button type="button" class="ba-trend-badge-btn" data-performance-trend-userid="' + Number(student.userid || 0) + '" aria-label="View trend details for ' + escapeHtml(student.name || 'student') + '">' + badge + '</button>';
+        }
+
+        function trendMetric(label, points) {
+            points = Array.isArray(points) ? points : [];
+            if (!points.length) return '<div class="trend-stats"><div><span>' + escapeHtml(label) + '</span><strong>No data</strong></div></div>';
+            var latest = points[points.length - 1] || {};
+            var value = latest.grade !== undefined ? Number(latest.grade).toFixed(2) + '%' : (latest.status || 'Recorded');
+            return '<div class="trend-stats"><div><span>Recent records</span><strong>' + points.length + '</strong></div><div><span>Latest</span><strong>' + escapeHtml(value) + '</strong></div></div>';
+        }
+
+        function openTrendModal(student) {
+            var records = Array.isArray(student.trend_details) ? student.trend_details : [];
+            var existing = document.getElementById('ba-student-performance-trend-modal');
+            if (existing) existing.remove();
+            var cards = records.map(function(record) {
+                var details = record.details || {};
+                return '<div class="trend-card"><div class="trend-title">' + escapeHtml(record.course || 'Course') + '</div>' + trendMetric('Assignments', details.assignments) + trendMetric('Quizzes', details.quizzes) + trendMetric('Projects', details.projects) + trendMetric('Attendance', details.attendance) + '</div>';
+            }).join('');
+            var modal = document.createElement('div');
+            modal.className = 'trends-modal';
+            modal.id = 'ba-student-performance-trend-modal';
+            modal.innerHTML = '<div class="trends-content"><div class="trends-header"><h3>' + escapeHtml(student.name || 'Student') + ' - Grade Trends</h3><button type="button" class="close-trends" aria-label="Close">x</button></div><div class="trends-grid">' + (cards || '<div class="trend-card"><div class="trend-title">Trend</div><div class="trend-stats"><div>No trend detail is available for this student yet.</div></div></div>') + '</div></div>';
+            modal.addEventListener('click', function(event) { if (event.target === modal || event.target.closest('.close-trends')) modal.remove(); });
+            document.body.appendChild(modal);
+        }
         function customGroupCells(student) {
             return performanceCustomGroups.map(function(group) {
                 if (performanceCollapsedGroups[group.key]) {
@@ -138,8 +175,9 @@
                 }
                 return (group.columns || []).map(function(column) {
                     var value = student.custom && student.custom[column.key];
-                    var display = value === undefined || value === null || value === '' ? '<span class="muted">&mdash;</span>' : escapeHtml(String(value));
-                    return '<td class="ba-performance-custom-col ba-performance-group-' + escapeHtml(group.key) + '">' + display + '</td>';
+                    var display = column.key === 'trend' ? renderTrendBadge(student, value) : (value === undefined || value === null || value === '' ? '<span class="muted">&mdash;</span>' : escapeHtml(String(value)));
+                    var trendClass = column.key === 'trend' ? ' ba-performance-custom-trend' : '';
+                    return '<td class="ba-performance-custom-col ba-performance-group-' + escapeHtml(group.key) + trendClass + '">' + display + '</td>';
                 }).join('');
             }).join('');
         }
@@ -179,7 +217,7 @@
                 }
                 firstRow += '<th class="ba-maac-group-head" colspan="' + columns.length + '">' + groupToggle(group.label, group.key, false) + '</th>';
                 columns.forEach(function(column) {
-                    secondRow += '<th class="ba-performance-custom-col" data-custom-key="' + escapeHtml(column.key) + '">' + escapeHtml(column.label) + '</th>';
+                    secondRow += '<th class="ba-performance-custom-col' + (column.key === 'trend' ? ' ba-performance-custom-trend' : '') + '" data-custom-key="' + escapeHtml(column.key) + '">' + escapeHtml(column.label) + '</th>';
                 });
             });
             firstRow += '<th class="sortable" data-sort="merit" title="Sort by Merit" rowspan="2">Merit</th></tr>';
@@ -584,6 +622,14 @@
         // Student Performance header sorting and Advanced Filter-style group toggles.
         if (performanceTable) {
             performanceTable.addEventListener('click', function(event) {
+                var trendButton = event.target.closest('[data-performance-trend-userid]');
+                if (trendButton) {
+                    event.preventDefault();
+                    var trendUserId = Number(trendButton.getAttribute('data-performance-trend-userid'));
+                    var trendStudent = studentsData.find(function(student) { return Number(student.userid) === trendUserId; });
+                    if (trendStudent) openTrendModal(trendStudent);
+                    return;
+                }
                 var toggle = event.target.closest('[data-performance-group-toggle]');
                 if (toggle) {
                     event.preventDefault();
