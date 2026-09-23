@@ -177,7 +177,6 @@ if (!empty($raw_modules)) {
     foreach ($raw_modules as $mod) {
         $mod_idx = (int)($mod['module'] ?? 1);
         $m_name = !empty($mod['name']) ? $mod['name'] : (!empty($mod['courseshortname']) ? $mod['courseshortname'] : ($canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx)));
-        
         // Resolve Class Mentor(s) with deduplication and validation
         $class_mentors = [];
         $class_mentors_arr = [];
@@ -503,6 +502,7 @@ $performance_data = (new \local_batchanalytics\student_performance_service())->b
 );
 $students_data = $performance_data['students'];
 $performance_columns = $performance_data['columns'];
+$performance_custom_groups = $performance_data['customgroups'] ?? [];
 
 // -------------------------------------------------------------------------
 // 5. Review Notes
@@ -622,6 +622,7 @@ echo $OUTPUT->header();
   data-sesskey="<?= sesskey() ?>"
   data-students="<?= s(json_encode($students_data)) ?>"
   data-performance-columns="<?= s(json_encode($performance_columns)) ?>"
+  data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
   data-crm-fields="<?= htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) ?>"
   data-can-manage="<?= $batch_can_manage ? '1' : '0' ?>"
   data-crm-index-url="<?= s($crm_index_url) ?>">
@@ -825,10 +826,15 @@ echo $OUTPUT->header();
               <thead>
                 <tr>
                   <th class="sortable" data-sort="band" title="Sort by Band">Band</th>
-                  <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
-                  <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
+                  <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
+                  <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
                   <?php foreach ($performance_columns as $column): ?>
-                    <th class="sortable" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+                    <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+                  <?php endforeach; ?>
+                  <?php foreach ($performance_custom_groups as $group): ?>
+                    <?php foreach ($group['columns'] as $column): ?>
+                      <th class="ba-performance-custom-col ba-performance-group-<?= s($group['key']) ?>" data-custom-key="<?= s($column['key']) ?>"><?= s($column['label']) ?></th>
+                    <?php endforeach; ?>
                   <?php endforeach; ?>
                   <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
                 </tr>

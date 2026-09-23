@@ -145,21 +145,35 @@
             console.error('Error parsing performance columns:', e);
         }
 
-        function formatPerformanceCell(student, column) {
-            var metric = student.categories && student.categories[column.key];
-            if (!metric || metric.grade === null || metric.grade === undefined) return '<span class="muted">—</span>';
-            var grade = Number(metric.grade).toFixed(2) + '%';
-            if (column.isattendance) return '<b>' + grade + '</b>';
-            var completion = metric.completion === null || metric.completion === undefined ? '—' : Number(metric.completion).toFixed(2) + '%';
-            return '<b>' + grade + '</b><br><span class="muted">Completion ' + completion + '</span>';
+        var performanceCustomGroups = [];
+        try {
+            performanceCustomGroups = JSON.parse(container.getAttribute('data-performance-custom-groups') || '[]');
+        } catch (e) {
+            console.error('Error parsing performance custom groups:', e);
+        }
+        function usesFixedGrade(column) {
+            return !!(column.isattendance || column.ismaac);
         }
 
-        function csvPerformanceValues(student, column) {
+        function getCategoryValue(student, column) {
             var metric = student.categories && student.categories[column.key];
-            var grade = metric && metric.grade !== null && metric.grade !== undefined ? Number(metric.grade).toFixed(2) + '%' : '—';
-            if (column.isattendance) return [grade];
-            var completion = metric && metric.completion !== null && metric.completion !== undefined ? Number(metric.completion).toFixed(2) + '%' : '—';
-            return [grade, completion];
+            if (!metric) return null;
+            var useGrade = usesFixedGrade(column) || perfMode === 'grade';
+            return useGrade ? metric.grade : metric.completion;
+        }
+
+        function formatPerformanceCell(student, column) {
+            var value = getCategoryValue(student, column);
+            if (value === null || value === undefined) return '<span class="muted">&mdash;</span>';
+            var precision = column.ismaac ? 1 : 2;
+            var suffix = column.ismaac ? '' : '%';
+            return '<b>' + Number(value).toFixed(precision) + suffix + '</b>';
+        }
+
+        function csvPerformanceValue(student, column) {
+            var value = getCategoryValue(student, column);
+            if (value === null || value === undefined) return '-';
+            return Number(value).toFixed(column.ismaac ? 1 : 2) + (column.ismaac ? '' : '%');
         }
 
         var perfMode = 'grade'; // 'grade' or 'percentile'
@@ -168,6 +182,79 @@
         var sortColumn = '';
         var sortDirection = 'asc';
 
+        var performanceCollapsedGroups = { module: false };
+        var performanceTable = container.querySelector('#panel-mstudents table');
+
+        function groupToggle(label, key, collapsed) {
+            return '<button type="button" class="ba-maac-group-toggle" data-performance-group-toggle="' + escapeHtml(key) + '" aria-expanded="' + (!collapsed) + '">' +
+                '<span class="ba-maac-group-toggle-icon" aria-hidden="true">' + (collapsed ? '+' : '-') + '</span>' +
+                '<span class="ba-maac-group-toggle-label">' + escapeHtml(label) + '</span></button>';
+        }
+
+        function customGroupCells(student) {
+            return performanceCustomGroups.map(function(group) {
+                if (performanceCollapsedGroups[group.key]) {
+                    return '<td class="ba-maac-collapsed-col ba-performance-group-collapsed"></td>';
+                }
+                return (group.columns || []).map(function(column) {
+                    var value = student.custom && student.custom[column.key];
+                    var display = value === undefined || value === null || value === '' ? '<span class="muted">&mdash;</span>' : escapeHtml(String(value));
+                    return '<td class="ba-performance-custom-col ba-performance-group-' + escapeHtml(group.key) + '">' + display + '</td>';
+                }).join('');
+            }).join('');
+        }
+
+        function getVisiblePerformanceColumnCount() {
+            var count = 3;
+            count += performanceCollapsedGroups.module ? 1 : (1 + performanceColumns.length);
+            performanceCustomGroups.forEach(function(group) {
+                count += performanceCollapsedGroups[group.key] ? 1 : (group.columns || []).length;
+            });
+            return count;
+        }
+
+        function renderPerformanceHeaders() {
+            if (!performanceTable) return;
+            var thead = performanceTable.querySelector('thead');
+            if (!thead) return;
+            var moduleCollapsed = !!performanceCollapsedGroups.module;
+            var firstRow = '<tr><th class="sortable" data-sort="band" title="Sort by Band" rowspan="2">Band</th>' +
+                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name" rowspan="2">Student</th>';
+            var secondRow = '<tr>';
+            if (moduleCollapsed) {
+                firstRow += '<th class="ba-maac-group-head ba-performance-group-collapsed" rowspan="2">' + groupToggle('Module Performance', 'module', true) + '</th>';
+            } else {
+                firstRow += '<th class="ba-maac-group-head" colspan="' + (1 + performanceColumns.length) + '">' + groupToggle('Module Performance', 'module', false) + '</th>';
+                secondRow += '<th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>';
+                performanceColumns.forEach(function(column) {
+                    secondRow += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
+                });
+            }
+            performanceCustomGroups.forEach(function(group) {
+                var columns = group.columns || [];
+                if (!columns.length) return;
+                if (performanceCollapsedGroups[group.key]) {
+                    firstRow += '<th class="ba-maac-group-head ba-performance-group-collapsed" rowspan="2">' + groupToggle(group.label, group.key, true) + '</th>';
+                    return;
+                }
+                firstRow += '<th class="ba-maac-group-head" colspan="' + columns.length + '">' + groupToggle(group.label, group.key, false) + '</th>';
+                columns.forEach(function(column) {
+                    secondRow += '<th class="ba-performance-custom-col" data-custom-key="' + escapeHtml(column.key) + '">' + escapeHtml(column.label) + '</th>';
+                });
+            });
+            firstRow += '<th class="sortable" data-sort="merit" title="Sort by Merit" rowspan="2">Merit</th></tr>';
+            secondRow += '</tr>';
+            thead.innerHTML = firstRow + secondRow;
+        }
+
+        function togglePerformanceGroup(key) {
+            var tableWrap = container.querySelector('#panel-mstudents .tablecard');
+            var scrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+            performanceCollapsedGroups[key] = !performanceCollapsedGroups[key];
+            renderPerformanceHeaders();
+            renderPerformance();
+            if (tableWrap) tableWrap.scrollLeft = scrollLeft;
+        }
         // Tag initial order for stable secondary sorting
         stuData.forEach(function(s, idx) {
             if (s._origIdx === undefined) {
@@ -184,9 +271,10 @@
 
                 if (sortColumn.indexOf('category:') === 0) {
                     var categoryKey = sortColumn.substring('category:'.length);
-                    var categoryA = a.categories && a.categories[categoryKey];
-                    var categoryB = b.categories && b.categories[categoryKey];
-                    res = (categoryA && categoryA.grade !== null ? Number(categoryA.grade) : -1) - (categoryB && categoryB.grade !== null ? Number(categoryB.grade) : -1);
+                    var categoryColumn = performanceColumns.find(function(column) { return column.key === categoryKey; }) || {};
+                    var categoryA = getCategoryValue(a, categoryColumn);
+                    var categoryB = getCategoryValue(b, categoryColumn);
+                    res = (categoryA === null || categoryA === undefined ? -1 : Number(categoryA)) - (categoryB === null || categoryB === undefined ? -1 : Number(categoryB));
                 } else {
                 switch (sortColumn) {
                     case 'student':
@@ -266,6 +354,41 @@
         var paginationInfo = document.getElementById('ba-mod-pagination-info');
         var paginationBtns = document.getElementById('ba-mod-pagination-btns');
 
+        function getPercentileValues(students) {
+            var ordered = students.slice().sort(function(a, b) {
+                return (Number(b.grade) || 0) - (Number(a.grade) || 0);
+            });
+            var values = {};
+            var total = ordered.length;
+            var previousGrade = null;
+            var previousPercentile = null;
+            ordered.forEach(function(student, index) {
+                var score = Number(student.grade) || 0;
+                var percentile = total <= 1 ? 100 : Math.round(((total - index - 1) / (total - 1)) * 100);
+                if (previousGrade !== null && score === previousGrade) percentile = previousPercentile;
+                values[student._origIdx] = percentile;
+                previousGrade = score;
+                previousPercentile = percentile;
+            });
+            return values;
+        }
+
+        function getOverallDisplayValue(student, percentiles) {
+            if (perfMode === 'percentile') {
+                var percentile = percentiles[student._origIdx];
+                return percentile === undefined ? '&mdash;' : percentile + '%';
+            }
+            return student.grade === null || student.grade === undefined ? '&mdash;' : escapeHtml(Number(student.grade).toFixed(2) + '%');
+        }
+
+        function updateOverallHeading() {
+            var heading = container.querySelector('.ba-performance-overall-head');
+            if (heading) {
+                heading.textContent = perfMode === 'grade' ? 'Grade' : 'Percentile';
+                heading.title = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Percentile';
+            }
+        }
+
         function computeBands(students, mode) {
             var n = students.length;
             if (n === 0) return [];
@@ -311,6 +434,8 @@
 
             var totalItems = stuData.length;
             var bands = computeBands(stuData, perfMode);
+            var percentileValues = getPercentileValues(stuData);
+            updateOverallHeading();
 
             // 1. Render 3 Banding Cards
             var counts = { top: 0, mid: 0, bot: 0 };
@@ -390,7 +515,7 @@
 
                 html += '<tr>' +
                     '<td><span class="bdot" style="background:' + dotColors[b] + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
-                    '<td>' +
+                    '<td class="ba-performance-student-cell">' +
                         '<div class="ba-student-cell">' +
                             avatarHtml +
                             '<div class="ba-student-info">' +
@@ -399,16 +524,19 @@
                             '</div>' +
                         '</div>' +
                     '</td>' +
-                    '<td><b>' + (s.grade === null || s.grade === undefined ? '—' : escapeHtml(Number(s.grade).toFixed(2) + '%')) + '</b></td>' +
-                    performanceColumns.map(function(column) {
-                        return '<td>' + formatPerformanceCell(s, column) + '</td>';
-                    }).join('') +
+                    (performanceCollapsedGroups.module
+                        ? '<td class="ba-maac-collapsed-col ba-performance-group-collapsed"></td>'
+                        : ('<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                            performanceColumns.map(function(column) {
+                                return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
+                            }).join(''))) +
+                    customGroupCells(s) +
                     '<td><span class="merit">' + meritHtml + '</span></td>' +
                     '</tr>';
             });
 
             if (pagedStudents.length === 0) {
-                html = '<tr><td colspan="' + (4 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this module.</td></tr>';
+                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this module.</td></tr>';
             }
 
             if (stuBody) {
@@ -533,52 +661,67 @@
             });
         }
 
-        // Student Performance Table Header Sorting
-        var sortHeaders = container.querySelectorAll('#panel-mstudents th.sortable');
-        sortHeaders.forEach(function(th) {
-            th.addEventListener('click', function() {
-                var col = this.getAttribute('data-sort');
+        // Student Performance header sorting and Advanced Filter-style group toggles.
+        if (performanceTable) {
+            performanceTable.addEventListener('click', function(event) {
+                var toggle = event.target.closest('[data-performance-group-toggle]');
+                if (toggle) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    togglePerformanceGroup(toggle.getAttribute('data-performance-group-toggle'));
+                    return;
+                }
+                var th = event.target.closest('th.sortable');
+                if (!th || !performanceTable.contains(th)) return;
+                var col = th.getAttribute('data-sort');
                 if (!col) return;
-
                 if (sortColumn === col) {
                     sortDirection = (sortDirection === 'asc') ? 'desc' : 'asc';
                 } else {
                     sortColumn = col;
-                    // Default names to A-Z (asc), scores/percentages to highest first (desc)
-                    if (col === 'student' || col === 'name') {
-                        sortDirection = 'asc';
-                    } else {
-                        sortDirection = 'desc';
-                    }
+                    sortDirection = (col === 'student' || col === 'name') ? 'asc' : 'desc';
                 }
-
                 applySort();
                 currentPage = 1;
                 renderPerformance();
             });
-        });
-
+        }
         // CSV Export
         if (expBtn) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = ['Band', 'Student Name', 'Student ID', 'Grade'];
-                performanceColumns.forEach(function(column) {
-                    csvHeaders.push(column.label + ' Grade');
-                    if (!column.isattendance) csvHeaders.push(column.label + ' Completion');
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
+                if (!performanceCollapsedGroups.module) {
+                    performanceColumns.forEach(function(column) {
+                        var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
+                        csvHeaders.push(column.label + suffix);
+                    });
+                }
+                performanceCustomGroups.forEach(function(group) {
+                    if (!performanceCollapsedGroups[group.key]) {
+                        (group.columns || []).forEach(function(column) { csvHeaders.push(column.label); });
+                    }
                 });
                 csvHeaders.push('Merit');
                 var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
                 var bands = computeBands(stuData, perfMode);
+                var percentileValues = getPercentileValues(stuData);
 
                 stuData.forEach(function(s, idx) {
                     var band = bands[idx] ? bands[idx].toUpperCase() : 'MID';
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
-                    var grade = s.grade === null || s.grade === undefined ? '-' : Number(s.grade).toFixed(2) + '%';
+                    var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
                     var merit = (s.merit_text || '').replace(/"/g, '""');
                     var row = [band, name, id, grade];
-                    performanceColumns.forEach(function(column) {
-                        row = row.concat(csvPerformanceValues(s, column));
+                    if (!performanceCollapsedGroups.module) {
+                        performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
+                    }
+                    performanceCustomGroups.forEach(function(group) {
+                        if (!performanceCollapsedGroups[group.key]) {
+                            (group.columns || []).forEach(function(column) {
+                                row.push((s.custom && s.custom[column.key]) || '-');
+                            });
+                        }
                     });
                     row.push(merit);
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
@@ -878,6 +1021,7 @@
         }
 
         // Initialize table
+        renderPerformanceHeaders();
         renderPerformance();
     });
 })();

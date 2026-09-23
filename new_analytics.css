@@ -1309,6 +1309,40 @@ body#page-local-batchanalytics-module #page-header h1,
   -webkit-overflow-scrolling: touch;
 }
 
+/* Student Performance columns come from Gradebook categories and may exceed the page width. */
+.ba-batch-page #panel-students .tablecard,
+.ba-module-page #panel-mstudents .tablecard {
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ba-batch-page #panel-students .tablecard > table,
+.ba-module-page #panel-mstudents .tablecard > table {
+  min-width: 980px;
+}
+
+/* Keep the student identity visible while the dynamic category columns scroll. */
+.ba-batch-page #panel-students .ba-performance-student-head,
+.ba-module-page #panel-mstudents .ba-performance-student-head {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  min-width: 220px;
+  background: #f8fafc;
+  border-right: 2px solid #e2e8f0;
+}
+
+.ba-batch-page #panel-students .ba-performance-student-cell,
+.ba-module-page #panel-mstudents .ba-performance-student-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 220px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+}
+
 .ba-batch-page thead th,
 .ba-module-page thead th {
   background: #f8fafc !important;
