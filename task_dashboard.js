@@ -233,7 +233,7 @@
               </div>
             </div>
           </div>
-          <div class="task-role-switcher-box">
+          <div class="task-role-switcher-box" style="display: none !important;">
             <label for="taskRoleSelect" class="task-role-switcher-label">
               <span>👤</span> Switch View:
             </label>

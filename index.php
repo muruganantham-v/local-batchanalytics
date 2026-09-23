@@ -1794,11 +1794,10 @@ $maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns
 echo '<div class="local-batchanalytics-wrap" data-active-tab="' . $active_top_tab . '" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
-// Top-Level Primary Navigation Bar (Task | New Batch Analytics | Batch Analytics)
+// Top-Level Primary Navigation Bar (Task | New Batch Analytics)
 echo '<div class="ba-top-nav-tabs-bar">';
 echo '  <button type="button" class="ba-top-nav-tab' . ($is_task_active ? ' active' : '') . '" data-top-tab="task"><span class="ba-tab-icon">📋</span> Task</button>';
 echo '  <button type="button" class="ba-top-nav-tab' . ($is_new_active ? ' active' : '') . '" data-top-tab="new"><span class="ba-tab-icon">⚡</span> New Batch Analytics</button>';
-echo '  <button type="button" class="ba-top-nav-tab' . ($is_old_active ? ' active' : '') . '" data-top-tab="old"><span class="ba-tab-icon">📁</span> Batch Analytics</button>';
 echo '</div>';
 
 // TASK TAB PANE

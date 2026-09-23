@@ -838,3 +838,7 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
 }
+
+.task-role-switcher-box {
+  display: none !important;
+}
