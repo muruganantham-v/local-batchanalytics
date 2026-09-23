@@ -16,6 +16,30 @@
         }
 
         // Initialize state
+        var performanceColumns = [];
+        try {
+            performanceColumns = JSON.parse(container.getAttribute('data-performance-columns') || '[]');
+        } catch (e) {
+            console.error('Error parsing performance columns:', e);
+        }
+
+        function formatPerformanceCell(student, column) {
+            var metric = student.categories && student.categories[column.key];
+            if (!metric || metric.grade === null || metric.grade === undefined) return '<span class="muted">—</span>';
+            var grade = Number(metric.grade).toFixed(2) + '%';
+            if (column.isattendance) return '<b>' + grade + '</b>';
+            var completion = metric.completion === null || metric.completion === undefined ? '—' : Number(metric.completion).toFixed(2) + '%';
+            return '<b>' + grade + '</b><br><span class="muted">Completion ' + completion + '</span>';
+        }
+
+        function csvPerformanceValues(student, column) {
+            var metric = student.categories && student.categories[column.key];
+            var grade = metric && metric.grade !== null && metric.grade !== undefined ? Number(metric.grade).toFixed(2) + '%' : '—';
+            if (column.isattendance) return [grade];
+            var completion = metric && metric.completion !== null && metric.completion !== undefined ? Number(metric.completion).toFixed(2) + '%' : '—';
+            return [grade, completion];
+        }
+
         var perfMode = 'grade'; // 'grade' or 'percentile'
         var studentsData = [];
 
@@ -98,6 +122,12 @@
                 var mult = (sortDirection === 'desc') ? -1 : 1;
                 var res = 0;
 
+                if (sortColumn.indexOf('category:') === 0) {
+                    var categoryKey = sortColumn.substring('category:'.length);
+                    var categoryA = a.categories && a.categories[categoryKey];
+                    var categoryB = b.categories && b.categories[categoryKey];
+                    res = (categoryA && categoryA.grade !== null ? Number(categoryA.grade) : -1) - (categoryB && categoryB.grade !== null ? Number(categoryB.grade) : -1);
+                } else {
                 switch (sortColumn) {
                     case 'student':
                     case 'name':
@@ -142,6 +172,7 @@
                         break;
                     default:
                         res = 0;
+                }
                 }
 
                 if (res !== 0) {
@@ -213,7 +244,7 @@
         function renderPerformance() {
             if (!studentsData || studentsData.length === 0) {
                 if (stuBody) {
-                    stuBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
+                    stuBody.innerHTML = '<tr><td colspan="' + (4 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
                 }
                 if (paginationInfo) paginationInfo.textContent = 'No students to display';
                 if (paginationBtns) paginationBtns.innerHTML = '';
@@ -308,17 +339,16 @@
                             '</div>' +
                         '</div>' +
                     '</td>' +
-                    '<td><b>' + escapeHtml(s.grade) + '</b></td>' +
-                    '<td>' + escapeHtml(s.attendance || 'â€”') + '</td>' +
-                    '<td>' + escapeHtml(s.assignments || 'â€”') + '</td>' +
-                    '<td>' + (s.projects && s.projects !== 'â€”' ? escapeHtml(s.projects) : '<span class="muted">â€”</span>') + '</td>' +
-                    '<td>' + escapeHtml(s.tests || 'â€”') + '</td>' +
+                    '<td><b>' + (s.grade === null || s.grade === undefined ? '—' : escapeHtml(Number(s.grade).toFixed(2) + '%')) + '</b></td>' +
+                    performanceColumns.map(function(column) {
+                        return '<td>' + formatPerformanceCell(s, column) + '</td>';
+                    }).join('') +
                     '<td><span class="merit">' + meritHtml + '</span></td>' +
                     '</tr>';
             });
 
             if (pagedStudents.length === 0) {
-                html = '<tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
+                html = '<tr><td colspan="' + (4 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
             }
 
             if (stuBody) {
@@ -469,21 +499,27 @@
         // Export Filtered Students to CSV
         if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
-                var csv = ['"Band","Student Name","Student ID","Grade","Attendance","Assignments","Projects","Tests","Merit"'];
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', 'Grade'];
+                performanceColumns.forEach(function(column) {
+                    csvHeaders.push(column.label + ' Grade');
+                    if (!column.isattendance) csvHeaders.push(column.label + ' Completion');
+                });
+                csvHeaders.push('Merit');
+                var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
                 var bands = computeBands(studentsData, perfMode);
 
                 studentsData.forEach(function(s, idx) {
                     var band = bands[idx] ? bands[idx].toUpperCase() : 'MID';
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
-                    var grade = s.grade || '0';
-                    var att = s.attendance || '0%';
-                    var assign = s.assignments || '0%';
-                    var proj = s.projects || 'â€”';
-                    var test = s.tests || '0%';
+                    var grade = s.grade === null || s.grade === undefined ? '-' : Number(s.grade).toFixed(2) + '%';
                     var merit = (s.merit_text || '').replace(/"/g, '""');
-
-                    csv.push('"' + band + '","' + name + '","' + id + '","' + grade + '","' + att + '","' + assign + '","' + proj + '","' + test + '","' + merit + '"');
+                    var row = [band, name, id, grade];
+                    performanceColumns.forEach(function(column) {
+                        row = row.concat(csvPerformanceValues(s, column));
+                    });
+                    row.push(merit);
+                    csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
                 });
 
                 var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });

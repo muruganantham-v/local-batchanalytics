@@ -494,6 +494,16 @@ if (empty($students_data)) {
     }
 }
 
+// Reuse the Course-tab Advanced Filter Gradebook dataset across linked modules.
+$performance_courseids = array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')));
+$performance_data = (new \local_batchanalytics\student_performance_service())->build(
+    $students_data,
+    $performance_courseids,
+    (int)$USER->id
+);
+$students_data = $performance_data['students'];
+$performance_columns = $performance_data['columns'];
+
 // -------------------------------------------------------------------------
 // 5. Review Notes
 // -------------------------------------------------------------------------
@@ -611,6 +621,7 @@ echo $OUTPUT->header();
   data-batchid="<?= (int)$batch_id ?>"
   data-sesskey="<?= sesskey() ?>"
   data-students="<?= s(json_encode($students_data)) ?>"
+  data-performance-columns="<?= s(json_encode($performance_columns)) ?>"
   data-crm-fields="<?= htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) ?>"
   data-can-manage="<?= $batch_can_manage ? '1' : '0' ?>"
   data-crm-index-url="<?= s($crm_index_url) ?>">
@@ -816,10 +827,9 @@ echo $OUTPUT->header();
                   <th class="sortable" data-sort="band" title="Sort by Band">Band</th>
                   <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
                   <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
-                  <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
-                  <th class="sortable" data-sort="assignments" title="Sort by Assignments">Assignments</th>
-                  <th class="sortable" data-sort="projects" title="Sort by Projects">Projects</th>
-                  <th class="sortable" data-sort="tests" title="Sort by Tests">Tests</th>
+                  <?php foreach ($performance_columns as $column): ?>
+                    <th class="sortable" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+                  <?php endforeach; ?>
                   <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
                 </tr>
               </thead>

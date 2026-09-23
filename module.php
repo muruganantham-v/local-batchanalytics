@@ -392,6 +392,15 @@ if (empty($students_data)) {
 }
 
 // -------------------------------------------------------------------------
+// Reuse the Course-tab Advanced Filter Gradebook dataset for this table.
+$performance_data = (new \local_batchanalytics\student_performance_service())->build(
+    $students_data,
+    $courseid > 0 ? [$courseid] : [],
+    (int)$USER->id
+);
+$students_data = $performance_data['students'];
+$performance_columns = $performance_data['columns'];
+
 // -------------------------------------------------------------------------
 // 4. Module KPIs (Course Metrics from LMS Gradebook or Populated Canonical)
 // -------------------------------------------------------------------------
@@ -933,6 +942,7 @@ echo $OUTPUT->header();
      data-batchid="<?= (int)$batchid ?>"
      data-sesskey="<?= sesskey() ?>"
      data-students="<?= s(json_encode($students_data)) ?>"
+     data-performance-columns="<?= s(json_encode($performance_columns)) ?>"
      data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
   <!-- Breadcrumb Bar in New UI Style -->
@@ -1279,10 +1289,9 @@ echo $OUTPUT->header();
               <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
               <th class="sortable" data-sort="student" title="Sort by Student Name">Student</th>
               <th class="sortable" data-sort="grade" title="Sort by Grade">Grade</th>
-              <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
-              <th class="sortable" data-sort="assignments" title="Sort by Assignments">Assignments</th>
-              <th class="sortable" data-sort="projects" title="Sort by Projects">Projects</th>
-              <th class="sortable" data-sort="tests" title="Sort by Tests">Tests</th>
+              <?php foreach ($performance_columns as $column): ?>
+                <th class="sortable" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
+              <?php endforeach; ?>
               <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
             </tr>
           </thead>
