@@ -697,8 +697,24 @@
                     return '<span class="muted">&mdash;</span>';
                 }
                 return '<button type="button" class="ba-btn ba-btn-sm ba-performance-feedback-btn" data-feedback-userid="' + Number(student.userid || 0) + '" data-feedback-colkey="' + escapeHtml(column.key) + '" data-feedback-collabel="' + escapeHtml(column.label) + '" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid #6366f1; color:#6366f1; background:transparent; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">' +
-                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
+                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
                     '</button>';
+            }
+
+            var isBoolean = (column.type === 'boolean') ||
+                            (column.datatype === 'checkbox');
+            if (isBoolean) {
+                var isTrue = false;
+                if (Array.isArray(value)) {
+                    isTrue = value.some(function(v) {
+                        return v === 1 || v === '1' || v === true || v === 'true' || String(v).toLowerCase() === 'yes';
+                    });
+                } else {
+                    isTrue = (value === 1 || value === '1' || value === true || value === 'true' || String(value).toLowerCase() === 'yes');
+                }
+                return isTrue
+                    ? '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:11.5px; font-weight:700;">Yes</span>'
+                    : '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#f1f5f9; color:#64748b; font-size:11.5px; font-weight:600;">No</span>';
             }
 
             var items = null;
@@ -973,11 +989,314 @@
             return bands;
         }
 
+        function openBandDetailModal(bandKey) {
+            var existing = document.getElementById('ba-band-detail-modal');
+            if (existing) existing.remove();
+
+            var bandStudents = stuData.filter(function(s) { return s._band === bandKey; });
+            var percentileValues = getPercentileValues(stuData);
+
+            var meta = {
+                top: {
+                    title: perfMode === 'grade' ? 'Top Performers' : 'Top 15%',
+                    sub: perfMode === 'grade' ? 'Overall Grade > 70%' : 'Top 15% by class rank',
+                    color: '#16a34a',
+                    dotClass: 'var(--green, #1e8e4e)'
+                },
+                mid: {
+                    title: perfMode === 'grade' ? 'Middle Performers' : 'Middle 70%',
+                    sub: perfMode === 'grade' ? 'Overall Grade 40% – 70%' : 'Middle 70% by class rank',
+                    color: '#d97706',
+                    dotClass: 'var(--amber, #c77a0a)'
+                },
+                bot: {
+                    title: perfMode === 'grade' ? 'Low Performers' : 'Bottom 15%',
+                    sub: perfMode === 'grade' ? 'Overall Grade < 40%' : 'Bottom 15% by class rank',
+                    color: '#dc2626',
+                    dotClass: 'var(--red, #c0392b)'
+                }
+            };
+            var bandMeta = meta[bandKey] || meta.mid;
+
+            var modal = document.createElement('div');
+            modal.className = 'ba-band-modal';
+            modal.id = 'ba-band-detail-modal';
+
+            var modalSortCol = 'grade';
+            var modalSortDir = 'desc';
+            var modalSearch = '';
+            var modalScoreFilter = 'all';
+
+            var categoryHeadersHtml = performanceColumns.map(function(c) {
+                return '<th class="ba-modal-th-sortable" data-modal-col="' + escapeHtml(c.key) + '">' +
+                    escapeHtml(c.label) + ' <span class="ba-sort-indicator">⇅</span></th>';
+            }).join('');
+
+            modal.innerHTML = '<div class="ba-band-modal-dialog" role="dialog" aria-modal="true">' +
+                '<div class="ba-band-modal-header">' +
+                    '<div style="display:flex; align-items:center; gap:12px;">' +
+                        '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background:' + bandMeta.color + ';"></span>' +
+                        '<div>' +
+                            '<h3 style="margin:0; font-size:18px; font-weight:700; color:#0f172a;">' + escapeHtml(bandMeta.title) + ' (' + bandStudents.length + ' Students)</h3>' +
+                            '<div style="font-size:12px; color:#64748b; margin-top:2px;">' + escapeHtml(bandMeta.sub) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div style="display:flex; align-items:center; gap:10px;">' +
+                        '<input type="text" id="ba-band-modal-search" class="ba-modal-input-search" placeholder="Search student name or ID..." style="width:200px;">' +
+                        '<select id="ba-band-modal-filter" class="ba-modal-select" title="Filter by grade">' +
+                            '<option value="all">All Scores</option>' +
+                            '<option value="ge70">Grade &ge; 70%</option>' +
+                            '<option value="40to70">Grade 40% &ndash; 70%</option>' +
+                            '<option value="lt40">Grade &lt; 40%</option>' +
+                        '</select>' +
+                        '<button type="button" id="ba-band-modal-export" class="ba-modal-btn-export">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+                                '<polyline points="7 10 12 15 17 10"/>' +
+                                '<line x1="12" y1="15" x2="12" y2="3"/>' +
+                            '</svg>' +
+                            '<span>Export CSV</span>' +
+                        '</button>' +
+                        '<button type="button" class="ba-modal-btn-close-circle ba-band-modal-close" aria-label="Close modal">' +
+                            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+                                '<line x1="6" y1="6" x2="18" y2="18"></line>' +
+                            '</svg>' +
+                        '</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ba-band-modal-body">' +
+                    '<div class="tablecard" style="margin:0; max-height:55vh; overflow-y:auto; overflow-x:auto;">' +
+                        '<table style="width:100%; border-collapse:separate; border-spacing:0;">' +
+                            '<thead style="position:sticky; top:0; background:#fff; z-index:10; box-shadow:0 1px 0 #e2e8f0;">' +
+                                '<tr>' +
+                                    '<th class="ba-modal-th-sortable ba-modal-sticky-col" data-modal-col="name">Student <span class="ba-sort-indicator">⇅</span></th>' +
+                                    '<th class="ba-modal-th-sortable" data-modal-col="grade">' + (perfMode === 'grade' ? 'Grade' : 'Percentile') + ' <span class="ba-sort-indicator">⇅</span></th>' +
+                                    categoryHeadersHtml +
+                                '</tr>' +
+                            '</thead>' +
+                            '<tbody id="ba-band-modal-tbody"></tbody>' +
+                        '</table>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ba-band-modal-footer">' +
+                    '<span id="ba-band-modal-count" style="font-size:12px; color:#64748b;">Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students</span>' +
+                    '<button type="button" class="ba-modal-btn-footer-close ba-band-modal-close-btn">Close</button>' +
+                '</div>' +
+            '</div>';
+
+            document.body.appendChild(modal);
+
+            function getModalSortValue(student, col) {
+                if (col === 'name') {
+                    return (student.name || '').toLowerCase();
+                }
+                if (col === 'grade') {
+                    if (perfMode === 'percentile') {
+                        var p = (percentileValues && percentileValues[student._origIdx] !== undefined) ? percentileValues[student._origIdx] : -1;
+                        return p;
+                    }
+                    return parseFloat(student.grade) || 0;
+                }
+                for (var i = 0; i < performanceColumns.length; i++) {
+                    if (performanceColumns[i].key === col) {
+                        var val = getCategoryValue(student, performanceColumns[i]);
+                        if (val === null || val === undefined || val === '') return -999;
+                        var num = parseFloat(val);
+                        return isNaN(num) ? -999 : num;
+                    }
+                }
+                return 0;
+            }
+
+            function getFilteredAndSortedStudents() {
+                return bandStudents.filter(function(s) {
+                    if (modalSearch) {
+                        var name = (s.name || '').toLowerCase();
+                        var id = (s.id || '').toLowerCase();
+                        if (name.indexOf(modalSearch) === -1 && id.indexOf(modalSearch) === -1) {
+                            return false;
+                        }
+                    }
+                    if (modalScoreFilter !== 'all') {
+                        var g = parseFloat(s.grade) || 0;
+                        if (modalScoreFilter === 'ge70' && g < 70) return false;
+                        if (modalScoreFilter === '40to70' && (g < 40 || g > 70)) return false;
+                        if (modalScoreFilter === 'lt40' && g >= 40) return false;
+                    }
+                    return true;
+                }).sort(function(a, b) {
+                    var valA = getModalSortValue(a, modalSortCol);
+                    var valB = getModalSortValue(b, modalSortCol);
+                    var res = 0;
+                    if (typeof valA === 'string' && typeof valB === 'string') {
+                        res = valA.localeCompare(valB);
+                    } else {
+                        res = valA - valB;
+                    }
+                    if (res !== 0) {
+                        return modalSortDir === 'asc' ? res : -res;
+                    }
+                    return (a.name || '').localeCompare(b.name || '');
+                });
+            }
+
+            var tbody = modal.querySelector('#ba-band-modal-tbody');
+            var countEl = modal.querySelector('#ba-band-modal-count');
+
+            function renderModalRows() {
+                var list = getFilteredAndSortedStudents();
+                var rowsHtml = '';
+                list.forEach(function(s) {
+                    var avatarHtml = '';
+                    var studentInitials = escapeHtml(s.initials || (s.name ? s.name.charAt(0).toUpperCase() : '?'));
+                    if (s.profileimageurl) {
+                        avatarHtml = '<div class="ba-avatar-wrap">' +
+                            '<img src="' + escapeHtml(s.profileimageurl) + '" class="ba-student-avatar" alt="' + escapeHtml(s.name) + '" onerror="this.onerror=null;this.parentElement.innerHTML=\'<span class=\\\'ba-avatar-initials\\\'>' + studentInitials + '</span>\';">' +
+                        '</div>';
+                    } else {
+                        avatarHtml = '<div class="ba-avatar-wrap"><span class="ba-avatar-initials">' + studentInitials + '</span></div>';
+                    }
+
+                    rowsHtml += '<tr>' +
+                        '<td class="ba-performance-student-cell ba-modal-sticky-col">' +
+                            '<div class="ba-student-cell">' +
+                                avatarHtml +
+                                '<div class="ba-student-info">' +
+                                    '<span class="sname">' + escapeHtml(s.name) + '</span>' +
+                                    '<span class="sid">' + escapeHtml(s.id) + '</span>' +
+                                '</div>' +
+                            '</div>' +
+                        '</td>' +
+                        '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                        performanceColumns.map(function(column) {
+                            return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
+                        }).join('') +
+                        '</tr>';
+                });
+
+                if (!rowsHtml) {
+                    rowsHtml = '<tr><td colspan="' + (2 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found matching current filter.</td></tr>';
+                }
+
+                if (tbody) {
+                    tbody.innerHTML = rowsHtml;
+                }
+
+                if (countEl) {
+                    var isFiltered = modalSearch || modalScoreFilter !== 'all';
+                    countEl.textContent = isFiltered
+                        ? ('Showing ' + list.length + ' of ' + bandStudents.length + ' students (filtered)')
+                        : ('Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students');
+                }
+
+                // Update sort indicators
+                var ths = modal.querySelectorAll('th.ba-modal-th-sortable');
+                ths.forEach(function(th) {
+                    var col = th.getAttribute('data-modal-col');
+                    var ind = th.querySelector('.ba-sort-indicator');
+                    if (col === modalSortCol) {
+                        th.classList.add('active');
+                        if (ind) ind.textContent = modalSortDir === 'asc' ? '▲' : '▼';
+                    } else {
+                        th.classList.remove('active');
+                        if (ind) ind.textContent = '⇅';
+                    }
+                });
+            }
+
+            // Initial render of rows
+            renderModalRows();
+
+            // Column Header Sorting listeners
+            var headerThs = modal.querySelectorAll('th.ba-modal-th-sortable');
+            headerThs.forEach(function(th) {
+                th.addEventListener('click', function() {
+                    var col = this.getAttribute('data-modal-col');
+                    if (modalSortCol === col) {
+                        modalSortDir = (modalSortDir === 'asc' ? 'desc' : 'asc');
+                    } else {
+                        modalSortCol = col;
+                        modalSortDir = (col === 'name' ? 'asc' : 'desc');
+                    }
+                    renderModalRows();
+                });
+            });
+
+            // Filter & Search listeners
+            var searchInput = modal.querySelector('#ba-band-modal-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    modalSearch = (this.value || '').trim().toLowerCase();
+                    renderModalRows();
+                });
+            }
+
+            var scoreFilter = modal.querySelector('#ba-band-modal-filter');
+            if (scoreFilter) {
+                scoreFilter.addEventListener('change', function() {
+                    modalScoreFilter = this.value;
+                    renderModalRows();
+                });
+            }
+
+            // Close handling
+            function closeModal() {
+                modal.remove();
+                document.removeEventListener('keydown', handleKey);
+            }
+            function handleKey(e) {
+                if (e.key === 'Escape') closeModal();
+            }
+            document.addEventListener('keydown', handleKey);
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal || e.target.closest('.ba-band-modal-close') || e.target.closest('.ba-band-modal-close-btn')) {
+                    closeModal();
+                }
+            });
+
+            // Export CSV for this modal
+            var exportBtn = modal.querySelector('#ba-band-modal-export');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    var csvHeaders = ['Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
+                    performanceColumns.forEach(function(column) {
+                        var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
+                        csvHeaders.push(column.label + suffix);
+                    });
+
+                    var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
+                    var exportList = getFilteredAndSortedStudents();
+                    exportList.forEach(function(s) {
+                        var name = (s.name || '').replace(/"/g, '""');
+                        var id = (s.id || '').replace(/"/g, '""');
+                        var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
+                        var row = [name, id, grade];
+                        performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
+                        csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
+                    });
+                    var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    var link = document.createElement('a');
+                    var url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'module_' + bandKey + '_performers.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
+            }
+        }
+
         function renderPerformance() {
             if (!stuData) return;
 
             var totalItems = stuData.length;
             var bands = computeBands(stuData, perfMode);
+            stuData.forEach(function(s, idx) {
+                s._band = bands[idx];
+                s._origIdx = idx;
+            });
             var percentileValues = getPercentileValues(stuData);
             updateOverallHeading();
 
@@ -999,9 +1318,37 @@
 
             if (bandrow) {
                 bandrow.innerHTML =
-                    '<div class="band top"><div class="pct">' + counts.top + '</div><div class="lbl">' + labels.top[0] + '</div><div class="cnt">' + labels.top[1] + '</div></div>' +
-                    '<div class="band mid"><div class="pct">' + counts.mid + '</div><div class="lbl">' + labels.mid[0] + '</div><div class="cnt">' + labels.mid[1] + '</div></div>' +
-                    '<div class="band bot"><div class="pct">' + counts.bot + '</div><div class="lbl">' + labels.bot[0] + '</div><div class="cnt">' + labels.bot[1] + '</div></div>';
+                    '<div class="band top" data-band="top" role="button" tabindex="0" title="Click to view Top Performers">' +
+                        '<div class="pct">' + counts.top + '</div>' +
+                        '<div class="lbl">' + labels.top[0] + '</div>' +
+                        '<div class="cnt">' + labels.top[1] + '</div>' +
+                    '</div>' +
+                    '<div class="band mid" data-band="mid" role="button" tabindex="0" title="Click to view Middle Performers">' +
+                        '<div class="pct">' + counts.mid + '</div>' +
+                        '<div class="lbl">' + labels.mid[0] + '</div>' +
+                        '<div class="cnt">' + labels.mid[1] + '</div>' +
+                    '</div>' +
+                    '<div class="band bot" data-band="bot" role="button" tabindex="0" title="Click to view Low Performers">' +
+                        '<div class="pct">' + counts.bot + '</div>' +
+                        '<div class="lbl">' + labels.bot[0] + '</div>' +
+                        '<div class="cnt">' + labels.bot[1] + '</div>' +
+                    '</div>';
+
+                // Attach click listeners to KPI cards
+                var cards = bandrow.querySelectorAll('.band[data-band]');
+                cards.forEach(function(card) {
+                    card.addEventListener('click', function() {
+                        var b = this.getAttribute('data-band');
+                        openBandDetailModal(b);
+                    });
+                    card.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            var b = this.getAttribute('data-band');
+                            openBandDetailModal(b);
+                        }
+                    });
+                });
             }
 
             // 2. Compute Pagination Bounds
@@ -1285,9 +1632,21 @@
                                 var isFeedback = (column.type === 'multi_feedback') ||
                                                  (column.key && column.key.indexOf('feedback') !== -1) ||
                                                  (column.label && column.label.toLowerCase().indexOf('feedback') !== -1);
+                                var isBoolean = (column.type === 'boolean') ||
+                                                (column.datatype === 'checkbox');
                                 if (isFeedback) {
                                     var feedbacks = normalizeFeedbackList(val);
                                     row.push(feedbacks.length ? feedbacks.map(function(f) { return (f.date ? f.date + ': ' : '') + f.text; }).join(' | ') : '-');
+                                } else if (isBoolean) {
+                                    var isTrue = false;
+                                    if (Array.isArray(val)) {
+                                        isTrue = val.some(function(v) {
+                                            return v === 1 || v === '1' || v === true || v === 'true' || String(v).toLowerCase() === 'yes';
+                                        });
+                                    } else {
+                                        isTrue = (val === 1 || val === '1' || val === true || val === 'true' || String(val).toLowerCase() === 'yes');
+                                    }
+                                    row.push(isTrue ? 'Yes' : 'No');
                                 } else if (Array.isArray(val)) {
                                     var items = val.map(function(item) {
                                         return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
@@ -1385,20 +1744,25 @@
 
             // Modal container
             var modalContainer = document.createElement('div');
-            modalContainer.className = 'ba-modal-container';
+            modalContainer.className = 'ba-modal-container ba-category-modal-dialog';
 
             // Modal header
             var header = document.createElement('div');
             header.className = 'ba-modal-header';
 
             var titleEl = document.createElement('h3');
-            titleEl.textContent = cname;
+            var catDisplayTitle = escapeHtml(cname);
+            var titleMatch = cname.match(/^(.*?)\s*\((\d+)\)$/);
+            if (titleMatch) {
+                catDisplayTitle = escapeHtml(titleMatch[1]) + ' <span class="ba-modal-badge">' + escapeHtml(titleMatch[2]) + '</span>';
+            }
+            titleEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> ' + catDisplayTitle;
 
             var closeBtn = document.createElement('button');
             closeBtn.className = 'ba-modal-close';
             closeBtn.type = 'button';
             closeBtn.setAttribute('aria-label', 'Close');
-            closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            closeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
             header.appendChild(titleEl);
             header.appendChild(closeBtn);
@@ -1439,13 +1803,27 @@
                 ? parseFloat(cat.avgFinalGrade).toFixed(2)
                 : (fgCount > 0 ? (fgSum / fgCount).toFixed(2) : '0.00');
 
-            var statsHtml = '<span class="ba-stat-item"><strong id="modal-stu-count">' + totalStudents + '</strong> Students</span>' +
-                '<span class="ba-dot">-</span>' +
-                '<span class="ba-stat-item">Avg ' + (hideComp ? 'Grade' : 'Progress Grade') + ': <strong>' + (isMaac ? avgG : avgG + '%') + '</strong></span>';
+            var statsHtml = '<div class="ba-kpi-pill-group">' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Total Enrolled</span>' +
+                    '<span class="ba-kpi-pill-val"><strong id="modal-stu-count">' + totalStudents + '</strong> <small>Students</small></span>' +
+                '</div>' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">' + (hideComp ? 'Avg Grade' : 'Avg Progress Grade') + '</span>' +
+                    '<span class="ba-kpi-pill-val ba-val-progress">' + (isMaac ? avgG : avgG + '%') + '</span>' +
+                '</div>';
+
             if (!hideComp) {
-                statsHtml += '<span class="ba-dot">-</span><span class="ba-stat-item">Avg Completion: <strong>' + avgC + '%</strong></span>' +
-                    '<span class="ba-dot">-</span><span class="ba-stat-item">Avg Final Grade: <strong>' + avgFinalG + '%</strong></span>';
+                statsHtml += '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Avg Completion</span>' +
+                    '<span class="ba-kpi-pill-val ba-val-comp">' + avgC + '%</span>' +
+                '</div>' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Avg Final Grade</span>' +
+                    '<span class="ba-kpi-pill-val ba-val-final">' + avgFinalG + '%</span>' +
+                '</div>';
             }
+            statsHtml += '</div>';
 
             var leftStats = document.createElement('div');
             leftStats.className = 'ba-mt-stats';
@@ -1455,24 +1833,25 @@
             rightActions.className = 'ba-mt-actions';
             rightActions.style.display = 'flex';
             rightActions.style.alignItems = 'center';
-            rightActions.style.gap = '8px';
+            rightActions.style.gap = '10px';
 
-            var searchInput = document.createElement('input');
-            searchInput.type = 'text';
-            searchInput.id = 'ba-kpi-modal-search';
-            searchInput.className = 'ba-modal-search-input';
-            searchInput.placeholder = 'Search student...';
+            var searchWrapper = document.createElement('div');
+            searchWrapper.className = 'ba-modal-search-wrapper';
+            searchWrapper.innerHTML = '<svg class="ba-modal-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>' +
+                '<input type="text" id="ba-kpi-modal-search" class="ba-modal-search-input" placeholder="Search student...">';
+
+            var searchInput = searchWrapper.querySelector('input');
 
             var downloadBtn = document.createElement('button');
             downloadBtn.type = 'button';
             downloadBtn.id = 'ba-kpi-modal-download';
             downloadBtn.className = 'ba-btn-download-sm';
-            downloadBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download CSV';
+            downloadBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> <span>Download CSV</span>';
             if (!hasStudentData) {
                 downloadBtn.disabled = true;
             }
 
-            rightActions.appendChild(searchInput);
+            rightActions.appendChild(searchWrapper);
             rightActions.appendChild(downloadBtn);
 
             toolbar.appendChild(leftStats);
@@ -1490,18 +1869,19 @@
                     finalGradeHeaderTitle = 'Final Grade (After ' + catTotalItems + ' Mandatory Test' + (catTotalItems > 1 ? 's' : '') + ')';
                 }
 
-                var thHtml = '<th class="sortable" data-col="0" data-type="text">Username <span class="sort-icon"></span></th>' +
-                    '<th class="sortable" data-col="1" data-type="text">Student <span class="sort-icon"></span></th>' +
-                    '<th class="sortable" data-col="2" data-type="num">' + (isMaac ? 'Rating' : (isAtt ? 'Attendance' : 'Progress Grade (Current LMS)')) + ' <span class="sort-icon"></span></th>';
+                var thHtml = '<th class="sortable" data-col="0" data-type="text">Username</th>' +
+                    '<th class="sortable" data-col="1" data-type="text">Student</th>' +
+                    '<th class="sortable" data-col="2" data-type="num">' + (isMaac ? 'Rating' : (isAtt ? 'Attendance' : 'Progress Grade (Current LMS)')) + '</th>';
                 if (!hideComp) {
-                    thHtml += '<th class="sortable" data-col="3" data-type="num">Completion <span class="sort-icon"></span></th>' +
-                        '<th class="sortable" data-col="4" data-type="num">' + escapeHtml(finalGradeHeaderTitle) + ' <span class="sort-icon"></span></th>';
+                    thHtml += '<th class="sortable" data-col="3" data-type="num">Completion</th>' +
+                        '<th class="sortable" data-col="4" data-type="num">' + escapeHtml(finalGradeHeaderTitle) + '</th>';
                 }
 
-                var tfHtml = '<tr><td colspan="2" style="text-align:right;color:#64748b;font-weight:600;">TOTAL AVERAGE:</td><td><strong>' + (isMaac ? avgG : avgG + '%') + '</strong></td>';
+                var tfHtml = '<tr><td colspan="2"><div class="ba-tfoot-total-label">TOTAL AVERAGE:</div></td>' +
+                    '<td><strong class="ba-tfoot-val ba-val-progress">' + (isMaac ? avgG : avgG + '%') + '</strong></td>';
                 if (!hideComp) {
-                    tfHtml += '<td><strong>' + avgC + '%</strong></td>' +
-                        '<td><strong>' + avgFinalG + '%</strong></td>';
+                    tfHtml += '<td><strong class="ba-tfoot-val ba-val-comp">' + avgC + '%</strong></td>' +
+                        '<td><strong class="ba-tfoot-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</strong></td>';
                 }
                 tfHtml += '</tr>';
 
@@ -1517,8 +1897,9 @@
                         : (isMaac ? parseFloat(s.percentage).toFixed(1) : parseFloat(s.percentage).toFixed(2) + '%');
 
                     var compText = compFormatted + '%';
+                    var compRatio = '';
                     if (totItems > 0) {
-                        compText += ' (' + itemsComp + '/' + totItems + ')';
+                        compRatio = ' <span class="ba-comp-sub">(' + itemsComp + '/' + totItems + ')</span>';
                     }
 
                     var fgVal = s.finalGrade;
@@ -1536,12 +1917,12 @@
                         : (isMaac ? parseFloat(fgVal).toFixed(1) : parseFloat(fgVal).toFixed(2) + '%');
 
                     rowsHtml += '<tr>' +
-                        '<td>' + escapeHtml(s.username || '—') + '</td>' +
-                        '<td><strong>' + escapeHtml(s.fullname || '') + '</strong></td>' +
-                        '<td>' + escapeHtml(displayGrade) + '</td>';
+                        '<td><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
+                        '<td><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
+                        '<td><span class="ba-grade-text">' + escapeHtml(displayGrade) + '</span></td>';
                     if (!hideComp) {
-                        rowsHtml += '<td>' + escapeHtml(compText) + '</td>' +
-                            '<td><strong>' + escapeHtml(displayFinalGrade) + '</strong></td>';
+                        rowsHtml += '<td><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
+                            '<td><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>';
                     }
                     rowsHtml += '</tr>';
                 });

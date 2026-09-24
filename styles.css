@@ -1090,7 +1090,7 @@
   position: sticky;
   bottom: 0;
   z-index: 1000;
-  background-color: #fffbeb;
+  background-color: #f8fafc;
   border-top: 2px solid var(--border);
   font-weight: 800;
   color: var(--text-dark);
@@ -6764,24 +6764,24 @@ input:checked+.ba-slider:before {
 }
 
 .ba-module-page {
-  --brand: #663399;
-  --brand-d: #552a80;
-  --brand-l: #f5f0fa;
-  --brand-b: #dfd2ec;
+  --ink: #2e2e2e;
+  --mute: #6e7377;
+  --line: #e3e6ea;
+  --brand: #cc0066;
+  --brand-d: #663399;
   --blue: #1b6ec2;
   --blue-d: #1559a0;
-  --blue-bg: #e8f3fc;
-  --green: #1a7f37;
-  --green-bg: #dafbe1;
-  --amber: #9a6700;
-  --amber-bg: #fff8c5;
-  --red: #cf222e;
-  --red-bg: #ffebe9;
-  --ink: #1f2328;
-  --mute: #656d76;
-  --line: #d0d7de;
+  --green: #1e8e4e;
+  --green-bg: #e7f4ec;
+  --amber: #c77a0a;
+  --amber-bg: #fdf2e0;
+  --red: #c0392b;
+  --red-bg: #fbeceb;
+  --gold: #b8860b;
+  --gold-bg: #fbf2d9;
+  --card: #ffffff;
   --card-bg: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   line-height: 1.45;
   padding: 0;
@@ -7142,6 +7142,18 @@ input:checked+.ba-slider:before {
   .ba-module-page .kpirow {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+.ba-module-page .ba-kpi-empty-msg {
+  grid-column: 1 / -1;
+  padding: 24px 20px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--mute);
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 .ba-module-page .kpi {
   background: #ffffff;
