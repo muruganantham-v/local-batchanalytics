@@ -97,12 +97,47 @@ class student_performance_service {
                 foreach ($group['columns'] as $column) {
                     $key = $column['key'];
                     $rawvals = $customvalues[$userid][$key] ?? [];
+                    $isboolean = ($column['type'] ?? '') === 'boolean'
+                        || ($column['datatype'] ?? '') === 'checkbox';
                     if (empty($rawvals)) {
-                        $student['custom'][$key] = '';
+                        $student['custom'][$key] = $isboolean ? 0 : '';
                         continue;
                     }
                     if ($key === 'trend') {
                         $student['custom'][$key] = end($rawvals);
+                        continue;
+                    }
+                    if ($isboolean) {
+                        $istrue = false;
+                        foreach ($rawvals as $val) {
+                            if (is_array($val)) {
+                                foreach ($val as $subval) {
+                                    if ($subval === 1 || $subval === '1' || $subval === true || $subval === 'true' || strtolower((string)$subval) === 'yes') {
+                                        $istrue = true;
+                                        break 2;
+                                    }
+                                }
+                            } else if ($val === 1 || $val === '1' || $val === true || $val === 'true' || strtolower((string)$val) === 'yes') {
+                                $istrue = true;
+                                break;
+                            }
+                        }
+                        $student['custom'][$key] = $istrue ? 1 : 0;
+                        continue;
+                    }
+                    if (($column['type'] ?? '') === 'number' || ($column['type'] ?? '') === 'formula') {
+                        $numericvals = [];
+                        foreach ($rawvals as $val) {
+                            if (is_numeric($val)) {
+                                $numericvals[] = (float)$val;
+                            }
+                        }
+                        if (!empty($numericvals)) {
+                            $avg = round(array_sum($numericvals) / count($numericvals), 2);
+                            $student['custom'][$key] = $avg;
+                        } else {
+                            $student['custom'][$key] = '';
+                        }
                         continue;
                     }
                     $flattened = [];

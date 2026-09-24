@@ -176,7 +176,18 @@ $format_mod_date = static function($val): string {
 if (!empty($raw_modules)) {
     foreach ($raw_modules as $mod) {
         $mod_idx = (int)($mod['module'] ?? 1);
-        $m_name = !empty($mod['name']) ? $mod['name'] : (!empty($mod['courseshortname']) ? $mod['courseshortname'] : ($canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx)));
+        $course_id = !empty($mod['moodlecourseid']) ? (int)$mod['moodlecourseid'] : 0;
+        $m_name = !empty($mod['name']) ? $mod['name'] : (!empty($mod['courseshortname']) ? $mod['courseshortname'] : '');
+        if ($m_name === '' && $course_id > 0) {
+            $c_rec = $DB->get_record('course', ['id' => $course_id], 'id, fullname, shortname');
+            if ($c_rec) {
+                $m_name = $c_rec->fullname ?: $c_rec->shortname;
+            }
+        }
+        if ($m_name === '') {
+            $m_name = $canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx);
+        }
+
         // Resolve Class Mentor(s) with deduplication and validation
         $class_mentors = [];
         $class_mentors_arr = [];
@@ -239,8 +250,6 @@ if (!empty($raw_modules)) {
             $delay_code = null;
         }
 
-        $course_id = !empty($mod['moodlecourseid']) ? (int)$mod['moodlecourseid'] : 0;
-
         $schedule_rows[] = [
             'name'          => $m_name,
             'class_mentor'  => $class_mentor,
@@ -297,13 +306,31 @@ if (!empty($raw_modules)) {
     ];
 }
 
-// Determine active module
-$cur_module = 'Advanced C';
-$tentative_end = '12 Apr 2027';
+// Determine active module and tentative end date
+$cur_module = '';
 foreach ($schedule_rows as $row) {
     if ($row['delay'] === 'prog') {
         $cur_module = $row['name'];
         break;
+    }
+}
+if ($cur_module === '' && !empty($schedule_rows)) {
+    foreach ($schedule_rows as $row) {
+        if ($row['a_end'] === '—') {
+            $cur_module = $row['name'];
+            break;
+        }
+    }
+}
+if ($cur_module === '') {
+    $cur_module = !empty($schedule_rows[0]['name']) ? $schedule_rows[0]['name'] : 'Advanced C';
+}
+
+$tentative_end = '12 Apr 2027';
+if (!empty($schedule_rows)) {
+    $last_sr = end($schedule_rows);
+    if (!empty($last_sr['p_end']) && $last_sr['p_end'] !== '—') {
+        $tentative_end = $last_sr['p_end'];
     }
 }
 
@@ -354,8 +381,8 @@ if (is_array($ss_raw)) {
             continue;
         }
 
-        $p_formatted = $p > 0 ? date('d M Y', $p) : '—';
-        $a_formatted = $a > 0 ? date('d M Y', $a) : '—';
+        $p_formatted = $p > 0 ? userdate($p, '%d %b %Y') : '—';
+        $a_formatted = $a > 0 ? userdate($a, '%d %b %Y') : '—';
 
         if ($a > 0) {
             $status = 'g';
@@ -630,7 +657,7 @@ echo $OUTPUT->header();
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>"><span style="margin-right:3px;">🏠</span> Home</a>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <b><?= s($batchid_label) ?></b>
     </span>
@@ -644,7 +671,7 @@ echo $OUTPUT->header();
 
   <div class="shell">
 
-    <!-- Batch Header Card in New UI Style -->
+    <!-- Batch Header Card in Prototype Style -->
     <div class="bhead">
         <div class="top">
           <div>
@@ -683,15 +710,15 @@ echo $OUTPUT->header();
         </div>
       </div>
 
-      <!-- Navigation Tabs in New UI Pill Style -->
-      <div class="tabs ba-batch-tabs ba-top-nav-tabs-bar">
-        <button type="button" class="tab ba-top-nav-tab active" data-tab="sched"><span class="ba-tab-icon">📅</span> Schedule</button>
-        <button type="button" class="tab ba-top-nav-tab" data-tab="ss"><span class="ba-tab-icon">📋</span> SS Activities</button>
-        <button type="button" class="tab ba-top-nav-tab" data-tab="students"><span class="ba-tab-icon">👥</span> Student Performance</button>
+      <!-- Navigation Tabs in Prototype Underline Style -->
+      <div class="tabs ba-batch-tabs">
+        <button type="button" class="tab active" data-tab="sched">Schedule</button>
+        <button type="button" class="tab" data-tab="ss">SS Activities</button>
+        <button type="button" class="tab" data-tab="students">Student Performance</button>
         <?php if ($can_view_notes || $can_edit_notes): ?>
-          <button type="button" class="tab ba-top-nav-tab" data-tab="notes"><span class="ba-tab-icon">📝</span> Review Notes</button>
+          <button type="button" class="tab" data-tab="notes">Review Notes</button>
         <?php endif; ?>
-        <button type="button" class="tab ba-top-nav-tab" data-tab="crm" id="ba-crm-tab-btn"><span class="ba-tab-icon">📊</span> CRM Data</button>
+        <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn">CRM Data</button>
       </div>
 
       <!-- Panels Container -->
@@ -763,7 +790,7 @@ echo $OUTPUT->header();
                         }
                       ?>
                       <?php if ($course_linked): ?>
-                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => (int)$r['courseid']]))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id]))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
                       <?php else: ?>
                         <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
                       <?php endif; ?>
@@ -830,11 +857,6 @@ echo $OUTPUT->header();
                   <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
                   <?php foreach ($performance_columns as $column): ?>
                     <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
-                  <?php endforeach; ?>
-                  <?php foreach ($performance_custom_groups as $group): ?>
-                    <?php foreach ($group['columns'] as $column): ?>
-                      <th class="ba-performance-custom-col ba-performance-group-<?= s($group['key']) ?>" data-custom-key="<?= s($column['key']) ?>"><?= s($column['label']) ?></th>
-                    <?php endforeach; ?>
                   <?php endforeach; ?>
                   <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
                 </tr>

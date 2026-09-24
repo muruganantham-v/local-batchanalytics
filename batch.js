@@ -125,8 +125,8 @@
         var pageSize = 10;
         var sortColumn = '';
         var sortDirection = 'asc';
+        var selectedBand = null;
 
-        var performanceCollapsedGroups = { module: false };
         var performanceTable = container.querySelector('#panel-students table');
 
         function groupToggle(label, key, collapsed) {
@@ -637,8 +637,24 @@
                     return '<span class="muted">&mdash;</span>';
                 }
                 return '<button type="button" class="ba-btn ba-btn-sm ba-performance-feedback-btn" data-feedback-userid="' + Number(student.userid || 0) + '" data-feedback-colkey="' + escapeHtml(column.key) + '" data-feedback-collabel="' + escapeHtml(column.label) + '" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid #6366f1; color:#6366f1; background:transparent; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">' +
-                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
+                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
                     '</button>';
+            }
+
+            var isBoolean = (column.type === 'boolean') ||
+                            (column.datatype === 'checkbox');
+            if (isBoolean) {
+                var isTrue = false;
+                if (Array.isArray(value)) {
+                    isTrue = value.some(function(v) {
+                        return v === 1 || v === '1' || v === true || v === 'true' || String(v).toLowerCase() === 'yes';
+                    });
+                } else {
+                    isTrue = (value === 1 || value === '1' || value === true || value === 'true' || String(value).toLowerCase() === 'yes');
+                }
+                return isTrue
+                    ? '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:11.5px; font-weight:700;">Yes</span>'
+                    : '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#f1f5f9; color:#64748b; font-size:11.5px; font-weight:600;">No</span>';
             }
 
             var items = null;
@@ -685,46 +701,24 @@
         }
 
         function getVisiblePerformanceColumnCount() {
-            var count = 3;
-            count += performanceCollapsedGroups.module ? 1 : (1 + performanceColumns.length);
-            performanceCustomGroups.forEach(function(group) {
-                count += performanceCollapsedGroups[group.key] ? 1 : (group.columns || []).length;
-            });
-            return count;
+            return 4 + performanceColumns.length;
         }
 
         function renderPerformanceHeaders() {
             if (!performanceTable) return;
             var thead = performanceTable.querySelector('thead');
             if (!thead) return;
-            var moduleCollapsed = !!performanceCollapsedGroups.module;
-            var firstRow = '<tr><th class="sortable" data-sort="band" title="Sort by Band" rowspan="2">Band</th>' +
-                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name" rowspan="2">Student</th>';
-            var secondRow = '<tr>';
-            if (moduleCollapsed) {
-                firstRow += '<th class="ba-maac-group-head ba-performance-group-collapsed" rowspan="2">' + groupToggle('Module Performance', 'module', true) + '</th>';
-            } else {
-                firstRow += '<th class="ba-maac-group-head" colspan="' + (1 + performanceColumns.length) + '">' + groupToggle('Module Performance', 'module', false) + '</th>';
-                secondRow += '<th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>';
-                performanceColumns.forEach(function(column) {
-                    secondRow += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
-                });
-            }
-            performanceCustomGroups.forEach(function(group) {
-                var columns = group.columns || [];
-                if (!columns.length) return;
-                if (performanceCollapsedGroups[group.key]) {
-                    firstRow += '<th class="ba-maac-group-head ba-performance-group-collapsed" rowspan="2">' + groupToggle(group.label, group.key, true) + '</th>';
-                    return;
-                }
-                firstRow += '<th class="ba-maac-group-head" colspan="' + columns.length + '">' + groupToggle(group.label, group.key, false) + '</th>';
-                columns.forEach(function(column) {
-                    secondRow += '<th class="ba-performance-custom-col' + (column.key === 'trend' ? ' ba-performance-custom-trend' : '') + '" data-custom-key="' + escapeHtml(column.key) + '">' + escapeHtml(column.label) + '</th>';
-                });
+            var overallLabel = perfMode === 'grade' ? 'Grade' : 'Percentile';
+            var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Percentile';
+            var html = '<tr>' +
+                '<th class="sortable" data-sort="band" title="Sort by Band">Band</th>' +
+                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
+                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>';
+            performanceColumns.forEach(function(column) {
+                html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
-            firstRow += '<th class="sortable" data-sort="merit" title="Sort by Merit" rowspan="2">Merit</th></tr>';
-            secondRow += '</tr>';
-            thead.innerHTML = firstRow + secondRow;
+            html += '<th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th></tr>';
+            thead.innerHTML = html;
         }
 
         function togglePerformanceGroup(key) {
@@ -908,6 +902,305 @@
             return bands;
         }
 
+        function openBandDetailModal(bandKey) {
+            var existing = document.getElementById('ba-band-detail-modal');
+            if (existing) existing.remove();
+
+            var bandStudents = studentsData.filter(function(s) { return s._band === bandKey; });
+            var percentileValues = getPercentileValues(studentsData);
+
+            var meta = {
+                top: {
+                    title: perfMode === 'grade' ? 'Top Performers' : 'Top 15%',
+                    sub: perfMode === 'grade' ? 'Overall Grade > 70%' : 'Top 15% by class rank',
+                    color: '#16a34a',
+                    dotClass: 'var(--green, #1e8e4e)'
+                },
+                mid: {
+                    title: perfMode === 'grade' ? 'Middle Performers' : 'Middle 70%',
+                    sub: perfMode === 'grade' ? 'Overall Grade 40% – 70%' : 'Middle 70% by class rank',
+                    color: '#d97706',
+                    dotClass: 'var(--amber, #c77a0a)'
+                },
+                bot: {
+                    title: perfMode === 'grade' ? 'Low Performers' : 'Bottom 15%',
+                    sub: perfMode === 'grade' ? 'Overall Grade < 40%' : 'Bottom 15% by class rank',
+                    color: '#dc2626',
+                    dotClass: 'var(--red, #c0392b)'
+                }
+            };
+            var bandMeta = meta[bandKey] || meta.mid;
+
+            var modal = document.createElement('div');
+            modal.className = 'ba-band-modal';
+            modal.id = 'ba-band-detail-modal';
+
+            var modalSortCol = 'grade';
+            var modalSortDir = 'desc';
+            var modalSearch = '';
+            var modalScoreFilter = 'all';
+
+            var categoryHeadersHtml = performanceColumns.map(function(c) {
+                return '<th class="ba-modal-th-sortable" data-modal-col="' + escapeHtml(c.key) + '">' +
+                    escapeHtml(c.label) + ' <span class="ba-sort-indicator">⇅</span></th>';
+            }).join('');
+
+            modal.innerHTML = '<div class="ba-band-modal-dialog" role="dialog" aria-modal="true">' +
+                '<div class="ba-band-modal-header">' +
+                    '<div style="display:flex; align-items:center; gap:12px;">' +
+                        '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background:' + bandMeta.color + ';"></span>' +
+                        '<div>' +
+                            '<h3 style="margin:0; font-size:18px; font-weight:700; color:#0f172a;">' + escapeHtml(bandMeta.title) + ' (' + bandStudents.length + ' Students)</h3>' +
+                            '<div style="font-size:12px; color:#64748b; margin-top:2px;">' + escapeHtml(bandMeta.sub) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div style="display:flex; align-items:center; gap:10px;">' +
+                        '<input type="text" id="ba-band-modal-search" class="ba-modal-input-search" placeholder="Search student name or ID..." style="width:200px;">' +
+                        '<select id="ba-band-modal-filter" class="ba-modal-select" title="Filter by grade">' +
+                            '<option value="all">All Scores</option>' +
+                            '<option value="ge70">Grade &ge; 70%</option>' +
+                            '<option value="40to70">Grade 40% &ndash; 70%</option>' +
+                            '<option value="lt40">Grade &lt; 40%</option>' +
+                        '</select>' +
+                        '<button type="button" id="ba-band-modal-export" class="ba-modal-btn-export">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+                                '<polyline points="7 10 12 15 17 10"/>' +
+                                '<line x1="12" y1="15" x2="12" y2="3"/>' +
+                            '</svg>' +
+                            '<span>Export CSV</span>' +
+                        '</button>' +
+                        '<button type="button" class="ba-modal-btn-close-circle ba-band-modal-close" aria-label="Close modal">' +
+                            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+                                '<line x1="6" y1="6" x2="18" y2="18"></line>' +
+                            '</svg>' +
+                        '</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ba-band-modal-body">' +
+                    '<div class="tablecard" style="margin:0; max-height:55vh; overflow-y:auto; overflow-x:auto;">' +
+                        '<table style="width:100%; border-collapse:separate; border-spacing:0;">' +
+                            '<thead style="position:sticky; top:0; background:#fff; z-index:10; box-shadow:0 1px 0 #e2e8f0;">' +
+                                '<tr>' +
+                                    '<th class="ba-modal-th-sortable ba-modal-sticky-col" data-modal-col="name">Student <span class="ba-sort-indicator">⇅</span></th>' +
+                                    '<th class="ba-modal-th-sortable" data-modal-col="grade">' + (perfMode === 'grade' ? 'Grade' : 'Percentile') + ' <span class="ba-sort-indicator">⇅</span></th>' +
+                                    categoryHeadersHtml +
+                                '</tr>' +
+                            '</thead>' +
+                            '<tbody id="ba-band-modal-tbody"></tbody>' +
+                        '</table>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ba-band-modal-footer">' +
+                    '<span id="ba-band-modal-count" style="font-size:12px; color:#64748b;">Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students</span>' +
+                    '<button type="button" class="ba-modal-btn-footer-close ba-band-modal-close-btn">Close</button>' +
+                '</div>' +
+            '</div>';
+
+            document.body.appendChild(modal);
+
+            function getModalSortValue(student, col) {
+                if (col === 'name') {
+                    return (student.name || '').toLowerCase();
+                }
+                if (col === 'grade') {
+                    if (perfMode === 'percentile') {
+                        var p = (percentileValues && percentileValues[student._origIdx] !== undefined) ? percentileValues[student._origIdx] : -1;
+                        return p;
+                    }
+                    return parseFloat(student.grade) || 0;
+                }
+                for (var i = 0; i < performanceColumns.length; i++) {
+                    if (performanceColumns[i].key === col) {
+                        var val = getCategoryValue(student, performanceColumns[i]);
+                        if (val === null || val === undefined || val === '') return -999;
+                        var num = parseFloat(val);
+                        return isNaN(num) ? -999 : num;
+                    }
+                }
+                return 0;
+            }
+
+            function getFilteredAndSortedStudents() {
+                return bandStudents.filter(function(s) {
+                    if (modalSearch) {
+                        var name = (s.name || '').toLowerCase();
+                        var id = (s.id || '').toLowerCase();
+                        if (name.indexOf(modalSearch) === -1 && id.indexOf(modalSearch) === -1) {
+                            return false;
+                        }
+                    }
+                    if (modalScoreFilter !== 'all') {
+                        var g = parseFloat(s.grade) || 0;
+                        if (modalScoreFilter === 'ge70' && g < 70) return false;
+                        if (modalScoreFilter === '40to70' && (g < 40 || g > 70)) return false;
+                        if (modalScoreFilter === 'lt40' && g >= 40) return false;
+                    }
+                    return true;
+                }).sort(function(a, b) {
+                    var valA = getModalSortValue(a, modalSortCol);
+                    var valB = getModalSortValue(b, modalSortCol);
+                    var res = 0;
+                    if (typeof valA === 'string' && typeof valB === 'string') {
+                        res = valA.localeCompare(valB);
+                    } else {
+                        res = valA - valB;
+                    }
+                    if (res !== 0) {
+                        return modalSortDir === 'asc' ? res : -res;
+                    }
+                    return (a.name || '').localeCompare(b.name || '');
+                });
+            }
+
+            var tbody = modal.querySelector('#ba-band-modal-tbody');
+            var countEl = modal.querySelector('#ba-band-modal-count');
+
+            function renderModalRows() {
+                var list = getFilteredAndSortedStudents();
+                var rowsHtml = '';
+                list.forEach(function(s) {
+                    var avatarHtml = '';
+                    var studentInitials = escapeHtml(s.initials || (s.name ? s.name.charAt(0).toUpperCase() : '?'));
+                    if (s.profileimageurl) {
+                        avatarHtml = '<div class="ba-avatar-wrap">' +
+                            '<img src="' + escapeHtml(s.profileimageurl) + '" class="ba-student-avatar" alt="' + escapeHtml(s.name) + '" onerror="this.onerror=null;this.parentElement.innerHTML=\'<span class=\\\'ba-avatar-initials\\\'>' + studentInitials + '</span>\';">' +
+                        '</div>';
+                    } else {
+                        avatarHtml = '<div class="ba-avatar-wrap"><span class="ba-avatar-initials">' + studentInitials + '</span></div>';
+                    }
+
+                    rowsHtml += '<tr>' +
+                        '<td class="ba-performance-student-cell ba-modal-sticky-col">' +
+                            '<div class="ba-student-cell">' +
+                                avatarHtml +
+                                '<div class="ba-student-info">' +
+                                    '<span class="sname">' + escapeHtml(s.name) + '</span>' +
+                                    '<span class="sid">' + escapeHtml(s.id) + '</span>' +
+                                '</div>' +
+                            '</div>' +
+                        '</td>' +
+                        '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                        performanceColumns.map(function(column) {
+                            return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
+                        }).join('') +
+                        '</tr>';
+                });
+
+                if (!rowsHtml) {
+                    rowsHtml = '<tr><td colspan="' + (2 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found matching current filter.</td></tr>';
+                }
+
+                if (tbody) {
+                    tbody.innerHTML = rowsHtml;
+                }
+
+                if (countEl) {
+                    var isFiltered = modalSearch || modalScoreFilter !== 'all';
+                    countEl.textContent = isFiltered
+                        ? ('Showing ' + list.length + ' of ' + bandStudents.length + ' students (filtered)')
+                        : ('Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students');
+                }
+
+                // Update sort indicators
+                var ths = modal.querySelectorAll('th.ba-modal-th-sortable');
+                ths.forEach(function(th) {
+                    var col = th.getAttribute('data-modal-col');
+                    var ind = th.querySelector('.ba-sort-indicator');
+                    if (col === modalSortCol) {
+                        th.classList.add('active');
+                        if (ind) ind.textContent = modalSortDir === 'asc' ? '▲' : '▼';
+                    } else {
+                        th.classList.remove('active');
+                        if (ind) ind.textContent = '⇅';
+                    }
+                });
+            }
+
+            // Initial render of rows
+            renderModalRows();
+
+            // Column Header Sorting listeners
+            var headerThs = modal.querySelectorAll('th.ba-modal-th-sortable');
+            headerThs.forEach(function(th) {
+                th.addEventListener('click', function() {
+                    var col = this.getAttribute('data-modal-col');
+                    if (modalSortCol === col) {
+                        modalSortDir = (modalSortDir === 'asc' ? 'desc' : 'asc');
+                    } else {
+                        modalSortCol = col;
+                        modalSortDir = (col === 'name' ? 'asc' : 'desc');
+                    }
+                    renderModalRows();
+                });
+            });
+
+            // Filter & Search listeners
+            var searchInput = modal.querySelector('#ba-band-modal-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    modalSearch = (this.value || '').trim().toLowerCase();
+                    renderModalRows();
+                });
+            }
+
+            var scoreFilter = modal.querySelector('#ba-band-modal-filter');
+            if (scoreFilter) {
+                scoreFilter.addEventListener('change', function() {
+                    modalScoreFilter = this.value;
+                    renderModalRows();
+                });
+            }
+
+            // Close handling
+            function closeModal() {
+                modal.remove();
+                document.removeEventListener('keydown', handleKey);
+            }
+            function handleKey(e) {
+                if (e.key === 'Escape') closeModal();
+            }
+            document.addEventListener('keydown', handleKey);
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal || e.target.closest('.ba-band-modal-close') || e.target.closest('.ba-band-modal-close-btn')) {
+                    closeModal();
+                }
+            });
+
+            // Export CSV for this modal
+            var exportBtn = modal.querySelector('#ba-band-modal-export');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    var csvHeaders = ['Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
+                    performanceColumns.forEach(function(column) {
+                        var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
+                        csvHeaders.push(column.label + suffix);
+                    });
+
+                    var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
+                    var exportList = getFilteredAndSortedStudents();
+                    exportList.forEach(function(s) {
+                        var name = (s.name || '').replace(/"/g, '""');
+                        var id = (s.id || '').replace(/"/g, '""');
+                        var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
+                        var row = [name, id, grade];
+                        performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
+                        csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
+                    });
+                    var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    var link = document.createElement('a');
+                    var url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'batch_' + bandKey + '_performers.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
+            }
+        }
+
         function renderPerformance() {
             if (!studentsData || studentsData.length === 0) {
                 if (stuBody) {
@@ -918,13 +1211,15 @@
                 return;
             }
 
-            var totalItems = studentsData.length;
-            var bands = computeBands(studentsData, perfMode);
+            // Always compute bands across the entire dataset for accurate KPI numbers
+            var allBands = computeBands(studentsData, perfMode);
             var percentileValues = getPercentileValues(studentsData);
             updateOverallHeading();
+
             var counts = { top: 0, mid: 0, bot: 0 };
-            bands.forEach(function(b) {
-                if (counts[b] !== undefined) counts[b]++;
+            studentsData.forEach(function(s, idx) {
+                s._band = allBands[idx] || 'mid';
+                if (counts[s._band] !== undefined) counts[s._band]++;
             });
 
             var labels = perfMode === 'grade' ? {
@@ -939,10 +1234,40 @@
 
             if (bandrow) {
                 bandrow.innerHTML =
-                    '<div class="band top"><div class="pct">' + counts.top + '</div><div class="lbl">' + labels.top[0] + '</div><div class="cnt">' + labels.top[1] + '</div></div>' +
-                    '<div class="band mid"><div class="pct">' + counts.mid + '</div><div class="lbl">' + labels.mid[0] + '</div><div class="cnt">' + labels.mid[1] + '</div></div>' +
-                    '<div class="band bot"><div class="pct">' + counts.bot + '</div><div class="lbl">' + labels.bot[0] + '</div><div class="cnt">' + labels.bot[1] + '</div></div>';
+                    '<div class="band top" data-band="top" role="button" tabindex="0" title="Click to view Top Performers">' +
+                        '<div class="pct">' + counts.top + '</div>' +
+                        '<div class="lbl">' + labels.top[0] + '</div>' +
+                        '<div class="cnt">' + labels.top[1] + '</div>' +
+                    '</div>' +
+                    '<div class="band mid" data-band="mid" role="button" tabindex="0" title="Click to view Middle Performers">' +
+                        '<div class="pct">' + counts.mid + '</div>' +
+                        '<div class="lbl">' + labels.mid[0] + '</div>' +
+                        '<div class="cnt">' + labels.mid[1] + '</div>' +
+                    '</div>' +
+                    '<div class="band bot" data-band="bot" role="button" tabindex="0" title="Click to view Low Performers">' +
+                        '<div class="pct">' + counts.bot + '</div>' +
+                        '<div class="lbl">' + labels.bot[0] + '</div>' +
+                        '<div class="cnt">' + labels.bot[1] + '</div>' +
+                    '</div>';
+
+                // Attach click and keyboard listeners to KPI cards to open modal window
+                var cards = bandrow.querySelectorAll('.band[data-band]');
+                cards.forEach(function(card) {
+                    card.addEventListener('click', function() {
+                        var b = this.getAttribute('data-band');
+                        openBandDetailModal(b);
+                    });
+                    card.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            var b = this.getAttribute('data-band');
+                            openBandDetailModal(b);
+                        }
+                    });
+                });
             }
+
+            var totalItems = studentsData.length;
 
             // Compute Pagination Bounds
             var isAll = (pageSize === 'all');
@@ -977,9 +1302,8 @@
                 bot: 'var(--red, #c0392b)'
             };
 
-            pagedStudents.forEach(function(s, pageIdx) {
-                var globalIdx = isAll ? pageIdx : ((currentPage - 1) * sizeNum + pageIdx);
-                var b = bands[globalIdx] || 'mid';
+            pagedStudents.forEach(function(s) {
+                var b = s._band || 'mid';
 
                 var meritHtml = '';
                 if (s.spot) meritHtml += '<span class="m m-spot">★ Spot</span> ';
@@ -1008,19 +1332,16 @@
                             '</div>' +
                         '</div>' +
                     '</td>' +
-                    (performanceCollapsedGroups.module
-                        ? '<td class="ba-maac-collapsed-col ba-performance-group-collapsed"></td>'
-                        : ('<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
-                            performanceColumns.map(function(column) {
-                                return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
-                            }).join(''))) +
-                    customGroupCells(s) +
+                    '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                    performanceColumns.map(function(column) {
+                        return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
+                    }).join('') +
                     '<td><span class="merit">' + meritHtml + '</span></td>' +
                     '</tr>';
             });
 
             if (pagedStudents.length === 0) {
-                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
+                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this filter.</td></tr>';
             }
 
             if (stuBody) {
@@ -1190,67 +1511,26 @@
         if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
                 var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
-                if (!performanceCollapsedGroups.module) {
-                    performanceColumns.forEach(function(column) {
-                        var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
-                        csvHeaders.push(column.label + suffix);
-                    });
-                }
-                performanceCustomGroups.forEach(function(group) {
-                    if (!performanceCollapsedGroups[group.key]) {
-                        (group.columns || []).forEach(function(column) { csvHeaders.push(column.label); });
-                    }
+                performanceColumns.forEach(function(column) {
+                    var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
+                    csvHeaders.push(column.label + suffix);
                 });
                 csvHeaders.push('Merit');
                 var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
-                var bands = computeBands(studentsData, perfMode);
                 var percentileValues = getPercentileValues(studentsData);
 
-                studentsData.forEach(function(s, idx) {
-                    var band = bands[idx] ? bands[idx].toUpperCase() : 'MID';
+                var exportStudents = selectedBand
+                    ? studentsData.filter(function(s) { return s._band === selectedBand; })
+                    : studentsData;
+
+                exportStudents.forEach(function(s) {
+                    var band = s._band ? s._band.toUpperCase() : 'MID';
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
                     var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
                     var merit = (s.merit_text || '').replace(/"/g, '""');
                     var row = [band, name, id, grade];
-                    if (!performanceCollapsedGroups.module) {
-                        performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
-                    }
-                    performanceCustomGroups.forEach(function(group) {
-                        if (!performanceCollapsedGroups[group.key]) {
-                            (group.columns || []).forEach(function(column) {
-                                var val = s.custom ? s.custom[column.key] : null;
-                                var isFeedback = (column.type === 'multi_feedback') ||
-                                                 (column.key && column.key.indexOf('feedback') !== -1) ||
-                                                 (column.label && column.label.toLowerCase().indexOf('feedback') !== -1);
-                                if (isFeedback) {
-                                    var feedbacks = normalizeFeedbackList(val);
-                                    row.push(feedbacks.length ? feedbacks.map(function(f) { return (f.date ? f.date + ': ' : '') + f.text; }).join(' | ') : '-');
-                                } else if (Array.isArray(val)) {
-                                    var items = val.map(function(item) {
-                                        return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
-                                    }).filter(function(str) { return str.trim() !== ''; });
-                                    row.push(items.length ? items.join(' | ') : '-');
-                                } else if (typeof val === 'string' && val.trim().startsWith('[') && val.trim().endsWith(']')) {
-                                    try {
-                                        var parsed = JSON.parse(val.trim());
-                                        if (Array.isArray(parsed)) {
-                                            var items = parsed.map(function(item) {
-                                                return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
-                                            }).filter(function(str) { return str.trim() !== ''; });
-                                            row.push(items.length ? items.join(' | ') : '-');
-                                        } else {
-                                            row.push(val || '-');
-                                        }
-                                    } catch(e) {
-                                        row.push(val || '-');
-                                    }
-                                } else {
-                                    row.push((val !== undefined && val !== null && val !== '') ? String(val) : '-');
-                                }
-                            });
-                        }
-                    });
+                    performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     row.push(merit);
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
                 });

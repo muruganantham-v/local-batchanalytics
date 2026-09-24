@@ -475,6 +475,18 @@ $students_sql = "
 $enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
 
 if ($courseid > 0) {
+    // 1. Fetch depth-2 gradebook categories ordered by their gradebook sequence (gi_cat.sortorder)
+    $cat_sql = "
+        SELECT gc.id, gc.fullname, gc.depth, gi_cat.sortorder
+        FROM {grade_categories} gc
+        LEFT JOIN {grade_items} gi_cat ON gi_cat.courseid = gc.courseid AND gi_cat.itemtype = 'category' AND gi_cat.iteminstance = gc.id
+        WHERE gc.courseid = :courseid AND gc.depth = 2
+        ORDER BY gi_cat.sortorder ASC, gc.id ASC
+    ";
+    $depth2_cats = $DB->get_records_sql($cat_sql, ['courseid' => $courseid]);
+    $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+
+    // 2. Fetch all mod and manual grade items that are not permanently hidden
     $items_sql = "
         SELECT
             gi.id as itemid, gi.itemname, gi.itemtype, gi.itemmodule, gi.grademax, gi.grademin,
@@ -482,55 +494,53 @@ if ($courseid > 0) {
         FROM {grade_items} gi
         LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
         WHERE gi.courseid = :courseid
-          AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
-          AND gi.hidden = 0
-        ORDER BY gc.fullname, gi.itemname
+          AND gi.itemtype IN ('mod', 'manual')
+          AND gi.hidden != 1
+        ORDER BY gi.sortorder ASC, gi.id ASC
     ";
     $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
-    $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
 
+    // 3. Initialize depth-2 categories
     $raw_cats = [];
-    foreach ($grade_items as $item) {
-        if ($item->itemtype === 'course') {
-            $cat_name = 'MAAC Ratings';
-        } else {
-            $cat_id = $item->categoryid;
-            $cat_name = 'Uncategorized';
-            if ($cat_id && isset($all_cats[$cat_id])) {
-                $c = $all_cats[$cat_id];
-                while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
-                    $c = $all_cats[$c->parent];
-                }
-                if ($c->depth == 2) {
-                    $cat_name = $c->fullname;
-                }
-            }
-        }
-
-        if (trim($cat_name) === '' || $cat_name === '?' || $cat_name === 'Uncategorized') {
+    foreach ($depth2_cats as $cat) {
+        $cname = trim($cat->fullname);
+        if ($cname === '' || $cname === '?') {
             continue;
         }
-
-        if (!isset($raw_cats[$cat_name])) {
-            $raw_cats[$cat_name] = [
-                'categoryname' => $cat_name,
-                'items' => [],
-                'studentGrades' => []
-            ];
-        }
-        $raw_cats[$cat_name]['items'][] = [
-            'itemid' => $item->itemid,
-            'grademax' => (float)$item->grademax,
-            'grademin' => (float)$item->grademin
+        $raw_cats[$cat->id] = [
+            'categoryid'   => $cat->id,
+            'categoryname' => $cname,
+            'items'        => [],
+            'studentGrades'=> []
         ];
     }
 
-    if (!empty($raw_cats) && !empty($enrolled_students)) {
-        foreach ($raw_cats as $category_key => &$category_data) {
-            if ($category_key === 'MAAC Ratings' || stripos($category_key, 'attend') !== false) {
-                continue;
+    // 4. Map grade items into depth-2 categories
+    foreach ($grade_items as $item) {
+        $cat_id = $item->categoryid;
+        if ($cat_id && isset($all_cats[$cat_id])) {
+            $c = $all_cats[$cat_id];
+            while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
+                $c = $all_cats[$c->parent];
             }
-            $category_data['categoryname'] = $category_key . ' (' . count($category_data['items']) . ')';
+            if ($c->depth == 2 && isset($raw_cats[$c->id])) {
+                $raw_cats[$c->id]['items'][] = [
+                    'itemid' => $item->itemid,
+                    'grademax' => (float)$item->grademax,
+                    'grademin' => (float)$item->grademin
+                ];
+            }
+        }
+    }
+
+    // Filter out categories that have no grade items
+    $raw_cats = array_filter($raw_cats, function($cdata) {
+        return !empty($cdata['items']);
+    });
+
+    if (!empty($raw_cats) && !empty($enrolled_students)) {
+        foreach ($raw_cats as &$category_data) {
+            $category_data['displayname'] = $category_data['categoryname'] . ' (' . count($category_data['items']) . ')';
         }
         unset($category_data);
 
@@ -539,7 +549,7 @@ if ($courseid > 0) {
             FROM {grade_grades} gg
             JOIN {grade_items} gi ON gi.id = gg.itemid
             WHERE gi.courseid = :courseid
-              AND gi.hidden = 0
+              AND gi.hidden != 1
               AND gg.finalgrade IS NOT NULL
               AND gg.excluded = 0
               AND gg.hidden = 0
@@ -551,23 +561,10 @@ if ($courseid > 0) {
         }
         $rs->close();
 
-        // Synchronize MAAC ratings from maac_service (exactly as simple.js syncCourseMaacRatings does)
-        $maac_service = new \local_batchanalytics\maac_service();
-        $maac_ratings = [];
-        try {
-            $m_data = $maac_service->get_course_data($courseid, $USER->id);
-            if (!empty($m_data['students'])) {
-                foreach ($m_data['students'] as $st) {
-                    if (isset($st['maac_rating']) && $st['maac_rating'] !== null && $st['maac_rating'] !== '') {
-                        $maac_ratings[$st['username']] = (float)$st['maac_rating'];
-                    }
-                }
-            }
-        } catch (\Throwable $e) {}
-
         $kpi_card_idx = 0;
-        foreach ($raw_cats as $cat_key => &$cat_data) {
-            $display_name = $cat_data['categoryname'];
+        foreach ($raw_cats as $cat_id => &$cat_data) {
+            $display_name = $cat_data['displayname'];
+            $cat_clean_name = $cat_data['categoryname'];
             $gradable_items_in_cat = 0;
             $category_total_max = 0;
 
@@ -608,26 +605,14 @@ if ($courseid > 0) {
                 }
 
                 $percentage = $total_max > 0 ? round(($total_earned / $total_max) * 100, 2) : null;
-                if ($cat_key === 'MAAC Ratings') {
-                    if (isset($maac_ratings[$student->username])) {
-                        $percentage = $maac_ratings[$student->username];
-                    } else if ($percentage !== null) {
-                        $percentage = round($percentage / 10, 1);
-                    }
-                }
-
                 $comp_rate = $gradable_items_in_cat > 0
                     ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
                     : 0;
 
-                if ($cat_key === 'MAAC Ratings') {
-                    $final_grade = $percentage;
-                } else if ($gradable_items_in_cat > 0) {
-                    if ($percentage !== null) {
-                        $final_grade = round(($percentage * $items_completed) / $gradable_items_in_cat, 2);
-                    } else {
-                        $final_grade = 0.0;
-                    }
+                if ($gradable_items_in_cat > 0) {
+                    $final_grade = ($percentage !== null)
+                        ? round(($percentage * $items_completed) / $gradable_items_in_cat, 2)
+                        : 0.0;
                 } else {
                     $final_grade = $percentage;
                 }
@@ -656,8 +641,6 @@ if ($courseid > 0) {
                 ];
             }
 
-            $isMaac = ($cat_key === 'MAAC Ratings');
-            $isAtt = (stripos($cat_key, 'attend') !== false);
             $avgG = $valid_pct_count > 0 ? ($total_pct_sum / $valid_pct_count) : 0.0;
             $avgC = count($enrolled_students) > 0 ? ($total_comp_sum / count($enrolled_students)) : 0.0;
             $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
@@ -665,16 +648,14 @@ if ($courseid > 0) {
             $avgCFormatted = number_format($avgC, 2);
             $avgFinalGFormatted = number_format($avgFinalG, 2);
 
-            $val_str = $isMaac ? $avgGFormatted : ($avgGFormatted . '%');
-            $sub_str = $isMaac ? 'Avg Rating' : ($isAtt ? 'Avg Attendance' : ('Completion ' . $avgCFormatted . '%'));
-
             $style = get_ba_category_icon_and_color($display_name, $kpi_card_idx);
             $kpi_card_idx++;
 
             $module_kpis[] = [
                 'label' => $display_name,
-                'val'   => $val_str,
-                'sub'   => $sub_str,
+                'clean_name' => $cat_clean_name,
+                'val'   => $avgCFormatted . '%',
+                'sub'   => 'Completion ' . $avgCFormatted . '%',
                 'avgGrade' => $avgG,
                 'avgGradeFormatted' => $avgGFormatted,
                 'avgCompletion' => $avgC,
@@ -684,11 +665,11 @@ if ($courseid > 0) {
                 'compClass' => get_ba_comp_class((float)$avgC),
                 'icon_bg' => $style['bg'],
                 'icon_svg' => $style['icon'],
-                'isMaac' => $isMaac,
-                'isAttendance' => $isAtt
+                'isMaac' => false,
+                'isAttendance' => false
             ];
 
-            $kpi_categories_data[$display_name] = [
+            $cat_data_record = [
                 'categoryname' => $display_name,
                 'totalItems' => $gradable_items_in_cat,
                 'avgGrade' => $avgG,
@@ -697,128 +678,17 @@ if ($courseid > 0) {
                 'avgCompFormatted' => $avgCFormatted,
                 'avgFinalGrade' => $avgFinalG,
                 'avgFinalGradeFormatted' => $avgFinalGFormatted,
-                'isMaac' => $isMaac,
-                'isAttendance' => $isAtt,
+                'isMaac' => false,
+                'isAttendance' => false,
                 'studentGrades' => $cat_data['studentGrades']
             ];
+            $kpi_categories_data[$display_name] = $cat_data_record;
+            $kpi_categories_data[$cat_clean_name] = $cat_data_record;
         }
         unset($cat_data);
     }
 }
 
-// Fallback or standard 6 categories for courses without live grade items
-if (empty($module_kpis)) {
-    $std_metrics = [
-        'Attendance'   => ['val' => '82.00%', 'avgGrade' => 82.0, 'sub' => 'Avg Grade',          'isAtt' => true,  'isMaac' => false, 'comp' => 100.0],
-        'Assignments'  => ['val' => '74.00%', 'avgGrade' => 74.0, 'sub' => 'Completion 78.50%', 'isAtt' => false, 'isMaac' => false, 'comp' => 78.5],
-        'Class Work'   => ['val' => '91.00%', 'avgGrade' => 91.0, 'sub' => 'Completion 95.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 95.0],
-        'Project Work' => ['val' => '0.00%',  'avgGrade' => 0.0,  'sub' => 'Not started',        'isAtt' => false, 'isMaac' => false, 'comp' => 0.0],
-        'Module Test'  => ['val' => '63.00%', 'avgGrade' => 63.0, 'sub' => 'Completion 60.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 60.0],
-        'Quiz'         => ['val' => '64.00%', 'avgGrade' => 64.0, 'sub' => 'Completion 70.00%', 'isAtt' => false, 'isMaac' => false, 'comp' => 70.0],
-    ];
-
-    $pool = [];
-    if (!empty($enrolled_students)) {
-        foreach ($enrolled_students as $st) {
-            $pool[] = [
-                'userid' => $st->userid,
-                'username' => !empty($st->idnumber) ? $st->idnumber : $st->username,
-                'fullname' => $st->fullname,
-            ];
-        }
-    } else if (!empty($students_data)) {
-        foreach ($students_data as $s) {
-            $pool[] = [
-                'userid' => $s['id'],
-                'username' => $s['id'],
-                'fullname' => $s['name'],
-                'base_grade' => $s['grade'] ?? 75,
-            ];
-        }
-    }
-
-    $fb_idx = 0;
-    foreach ($std_metrics as $lbl => $m) {
-        $style = get_ba_category_icon_and_color($lbl, $fb_idx);
-        $fb_idx++;
-
-        $module_kpis[] = [
-            'label' => $lbl,
-            'val'   => $m['val'],
-            'sub'   => $m['sub'],
-            'avgGrade' => $m['avgGrade'],
-            'avgGradeFormatted' => number_format($m['avgGrade'], 2),
-            'avgCompletion' => $m['comp'],
-            'avgCompFormatted' => number_format($m['comp'], 2),
-            'compClass' => get_ba_comp_class((float)$m['comp']),
-            'icon_bg' => $style['bg'],
-            'icon_svg' => $style['icon'],
-            'isMaac' => $m['isMaac'],
-            'isAttendance' => $m['isAtt']
-        ];
-
-        $studentGrades = [];
-        $idx = 0;
-        $total_final_grade_sum = 0;
-        $valid_final_count = 0;
-        foreach ($pool as $p) {
-            $base = isset($p['base_grade']) ? $p['base_grade'] : (60 + (($idx * 7) % 35));
-            if ($lbl === 'Project Work') {
-                $gradeVal = null;
-                $compVal = 0.0;
-                $totalItems = 1;
-                $itemsCompleted = 0;
-                $finalVal = 0.0;
-            } else if ($lbl === 'Attendance') {
-                $gradeVal = min(100, max(50, $base + 5));
-                $compVal = 100.0;
-                $totalItems = 1;
-                $itemsCompleted = 1;
-                $finalVal = $gradeVal;
-            } else {
-                $gradeVal = min(100, max(30, $base + ($idx % 5) - 2));
-                $compVal = min(100, max(0, $m['comp'] + (($idx % 9) - 4)));
-                $totalItems = 5;
-                $itemsCompleted = round(($compVal / 100) * $totalItems);
-                $finalVal = round(($gradeVal * $itemsCompleted) / $totalItems, 2);
-            }
-
-            if ($finalVal !== null) {
-                $total_final_grade_sum += $finalVal;
-                $valid_final_count++;
-            }
-
-            $studentGrades[] = [
-                'userid' => $p['userid'],
-                'username' => $p['username'],
-                'fullname' => $p['fullname'],
-                'percentage' => $gradeVal,
-                'completionRate' => $compVal,
-                'itemsCompleted' => $itemsCompleted,
-                'totalItems' => $totalItems,
-                'finalGrade' => $finalVal,
-                'totalEarned' => $gradeVal
-            ];
-            $idx++;
-        }
-
-        $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
-
-        $kpi_categories_data[$lbl] = [
-            'categoryname' => $lbl,
-            'totalItems' => ($lbl === 'Project Work' || $lbl === 'Attendance') ? 1 : 5,
-            'avgGrade' => $m['avgGrade'],
-            'avgGradeFormatted' => number_format($m['avgGrade'], 2),
-            'avgCompletion' => $m['comp'],
-            'avgCompFormatted' => number_format($m['comp'], 2),
-            'avgFinalGrade' => $avgFinalG,
-            'avgFinalGradeFormatted' => number_format($avgFinalG, 2),
-            'isMaac' => $m['isMaac'],
-            'isAttendance' => $m['isAtt'],
-            'studentGrades' => $studentGrades
-        ];
-    }
-}
 
 // -------------------------------------------------------------------------
 // 5. Tab 1: Mentor Activities (Embedded Activity Tracker UI)
@@ -1000,16 +870,18 @@ echo $OUTPUT->header();
      data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
      data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
-  <!-- Breadcrumb Bar in New UI Style -->
+  <!-- Breadcrumb Bar in Prototype Style -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>"><span style="margin-right:3px;">🏠</span> Home</a>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', ['id' => $batchid]))->out(false)) ?>"><?= s($batchname) ?></a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <b><?= s($mod_name) ?></b>
     </span>
   </div>
+
+  <div class="shell">
 
   <!-- Module Header Card -->
   <div class="mhead">
@@ -1179,34 +1051,29 @@ echo $OUTPUT->header();
     </div>
   </div>
 
-  <!-- Course Metrics (same Gradebook metrics and card layout as the Course tab) -->
-  <div class="ba-section-title">Course Metrics <small style="font-weight:normal;color:#666;font-size:12px">(auto-pulled from LMS; click a metric for student details)</small></div>
-  <div class="ba-course-metrics-grid" style="margin-bottom: 25px;">
-    <?php foreach ($module_kpis as $kpi): ?>
-      <div class="ba-course-metric-card" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-        <div class="ba-course-metric-header">
-          <div class="ba-course-metric-icon" style="background:<?= s($kpi['icon_bg']) ?>"><?= $kpi['icon_svg'] ?></div>
-          <div class="ba-course-metric-title"><?= s($kpi['label']) ?></div>
+  <!-- Module KPIs (Gradebook category completion rate of all students) -->
+  <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
+  <div class="kpirow" id="kpirow">
+    <?php if (empty($module_kpis)): ?>
+      <div class="ba-kpi-empty-msg">No data available for this module.</div>
+    <?php else: ?>
+      <?php foreach ($module_kpis as $kpi): ?>
+        <?php
+          $val_display = $kpi['val'];
+        ?>
+        <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
+          <div class="kv"><?= s($val_display) ?></div>
+          <div class="kl"><?= s($kpi['label']) ?></div>
         </div>
-        <div class="ba-course-metric-stats">
-          <?php if ($kpi['isMaac']): ?>
-            <div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG MAAC RATING</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?></span></div>
-          <?php elseif ($kpi['isAttendance']): ?>
-            <div class="stat-box" style="width:100%; text-align:center; align-items:center;"><span class="lbl">AVG GRADE</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span></div>
-          <?php else: ?>
-            <div class="stat-box"><span class="lbl">AVG GRADE</span><span class="val"><?= s($kpi['avgGradeFormatted']) ?>%</span></div>
-            <div class="stat-box"><span class="lbl">COMPLETION</span><span class="val <?= s($kpi['compClass']) ?>"><?= s($kpi['avgCompFormatted']) ?>%</span></div>
-          <?php endif; ?>
-        </div>
-      </div>
-    <?php endforeach; ?>
+      <?php endforeach; ?>
+    <?php endif; ?>
   </div>
 
-  <!-- Navigation Tabs in New UI Pill Style -->
-  <div class="tabs ba-module-tabs ba-top-nav-tabs-bar">
-    <button type="button" class="tab ba-top-nav-tab active" data-tab="mentor"><span class="ba-tab-icon">🎯</span> Mentor Activities</button>
-    <button type="button" class="tab ba-top-nav-tab" data-tab="ssact"><span class="ba-tab-icon">📋</span> SS Activities</button>
-    <button type="button" class="tab ba-top-nav-tab" data-tab="mstudents"><span class="ba-tab-icon">👥</span> Student Performance</button>
+  <!-- Navigation Tabs (Prototype Style) -->
+  <div class="tabs ba-module-tabs">
+    <div class="tab active" data-tab="mentor" role="button" tabindex="0">Mentor Activities</div>
+    <div class="tab" data-tab="ssact" role="button" tabindex="0">SS Activities</div>
+    <div class="tab" data-tab="mstudents" role="button" tabindex="0">Student Performance</div>
   </div>
 
   <div class="ba-module-panels">
@@ -1369,6 +1236,8 @@ echo $OUTPUT->header();
     </div>
 
   </div> <!-- /.ba-module-panels -->
+
+  </div> <!-- /.shell -->
 
 </div> <!-- /.local-batchanalytics-wrap -->
 
