@@ -362,7 +362,9 @@ See [access.md](access.md) for the complete capability reference and role matrix
 
 | File | Purpose |
 | --- | --- |
-| `index.php` | Batch Analytics UI, batch data, CRM data, mentor data, summaries, and CRM sync actions. |
+| `index.php` | Main Batch Analytics dashboard listing active and completed cohorts with filters and KPIs. |
+| `batch.php` | Batch detail view with Schedule, Module Tracker, Student Performance, MAAC, and CRM data tabs. |
+| `module.php` | Single-module analytics with student grade distributions, category scores, and final grades. |
 | `maac.php` | MAAC Sheet UI, MAAC data actions, feedback, and MAAC ticket actions. |
 | `activity_tracker.php` | Module Tracker UI and activity-status actions. |
 | `tickets.php` | Ticket Dashboard, updates, resolution, and escalation actions. |
@@ -387,7 +389,9 @@ See [access.md](access.md) for the complete capability reference and role matrix
 
 The UI uses page actions internally. They are not a public API and request/response payloads can change with the UI.
 
-- `index.php`: batch, CRM, mentor, summary, and CRM sync actions.
+- `index.php`: cohort overview data (`getnewbatchdata`) and PTF CRM data (`getptfdata`).
+- `batch.php`: batch overview, section schedule, CRM data, review notes, and status updates.
+- `module.php`: module metrics, student grade aggregation, and feedback formatting.
 - `maac.php`: summary, MAAC data, MAAC save, ticket raise, and ticket edit actions.
 - `activity_tracker.php`: activity data retrieval and save actions.
 - `tickets.php`: ticket list, ticket view, update, and escalation actions.

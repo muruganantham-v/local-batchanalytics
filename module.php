@@ -989,6 +989,11 @@ $PAGE->requires->css($newstyleurl);
 $PAGE->requires->js($scripturl);
 
 echo $OUTPUT->header();
+
+echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
+echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
+
 ?>
 
 <div class="local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"

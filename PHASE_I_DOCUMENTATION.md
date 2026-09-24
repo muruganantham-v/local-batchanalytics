@@ -19,6 +19,9 @@ The **Batch Analytics (`local_batchanalytics`)** plugin is an advanced, high-per
 4. **Student Performance Distribution:** Deliver transparent academic metrics (quizzes, labs, attendance, assignments, and exam grades) with grade band distributions.
 5. **Actionable Task Management:** Allow operational staff to mark tasks complete and record persistent review notes directly within Moodle.
 
+> [!NOTE]
+> **Phase 2 Status Update (Task Tab):** All Task Tab components (frontend `task_dashboard.js`, styling `task_dashboard.css`, backend endpoints `get_task_data` / `complete_task`, and visual design mocks) have been extracted and archived into `local/task_tab_backup/`. The active plugin currently focuses on the New Batch Analytics dashboard, and the Task Tab is preserved ready for Phase 2 implementation without starting from scratch.
+
 ---
 
 ## 2. System Architecture & Dependencies

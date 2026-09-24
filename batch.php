@@ -615,6 +615,11 @@ $batch_can_manage = is_siteadmin($USER->id) || has_capability('local/batchanalyt
 $crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
 
 echo $OUTPUT->header();
+
+echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
+echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
+
 ?>
 
 <div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"

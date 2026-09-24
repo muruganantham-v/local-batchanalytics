@@ -76,249 +76,7 @@ if (!$can_manage) {
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 
-// Course teachers can maintain the summary for courses to which they are assigned.
-$can_edit_course_summary = static function($coursecontext) use ($can_manage, $userid): bool {
-    if (!$coursecontext) {
-        return false;
-    }
-    return $can_manage || has_capability('local/batchanalytics:editmaac', $coursecontext, $userid);
-};
-
 // ==================== API ENDPOINTS ====================
-
-if ($action === 'syncmaaccrm') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
-
-    try {
-        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-            throw new moodle_exception('invalidrequest');
-        }
-        require_sesskey();
-        if (!$can_manage) {
-            throw new moodle_exception('nopermissions', 'error', '', 'sync MAAC metrics to CRM');
-        }
-
-        $payload = optional_param('payload', '', PARAM_RAW);
-        $decoded = json_decode($payload, true);
-        if (!is_array($decoded) || !is_array($decoded['rows'] ?? null)) {
-            throw new moodle_exception('invalidjson', 'error');
-        }
-
-        $synccolumns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
-        if (empty($synccolumns)) {
-            echo json_encode(['error' => 'No MAAC sync columns are configured.']);
-            die();
-        }
-        if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
-            echo json_encode(['error' => 'CRM request limit reached. Please try again later.']);
-            die();
-        }
-
-        $crm = new \local_batchanalytics\crmapi();
-        $result = ['updated' => 0, 'notfound' => 0, 'skipped' => 0, 'failed' => 0];
-        foreach ($decoded['rows'] as $row) {
-            $username = trim((string)($row['username'] ?? ''));
-            $values = is_array($row['values'] ?? null) ? $row['values'] : [];
-            if ($username === '') {
-                $result['skipped']++;
-                continue;
-            }
-
-            $fields = [];
-            foreach ($synccolumns as $column) {
-                $key = $column['key'];
-                if (isset($values[$key]) && is_numeric($values[$key])) {
-                    $fields[$column['crmfield']] = round((float)$values[$key], 2);
-                }
-            }
-            if (empty($fields)) {
-                $result['skipped']++;
-                continue;
-            }
-
-            try {
-                $record = $crm->get_student_details($username);
-            } catch (\Throwable $e) {
-                debugging('MAAC CRM lookup error: ' . $e->getMessage(), DEBUG_DEVELOPER);
-                $result['failed']++;
-                continue;
-            }
-            if (empty($record['id'])) {
-                $result['notfound']++;
-                continue;
-            }
-            if ($crm->update_student_fields((string)$record['id'], $fields)) {
-                $result['updated']++;
-            } else {
-                $result['failed']++;
-            }
-        }
-
-        echo json_encode(['success' => true, 'result' => $result]);
-    } catch (\Throwable $e) {
-        error_log('MAAC CRM sync error: ' . $e->getMessage());
-        http_response_code(400);
-        echo json_encode(['error' => 'Unable to sync MAAC metrics to CRM. Please check the Moodle error log.']);
-    }
-    die();
-}
-
-if ($action === 'getallbatches') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-
-    $mdata = new \local_batchanalytics\moodledata();
-    $batches = $mdata->get_all_batches($userid);
-
-    echo json_encode(['batches' => $batches]);
-    die();
-}
-
-if ($action === 'searchcourses') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-    $keyword = optional_param('keyword', '', PARAM_TEXT);
-
-    $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->search_courses($keyword, $userid);
-
-    echo json_encode(['courses' => $courses]);
-    die();
-}
-
-if ($action === 'getbatchcourses') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-    $batchcode = optional_param('batchcode', '', PARAM_TEXT);
-
-    $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->get_courses_by_batch($batchcode, $userid);
-
-    echo json_encode(['courses' => $courses]);
-    die();
-}
-
-if ($action === 'savecoursesummary') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-
-    try {
-        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed. Please use POST.']);
-            die();
-        }
-
-        if (!confirm_sesskey()) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Invalid session key. Please refresh the page and try again.']);
-            die();
-        }
-
-        $courseid = required_param('courseid', PARAM_INT);
-        $summary = optional_param('summary', '', PARAM_RAW_TRIMMED);
-        $mdata = new \local_batchanalytics\moodledata();
-        $course = $mdata->get_accessible_course($courseid, $userid);
-        if (!$course) {
-            http_response_code(403);
-            echo json_encode(['error' => 'You do not have permission to edit this course summary.']);
-            die();
-        }
-        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
-        $caneditsummary = $can_edit_course_summary($coursecontext);
-
-        if (!$coursecontext) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Course not found.']);
-            die();
-        }
-
-        if (!$caneditsummary) {
-            http_response_code(403);
-            echo json_encode(['error' => 'You do not have permission to edit this course summary.']);
-            die();
-        }
-
-        $summary = trim((string)$summary);
-        \local_batchanalytics\course_summary_service::save($courseid, $summary);
-        \local_batchanalytics\util::purge_batch_response_cache();
-
-        echo json_encode([
-            'success' => true,
-            'courseid' => $courseid,
-            'summary' => $summary,
-        ]);
-    } catch (\Throwable $e) {
-        while (ob_get_level())
-            ob_end_clean();
-        header('Content-Type: application/json; charset=utf-8');
-        http_response_code(500);
-        error_log('Course summary save error: ' . $e->getMessage());
-        echo json_encode(['error' => 'Unable to save course summary. Please check the Moodle error log.']);
-    }
-    die();
-}
-// --- EXISTING CRM ENDPOINT (Simple Placement Status) ---
-if ($action === 'getcrmdata') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed. Please use POST.']);
-        die();
-    }
-    require_sesskey();
-
-    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
-        http_response_code(429);
-        echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
-        die();
-    }
-
-    $username = optional_param('username', '', PARAM_TEXT);
-    $mdata = new \local_batchanalytics\moodledata();
-    $allowedusernames = $mdata->filter_accessible_student_usernames([$username], $userid);
-    if (empty($allowedusernames)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'You do not have permission to access this student.']);
-        die();
-    }
-    $username = reset($allowedusernames);
-
-    try {
-        $crm = new \local_batchanalytics\crmapi();
-        $record = $crm->get_student_details($username);
-        $placement_status = 'Not Placed';
-        if (!empty($record['Placement_Company'])) {
-            if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
-                $placement_status = $record['Placement_Company']['name'];
-            } elseif (is_string($record['Placement_Company'])) {
-                $placement_status = $record['Placement_Company'];
-            }
-        }
-
-        echo json_encode([
-            'username' => $username,
-            'placed_company' => $placement_status
-        ]);
-    } catch (\Throwable $e) {
-        debugging('CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        http_response_code(502);
-        echo json_encode([
-            'error' => 'Unable to fetch CRM data. Please try again later.'
-        ]);
-    }
-    die();
-}
 
 if ($action === 'getptfdata') {
     while (ob_get_level())
@@ -450,323 +208,6 @@ if ($action === 'getptfdata') {
     die();
 }
 
-if ($action === 'getmentordetails') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        echo json_encode(['error' => 'Method not allowed. Please use POST.']);
-        die();
-    }
-    require_sesskey();
-
-    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
-        http_response_code(429);
-        echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
-        die();
-    }
-
-    $batchgroup = optional_param('batchgroup', '', PARAM_TEXT);
-    if ($batchgroup === '') {
-        $batchgroup = optional_param('batchcode', '', PARAM_TEXT);
-    }
-    $mentorfields = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
-    $mentorgroups = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
-
-    try {
-        $crm = new \local_batchanalytics\crmapi();
-        $mentorrecord = $crm->get_mentor_details_by_batch_group($batchgroup);
-        if (empty($mentorrecord) || !is_array($mentorrecord)) {
-            $mentorrecord = [];
-        }
-
-        echo json_encode([
-            'batchgroup' => $batchgroup,
-            'mentorfields' => $mentorfields,
-            'mentorgroups' => $mentorgroups,
-            'mentorrecord' => $mentorrecord,
-        ]);
-    } catch (\Throwable $e) {
-        debugging('Mentor CRM API Error: ' . $e->getMessage(), DEBUG_DEVELOPER);
-        echo json_encode(['error' => 'An error occurred fetching mentor CRM data']);
-    }
-    die();
-}
-
-if ($action === 'getbatchfulldata') {
-    while (ob_get_level())
-        ob_end_clean();
-    header('Content-Type: application/json; charset=utf-8');
-    $batchcode = optional_param('batchcode', '', PARAM_TEXT);
-    $cachekey = \local_batchanalytics\util::get_batch_cache_key($userid, $batchcode, $can_view_all_courses);
-    $cachedpayload = \local_batchanalytics\util::read_cached_batch_response($cachekey);
-    if ($cachedpayload !== null) {
-        echo json_encode($cachedpayload);
-        die();
-    }
-
-    $mdata = new \local_batchanalytics\moodledata();
-    $courses = $mdata->get_courses_by_batch($batchcode, $userid);
-
-    $result = [
-        'batchcode' => $batchcode,
-        'courses' => [],
-        'totalStudents' => 0,
-        'totalCourses' => count($courses),
-        'totalTeachers' => 0,
-        'uniqueStudents' => [], // Will hold list of {name, username}
-        'uniqueTeachers' => []
-    ];
-
-    $student_role = $DB->get_record('role', ['shortname' => 'student']);
-    if (!$student_role) {
-        echo json_encode(['error' => 'Student role not found. Please verify role mappings.']);
-        die();
-    }
-    $student_role_id = $student_role->id;
-
-    // Resolve teacher roles once. get_role_users() includes inherited assignments.
-    $teacher_roles = $DB->get_records_list('role', 'shortname', ['teacher', 'editingteacher'], '', 'id, shortname');
-    $teacher_role_ids = array_keys($teacher_roles);
-
-    $course_summaries = \local_batchanalytics\course_summary_service::get_for_courses(
-        array_column($courses, 'courseid')
-    );
-
-    foreach ($courses as $course) {
-        $courseid = $course['courseid'];
-
-        // 1. Get Teachers, including assignments inherited from parent contexts.
-        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
-        $teachers_raw = $coursecontext && !empty($teacher_role_ids)
-            ? get_role_users($teacher_role_ids, $coursecontext, true, 'ra.id, u.id AS userid, u.firstname, u.lastname')
-            : [];
-
-        $course_unique_teachers = [];
-        foreach ($teachers_raw as $t) {
-            $course_unique_teachers[$t->userid] = $t->firstname . ' ' . $t->lastname;
-            $result['uniqueTeachers'][$t->userid] = $t->firstname . ' ' . $t->lastname;
-        }
-        $course_teacher_count = count($course_unique_teachers);
-
-        // 2. Get Grade Items (Including Course Total)
-        $items_sql = "
-            SELECT
-                gi.id as itemid, gi.itemname, gi.itemtype, gi.itemmodule, gi.grademax, gi.grademin,
-                gc.id as categoryid, gc.fullname as categoryname
-            FROM {grade_items} gi
-            LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
-            WHERE gi.courseid = :courseid
-              AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
-              AND gi.hidden = 0
-            ORDER BY gc.fullname, gi.itemname
-        ";
-        $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
-
-        // 3. Get Students
-
-        $students_sql = "
-            SELECT DISTINCT
-                u.id as userid,
-                CONCAT(u.firstname, ' ', u.lastname) as fullname,
-                u.username
-            FROM {user} u
-            JOIN {role_assignments} ra ON ra.userid = u.id
-            JOIN {context} ctx ON ctx.id = ra.contextid
-            WHERE ctx.instanceid = :courseid
-              AND ctx.contextlevel = 50
-              AND ra.roleid = :roleid
-              AND u.deleted = 0
-            ORDER BY u.firstname, u.lastname
-        ";
-        $students = $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]);
-
-
-        foreach ($students as $s) {
-            // FIX: Store both name and username for the Ptf Data tab
-            $result['uniqueStudents'][$s->userid] = [
-                'fullname' => $s->fullname,
-                'username' => $s->username
-            ];
-        }
-
-        // Note: CRM data fetching has been moved outside this course loop to prevent cross-course overwriting
-
-        // 4. Organize Data — Fetch all categories to resolve parent/child relationships
-        $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
-
-        $categories_data = [];
-        foreach ($grade_items as $item) {
-
-            if ($item->itemtype === 'course') {
-                $cat_name = 'MAAC Ratings';
-            } else {
-                $cat_id = $item->categoryid;
-                $cat_name = 'Uncategorized';
-
-                if ($cat_id && isset($all_cats[$cat_id])) {
-                    $c = $all_cats[$cat_id];
-
-                    // NEW: If it's a sub-category (Depth 3+), climb up the tree until we hit the Main Category (Depth 2)
-                    while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
-                        $c = $all_cats[$c->parent];
-                    }
-
-                    // Apply the Main Category name
-                    if ($c->depth == 2) {
-                        $cat_name = $c->fullname;
-                    }
-                }
-            }
-
-            // Skip unwanted, empty, or uncategorized items completely
-            if (trim($cat_name) === '' || $cat_name === '?' || $cat_name === 'Uncategorized') {
-                continue;
-            }
-
-            if (!isset($categories_data[$cat_name])) {
-                $categories_data[$cat_name] = [
-                    'categoryname' => $cat_name,
-                    'items' => [],
-                    'studentGrades' => []
-                ];
-            }
-            $categories_data[$cat_name]['items'][] = [
-                'itemid' => $item->itemid,
-                'grademax' => (float)$item->grademax,
-                'grademin' => (float)$item->grademin
-            ];
-        }
-
-        foreach ($categories_data as $category_key => &$category_data) {
-            if ($category_key === 'MAAC Ratings' || stripos($category_key, 'attend') !== false) {
-                continue;
-            }
-            $category_data['categoryname'] = $category_key . ' (' . count($category_data['items']) . ')';
-        }
-        unset($category_data);
-
-        // 5. Pre-fetch ALL grades for this course in a single query to prevent N+1 DB lookups!
-        $all_grades_sql = "
-            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade
-            FROM {grade_grades} gg
-            JOIN {grade_items} gi ON gi.id = gg.itemid
-            WHERE gi.courseid = :courseid
-              AND gi.hidden = 0
-              AND gg.finalgrade IS NOT NULL
-              AND gg.excluded = 0
-              AND gg.hidden = 0
-        ";
-
-        $grades_map = []; // structure: $grades_map[userid][itemid] = finalgrade
-
-        // Use a recordset instead of get_records_sql because get_records_sql uses the first column
-        // as the array key, which means it would overwrite all but the last grade per user!
-        $rs = $DB->get_recordset_sql($all_grades_sql, ['courseid' => $courseid]);
-        if ($rs->valid()) {
-            foreach ($rs as $rec) {
-                 $grades_map[$rec->userid][$rec->itemid] = $rec->finalgrade;
-            }
-        }
-        $rs->close();
-
-        // 6. Calculate Grades
-        foreach ($categories_data as $cat_name => &$cat_data) {
-            $gradable_items_in_cat = 0;
-            $category_total_max = 0;
-
-            foreach ($cat_data['items'] as $item) {
-                $gmax = $item['grademax'];
-                $gmin = $item['grademin'];
-                if ($gmax > $gmin) {
-                    $gradable_items_in_cat++;
-                    $category_total_max += ($gmax - $gmin);
-                }
-            }
-
-            foreach ($students as $student) {
-                $total_earned = 0;
-                $total_max = 0;
-                $items_completed = 0; // NEW: Track how many they actually did
-
-                foreach ($cat_data['items'] as $item) {
-                    $itemid = $item['itemid'];
-                    $userid = $student->userid;
-
-                    // Fetch grade instantly from memory instead of hitting the DB!
-                    if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
-                        $finalgrade = $grades_map[$userid][$itemid];
-
-                        $gmax = $item['grademax'];
-                        $gmin = $item['grademin'];
-                        if ($gmax > $gmin) {
-                            $items_completed++;
-                            $total_earned += ($finalgrade - $gmin);
-                            $total_max += ($gmax - $gmin);
-                        }
-                    }
-                }
-
-                // Grade %: Only calculated on items they ACTUALLY submitted (Ignores unsubmitted)
-                $percentage = $total_max > 0 ? round(($total_earned / $total_max) * 100, 2) : null;
-                $advanced_filter_percentage = $category_total_max > 0
-                    ? round(($total_earned / $category_total_max) * 100, 2)
-                    : null;
-
-                if ($cat_name === 'MAAC Ratings' && $percentage !== null) {
-                    $percentage = round($percentage / 10, 1);
-                }
-
-                if ($cat_name === 'MAAC Ratings' && $advanced_filter_percentage !== null) {
-                    $advanced_filter_percentage = round($advanced_filter_percentage / 10, 1);
-                }
-
-                // Completion %: completed gradeable items / gradeable items in category.
-                $comp_rate = $gradable_items_in_cat > 0
-                    ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
-                    : 0;
-
-                // Remove individual student CRM appendage, it's not needed for the Moodle Grades API
-                $cat_data['studentGrades'][] = [
-                    'userid' => $student->userid,
-                    'fullname' => $student->fullname,
-                    'username' => $student->username,
-                    'percentage' => $percentage,
-                    'advancedFilterPercentage' => $advanced_filter_percentage,
-                    'completionRate' => $comp_rate, // NEW: Pass the true completion metric to JS
-                    'totalEarned' => $total_earned
-                ];
-            }
-        }
-
-        $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
-        $result['courses'][] = [
-            'courseid' => $courseid,
-            'coursename' => $course['fullname'],
-            'shortname' => $course['shortname'],
-            'summary' => $course_summaries[$courseid] ?? '',
-            'cansummaryedit' => $can_edit_course_summary($coursecontext),
-            'categories' => array_values($categories_data),
-            'studentCount' => count($students),
-            'teacherCount' => $course_teacher_count
-        ];
-    }
-
-    $result['totalStudents'] = count($result['uniqueStudents']);
-    $result['totalTeachers'] = count($result['uniqueTeachers']);
-
-    // CRM data is NOT fetched here — it's lazy-loaded by the frontend via getptfdata
-    // when the user opens the CRM Data tab. This keeps the initial response fast.
-
-    // FIX: Convert uniqueStudents to a clean array of objects instead of unsetting
-    $result['uniqueStudents'] = array_values($result['uniqueStudents']);
-    unset($result['uniqueTeachers']);
-
-    \local_batchanalytics\util::write_cached_batch_response($cachekey, $result);
-    echo json_encode($result);
-    die();
-}
 
 if ($action === 'getnewbatchdata') {
     while (ob_get_level()) {
@@ -1137,831 +578,230 @@ if ($action === 'getnewbatchdata') {
     }
 }
 
-if ($action === 'get_task_data') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
-
-    try {
-        global $USER, $DB;
-        $currentuserid = (int)$USER->id;
-        $user_fullname = trim(fullname($USER));
-
-        $ssteamroleid = (int)get_config('local_batchanalytics', 'ss_team_role');
-        $batchmanagerroleid = (int)get_config('local_batchanalytics', 'batch_manager_role');
-
-        $is_siteadmin = is_siteadmin($currentuserid);
-        $can_manage_all = $is_siteadmin || has_capability('local/batchanalytics:manage', $context);
-
-        // Check user roles
-        $has_ssteam_role = false;
-        if ($ssteamroleid > 0) {
-            $has_ssteam_role = $DB->record_exists('role_assignments', ['roleid' => $ssteamroleid, 'userid' => $currentuserid]);
-        }
-        $assigned_as_ssteam = $DB->record_exists_select('local_bm_classsection', "maacexecutive = :uid1 OR maacexecutivename = :fn1", ['uid1' => (string)$currentuserid, 'fn1' => $user_fullname]);
-        $is_ssteam_user = $has_ssteam_role || $assigned_as_ssteam;
-
-        $has_bm_role = false;
-        if ($batchmanagerroleid > 0) {
-            $has_bm_role = $DB->record_exists('role_assignments', ['roleid' => $batchmanagerroleid, 'userid' => $currentuserid]);
-        }
-        $assigned_as_pm = $DB->record_exists_select('local_bm_classsection', "pmmanager = :uid2 OR pmmanagername = :fn2", ['uid2' => (string)$currentuserid, 'fn2' => $user_fullname]);
-        $is_bm_user = $has_bm_role || $assigned_as_pm;
-
-        // User roles definition matching specifications:
-        // 1. Program Manager, SS Executive, SS Team: Assigned in Class Section, soft skills planned vs actual
-        // 2. Mentor: Enrolled courses, activity due date or calendar due tasks
-        // 3. Assistant Manager: Tasks displayed based on start date of Class Section
-        // 4. All: Combined portfolio view
-        $available_roles = [
-            ['id' => 'pm_ss', 'label' => 'Program Manager, SS Executive, SS Team'],
-            ['id' => 'mentor', 'label' => 'Mentor'],
-            ['id' => 'am', 'label' => 'Assistant Manager'],
-            ['id' => 'all', 'label' => 'All Roles (Overview)'],
-        ];
-
-        // Identify courses where user is enrolled as a teacher/mentor
-        $teacher_courses = enrol_get_users_courses($currentuserid, true);
-        $mentor_course_ids = [];
-        foreach ($teacher_courses as $c) {
-            if ($c->id <= 1) continue;
-            $ccontext = \context_course::instance($c->id, IGNORE_MISSING);
-            if (!$ccontext) continue;
-            if (has_capability('moodle/course:update', $ccontext, $currentuserid)
-                || has_capability('moodle/grade:viewall', $ccontext, $currentuserid)
-                || has_capability('local/batchanalytics:editmaac', $ccontext, $currentuserid)) {
-                $mentor_course_ids[$c->id] = (int)$c->id;
-            }
-        }
-        if ($DB->get_manager()->table_exists('local_bm_classsection')) {
-            $sections_with_modules = $DB->get_records_select('local_bm_classsection', "moduledata IS NOT NULL AND moduledata != ''", null, '', 'id, moduledata');
-            foreach ($sections_with_modules as $swm) {
-                $mdata = json_decode($swm->moduledata, true);
-                if (!is_array($mdata)) continue;
-                foreach ($mdata as $mitem) {
-                    $mcid = (int)($mitem['moodlecourseid'] ?? 0);
-                    if ($mcid <= 1) continue;
-                    $mentors = [
-                        (string)($mitem['primarymentor'] ?? ''),
-                        (string)($mitem['secondarymentor'] ?? ''),
-                        (string)($mitem['labmentor1'] ?? ''),
-                        (string)($mitem['labmentor2'] ?? ''),
-                        (string)($mitem['labmentor3'] ?? '')
-                    ];
-                    if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
-                        $mentor_course_ids[$mcid] = $mcid;
-                    }
-                }
-            }
-        }
-
-        $view_role = optional_param('view_role', 'auto', PARAM_ALPHANUMEXT);
-        if ($view_role === 'auto' || empty($view_role)) {
-            if ($can_manage_all) {
-                $view_role = 'all';
-            } else if (!empty($mentor_course_ids) && !$is_ssteam_user && !$is_bm_user) {
-                $view_role = 'mentor';
-            } else {
-                $view_role = 'pm_ss';
-            }
-        }
-
-        $today_start = strtotime('today midnight');
-        $today_end = $today_start + 86400;
-        $week_end = $today_start + (7 * 86400);
-
-        $todos = [];
-        $forthcoming = [];
-        $overdue_count = 0;
-        $due_this_week_count = 0;
-        $batch_ids = [];
-        $section_ids = [];
-
-        // =========================================================================
-        // ROLE 1: Program Manager, SS Executive, SS Team
-        // Source: Assigned in Class Section (Batch Management). Soft skill data based on planned vs actual.
-        // Due Date: Calculated from the planned date
-        // =========================================================================
-        if ($view_role === 'pm_ss' || $view_role === 'sse' || $view_role === 'pm' || $view_role === 'all') {
-            $params = [];
-            $where_clauses = [];
-
-            if (!$can_manage_all) {
-                if ($view_role === 'sse' || ($is_ssteam_user && !$is_bm_user && $view_role !== 'all')) {
-                    $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname)";
-                    $params['userid'] = (string)$currentuserid;
-                    $params['fullname'] = $user_fullname;
-                } else if ($view_role === 'pm' || ($is_bm_user && !$is_ssteam_user && $view_role !== 'all')) {
-                    $where_clauses[] = "(s.pmmanager = :userid OR s.pmmanagername = :fullname)";
-                    $params['userid'] = (string)$currentuserid;
-                    $params['fullname'] = $user_fullname;
-                } else if ($is_ssteam_user && $is_bm_user) {
-                    $where_clauses[] = "(s.maacexecutive = :userid OR s.maacexecutivename = :fullname OR s.pmmanager = :userid OR s.pmmanagername = :fullname)";
-                    $params['userid'] = (string)$currentuserid;
-                    $params['fullname'] = $user_fullname;
-                } else {
-                    $where_clauses[] = "1 = 0";
-                }
-            }
-
-            $wsql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
-            $sql = "
-                SELECT s.id, s.name as sectionname, s.batchid, b.name as batchname, b.coursename,
-                       s.maacexecutive, s.maacexecutivename, s.pmmanager, s.pmmanagername, s.softskillsdata
-                FROM {local_bm_classsection} s
-                LEFT JOIN {local_bm_batch} b ON b.id = s.batchid
-                {$wsql}
-                ORDER BY s.id ASC
-            ";
-            $sections = $DB->get_records_sql($sql, $params);
-
-            $softskills_items = [
-                ['key' => 'ss_induction', 'label' => 'SS Induction'],
-                ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
-                ['key' => 'placement_induction', 'label' => 'Placement Induction'],
-                ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
-                ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
-                ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
-                ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
-                ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
-                ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
-                ['key' => 'feedback_1', 'label' => 'Feed back 1'],
-                ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
-                ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
-                ['key' => 'feedback_2', 'label' => 'Feed back 2'],
-                ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
-                ['key' => 'pet_1', 'label' => 'PET 1'],
-                ['key' => 'disha_1', 'label' => 'Disha 1'],
-                ['key' => 'disha_2', 'label' => 'Disha 2'],
-                ['key' => 'disha_3', 'label' => 'Disha 3'],
-                ['key' => 'feedback_3', 'label' => 'Feed back 3'],
-                ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
-                ['key' => 'pet_2', 'label' => 'PET 2'],
-                ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
-                ['key' => 'pet_3', 'label' => 'PET 3'],
-                ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
-                ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
-                ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
-            ];
-
-            foreach ($sections as $s) {
-                $batch_ids[$s->batchid] = true;
-                $section_ids[$s->id] = true;
-
-                $ssdata = json_decode($s->softskillsdata ?? '{}', true);
-                if (!is_array($ssdata)) {
-                    continue;
-                }
-
-                foreach ($softskills_items as $item) {
-                    $k = $item['key'];
-                    $planned = (int)($ssdata[$k . '_planned'] ?? 0);
-                    $actual = (int)($ssdata[$k . '_actual'] ?? 0);
-
-                    if ($planned <= 0 || $actual > 0) {
-                        continue;
-                    }
-
-                    $days_diff = (int)floor(($planned - $today_start) / 86400);
-
-                    $task_item = [
-                        'role_type' => 'pm_ss',
-                        'role_badge' => 'SS Team / PM',
-                        'section_id' => (int)$s->id,
-                        'batch_id' => (int)$s->batchid,
-                        'batch_name' => $s->batchname ?: 'Batch ' . $s->batchid,
-                        'section_name' => $s->sectionname,
-                        'activity_key' => $k,
-                        'activity_label' => $item['label'],
-                        'planned_timestamp' => $planned,
-                        'planned_date_formatted' => date('d M Y', $planned),
-                        'can_complete' => true
-                    ];
-
-                    if ($planned < $today_start) {
-                        $days_over = max(1, abs($days_diff));
-                        $task_item['due_class'] = 'over';
-                        $task_item['due_text'] = "Overdue {$days_over}d";
-                        $task_item['sort_order'] = 1000000000 + $planned;
-                        $todos[] = $task_item;
-                        $overdue_count++;
-                    } else if ($planned < $today_end) {
-                        $task_item['due_class'] = 'today';
-                        $task_item['due_text'] = 'Due today';
-                        $task_item['sort_order'] = 2000000000 + $planned;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-                    } else if ($planned <= $week_end) {
-                        $days_due = max(1, $days_diff);
-                        $task_item['due_class'] = 'soon';
-                        $task_item['due_text'] = "Due in {$days_due}d";
-                        $task_item['sort_order'] = 3000000000 + $planned;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-
-                        $fc_item = $task_item;
-                        $fc_item['time_relative'] = "in {$days_due} days";
-                        $forthcoming[] = $fc_item;
-                    } else {
-                        $days_due = $days_diff;
-                        $task_item['time_relative'] = "in {$days_due} days";
-                        $task_item['sort_order'] = 4000000000 + $planned;
-                        if (count($forthcoming) < 15) {
-                            $forthcoming[] = $task_item;
-                        }
-                    }
-                }
-            }
-        }
-
-        // =========================================================================
-        // ROLE 2: Mentor
-        // Source: Enrolled courses activity completion & calendar due tasks
-        // Due Date: Calculated from the activity due date or calendar due task
-        // =========================================================================
-        if ($view_role === 'mentor' || $view_role === 'all') {
-            $effective_mentor_courses = array_values($mentor_course_ids);
-            if ($can_manage_all && empty($effective_mentor_courses)) {
-                $all_c = $DB->get_records_sql("SELECT DISTINCT id FROM {course} WHERE id > 1");
-                $effective_mentor_courses = array_keys($all_c);
-            }
-
-            if (!empty($effective_mentor_courses)) {
-                list($cin_sql, $cparams) = $DB->get_in_or_equal($effective_mentor_courses, SQL_PARAMS_NAMED, 'mc');
-
-                // 1. Assignments with due date
-                $sql_assign = "
-                    SELECT cm.id as cmid, a.id as assignid, a.course, a.name, a.duedate, c.fullname as coursename
-                    FROM {assign} a
-                    JOIN {course} c ON c.id = a.course
-                    JOIN {modules} m ON m.name = 'assign'
-                    JOIN {course_modules} cm ON cm.module = m.id AND cm.instance = a.id
-                    WHERE a.course $cin_sql AND a.duedate > 0
-                    ORDER BY a.duedate ASC
-                ";
-                $mentor_assigns = $DB->get_records_sql($sql_assign, $cparams, 0, 40);
-                foreach ($mentor_assigns as $a) {
-                    $due = (int)$a->duedate;
-                    $days_diff = (int)floor(($due - $today_start) / 86400);
-
-                    $task_item = [
-                        'role_type' => 'mentor',
-                        'role_badge' => 'Mentor',
-                        'course_id' => (int)$a->course,
-                        'course_name' => $a->coursename,
-                        'section_name' => 'Course ' . $a->course,
-                        'batch_name' => $a->coursename,
-                        'activity_key' => 'assign_' . $a->assignid,
-                        'activity_label' => 'Assignment: ' . $a->name,
-                        'planned_timestamp' => $due,
-                        'planned_date_formatted' => date('d M Y, H:i', $due),
-                        'action_url' => (new moodle_url('/mod/assign/view.php', ['id' => $a->cmid]))->out(false),
-                        'action_label' => 'View / Grade',
-                        'can_complete' => false
-                    ];
-
-                    if ($due < $today_start) {
-                        $days_over = max(1, abs($days_diff));
-                        $task_item['due_class'] = 'over';
-                        $task_item['due_text'] = "Overdue {$days_over}d";
-                        $task_item['sort_order'] = 1000000000 + $due;
-                        $todos[] = $task_item;
-                        $overdue_count++;
-                    } else if ($due < $today_end) {
-                        $task_item['due_class'] = 'today';
-                        $task_item['due_text'] = 'Due today';
-                        $task_item['sort_order'] = 2000000000 + $due;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-                    } else if ($due <= $week_end) {
-                        $days_due = max(1, $days_diff);
-                        $task_item['due_class'] = 'soon';
-                        $task_item['due_text'] = "Due in {$days_due}d";
-                        $task_item['sort_order'] = 3000000000 + $due;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-
-                        $fc_item = $task_item;
-                        $fc_item['time_relative'] = "in {$days_due} days";
-                        $forthcoming[] = $fc_item;
-                    } else {
-                        $days_due = $days_diff;
-                        $task_item['time_relative'] = "in {$days_due} days";
-                        $task_item['sort_order'] = 4000000000 + $due;
-                        if (count($forthcoming) < 15) {
-                            $forthcoming[] = $task_item;
-                        }
-                    }
-                }
-
-                // 2. Calendar tasks with due date
-                $sql_events = "
-                    SELECT e.id as eventid, e.courseid, e.name as eventname, e.eventtype, e.timestart, c.fullname as coursename
-                    FROM {event} e
-                    JOIN {course} c ON c.id = e.courseid
-                    WHERE e.courseid $cin_sql AND e.eventtype IN ('due', 'close', 'gradingdue') AND e.timestart > 0
-                    ORDER BY e.timestart ASC
-                ";
-                $mentor_events = $DB->get_records_sql($sql_events, $cparams, 0, 30);
-                foreach ($mentor_events as $e) {
-                    $event_ts = (int)$e->timestart;
-                    $days_diff = (int)floor(($event_ts - $today_start) / 86400);
-
-                    $task_item = [
-                        'role_type' => 'mentor',
-                        'role_badge' => 'Mentor',
-                        'course_id' => (int)$e->courseid,
-                        'course_name' => $e->coursename,
-                        'section_name' => 'Course ' . $e->courseid,
-                        'batch_name' => $e->coursename,
-                        'activity_key' => 'event_' . $e->eventid,
-                        'activity_label' => 'Calendar Due: ' . $e->eventname,
-                        'planned_timestamp' => $event_ts,
-                        'planned_date_formatted' => date('d M Y, H:i', $event_ts),
-                        'action_url' => (new moodle_url('/calendar/view.php', ['view' => 'day', 'time' => $event_ts]))->out(false),
-                        'action_label' => 'View Calendar',
-                        'can_complete' => false
-                    ];
-
-                    if ($event_ts < $today_start) {
-                        $days_over = max(1, abs($days_diff));
-                        $task_item['due_class'] = 'over';
-                        $task_item['due_text'] = "Overdue {$days_over}d";
-                        $task_item['sort_order'] = 1000000000 + $event_ts;
-                        $todos[] = $task_item;
-                        $overdue_count++;
-                    } else if ($event_ts < $today_end) {
-                        $task_item['due_class'] = 'today';
-                        $task_item['due_text'] = 'Due today';
-                        $task_item['sort_order'] = 2000000000 + $event_ts;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-                    } else if ($event_ts <= $week_end) {
-                        $days_due = max(1, $days_diff);
-                        $task_item['due_class'] = 'soon';
-                        $task_item['due_text'] = "Due in {$days_due}d";
-                        $task_item['sort_order'] = 3000000000 + $event_ts;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-
-                        $fc_item = $task_item;
-                        $fc_item['time_relative'] = "in {$days_due} days";
-                        $forthcoming[] = $fc_item;
-                    } else {
-                        $days_due = $days_diff;
-                        $task_item['time_relative'] = "in {$days_due} days";
-                        $task_item['sort_order'] = 4000000000 + $event_ts;
-                        if (count($forthcoming) < 15) {
-                            $forthcoming[] = $task_item;
-                        }
-                    }
-                }
-            }
-        }
-
-        // =========================================================================
-        // ROLE 3: Assistant Manager
-        // Source: Tasks displayed based on start date of Class Section (Batch Management)
-        // Due Date: Calculated from class section start date
-        // =========================================================================
-        if ($view_role === 'am' || $view_role === 'all') {
-            $am_where = "";
-            $am_params = [];
-            if (!$can_manage_all) {
-                $am_where = "WHERE (s.pmmanager = :am_uid OR s.pmmanagername = :am_fn OR s.maacexecutive = :am_uid OR s.maacexecutivename = :am_fn)";
-                $am_params['am_uid'] = (string)$currentuserid;
-                $am_params['am_fn'] = $user_fullname;
-            }
-
-            $sections = $DB->get_records_sql("
-                SELECT s.id as sectionid, s.name as sectionname, b.id as batchid, b.name as batchname, b.coursename, b.startdate
-                FROM {local_bm_classsection} s
-                JOIN {local_bm_batch} b ON b.id = s.batchid
-                {$am_where}
-                ORDER BY b.startdate ASC
-            ", $am_params);
-
-            $am_milestone_templates = [
-                ['offset' => - (5 * 86400), 'title' => 'Mentor & Lab Allocation Verification', 'key' => 'am_mentor_verify'],
-                ['offset' => - (2 * 86400), 'title' => 'Student Onboarding & LMS Access Verification', 'key' => 'am_student_verify'],
-                ['offset' => 0,             'title' => 'Section Kickoff & Induction Day', 'key' => 'am_kickoff'],
-                ['offset' => (7 * 86400),   'title' => 'Week-1 Attendance & Attendance Audit', 'key' => 'am_week1_audit'],
-                ['offset' => (28 * 86400),  'title' => 'Module 1 Transition & Survey Readiness', 'key' => 'am_module1_audit'],
-            ];
-
-            foreach ($sections as $s) {
-                $batch_ids[$s->batchid] = true;
-                $section_ids[$s->sectionid] = true;
-
-                $start = (int)$s->startdate;
-                if ($start <= 0) {
-                    continue;
-                }
-
-                foreach ($am_milestone_templates as $tmpl) {
-                    $target_date = $start + $tmpl['offset'];
-                    $days_diff = (int)floor(($target_date - $today_start) / 86400);
-
-                    $task_item = [
-                        'role_type' => 'am',
-                        'role_badge' => 'Assistant Manager',
-                        'section_id' => (int)$s->sectionid,
-                        'batch_id' => (int)$s->batchid,
-                        'batch_name' => $s->batchname ?: 'Batch ' . $s->batchid,
-                        'section_name' => $s->sectionname,
-                        'activity_key' => $tmpl['key'],
-                        'activity_label' => $tmpl['title'],
-                        'section_start_date_formatted' => date('d M Y', $start),
-                        'planned_timestamp' => $target_date,
-                        'planned_date_formatted' => date('d M Y', $target_date),
-                        'action_url' => "batch.php?batchid=" . $s->batchid,
-                        'action_label' => 'View Batch',
-                        'can_complete' => false
-                    ];
-
-                    if ($target_date < $today_start) {
-                        $days_over = max(1, abs($days_diff));
-                        $task_item['due_class'] = 'over';
-                        $task_item['due_text'] = "Overdue {$days_over}d";
-                        $task_item['sort_order'] = 1000000000 + $target_date;
-                        $todos[] = $task_item;
-                        $overdue_count++;
-                    } else if ($target_date < $today_end) {
-                        $task_item['due_class'] = 'today';
-                        $task_item['due_text'] = 'Due today';
-                        $task_item['sort_order'] = 2000000000 + $target_date;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-                    } else if ($target_date <= $week_end) {
-                        $days_due = max(1, $days_diff);
-                        $task_item['due_class'] = 'soon';
-                        $task_item['due_text'] = "Due in {$days_due}d";
-                        $task_item['sort_order'] = 3000000000 + $target_date;
-                        $todos[] = $task_item;
-                        $due_this_week_count++;
-
-                        $fc_item = $task_item;
-                        $fc_item['time_relative'] = "in {$days_due} days";
-                        $forthcoming[] = $fc_item;
-                    } else {
-                        $days_due = $days_diff;
-                        $task_item['time_relative'] = "in {$days_due} days";
-                        $task_item['sort_order'] = 4000000000 + $target_date;
-                        if (count($forthcoming) < 15) {
-                            $forthcoming[] = $task_item;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort todos by urgency: overdue first, then due today, then due soon
-        usort($todos, function($a, $b) {
-            return $a['sort_order'] <=> $b['sort_order'];
-        });
-
-        // Sort forthcoming chronologically
-        usort($forthcoming, function($a, $b) {
-            return $a['planned_timestamp'] <=> $b['planned_timestamp'];
-        });
-
-        // Student count
-        $total_students = 0;
-        if (!empty($section_ids)) {
-            list($sec_in, $sec_params) = $DB->get_in_or_equal(array_keys($section_ids));
-            $total_students = (int)$DB->count_records_select('local_bm_student', "classsectionid $sec_in", $sec_params);
-        }
-        if ($total_students === 0) {
-            $total_students = (int)$DB->count_records('local_bm_student');
-        }
-
-        $batch_count = count($batch_ids);
-        if ($batch_count === 0) {
-            $batch_count = (int)$DB->count_records('local_bm_batch');
-        }
-
-        if ($view_role === 'pm_ss' || $view_role === 'sse' || $view_role === 'pm') {
-            $subtitle = "Program Manager / SS Team · Soft Skills Milestones (Planned vs Actual)";
-        } else if ($view_role === 'mentor') {
-            $c_count = count($mentor_course_ids);
-            $subtitle = "Mentor · Activity Due Dates & Calendar Tasks ({$c_count} courses)";
-        } else if ($view_role === 'am') {
-            $sec_count = count($section_ids);
-            $subtitle = "Assistant Manager · Section Kickoff & Readiness ({$sec_count} sections)";
-        } else {
-            $subtitle = "Portfolio Overview · All Roles Combined ({$batch_count} batches)";
-        }
-
-        echo json_encode([
-            'user' => [
-                'id' => $currentuserid,
-                'name' => $user_fullname,
-                'firstname' => $USER->firstname,
-            ],
-            'role_info' => [
-                'current_role' => $view_role,
-                'available_roles' => $available_roles,
-                'subtitle' => $subtitle,
-                'hint' => 'Role configured in Settings'
-            ],
-            'glance' => [
-                'due_this_week' => $due_this_week_count,
-                'overdue' => $overdue_count,
-                'batches' => $batch_count,
-                'students' => number_format($total_students),
-            ],
-            'todos' => $todos,
-            'forthcoming' => array_slice($forthcoming, 0, 10),
-        ]);
-        die();
-    } catch (\Throwable $e) {
-        echo json_encode(['error' => $e->getMessage()]);
-        die();
-    }
-}
-
-if ($action === 'complete_task') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
-
-    try {
-        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-            throw new moodle_exception('invalidrequest');
-        }
-        require_sesskey();
-
-        $sectionid = required_param('sectionid', PARAM_INT);
-        $activitykey = required_param('activity_key', PARAM_ALPHANUMEXT);
-
-        $section = $DB->get_record('local_bm_classsection', ['id' => $sectionid]);
-        if (!$section) {
-            throw new moodle_exception('invalidrecord', 'local_batchanalytics', '', 'Section not found');
-        }
-
-        $softskills = json_decode($section->softskillsdata ?? '{}', true);
-        if (!is_array($softskills)) {
-            $softskills = [];
-        }
-
-        $actual_time = time();
-        $actual_field = $activitykey . '_actual';
-        $softskills[$actual_field] = $actual_time;
-
-        if (class_exists('\local_batchmanagement\classsection')) {
-            try {
-                $obj = (object)[
-                    'softskillsdata' => json_encode($softskills),
-                ];
-                \local_batchmanagement\classsection::update($sectionid, $obj);
-            } catch (\Throwable $te) {
-                $upd = new \stdClass();
-                $upd->id = $sectionid;
-                $upd->softskillsdata = json_encode($softskills);
-                $upd->timemodified = $actual_time;
-                $DB->update_record('local_bm_classsection', $upd);
-            }
-        } else {
-            $upd = new \stdClass();
-            $upd->id = $sectionid;
-            $upd->softskillsdata = json_encode($softskills);
-            $upd->timemodified = $actual_time;
-            $DB->update_record('local_bm_classsection', $upd);
-        }
-
-        echo json_encode([
-            'success' => true,
-            'message' => 'Activity marked as completed.',
-            'sectionid' => $sectionid,
-            'activity_key' => $activitykey,
-            'actual_timestamp' => $actual_time,
-            'actual_formatted' => date('d M Y, H:i', $actual_time)
-        ]);
-        die();
-    } catch (\Throwable $e) {
-        echo json_encode(['error' => $e->getMessage()]);
-        die();
-    }
-}
+// Note: Task Dashboard API endpoints (action=get_task_data, action=complete_task)
+// have been extracted and archived to local/task_tab_backup/ for Phase 2 implementation.
 
 // ... (HTML Page rendering) ...
 
-$active_top_tab = 'task';
-$page_url_params = [];
-$raw_query = strtolower($_SERVER['QUERY_STRING'] ?? '');
-if (isset($_GET['batchanalysis']) || isset($_GET['batchanalytics']) || optional_param('tab', '', PARAM_ALPHANUMEXT) === 'batchanalysis' || optional_param('view', '', PARAM_ALPHANUMEXT) === 'batchanalysis' || str_contains($raw_query, 'batchanalysis') || str_contains($raw_query, 'batchanalytics')) {
-    $active_top_tab = 'new';
-    $page_url_params = ['batchanalysis' => ''];
-} else if (isset($_GET['old']) || optional_param('tab', '', PARAM_ALPHANUMEXT) === 'old' || str_contains($raw_query, 'old')) {
-    $active_top_tab = 'old';
-    $page_url_params = ['old' => ''];
-} else {
-    $active_top_tab = 'task';
-    $page_url_params = ['task' => ''];
-}
-
 $PAGE->set_context($context);
-$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php', $page_url_params));
+$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
 $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
 $newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
-$taskstyleurl = new moodle_url('/local/batchanalytics/task_dashboard.css', ['v' => filemtime(__DIR__ . '/task_dashboard.css')]);
-$scripturl = new moodle_url('/local/batchanalytics/simple.js', ['v' => filemtime(__DIR__ . '/simple.js')]);
 $newscripturl = new moodle_url('/local/batchanalytics/new_analytics.js', ['v' => filemtime(__DIR__ . '/new_analytics.js')]);
-$taskscripturl = new moodle_url('/local/batchanalytics/task_dashboard.js', ['v' => filemtime(__DIR__ . '/task_dashboard.js')]);
 
 $PAGE->requires->css($styleurl);
 $PAGE->requires->css($newstyleurl);
-$PAGE->requires->css($taskstyleurl);
-$PAGE->requires->js($scripturl);
 $PAGE->requires->js($newscripturl);
-$PAGE->requires->js($taskscripturl);
 
 echo $OUTPUT->header();
 
-$is_task_active = ($active_top_tab === 'task');
-$is_new_active = ($active_top_tab === 'new');
-$is_old_active = ($active_top_tab === 'old');
+echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
+echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
+
 
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
 $mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
 $maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
-echo '<div class="local-batchanalytics-wrap" data-active-tab="' . $active_top_tab . '" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
-// Top-Level Primary Navigation Bar (Task | New Batch Analytics)
-echo '<div class="ba-top-nav-tabs-bar">';
-echo '  <button type="button" class="ba-top-nav-tab' . ($is_task_active ? ' active' : '') . '" data-top-tab="task"><span class="ba-tab-icon">📋</span> Task</button>';
-echo '  <button type="button" class="ba-top-nav-tab' . ($is_new_active ? ' active' : '') . '" data-top-tab="new"><span class="ba-tab-icon">⚡</span> New Batch Analytics</button>';
-echo '</div>';
-
-// TASK TAB PANE
-echo '<div id="ba-top-tab-task" class="ba-top-tab-pane' . ($is_task_active ? ' active' : '') . '"' . ($is_task_active ? '' : ' style="display:none"') . '>';
-echo '  <div id="task-dashboard-root"></div>';
-echo '</div>';
-
-// NEW BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-new" class="ba-top-tab-pane' . ($is_new_active ? ' active' : '') . '"' . ($is_new_active ? '' : ' style="display:none"') . '>';
+// Batch Analytics Dashboard
+echo '<div id="ba-top-tab-new" class="ba-top-tab-pane active">';
 echo '  <div class="ba-new-dashboard">';
 
-echo '    <!-- Stat Cards Grid (9 Cards: 3 Delivery Cards + 6 Metrics Cards) -->';
-echo '    <div class="ba-new-stats-container" id="ba-new-stats-grid">';
-echo '      <div class="ba-stats-row-top">';
-echo '        <div class="ba-new-stat-card ba-new-stat-filter card-blue is-active" data-batch-filter="running" role="button" tabindex="0" aria-pressed="true">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Running Batches</span>';
-echo '            <span class="ba-new-stat-icon icon-blue">📊</span>';
-echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-running-batches">--</div>';
-echo '          <div class="ba-new-stat-footer">Total Active Batches</div>';
-echo '        </div>';
-
-echo '        <div class="ba-new-stat-card ba-new-stat-filter card-green" data-batch-filter="online" role="button" tabindex="0" aria-pressed="false">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Online Batches</span>';
-echo '            <span class="ba-new-stat-icon icon-green">💻</span>';
-echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-online-batches">--</div>';
-echo '          <div class="ba-new-stat-footer">Virtual Classrooms</div>';
-echo '        </div>';
-
-echo '        <div class="ba-new-stat-card ba-new-stat-filter card-purple" data-batch-filter="offline" role="button" tabindex="0" aria-pressed="false">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Offline Batches</span>';
-echo '            <span class="ba-new-stat-icon icon-purple">🏫</span>';
-echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-offline-batches">--</div>';
-echo '          <div class="ba-new-stat-footer">In-Person Campus</div>';
+echo '    <!-- Header & Portfolio Stat Cards Container -->';
+echo '    <div class="ba-portfolio-card">';
+echo '      <div class="ba-portfolio-header">';
+echo '        <h1 class="ba-portfolio-title">Emertxe <span class="ba-title-dash">–</span> Batch Analytics</h1>';
+echo '        <div class="ba-portfolio-subtitle">Overview of all running batches</div>';
+echo '        <div class="ba-portfolio-glance-bar">';
+echo '          <span class="ba-glance-indicator"></span>';
+echo '          <span class="ba-glance-label">PORTFOLIO AT A GLANCE</span>';
 echo '        </div>';
 echo '      </div>';
 
-echo '      <div class="ba-stats-row-bottom">';
-echo '        <div class="ba-new-stat-card card-teal">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Class Mentors</span>';
-echo '            <span class="ba-new-stat-icon icon-teal">👨‍🏫</span>';
+echo '      <!-- 10 Stat Cards in 5x2 Grid: Completed, Running, Online, Offline, Class Mentors | Lab Mentors, Early, On Schedule, Delayed, Students -->';
+echo '      <div class="ba-portfolio-grid" id="ba-new-stats-grid">';
+echo '        <!-- Card 1: Completed Batches -->';
+echo '        <div class="ba-stat-box ba-new-stat-filter card-completed" data-batch-filter="completed" role="button" tabindex="0" aria-pressed="false" title="Filter completed cohorts">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-teal">';
+echo '              <svg class="ba-stat-svg svg-teal" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-class-mentors">--</div>';
-echo '          <div class="ba-new-stat-footer">Active Instructors</div>';
+echo '          <div class="ba-stat-num" id="stat-completed-batches">--</div>';
+echo '          <div class="ba-stat-lbl">Completed batches</div>';
 echo '        </div>';
 
-echo '        <div class="ba-new-stat-card card-indigo">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Lab Mentors</span>';
-echo '            <span class="ba-new-stat-icon icon-indigo">🔬</span>';
+echo '        <!-- Card 2: Running Batches -->';
+echo '        <div class="ba-stat-box ba-new-stat-filter card-running is-active" data-batch-filter="running" role="button" tabindex="0" aria-pressed="true" title="Filter active running batches">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-pink">';
+echo '              <svg class="ba-stat-svg svg-pink" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-lab-mentors">--</div>';
-echo '          <div class="ba-new-stat-footer">Technical Assistants</div>';
+echo '          <div class="ba-stat-num" id="stat-running-batches">--</div>';
+echo '          <div class="ba-stat-lbl">Running batches</div>';
 echo '        </div>';
 
-echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-emerald" data-schedule-filter="on_schedule" aria-pressed="false">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">On Schedule</span>';
-echo '            <span class="ba-new-stat-icon icon-emerald">&#10003;</span>';
+echo '        <!-- Card 3: Online Batches -->';
+echo '        <div class="ba-stat-box ba-new-stat-filter card-online" data-batch-filter="online" role="button" tabindex="0" aria-pressed="false" title="Filter online batches">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-blue">';
+echo '              <svg class="ba-stat-svg svg-blue" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value text-success" id="stat-on-schedule">--</div>';
-echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-green"></span> On track running batches</div>';
+echo '          <div class="ba-stat-num" id="stat-online-batches">--</div>';
+echo '          <div class="ba-stat-lbl">Online batches</div>';
+echo '        </div>';
+
+echo '        <!-- Card 4: Offline Batches -->';
+echo '        <div class="ba-stat-box ba-new-stat-filter card-offline" data-batch-filter="offline" role="button" tabindex="0" aria-pressed="false" title="Filter offline in-person batches">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-green">';
+echo '              <svg class="ba-stat-svg svg-green" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"></rect><circle cx="12" cy="12" r="2.5" fill="currentColor"></circle></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
+echo '          </div>';
+echo '          <div class="ba-stat-num" id="stat-offline-batches">--</div>';
+echo '          <div class="ba-stat-lbl">Offline batches</div>';
+echo '        </div>';
+
+echo '        <!-- Card 5: Class Mentors -->';
+echo '        <div class="ba-stat-box card-class-mentors" title="Assigned classroom instructors">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-purple">';
+echo '              <svg class="ba-stat-svg svg-purple" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
+echo '          </div>';
+echo '          <div class="ba-stat-num" id="stat-class-mentors">--</div>';
+echo '          <div class="ba-stat-lbl">Class mentors</div>';
+echo '        </div>';
+
+echo '        <!-- Card 6: Lab Mentors -->';
+echo '        <div class="ba-stat-box card-lab-mentors" title="Assigned lab and technical assistants">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-purple">';
+echo '              <svg class="ba-stat-svg svg-purple" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
+echo '          </div>';
+echo '          <div class="ba-stat-num" id="stat-lab-mentors">--</div>';
+echo '          <div class="ba-stat-lbl">Lab mentors</div>';
+echo '        </div>';
+
+echo '        <!-- Card 7: Early (Tinted background & blue text) -->';
+echo '        <button type="button" class="ba-stat-box ba-schedule-status-filter card-early" data-schedule-filter="early" aria-pressed="false" title="Filter batches running ahead of schedule">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-cyan">';
+echo '              <svg class="ba-stat-svg svg-cyan" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
+echo '          </div>';
+echo '          <div class="ba-stat-num text-early-blue" id="stat-early">--</div>';
+echo '          <div class="ba-stat-lbl">Early</div>';
 echo '        </button>';
 
-echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-red" data-schedule-filter="delayed" aria-pressed="false">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Delayed</span>';
-echo '            <span class="ba-new-stat-icon icon-red">&#9888;</span>';
+echo '        <!-- Card 8: On Schedule -->';
+echo '        <button type="button" class="ba-stat-box ba-schedule-status-filter card-on-schedule" data-schedule-filter="on_schedule" aria-pressed="false" title="Filter batches on track">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-emerald">';
+echo '              <svg class="ba-stat-svg svg-emerald" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value text-danger" id="stat-delayed">--</div>';
-echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-red"></span> Needs attention</div>';
+echo '          <div class="ba-stat-num" id="stat-on-schedule">--</div>';
+echo '          <div class="ba-stat-lbl">On schedule</div>';
 echo '        </button>';
 
-echo '        <button type="button" class="ba-new-stat-card ba-schedule-status-filter card-cyan" data-schedule-filter="early" aria-pressed="false">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Early</span>';
-echo '            <span class="ba-new-stat-icon icon-cyan">&#8593;</span>';
+echo '        <!-- Card 9: Delayed (Tinted background & red text) -->';
+echo '        <button type="button" class="ba-stat-box ba-schedule-status-filter card-delayed" data-schedule-filter="delayed" aria-pressed="false" title="Filter batches needing attention">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-red">';
+echo '              <svg class="ba-stat-svg svg-red" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value text-primary" id="stat-early">--</div>';
-echo '          <div class="ba-new-stat-footer"><span class="badge-status-dot dot-blue"></span> Ahead of planned schedule</div>';
+echo '          <div class="ba-stat-num text-delayed-red" id="stat-delayed">--</div>';
+echo '          <div class="ba-stat-lbl">Delayed</div>';
 echo '        </button>';
-echo '        <div class="ba-new-stat-card card-orange">';
-echo '          <div class="ba-new-stat-header">';
-echo '            <span class="ba-new-stat-title">Total Students</span>';
-echo '            <span class="ba-new-stat-icon icon-orange">👥</span>';
+
+echo '        <!-- Card 10: Students (current) -->';
+echo '        <div class="ba-stat-box card-students" title="Total active enrolled learners">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-indigo">';
+echo '              <svg class="ba-stat-svg svg-indigo" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
-echo '          <div class="ba-new-stat-value" id="stat-total-students">--</div>';
-echo '          <div class="ba-new-stat-footer">Enrolled Learners</div>';
+echo '          <div class="ba-stat-num" id="stat-total-students">--</div>';
+echo '          <div class="ba-stat-lbl">Students (current)</div>';
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';
 
 echo '    <!-- Search & Filters Controls Card -->';
 echo '    <div class="ba-new-card ba-new-controls-card">';
-echo '      <div class="ba-new-controls-header">';
-echo '        <div class="ba-controls-title-wrap">';
-echo '          <span class="ba-controls-badge">⚡ Filter & Search</span>';
-echo '          <span class="ba-controls-subtitle">Filter cohorts across programs, dates, and delivery modes</span>';
-echo '        </div>';
-echo '        <button id="ba-new-reset-btn" type="button" class="ba-new-btn-secondary" title="Clear all active filters"><span class="btn-icon">🔄</span> Reset Filters</button>';
+echo '      <div class="ba-new-search-row">';
+echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="Search batch code (e.g., 26011, 26022)..." />';
+echo '        <button id="ba-new-reset-btn" type="button" class="ba-btn-blue-solid" title="Clear all active filters">Reset</button>';
 echo '      </div>';
-echo '      <div class="ba-new-controls-body">';
-echo '        <div class="ba-new-search-box">';
-echo '          <span class="ba-search-icon">🔍</span>';
-echo '          <input type="text" id="ba-new-search-input" placeholder="Search by batch name, course title, or module..." />';
-echo '        </div>';
-echo '        <div class="ba-new-filters-row">';
-echo '          <div class="ba-new-filter-group">';
-echo '            <label for="ba-filter-year">Year</label>';
-echo '            <select id="ba-filter-year" class="ba-new-select"><option value="">All Years</option></select>';
-echo '          </div>';
-echo '          <div class="ba-new-filter-group">';
-echo '            <label for="ba-filter-batch">Batch No.</label>';
-echo '            <select id="ba-filter-batch" class="ba-new-select"><option value="">All Batches</option></select>';
-echo '          </div>';
-echo '          <div class="ba-new-filter-group">';
-echo '            <label for="ba-filter-course">Course</label>';
-echo '            <select id="ba-filter-course" class="ba-new-select"><option value="">All Courses</option></select>';
-echo '          </div>';
-echo '          <div class="ba-new-filter-group">';
-echo '            <label for="ba-filter-mode">Mode</label>';
-echo '            <select id="ba-filter-mode" class="ba-new-select"><option value="">All Modes</option></select>';
-echo '          </div>';
-echo '        </div>';
+echo '      <div class="ba-filters-label">FILTERS</div>';
+echo '      <div class="ba-new-filters-row">';
+echo '        <select id="ba-filter-year" class="ba-new-select"><option value="">Year — All</option></select>';
+echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">Batch No — All</option></select>';
+echo '        <select id="ba-filter-course" class="ba-new-select"><option value="">Course — All</option></select>';
+echo '        <select id="ba-filter-mode" class="ba-new-select"><option value="">Mode — All</option></select>';
 echo '      </div>';
 echo '    </div>';
 
-echo '    <!-- Main Table Container -->';
-echo '    <div class="ba-new-card ba-new-table-card">';
-echo '      <div class="ba-new-subtabs-wrap">';
-echo '        <div class="ba-new-subtabs">';
-echo '          <button type="button" class="ba-new-subtab active" data-subtab="running">';
-echo '            <span class="subtab-dot dot-running"></span> Current Running Batches <span class="ba-count-pill" id="ba-cnt-running">0</span>';
-echo '          </button>';
-echo '          <button type="button" class="ba-new-subtab" data-subtab="completed">';
-echo '            <span class="subtab-dot dot-completed"></span> Completed Batches <span class="ba-count-pill" id="ba-cnt-completed">0</span>';
-echo '          </button>';
-echo '        </div>';
-echo '      </div>';
+echo '    <!-- Subtabs Navigation -->';
+echo '    <div class="ba-new-subtabs-bar">';
+echo '      <button type="button" class="ba-new-subtab active" data-subtab="running">';
+echo '        Current Running Batches';
+echo '      </button>';
+echo '      <button type="button" class="ba-new-subtab" data-subtab="completed">';
+echo '        Completed Batches';
+echo '      </button>';
+echo '    </div>';
 
+echo '    <!-- Table Section Header -->';
+echo '    <div class="ba-table-header-row">';
+echo '      <div class="ba-table-title-wrap">';
+echo '        <span class="ba-glance-indicator"></span>';
+echo '        <h2 class="ba-table-title" id="ba-table-title-text">Current Running Batches</h2>';
+echo '      </div>';
+echo '      <div class="ba-table-showing-info" id="ba-new-pagination-info">Showing 0 of 0</div>';
+echo '    </div>';
+
+echo '    <!-- Main Table Container -->';
+echo '    <div class="ba-new-table-card">';
 echo '      <div class="ba-new-table-wrapper">';
 echo '        <table class="ba-new-table" id="ba-new-batch-table">';
 echo '          <thead>';
 echo '            <tr>';
-echo '              <th style="width:50px;">SI.</th>';
-echo '              <th>Batch ID</th>';
-echo '              <th>Course Name</th>';
-echo '              <th>Mode</th>';
-echo '              <th>Batch Type</th>';
-echo '              <th>Start Date</th>';
-echo '              <th>Current Running Module</th>';
-echo '              <th>Status</th>';
-echo '              <th style="text-align:center;">Action</th>';
+echo '              <th>BATCH ID</th>';
+echo '              <th>COURSE</th>';
+echo '              <th>MODE</th>';
+echo '              <th>TYPE</th>';
+echo '              <th>START</th>';
+echo '              <th>CURRENT MODULE</th>';
+echo '              <th>STATUS</th>';
+echo '              <th style="text-align:right;"></th>';
 echo '            </tr>';
 echo '          </thead>';
 echo '          <tbody id="ba-new-table-body">';
 echo '            <tr>';
-echo '              <td colspan="9" class="ba-new-loading">Loading batch analytics...</td>';
+echo '              <td colspan="8" class="ba-new-loading">Loading batch analytics...</td>';
 echo '            </tr>';
 echo '          </tbody>';
 echo '        </table>';
@@ -1969,9 +809,6 @@ echo '      </div>';
 
 echo '      <!-- Pagination Footer -->';
 echo '      <div class="ba-new-pagination-bar">';
-echo '        <div class="ba-new-pagination-info" id="ba-new-pagination-info">';
-echo '          Showing 0-0 of 0 entries';
-echo '        </div>';
 echo '        <div class="ba-new-pagination-controls" id="ba-new-pagination-controls">';
 echo '        </div>';
 echo '      </div>';
@@ -1979,34 +816,6 @@ echo '    </div>';
 
 echo '  </div>';
 echo '</div>'; // #ba-top-tab-new
-
-// OLD BATCH ANALYTICS TAB PANE
-echo '<div id="ba-top-tab-old" class="ba-top-tab-pane' . ($is_old_active ? ' active' : '') . '"' . ($is_old_active ? '' : ' style="display:none"') . '>';
-echo '  <div class="ba-top-row">';
-echo '    <div class="ba-search-row">';
-$search_placeholder = 'Search course name (e.g., Advanced C)...';
-echo '      <input id="ba-search" type="text" placeholder="' . $search_placeholder . '">';
-echo '      <button id="ba-search-btn" class="ba-btn">Search</button>';
-echo '    </div>';
-echo '    <div class="ba-top-actions">';
-if ($can_view_tickets) {
-    echo '      <a href="' . new moodle_url('/local/batchanalytics/tickets.php') . '" class="ba-btn ba-btn-view">' . get_string('ticket_dashboard', 'local_batchanalytics') . '</a>';
-}
-echo '    </div>';
-echo '  </div>';
-
-echo '  <div class="ba-batch-card">';
-echo '    <label class="ba-label">SELECT BATCH GROUP</label>';
-echo '    <select id="ba-batch" class="ba-select">';
-echo '      <option value="">-- Select a Batch --</option>';
-echo '    </select>';
-echo '  </div>';
-
-echo '  <div id="ba-tabs-wrapper" class="ba-tabs-wrapper" style="display:none">';
-echo '    <ul class="ba-tabs-nav" id="batchTabs"></ul>';
-echo '    <div class="ba-tabs-content" id="batchTabsContent"></div>';
-echo '  </div>';
-echo '</div>'; // #ba-top-tab-old
 
 echo '</div>'; // .local-batchanalytics-wrap
 

@@ -16,9 +16,12 @@ administration > Notifications** after installing or deploying an upgrade.
 
 This is not a single-page plugin. Its primary pages and frontend scripts are:
 
-- `index.php` and top-level `simple.js`: Batch Analytics page and its batch,
-  course, CRM, and course-summary actions. `index.php` is approximately 780
-  lines and `simple.js` is approximately 4,280 lines at this revision.
+- `index.php` and top-level `new_analytics.js`: Batch Analytics main dashboard
+  displaying active and completed cohorts with filters, stat cards, and links to
+  batch and module analytics.
+- `batch.php` and `batch.js`: Cohort batch detail view (Schedule, Module Tracker,
+  Student Performance, MAAC, and CRM Data tabs).
+- `module.php` and `module.js`: Single-module analytics and student grading view.
 - `maac.php` and `maac.js`: per-course MAAC values, feedback, and ticket actions.
 - `activity_tracker.php` and `activity_tracker.js`: Module Tracker activity
   delivery status and completion dates.

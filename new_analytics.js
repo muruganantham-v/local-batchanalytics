@@ -65,6 +65,7 @@ function initNewBatchAnalytics() {
     setStatValue("stat-running-batches", stats.runningBatches);
     setStatValue("stat-online-batches", stats.onlineBatches);
     setStatValue("stat-offline-batches", stats.offlineBatches);
+    setStatValue("stat-completed-batches", stats.completedBatches);
     renderContextStats(runningBatches);
   }
 
@@ -105,7 +106,7 @@ function initNewBatchAnalytics() {
     setStatValue("stat-on-schedule", statusCounts.onSchedule);
     setStatValue("stat-delayed", statusCounts.delayed);
     setStatValue("stat-early", statusCounts.early);
-    setStatValue("stat-total-students", totalStudents);
+    setStatValue("stat-total-students", totalStudents.toLocaleString());
   }
 
   function populateFilters(filters) {
@@ -113,25 +114,25 @@ function initNewBatchAnalytics() {
 
     const yearSelect = document.getElementById("ba-filter-year");
     if (yearSelect && filters.years) {
-      yearSelect.innerHTML = '<option value="">All Years</option>' +
+      yearSelect.innerHTML = '<option value="">Year — All</option>' +
         filters.years.map(y => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`).join('');
     }
 
     const batchSelect = document.getElementById("ba-filter-batch");
     if (batchSelect && filters.batchNames) {
-      batchSelect.innerHTML = '<option value="">All Batches</option>' +
+      batchSelect.innerHTML = '<option value="">Batch No — All</option>' +
         filters.batchNames.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
     }
 
     const courseSelect = document.getElementById("ba-filter-course");
     if (courseSelect && filters.courses) {
-      courseSelect.innerHTML = '<option value="">All Courses</option>' +
+      courseSelect.innerHTML = '<option value="">Course — All</option>' +
         filters.courses.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
     }
 
     const modeSelect = document.getElementById("ba-filter-mode");
     if (modeSelect && filters.modes) {
-      modeSelect.innerHTML = '<option value="">All Modes</option>' +
+      modeSelect.innerHTML = '<option value="">Mode — All</option>' +
         filters.modes.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
     }
   }
@@ -165,6 +166,10 @@ function initNewBatchAnalytics() {
         });
         currentSubTab = "running";
         currentStatFilter = "running";
+        const titleEl = document.getElementById("ba-table-title-text");
+        if (titleEl) {
+          titleEl.textContent = "Current Running Batches";
+        }
         currentScheduleFilter = "";
         setActiveSubtab();
         setActiveStatCard();
@@ -180,12 +185,19 @@ function initNewBatchAnalytics() {
         subtabs.forEach((t) => t.classList.remove("active"));
         this.classList.add("active");
         currentSubTab = this.dataset.subtab;
-        if (currentSubTab !== "running") {
-          currentStatFilter = "";
-          currentScheduleFilter = "";
-          setActiveStatCard();
-          setActiveScheduleCard();
+        const titleEl = document.getElementById("ba-table-title-text");
+        if (titleEl) {
+          titleEl.textContent = currentSubTab === "completed" ? "Completed Batches" : "Current Running Batches";
         }
+        if (currentSubTab === "completed") {
+          currentStatFilter = "completed";
+          currentScheduleFilter = "";
+        } else {
+          currentStatFilter = "running";
+          currentScheduleFilter = "";
+        }
+        setActiveStatCard();
+        setActiveScheduleCard();
         currentPage = 1;
         applyAndRender();
       });
@@ -194,12 +206,22 @@ function initNewBatchAnalytics() {
     document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
       card.addEventListener("click", function () {
         const modeSelect = document.getElementById("ba-filter-mode");
-        currentStatFilter = this.dataset.batchFilter || "running";
+        const filterVal = this.dataset.batchFilter || "running";
+        currentStatFilter = filterVal;
         currentScheduleFilter = "";
-        currentSubTab = "running";
-        if (modeSelect) {
-          modeSelect.value = currentStatFilter === "running" ? "" :
-            currentStatFilter.charAt(0).toUpperCase() + currentStatFilter.slice(1);
+        if (filterVal === "completed") {
+          currentSubTab = "completed";
+          if (modeSelect) modeSelect.value = "";
+        } else {
+          currentSubTab = "running";
+          if (modeSelect) {
+            modeSelect.value = currentStatFilter === "running" ? "" :
+              currentStatFilter.charAt(0).toUpperCase() + currentStatFilter.slice(1);
+          }
+        }
+        const titleEl = document.getElementById("ba-table-title-text");
+        if (titleEl) {
+          titleEl.textContent = currentSubTab === "completed" ? "Completed Batches" : "Current Running Batches";
         }
         setActiveSubtab();
         setActiveStatCard();
@@ -217,8 +239,14 @@ function initNewBatchAnalytics() {
 
     document.querySelectorAll(".ba-schedule-status-filter").forEach((card) => {
       card.addEventListener("click", function () {
-        currentScheduleFilter = this.dataset.scheduleFilter || "";
-        currentStatFilter = currentStatFilter || "running";
+        const filterVal = this.dataset.scheduleFilter || "";
+        if (currentScheduleFilter === filterVal) {
+          currentScheduleFilter = "";
+          currentStatFilter = "running";
+        } else {
+          currentScheduleFilter = filterVal;
+          currentStatFilter = "";
+        }
         currentSubTab = "running";
         setActiveSubtab();
         setActiveStatCard();
@@ -275,6 +303,7 @@ function initNewBatchAnalytics() {
     if (cntRunningEl) cntRunningEl.textContent = runningCount;
     const cntCompletedEl = document.getElementById("ba-cnt-completed");
     if (cntCompletedEl) cntCompletedEl.textContent = completedCount;
+    setStatValue("stat-completed-batches", completedCount);
 
     let filtered = rawData.batches.filter((b) => {
       if (currentSubTab === "completed" && !b.isCompleted) return false;
@@ -291,12 +320,15 @@ function initNewBatchAnalytics() {
       if (batchVal && b.batchId !== batchVal) return false;
       if (courseVal && b.courseName !== courseVal) return false;
       if (modeVal && b.mode !== modeVal) return false;
-      if (currentSubTab === "running" && currentScheduleFilter && b.status !== currentScheduleFilter) return false;
 
       return true;
     });
 
     renderContextStats(filtered);
+
+    if (currentSubTab === "running" && currentScheduleFilter) {
+      filtered = filtered.filter((b) => b.status === currentScheduleFilter);
+    }
 
     // Ensure batches are ordered with oldest date first
     filtered.sort((a, b) => {
@@ -324,24 +356,38 @@ function initNewBatchAnalytics() {
     if (!tbody) return;
 
     if (items.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="ba-new-empty">No matching batches found.</td></tr>`;
+      tbody.innerHTML = '<tr><td colspan="8" class="ba-new-empty">No matching batches found.</td></tr>';
       return;
     }
 
     tbody.innerHTML = items
-      .map((b, idx) => {
-        const siNo = startIndex + idx + 1;
+      .map((b) => {
         const modeLower = (b.mode || "").toLowerCase();
-        const modeBadgeClass = modeLower === "online" ? "ba-badge-green" : (modeLower === "offline" ? "ba-badge-blue" : "ba-badge-purple");
-        const typeBadgeClass = "ba-badge-gray";
+        const modeBadgeClass = modeLower === "online" ? "online" : (modeLower === "offline" ? "offline" : "hybrid");
+
+        const typeRaw = (b.type || "Regular").trim();
+        const typeLower = typeRaw.toLowerCase();
+        let typeBadgeClass = "";
+        if (typeLower === "int") typeBadgeClass = "int";
+        else if (typeLower === "wp") typeBadgeClass = "wp";
 
         let statusHtml = "";
-        if (b.status === "delayed") {
-          statusHtml = `<span class="ba-status-pill status-delayed"><span class="ba-beacon-dot dot-red"></span> ${escapeHtml(b.statusLabel)}</span>`;
-        } else if (b.status === "early") {
-          statusHtml = `<span class="ba-status-pill status-early"><span class="ba-beacon-dot dot-blue"></span> ${escapeHtml(b.statusLabel)}</span>`;
+        const delta = typeof b.delayDays === "number" ? b.delayDays : parseInt(b.delayDays, 10) || 0;
+
+        if (b.isCompleted) {
+          statusHtml = '<span class="ba-status-pill status-completed"><span class="ba-dot dot-teal"></span> Completed</span>';
+        } else if (b.status === "delayed" || delta > 0) {
+          if (delta > 0 && delta <= 3) {
+            statusHtml = `<span class="ba-status-pill status-minor-slip"><span class="ba-dot dot-amber"></span> Minor slip +${delta}d</span>`;
+          } else {
+            const daysText = delta > 0 ? `+${delta}d` : `${Math.abs(delta)}d`;
+            statusHtml = `<span class="ba-status-pill status-delayed"><span class="ba-dot dot-red"></span> Delayed ${daysText}</span>`;
+          }
+        } else if (b.status === "early" || delta < 0) {
+          const earlyDays = Math.abs(delta);
+          statusHtml = `<span class="ba-status-pill status-early"><span class="ba-dot dot-blue"></span> Early -${earlyDays}d</span>`;
         } else {
-          statusHtml = `<span class="ba-status-pill status-ok"><span class="ba-beacon-dot dot-green"></span> On schedule</span>`;
+          statusHtml = '<span class="ba-status-pill status-ok"><span class="ba-dot dot-green"></span> On schedule</span>';
         }
 
         let batchUrl = "";
@@ -360,37 +406,32 @@ function initNewBatchAnalytics() {
         }
 
         const moduleHtml = moduleUrl
-          ? `<a href="${moduleUrl}" class="ba-module-chip" title="View Module Analytics"><span class="chip-icon">📘</span> <span class="chip-name">${escapeHtml(b.currentModule || "N/A")}</span></a>`
-          : `<span class="ba-module-chip static"><span class="chip-icon">📘</span> <span class="chip-name">${escapeHtml(b.currentModule || "N/A")}</span></span>`;
+          ? `<a href="${moduleUrl}" class="ba-module-link" title="View Module Analytics">${escapeHtml(b.currentModule || "N/A")}</a>`
+          : `<span class="ba-module-text">${escapeHtml(b.currentModule || "N/A")}</span>`;
 
         return `
           <tr>
-            <td class="td-sno">${siNo}</td>
             <td class="td-batch-id">
-              <a href="${batchUrl}" class="ba-batch-id-pill" title="View Batch Overview">
-                <span class="batch-hash">#</span><strong>${escapeHtml(b.batchId)}</strong>
+              <a href="${batchUrl}" class="ba-batch-link" title="View Batch Overview">
+                ${escapeHtml(b.batchId)}
               </a>
             </td>
             <td class="td-course-name">
-              <span class="course-title">${escapeHtml(b.courseName)}</span>
-              ${b.studentCount ? `<span class="course-meta">${b.studentCount} Students Enrolled</span>` : ''}
+              <span class="ba-course-title">${escapeHtml(b.courseName)}</span>
             </td>
-            <td><span class="ba-badge ${modeBadgeClass}"><span class="badge-dot"></span> ${escapeHtml(b.mode)}</span></td>
-            <td><span class="ba-badge ${typeBadgeClass}">${escapeHtml(b.type)}</span></td>
-            <td class="td-date"><span class="date-icon">📅</span> ${escapeHtml(b.startDate)}</td>
+            <td><span class="ba-pill-mode ${modeBadgeClass}">${escapeHtml(b.mode)}</span></td>
+            <td><span class="ba-pill-type ${typeBadgeClass}">${escapeHtml(typeRaw)}</span></td>
+            <td class="td-date">${escapeHtml(b.startDate)}</td>
             <td class="td-module">${moduleHtml}</td>
             <td>${statusHtml}</td>
-            <td style="text-align:center;">
-              <a href="${batchUrl}" class="ba-new-view-btn">
-                <span class="btn-lbl">View Batch</span>
-                <span class="btn-arr">→</span>
-              </a>
+            <td style="text-align:right;">
+              <a href="${batchUrl}" class="ba-btn-view-outline">View Batch</a>
             </td>
           </tr>
         `;
       })
       .join("");
-    }
+  }
 
   function renderPagination(totalItems, startIndex, pageItemCount, totalPages) {
     const infoEl = document.getElementById("ba-new-pagination-info");
@@ -398,11 +439,11 @@ function initNewBatchAnalytics() {
 
     if (infoEl) {
       if (totalItems === 0) {
-        infoEl.textContent = "Showing 0 of 0 entries";
+        infoEl.textContent = "Showing 0 of 0";
       } else {
         const start = startIndex + 1;
         const end = startIndex + pageItemCount;
-        infoEl.textContent = `Showing ${start} to ${end} of ${totalItems} entries`;
+        infoEl.textContent = `Showing ${start}–${end} of ${totalItems}`;
       }
     }
 
@@ -426,24 +467,6 @@ function initNewBatchAnalytics() {
           applyAndRender();
         });
       });
-    }
-  }
-
-  function switchToOldBatch(batchName) {
-    const oldTabBtn = document.querySelector('.ba-top-nav-tab[data-top-tab="old"]');
-    if (oldTabBtn) {
-      oldTabBtn.click();
-    }
-
-    const selectEl = document.getElementById("ba-batch");
-    if (selectEl) {
-      for (let i = 0; i < selectEl.options.length; i++) {
-        if (selectEl.options[i].text.includes(batchName) || selectEl.options[i].value.includes(batchName)) {
-          selectEl.selectedIndex = i;
-          selectEl.dispatchEvent(new Event("change"));
-          break;
-        }
-      }
     }
   }
 }
