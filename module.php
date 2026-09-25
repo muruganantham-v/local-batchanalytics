@@ -316,82 +316,55 @@ if (!function_exists('format_cell_muted')) {
 // -------------------------------------------------------------------------
 $students_data = [];
 
-if ($section && $has_bm_student) {
-    $userfields = \core_user\fields::for_userpic()->get_sql('u', false, '', '', false)->selects;
-    $sql = "SELECT u.id, u.idnumber, {$userfields}
-              FROM {local_bm_student} s
-              JOIN {user} u ON u.id = s.userid
-             WHERE s.classsectionid = :csid AND u.deleted = 0
-             ORDER BY u.firstname, u.lastname";
-    $db_students = $DB->get_records_sql($sql, ['csid' => $section->id]);
-    if (!empty($db_students)) {
-        $sample_grades = [82, 58, 36, 44, 74, 61, 32, 39, 88, 91, 66, 71];
-        $sample_merits = [[1, 'sel'], [0, 'nom'], [0, 0], [0, 0], [1, 0], [1, 'nom'], [0, 0], [0, 0], [1, 'sel'], [1, 'sel'], [0, 'nom'], [1, 0]];
-        $i = 0;
-        foreach ($db_students as $st) {
-            $g = $sample_grades[$i % count($sample_grades)];
-            $m = $sample_merits[$i % count($sample_merits)];
-            $merit_labels = [];
-            if ($m[0]) $merit_labels[] = '★ Spot';
-            if ($m[1] === 'nom') $merit_labels[] = 'PT-Nom';
-            if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
-
-            $profile = \local_batchanalytics\util::get_user_profile_data($st, 2);
-
-            $students_data[] = [
-                'userid'          => (int)$st->id,
-                'name'            => $profile['name'],
-                'profileimageurl' => $profile['profileimageurl'],
-                'initials'        => $profile['initials'],
-                'id'              => !empty($st->idnumber) ? $st->idnumber : ('ST_' . $st->id),
-                'grade'           => $g,
-                'completion_pct'  => min(100, $g + 5),
-                'attendance'      => (70 + ($i % 25)) . '%',
-                'assignments'     => (60 + ($i % 35)) . '%',
-                'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-                'tests'           => (62 + ($i % 30)) . '%',
-                'spot'            => !empty($m[0]),
-                'pt'              => $m[1] ?: '',
-                'merit_text'      => implode(', ', $merit_labels),
-            ];
-            $i++;
-        }
+$spot_award_counts = [];
+if ($courseid > 0 && $DB->get_manager()->table_exists('spotaward_nominations') && $DB->get_manager()->table_exists('spotaward_nomination_items')) {
+    $sql = "SELECT sni.studentid, COUNT(sni.id) AS awardcount
+              FROM {spotaward_nomination_items} sni
+              JOIN {spotaward_nominations} sn ON sn.id = sni.nominationid
+             WHERE sn.courseid = :courseid
+               AND sni.status = 'closed'
+          GROUP BY sni.studentid";
+    foreach ($DB->get_records_sql($sql, ['courseid' => $courseid]) as $record) {
+        $spot_award_counts[(int)$record->studentid] = (int)$record->awardcount;
     }
 }
 
-if (empty($students_data)) {
-    $b_names = ["Abhay D", "Abijith P", "Ajith M", "Akshay M", "Anitha S", "Anushka K", "Arjun R", "Badulla J", "Chaitra K", "Dipashree B", "Gowtham N", "Harish V"];
-    $b_ids   = ["26011_017", "26011_038", "26001_137", "25050_017", "26011_101", "26011_049", "26011_072", "26011_066", "26011_205", "26011_111", "26011_090", "26011_058"];
-    $b_grade = [80, 55, 38, 46, 72, 60, 34, 41, 86, 90, 64, 69];
-    $b_merit = [[1, 'sel'], [0, 'nom'], [0, 0], [0, 0], [1, 0], [1, 'nom'], [0, 0], [0, 0], [1, 'sel'], [1, 'sel'], [0, 'nom'], [1, 0]];
-
-    for ($i = 0; $i < count($b_names); $i++) {
-        $m = $b_merit[$i];
-        $merit_labels = [];
-        if ($m[0]) $merit_labels[] = '★ Spot';
-        if ($m[1] === 'nom') $merit_labels[] = 'PT-Nom';
-        if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
-
-        $students_data[] = [
-            'userid'          => 0,
-            'name'            => $b_names[$i],
-            'profileimageurl' => '',
-            'initials'        => strtoupper(substr($b_names[$i], 0, 1)),
-            'id'              => $b_ids[$i],
-            'grade'           => $b_grade[$i],
-            'completion_pct'  => min(100, $b_grade[$i] + 6),
-            'attendance'      => (70 + ($i % 25)) . '%',
-            'assignments'     => (60 + ($i % 35)) . '%',
-            'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-            'tests'           => (62 + ($i % 30)) . '%',
-            'spot'            => !empty($m[0]),
-            'pt'              => $m[1] ?: '',
-            'merit_text'      => implode(', ', $merit_labels),
-        ];
+$enrolledstudents = [];
+if ($courseid > 0) {
+    $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
+    $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
+    if ($studentroleid > 0 && $coursecontext) {
+        $enrolledstudents = get_role_users(
+            $studentroleid,
+            $coursecontext,
+            false,
+            'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
+        );
     }
 }
 
-// -------------------------------------------------------------------------
+foreach ($enrolledstudents as $studentrecord) {
+    $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);
+    $merit_labels = $spot_count > 0 ? [str_repeat('★', $spot_count) . ' Spot'] : [];
+    $profile = \local_batchanalytics\util::get_user_profile_data($studentrecord, 2);
+    $students_data[] = [
+        'userid' => (int)$studentrecord->id,
+        'name' => $profile['name'],
+        'profileimageurl' => $profile['profileimageurl'],
+        'initials' => $profile['initials'],
+        'id' => !empty($studentrecord->idnumber) ? $studentrecord->idnumber : ('ST_' . $studentrecord->id),
+        'grade' => null,
+        'completion_pct' => null,
+        'attendance' => '—',
+        'assignments' => '—',
+        'projects' => '—',
+        'tests' => '—',
+        'spot_count' => $spot_count,
+        'spot' => ($spot_count > 0),
+        'pt' => '',
+        'merit_text' => implode(', ', $merit_labels),
+    ];
+}
 // Reuse the Course-tab Advanced Filter Gradebook dataset for this table.
 $performance_data = (new \local_batchanalytics\student_performance_service())->build(
     $students_data,

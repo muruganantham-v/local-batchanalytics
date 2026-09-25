@@ -426,70 +426,58 @@ if (empty($ss_activities)) {
 // -------------------------------------------------------------------------
 $students_data = [];
 
-if ($section && $has_bm_student) {
-    $userfields = \core_user\fields::for_userpic()->get_sql('u', false, '', '', false)->selects;
-    $sql = "SELECT u.id, u.idnumber, u.username, {$userfields}
-              FROM {local_bm_student} s
-              JOIN {user} u ON u.id = s.userid
-             WHERE s.classsectionid = :csid AND u.deleted = 0
-             ORDER BY u.firstname, u.lastname";
-    $db_students = $DB->get_records_sql($sql, ['csid' => $section->id]);
-
-    // Fallback: if no students found via local_bm_student, try course enrolment for linked modules
-    if (empty($db_students) && !empty($raw_modules)) {
-        $linked_course_ids = array_filter(array_column($raw_modules, 'moodlecourseid'));
-        if (!empty($linked_course_ids)) {
-            $student_role = $DB->get_record('role', ['shortname' => 'student']);
-            if ($student_role) {
-                foreach (array_unique($linked_course_ids) as $cid) {
-                    $coursecontext = context_course::instance((int)$cid, IGNORE_MISSING);
-                    if (!$coursecontext) continue;
-                    $enrolled = get_role_users($student_role->id, $coursecontext, false, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
-                    foreach ($enrolled as $eu) {
-                        $db_students[$eu->id] = $eu;
-                    }
-                }
-            }
-        }
+$performance_courseids = array_values(array_unique(array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')))));
+$spot_award_counts = [];
+if (!empty($performance_courseids) && $DB->get_manager()->table_exists('spotaward_nominations') && $DB->get_manager()->table_exists('spotaward_nomination_items')) {
+    list($incourses, $spotparams) = $DB->get_in_or_equal($performance_courseids, SQL_PARAMS_NAMED, 'spotcourse');
+    $sql = "SELECT sni.studentid, COUNT(sni.id) AS awardcount
+              FROM {spotaward_nomination_items} sni
+              JOIN {spotaward_nominations} sn ON sn.id = sni.nominationid
+             WHERE sn.courseid $incourses
+               AND sni.status = 'closed'
+          GROUP BY sni.studentid";
+    foreach ($DB->get_records_sql($sql, $spotparams) as $record) {
+        $spot_award_counts[(int)$record->studentid] = (int)$record->awardcount;
     }
+}
 
-    if (!empty($db_students)) {
-        $sample_grades = [82, 58, 36, 44, 74, 61, 32, 39, 88, 91, 66, 71];
-        $sample_merits = [[1, 'sel'], [0, 'nom'], [0, 0], [0, 0], [1, 0], [1, 'nom'], [0, 0], [0, 0], [1, 'sel'], [1, 'sel'], [0, 'nom'], [1, 0]];
-        $i = 0;
-        foreach ($db_students as $st) {
-            $g = $sample_grades[$i % count($sample_grades)];
-            $m = $sample_merits[$i % count($sample_merits)];
-            $merit_labels = [];
-            if ($m[0]) $merit_labels[] = '★ Spot';
-            if ($m[1] === 'nom') $merit_labels[] = 'PT-Nom';
-            if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
-
-            $profile = \local_batchanalytics\util::get_user_profile_data($st, 2);
-
-            $students_data[] = [
-                'userid'          => (int)$st->id,
-                'username'        => !empty($st->username) ? $st->username : '',
-                'name'            => $profile['name'],
-                'profileimageurl' => $profile['profileimageurl'],
-                'initials'        => $profile['initials'],
-                'id'              => !empty($st->idnumber) ? $st->idnumber : ('ST_' . $st->id),
-                'grade'           => $g,
-                'attendance'      => (70 + ($i % 25)) . '%',
-                'assignments'     => (60 + ($i % 35)) . '%',
-                'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-                'tests'           => (62 + ($i % 30)) . '%',
-                'spot'            => !empty($m[0]),
-                'pt'              => $m[1] ?: '',
-                'merit_text'      => implode(', ', $merit_labels),
-            ];
-            $i++;
+$enrolledstudents = [];
+$studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
+if ($studentroleid > 0) {
+    foreach ($performance_courseids as $enrolledcourseid) {
+        $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
+        if (!$coursecontext) continue;
+        foreach (get_role_users($studentroleid, $coursecontext, false, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email') as $studentrecord) {
+            $enrolledstudents[$studentrecord->id] = $studentrecord;
         }
     }
 }
 
+foreach ($enrolledstudents as $studentrecord) {
+    $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);
+    $merit_labels = $spot_count > 0 ? [str_repeat('★', $spot_count) . ' Spot'] : [];
+    $profile = \local_batchanalytics\util::get_user_profile_data($studentrecord, 2);
+    $students_data[] = [
+        'userid' => (int)$studentrecord->id,
+        'username' => !empty($studentrecord->username) ? $studentrecord->username : '',
+        'name' => $profile['name'],
+        'profileimageurl' => $profile['profileimageurl'],
+        'initials' => $profile['initials'],
+        'id' => !empty($studentrecord->idnumber) ? $studentrecord->idnumber : ('ST_' . $studentrecord->id),
+        'grade' => null,
+        'attendance' => '—',
+        'assignments' => '—',
+        'projects' => '—',
+        'tests' => '—',
+        'spot_count' => $spot_count,
+        'spot' => ($spot_count > 0),
+        'pt' => '',
+        'merit_text' => implode(', ', $merit_labels),
+    ];
+}
 // If no DB students found, supply rich sample dataset matching prototype
-if (empty($students_data)) {
+$allow_sample_students = false;
+if ($allow_sample_students && empty($students_data)) {
     $b_names = ["Abhay D", "Abijith P", "Ajith M", "Akshay M", "Anitha S", "Anushka K", "Arjun R", "Badulla J", "Chaitra K", "Dipashree B", "Gowtham N", "Harish V"];
     $b_ids   = ["26011_017", "26011_038", "26001_137", "25050_017", "26011_101", "26011_049", "26011_072", "26011_066", "26011_205", "26011_111", "26011_090", "26011_058"];
     $b_grade = [82, 58, 36, 44, 74, 61, 32, 39, 88, 91, 66, 71];
