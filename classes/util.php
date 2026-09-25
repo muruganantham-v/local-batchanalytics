@@ -20,6 +20,285 @@ defined('MOODLE_INTERNAL') || die();
 
 class util {
     /**
+     * Canonical module durations in days as defined by curriculum.
+     *
+     * @var array<string, int>
+     */
+    public static $canonical_module_days = [
+        'Linux Systems'    => 5,
+        'Advanced C'       => 77,
+        'C++ Programming'  => 13,
+        'Data Structures'  => 29,
+        'Microcontrollers' => 37,
+        'Linux Internals'  => 33,
+        'Qt / QML'         => 10,
+        'ELARM'            => 10,
+    ];
+
+    /**
+     * Canonical module names indexed by module sequence position (1 to 8).
+     *
+     * @var array<int, string>
+     */
+    public static $canonical_modules = [
+        1 => 'Linux Systems',
+        2 => 'Advanced C',
+        3 => 'C++ Programming',
+        4 => 'Data Structures',
+        5 => 'Microcontrollers',
+        6 => 'Linux Internals',
+        7 => 'ELARM',
+        8 => 'Qt / QML',
+    ];
+
+    /**
+     * Get module total days by name, course name, or module index.
+     *
+     * @param string|int $module_name_or_idx Module title or 1-based index
+     * @param int $fallback Fallback days if not recognized
+     * @return int
+     */
+    public static function get_module_total_days($module_name_or_idx, int $fallback = 10): int {
+        if (is_numeric($module_name_or_idx)) {
+            $idx = (int)$module_name_or_idx;
+            $index_map = [
+                1 => 5,
+                2 => 77,
+                3 => 13,
+                4 => 29,
+                5 => 37,
+                6 => 33,
+                7 => 10,
+                8 => 10,
+            ];
+            if (isset($index_map[$idx])) {
+                return $index_map[$idx];
+            }
+        }
+
+        $raw = trim((string)$module_name_or_idx);
+        if ($raw === '') {
+            return $fallback > 0 ? $fallback : 10;
+        }
+
+        if (isset(self::$canonical_module_days[$raw])) {
+            return self::$canonical_module_days[$raw];
+        }
+
+        $normalized = strtolower(preg_replace('/[^a-z0-9\+]/i', '', $raw));
+        $normalized_map = [
+            'linuxsystems'     => 5,
+            'advancedc'        => 77,
+            'c++programming'   => 13,
+            'c++'              => 13,
+            'cppprogramming'   => 13,
+            'cpp'              => 13,
+            'datastructures'   => 29,
+            'ds'               => 29,
+            'microcontrollers' => 37,
+            'microcontroller'  => 37,
+            'linuxinternals'   => 33,
+            'qtqml'            => 10,
+            'qt'               => 10,
+            'qml'              => 10,
+            'elarm'            => 10,
+        ];
+
+        foreach ($normalized_map as $key => $days) {
+            if ($normalized === $key || strpos($normalized, $key) !== false || strpos($key, $normalized) !== false) {
+                return $days;
+            }
+        }
+
+        return $fallback > 0 ? $fallback : 10;
+    }
+
+    /**
+     * Calculate module status based on schedule delta and module total days.
+     *
+     * Rules:
+     * - Delta < 0: Early (-Xd)
+     * - Percentage < 7%: On schedule (Xd)
+     * - Percentage 7% - 13%: Minor slip (Xd)
+     * - Percentage > 13%: Delayed (Xd)
+     *
+     * @param int|float|string|null $delta Delay in days (or 'prog' or null)
+     * @param string|int $module_name_or_idx Module name or index
+     * @param int $fallback_total_days Optional fallback module days
+     * @return array Status descriptor array
+     */
+    public static function get_module_status($delta, $module_name_or_idx = '', int $fallback_total_days = 0): array {
+        $total_days = self::get_module_total_days($module_name_or_idx, $fallback_total_days);
+        if ($total_days <= 0) {
+            $total_days = 10;
+        }
+
+        if ($delta === 'prog') {
+            return [
+                'status' => 'in_progress',
+                'label' => 'In progress',
+                'short_label' => 'In progress',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => null,
+                'percentage' => null,
+                'total_days' => $total_days,
+            ];
+        }
+
+        if ($delta === null || $delta === '' || (is_string($delta) && !is_numeric($delta))) {
+            return [
+                'status' => 'none',
+                'label' => '—',
+                'short_label' => '—',
+                'chip_class' => 'muted',
+                'pill_class' => '',
+                'dot_class' => '',
+                'delta' => null,
+                'percentage' => null,
+                'total_days' => $total_days,
+            ];
+        }
+
+        $d = (int)$delta;
+
+        if ($d < 0) {
+            $early = abs($d);
+            return [
+                'status' => 'early',
+                'label' => 'Early (-' . $early . 'd)',
+                'short_label' => 'Early',
+                'chip_class' => 'b',
+                'pill_class' => 'status-early',
+                'dot_class' => 'dot-blue',
+                'delta' => $d,
+                'percentage' => round(($d / $total_days) * 100, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        $pct = ($d / $total_days) * 100;
+
+        if ($pct < 7.0) {
+            $days_text = ($d > 0) ? ('On schedule (+' . $d . 'd)') : 'On schedule (0d)';
+            return [
+                'status' => 'on_schedule',
+                'label' => $days_text,
+                'short_label' => 'On schedule',
+                'chip_class' => 'g',
+                'pill_class' => 'status-ok',
+                'dot_class' => 'dot-green',
+                'delta' => $d,
+                'percentage' => round($pct, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        if ($pct <= 13.0) {
+            return [
+                'status' => 'minor_slip',
+                'label' => 'Minor slip (+' . $d . 'd)',
+                'short_label' => 'Minor slip',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => $d,
+                'percentage' => round($pct, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        return [
+            'status' => 'delayed',
+            'label' => 'Delayed (+' . $d . 'd)',
+            'short_label' => 'Delayed',
+            'chip_class' => 'r',
+            'pill_class' => 'status-delayed',
+            'dot_class' => 'dot-red',
+            'delta' => $d,
+            'percentage' => round($pct, 2),
+            'total_days' => $total_days,
+        ];
+    }
+
+    /**
+     * Calculate batch status based on total accumulated delay in days.
+     *
+     * Rules:
+     * - Delta < 0: Early (-Xd)
+     * - Delta < 12 days: On schedule (Xd)
+     * - Delta 12 - 23 days: Minor slip (Xd)
+     * - Delta 24+ days: Delayed (Xd)
+     *
+     * @param int|float|string|null $delta Accumulated delay in days
+     * @return array Status descriptor array
+     */
+    public static function get_batch_status($delta): array {
+        if ($delta === null || $delta === '' || (is_string($delta) && !is_numeric($delta))) {
+            return [
+                'status' => 'none',
+                'label' => '—',
+                'short_label' => '—',
+                'chip_class' => 'muted',
+                'pill_class' => '',
+                'dot_class' => '',
+                'delta' => null,
+            ];
+        }
+
+        $d = (int)$delta;
+
+        if ($d < 0) {
+            $early = abs($d);
+            return [
+                'status' => 'early',
+                'label' => 'Early (-' . $early . 'd)',
+                'short_label' => 'Early',
+                'chip_class' => 'b',
+                'pill_class' => 'status-early',
+                'dot_class' => 'dot-blue',
+                'delta' => $d,
+            ];
+        }
+
+        if ($d < 12) {
+            $days_text = ($d > 0) ? ('On schedule (+' . $d . 'd)') : 'On schedule (0d)';
+            return [
+                'status' => 'on_schedule',
+                'label' => $days_text,
+                'short_label' => 'On schedule',
+                'chip_class' => 'g',
+                'pill_class' => 'status-ok',
+                'dot_class' => 'dot-green',
+                'delta' => $d,
+            ];
+        }
+
+        if ($d <= 23) {
+            return [
+                'status' => 'minor_slip',
+                'label' => 'Minor slip (+' . $d . 'd)',
+                'short_label' => 'Minor slip',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => $d,
+            ];
+        }
+
+        return [
+            'status' => 'delayed',
+            'label' => 'Delayed (+' . $d . 'd)',
+            'short_label' => 'Delayed',
+            'chip_class' => 'r',
+            'pill_class' => 'status-delayed',
+            'dot_class' => 'dot-red',
+            'delta' => $d,
+        ];
+    }
+
+    /**
      * Check whether a user has at least one enrolled-course capability instance.
      *
      * @param int $userid

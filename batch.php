@@ -262,11 +262,11 @@ if (!empty($raw_modules)) {
             'a_end'         => $a_end,
             'delay'         => $delay_code,
             'courseid'      => $course_id,
-            'days'          => !empty($mod['planneddays']) ? (int)$mod['planneddays'] : 10,
+            'days'          => !empty($mod['planneddays']) ? (int)$mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($m_name, 10),
         ];
     }
 } else {
-    // Canonical default sequence from prototype
+    // Canonical default sequence from curriculum
     $schedule_rows = [
         [
             'name' => 'Linux Systems', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
@@ -275,33 +275,38 @@ if (!empty($raw_modules)) {
         ],
         [
             'name' => 'Advanced C', 'class_mentor' => 'Suresh P', 'lab_mentor' => 'Kiran R',
-            'p_start' => '04 Aug 2026', 'p_end' => '28 Oct 2026', 'a_start' => '04 Aug 2026', 'a_end' => '—',
-            'delay' => 'prog', 'courseid' => 0, 'days' => 58
+            'p_start' => '04 Aug 2026', 'p_end' => '28 Oct 2026', 'a_start' => '04 Aug 2026', 'a_end' => '01 Nov 2026',
+            'delay' => 4, 'courseid' => 2, 'days' => 77
         ],
         [
-            'name' => 'C++ Programming', 'class_mentor' => '—', 'lab_mentor' => '—',
-            'p_start' => '29 Oct 2026', 'p_end' => '11 Nov 2026', 'a_start' => '—', 'a_end' => '—',
-            'delay' => null, 'courseid' => 0, 'days' => 10
+            'name' => 'C++ Programming', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
+            'p_start' => '02 Nov 2026', 'p_end' => '15 Nov 2026', 'a_start' => '02 Nov 2026', 'a_end' => '16 Nov 2026',
+            'delay' => 1, 'courseid' => 0, 'days' => 13
         ],
         [
-            'name' => 'Data Structures', 'class_mentor' => '—', 'lab_mentor' => '—',
-            'p_start' => '12 Nov 2026', 'p_end' => '11 Dec 2026', 'a_start' => '—', 'a_end' => '—',
-            'delay' => null, 'courseid' => 0, 'days' => 22
+            'name' => 'Data Structures', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
+            'p_start' => '17 Nov 2026', 'p_end' => '16 Dec 2026', 'a_start' => '17 Nov 2026', 'a_end' => '19 Dec 2026',
+            'delay' => 3, 'courseid' => 3, 'days' => 29
         ],
         [
-            'name' => 'Microcontrollers', 'class_mentor' => '—', 'lab_mentor' => '—',
-            'p_start' => '12 Dec 2026', 'p_end' => '23 Jan 2027', 'a_start' => '—', 'a_end' => '—',
-            'delay' => null, 'courseid' => 0, 'days' => 28
+            'name' => 'Microcontrollers', 'class_mentor' => 'Suresh P', 'lab_mentor' => 'Kiran R',
+            'p_start' => '20 Dec 2026', 'p_end' => '26 Jan 2027', 'a_start' => '20 Dec 2026', 'a_end' => '31 Jan 2027',
+            'delay' => 5, 'courseid' => 10, 'days' => 37
         ],
         [
-            'name' => 'Linux Internals', 'class_mentor' => '—', 'lab_mentor' => '—',
-            'p_start' => '24 Jan 2027', 'p_end' => '27 Feb 2027', 'a_start' => '—', 'a_end' => '—',
-            'delay' => null, 'courseid' => 0, 'days' => 25
+            'name' => 'Linux Internals', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
+            'p_start' => '01 Feb 2027', 'p_end' => '06 Mar 2027', 'a_start' => '01 Feb 2027', 'a_end' => '12 Mar 2027',
+            'delay' => 6, 'courseid' => 8, 'days' => 33
         ],
         [
-            'name' => 'ELARM', 'class_mentor' => '—', 'lab_mentor' => '—',
-            'p_start' => '28 Feb 2027', 'p_end' => '12 Apr 2027', 'a_start' => '—', 'a_end' => '—',
-            'delay' => null, 'courseid' => 0, 'days' => 10
+            'name' => 'ELARM', 'class_mentor' => 'Suresh P', 'lab_mentor' => '—',
+            'p_start' => '13 Mar 2027', 'p_end' => '23 Mar 2027', 'a_start' => '13 Mar 2027', 'a_end' => '21 Mar 2027',
+            'delay' => -2, 'courseid' => 0, 'days' => 10
+        ],
+        [
+            'name' => 'Qt / QML', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
+            'p_start' => '22 Mar 2027', 'p_end' => '01 Apr 2027', 'a_start' => '22 Mar 2027', 'a_end' => '—',
+            'delay' => 'prog', 'courseid' => 0, 'days' => 10
         ]
     ];
 }
@@ -577,20 +582,15 @@ if (is_siteadmin()) {
 }
 
 // Helper formatting functions
-function format_delay_chip($d) {
+function format_delay_chip($d, $mod_name = '', $mod_days = 0) {
     if ($d === 'prog') {
         return '<span class="st st-a">In progress</span>';
     }
     if ($d === null) {
         return '<span class="muted">—</span>';
     }
-    if ($d <= 0) {
-        return '<span class="st st-g">On track</span>';
-    }
-    if ($d <= 3) {
-        return '<span class="st st-a">+' . (int)$d . 'd</span>';
-    }
-    return '<span class="st st-r">+' . (int)$d . 'd</span>';
+    $ms = \local_batchanalytics\util::get_module_status($d, $mod_name, $mod_days);
+    return '<span class="st st-' . s($ms['chip_class']) . '">' . s($ms['label']) . '</span>';
 }
 
 if (!function_exists('format_cell_muted')) {
@@ -602,14 +602,25 @@ if (!function_exists('format_cell_muted')) {
 // -------------------------------------------------------------------------
 // 6. Page Output Setup
 // -------------------------------------------------------------------------
-$batch_max_delay = 0;
+$batch_total_delay = 0;
+$batch_has_delay = false;
 foreach ($schedule_rows as $sr) {
-    if (is_numeric($sr['delay']) && (int)$sr['delay'] > $batch_max_delay) {
-        $batch_max_delay = (int)$sr['delay'];
+    if (is_numeric($sr['delay'])) {
+        $batch_total_delay += (int)$sr['delay'];
+        $batch_has_delay = true;
     }
 }
-$batch_status_chip_class = ($batch_max_delay > 0) ? 'r' : 'g';
-$batch_status_chip_text = ($batch_max_delay > 0) ? ('Delayed · +' . $batch_max_delay . ' days') : 'On schedule · 0 days';
+$batch_status_info = \local_batchanalytics\util::get_batch_status($batch_has_delay ? $batch_total_delay : 0);
+$batch_status_chip_class = $batch_status_info['chip_class'];
+if ($batch_total_delay < 0) {
+    $batch_status_chip_text = 'Early · -' . abs($batch_total_delay) . ' days';
+} else if ($batch_total_delay < 12) {
+    $batch_status_chip_text = ($batch_total_delay > 0) ? ('On schedule · +' . $batch_total_delay . ' days') : 'On schedule · 0 days';
+} else if ($batch_total_delay <= 23) {
+    $batch_status_chip_text = 'Minor slip · +' . $batch_total_delay . ' days';
+} else {
+    $batch_status_chip_text = 'Delayed · +' . $batch_total_delay . ' days';
+}
 
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]));
@@ -774,7 +785,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                     <td class="date"><?= s($r['p_end']) ?></td>
                     <td class="date"><?= format_cell_muted($r['a_start']) ?></td>
                     <td class="date"><?= format_cell_muted($r['a_end']) ?></td>
-                    <td><?= format_delay_chip($r['delay']) ?></td>
+                    <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
                     <td class="actioncell">
                       <?php
                         $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);

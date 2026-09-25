@@ -6299,6 +6299,28 @@ input:checked+.ba-slider:before {
   border-radius: 50%;
   background: var(--amber);
 }
+.ba-batch-page .status-chip.r {
+  background: var(--red-bg, #fbeceb);
+  color: var(--red, #c0392b);
+}
+.ba-batch-page .status-chip.r::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red, #c0392b);
+}
+.ba-batch-page .status-chip.b {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.ba-batch-page .status-chip.b::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0284c7;
+}
 
 .ba-batch-page .people {
   display: flex;
@@ -6911,6 +6933,20 @@ input:checked+.ba-slider:before {
 }
 .ba-module-page .status-chip.r::before {
   background: #cf222e;
+}
+.ba-module-page .status-chip.b {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.ba-module-page .status-chip.b::before {
+  background: #0284c7;
+}
+.ba-module-page .status-chip.n {
+  background: #eef1f4;
+  color: #8a9097;
+}
+.ba-module-page .status-chip.n::before {
+  background: #b3b9bf;
 }
 
 .ba-module-page .maac-btn {

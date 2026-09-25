@@ -79,13 +79,15 @@ function initNewBatchAnalytics() {
     const statusCounts = scopedBatches.reduce((counts, b) => {
       if (b.status === "delayed") {
         counts.delayed += 1;
+      } else if (b.status === "minor_slip") {
+        counts.minorSlip += 1;
       } else if (b.status === "early") {
         counts.early += 1;
       } else {
         counts.onSchedule += 1;
       }
       return counts;
-    }, { onSchedule: 0, delayed: 0, early: 0 });
+    }, { onSchedule: 0, minorSlip: 0, delayed: 0, early: 0 });
 
     const countUnique = (field) => {
       const values = new Set();
@@ -104,6 +106,7 @@ function initNewBatchAnalytics() {
     setStatValue("stat-class-mentors", countUnique("classMentors"));
     setStatValue("stat-lab-mentors", countUnique("labMentors"));
     setStatValue("stat-on-schedule", statusCounts.onSchedule);
+    setStatValue("stat-minor-slip", statusCounts.minorSlip);
     setStatValue("stat-delayed", statusCounts.delayed);
     setStatValue("stat-early", statusCounts.early);
     setStatValue("stat-total-students", totalStudents.toLocaleString());
@@ -376,18 +379,16 @@ function initNewBatchAnalytics() {
 
         if (b.isCompleted) {
           statusHtml = '<span class="ba-status-pill status-completed"><span class="ba-dot dot-teal"></span> Completed</span>';
-        } else if (b.status === "delayed" || delta > 0) {
-          if (delta > 0 && delta <= 3) {
-            statusHtml = `<span class="ba-status-pill status-minor-slip"><span class="ba-dot dot-amber"></span> Minor slip +${delta}d</span>`;
-          } else {
-            const daysText = delta > 0 ? `+${delta}d` : `${Math.abs(delta)}d`;
-            statusHtml = `<span class="ba-status-pill status-delayed"><span class="ba-dot dot-red"></span> Delayed ${daysText}</span>`;
-          }
         } else if (b.status === "early" || delta < 0) {
           const earlyDays = Math.abs(delta);
-          statusHtml = `<span class="ba-status-pill status-early"><span class="ba-dot dot-blue"></span> Early -${earlyDays}d</span>`;
+          statusHtml = `<span class="ba-status-pill status-early"><span class="ba-dot dot-blue"></span> Early (-${earlyDays}d)</span>`;
+        } else if (b.status === "delayed" || delta >= 24) {
+          statusHtml = `<span class="ba-status-pill status-delayed"><span class="ba-dot dot-red"></span> Delayed (+${delta}d)</span>`;
+        } else if (b.status === "minor_slip" || (delta >= 12 && delta <= 23)) {
+          statusHtml = `<span class="ba-status-pill status-minor-slip"><span class="ba-dot dot-amber"></span> Minor slip (+${delta}d)</span>`;
         } else {
-          statusHtml = '<span class="ba-status-pill status-ok"><span class="ba-dot dot-green"></span> On schedule</span>';
+          const daysText = delta > 0 ? ` (+${delta}d)` : ` (0d)`;
+          statusHtml = `<span class="ba-status-pill status-ok"><span class="ba-dot dot-green"></span> On schedule${daysText}</span>`;
         }
 
         let batchUrl = "";

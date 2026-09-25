@@ -140,7 +140,7 @@ body#page-local-batchanalytics-module #page-header h1,
 
 .ba-portfolio-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 16px;
 }
 
@@ -232,6 +232,29 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-stat-box.card-delayed:hover {
   border-color: #f87171 !important;
   box-shadow: 0 6px 16px -2px rgba(220, 38, 38, 0.15) !important;
+}
+
+.ba-stat-box.card-minor-slip {
+  background: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+
+.ba-stat-box.card-minor-slip:hover {
+  border-color: #f59e0b !important;
+  box-shadow: 0 6px 16px -2px rgba(245, 158, 11, 0.15) !important;
+}
+
+.ba-stat-num.text-amber-orange {
+  color: #d97706 !important;
+}
+
+.icon-bg-amber {
+  background: #fef3c7 !important;
+  color: #d97706 !important;
+}
+
+.svg-amber {
+  color: #d97706 !important;
 }
 
 .ba-stat-top {
@@ -1441,6 +1464,26 @@ body#page-local-batchanalytics-module #page-header h1,
   background: #ef4444 !important;
 }
 
+.ba-module-page .status-chip.b {
+  background: #f0f9ff !important;
+  color: #0369a1 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+.ba-module-page .status-chip.b::before {
+  background: #0284c7 !important;
+}
+
+.ba-module-page .status-chip.n {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.ba-module-page .status-chip.n::before {
+  background: #94a3b8 !important;
+}
+
 .ba-module-page .people {
   display: flex !important;
   gap: 36px !important;
@@ -1684,6 +1727,19 @@ body#page-local-batchanalytics-module #page-header h1,
   height: 8px !important;
   border-radius: 50% !important;
   background: var(--red) !important;
+}
+
+.ba-batch-page .status-chip.b {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+}
+
+.ba-batch-page .status-chip.b::before {
+  content: "" !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: #0284c7 !important;
 }
 
 /* People Section (PM & SSE) */

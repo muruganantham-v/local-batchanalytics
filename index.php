@@ -234,6 +234,7 @@ if ($action === 'getnewbatchdata') {
                     'classMentors' => 0,
                     'labMentors' => 0,
                     'onSchedule' => 0,
+                    'minorSlip' => 0,
                     'delayed' => 0,
                     'early' => 0,
                     'totalStudents' => 0
@@ -353,6 +354,7 @@ if ($action === 'getnewbatchdata') {
         $offlinecount = 0;
         $hybridcount = 0;
         $onschedulecount = 0;
+        $minorslipcount = 0;
         $delayedcount = 0;
         $earlycount = 0;
         $classmentors = [];
@@ -456,21 +458,19 @@ if ($action === 'getnewbatchdata') {
             $is_completed = ($batch_has_modules && $batch_all_completed);
 
             // Determine status based on total accumulated schedule delta
-            if ($totaldelta > 0) {
-                $status = 'delayed';
-                $delaydays = $totaldelta;
-                $statuslabel = 'Delayed by ' . $totaldelta . ' day' . ($totaldelta > 1 ? 's' : '');
+            $batch_status_info = \local_batchanalytics\util::get_batch_status($totaldelta);
+            $status = $batch_status_info['status'];
+            $delaydays = $totaldelta;
+            $statuslabel = $batch_status_info['label'];
+
+            if ($status === 'delayed') {
                 $delayedcount++;
-            } else if ($totaldelta < 0) {
-                $status = 'early';
-                $delaydays = $totaldelta;
+            } else if ($status === 'minor_slip') {
+                $minorslipcount++;
+            } else if ($status === 'early') {
                 $earlydays = abs($totaldelta);
-                $statuslabel = 'Early by ' . $earlydays . ' day' . ($earlydays > 1 ? 's' : '');
                 $earlycount++;
             } else {
-                $status = 'on_schedule';
-                $delaydays = 0;
-                $statuslabel = 'On schedule';
                 $onschedulecount++;
             }
 
@@ -559,6 +559,7 @@ if ($action === 'getnewbatchdata') {
                 'classMentors' => count($classmentors),
                 'labMentors' => count($labmentors),
                 'onSchedule' => $onschedulecount,
+                'minorSlip' => $minorslipcount,
                 'delayed' => $delayedcount,
                 'early' => $earlycount,
                 'totalStudents' => $studentcount
@@ -721,6 +722,18 @@ echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
 echo '          </div>';
 echo '          <div class="ba-stat-num" id="stat-on-schedule">--</div>';
 echo '          <div class="ba-stat-lbl">On schedule</div>';
+echo '        </button>';
+
+echo '        <!-- Card: Minor Slip (Tinted background & amber text) -->';
+echo '        <button type="button" class="ba-stat-box ba-schedule-status-filter card-minor-slip" data-schedule-filter="minor_slip" aria-pressed="false" title="Filter batches with minor slips (12-23 days)">';
+echo '          <div class="ba-stat-top">';
+echo '            <div class="ba-stat-icon-wrap icon-bg-amber">';
+echo '              <svg class="ba-stat-svg svg-amber" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+echo '            </div>';
+echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
+echo '          </div>';
+echo '          <div class="ba-stat-num text-amber-orange" id="stat-minor-slip">--</div>';
+echo '          <div class="ba-stat-lbl">Minor slip</div>';
 echo '        </button>';
 
 echo '        <!-- Card 9: Delayed (Tinted background & red text) -->';
