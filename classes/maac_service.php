@@ -949,6 +949,9 @@ class maac_service {
         $customversions = $this->get_custom_value_versions($courseid, array_keys($students));
         foreach ($this->get_spot_award_nomination_values($courseid, array_keys($students)) as $studentid => $value) {
             $customvalues[$studentid]['spot_awards_nomination'] = $value;
+            if (!empty($value)) {
+                $customvalues[$studentid]['spot_award'] = 1;
+            }
         }
 
         $trenddetailsbyuser = $this->get_course_trend_values($courseid, array_keys($students));

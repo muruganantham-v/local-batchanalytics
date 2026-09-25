@@ -38,7 +38,19 @@ class activity_tracker_service {
             $savedbycmid[(int)$record->cmid] = $record;
         }
 
+        $categoryorder = $this->get_tracker_category_aliases();
         $categories = [];
+        foreach (array_keys($categoryorder) as $catname) {
+            $categorykey = strtolower($catname);
+            $categories[$categorykey] = [
+                'id' => $categorykey,
+                'name' => $catname,
+                'activities' => [],
+                'completed' => 0,
+                'pending' => 0,
+            ];
+        }
+
         foreach ($activities as $activity) {
             $categorykey = strtolower($activity['categoryname']);
             if (!isset($categories[$categorykey])) {
@@ -67,13 +79,18 @@ class activity_tracker_service {
             }
         }
 
+        // Only return categories that have activities in this course, maintaining configured sequence
+        $activecategories = array_values(array_filter($categories, static function(array $cat): bool {
+            return !empty($cat['activities']);
+        }));
+
         return [
             'course' => [
                 'id' => (int)$course->id,
                 'fullname' => format_string($course->fullname),
                 'shortname' => format_string($course->shortname),
             ],
-            'categories' => array_values($categories),
+            'categories' => $activecategories,
         ];
     }
 
@@ -143,7 +160,7 @@ class activity_tracker_service {
                 WHERE gi.courseid = :courseid
                   AND gi.itemtype = 'mod'
                   AND gi.itemmodule <> ''
-                ORDER BY gc.id, gi.id", ['courseid' => $course->id]);
+                ORDER BY gi.id ASC", ['courseid' => $course->id]);
         $allcategories = $DB->get_records('grade_categories', ['courseid' => $course->id]);
         $modinfo = get_fast_modinfo($course);
         $cms = [];
@@ -216,7 +233,7 @@ class activity_tracker_service {
             return $this->get_tracker_category('assignment');
         }
         if ($module === 'quiz') {
-            return $this->get_tracker_category('quiz');
+            return $this->get_tracker_category('quiz') ?? $this->get_tracker_category('test');
         }
 
         return null;
@@ -256,13 +273,39 @@ class activity_tracker_service {
         $categories = json_decode((string)get_config('local_batchanalytics', 'module_tracker_categories'), true);
         if (!is_array($categories) || empty($categories)) {
             $categories = self::get_legacy_tracker_categories();
+        } else {
+            // Ensure all 5 standard default categories are present if an older config was saved.
+            $existingnames = [];
+            foreach ($categories as $cat) {
+                if (is_array($cat) && !empty($cat['name'])) {
+                    $existingnames[strtolower(trim((string)$cat['name']))] = true;
+                }
+            }
+            foreach (self::get_default_tracker_categories() as $default) {
+                $defname = strtolower(trim($default['name']));
+                if (!isset($existingnames[$defname])) {
+                    $categories[] = $default;
+                }
+            }
         }
+
+        $canonicalmap = [
+            'assignments' => 'Assignment',
+            'classworks'  => 'Classwork',
+            'templates'   => 'Template',
+            'projects'    => 'Project',
+        ];
+
         $aliases = [];
         foreach ($categories as $category) {
             if (!is_array($category)) {
                 continue;
             }
             $trackercategory = trim((string)($category['name'] ?? ''));
+            $lowername = strtolower($trackercategory);
+            if (isset($canonicalmap[$lowername])) {
+                $trackercategory = $canonicalmap[$lowername];
+            }
             $value = (string)($category['aliases'] ?? '');
             if ($trackercategory === '' || trim($value) === '') {
                 continue;
@@ -284,9 +327,11 @@ class activity_tracker_service {
      */
     public static function get_default_tracker_categories(): array {
         return [
-            ['name' => 'Assignments', 'aliases' => 'assignment, assignments, lab assignment, lab assignments'],
-            ['name' => 'Tests', 'aliases' => 'test, tests, quiz, quizzes, assessment, assessments'],
-            ['name' => 'Projects', 'aliases' => 'project, projects'],
+            ['name' => 'Assignment', 'aliases' => 'assignment, assignments, lab assignment, lab assignments'],
+            ['name' => 'Classwork',  'aliases' => 'classwork, classworks, class work, class works, cw'],
+            ['name' => 'Template',   'aliases' => 'template, templates, template program, template programs'],
+            ['name' => 'Project',    'aliases' => 'project, projects, mini project, major project'],
+            ['name' => 'Tests',      'aliases' => 'test, tests, quiz, quizzes, assessment, assessments, exam, exams, module test'],
         ];
     }
 

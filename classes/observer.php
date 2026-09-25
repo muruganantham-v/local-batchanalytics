@@ -7,6 +7,6 @@ defined('MOODLE_INTERNAL') || die();
 final class observer {
     /** Remove course-specific data that has no meaning after course deletion. */
     public static function course_deleted(\core\event\course_deleted $event): void {
-        course_summary_service::delete_for_course((int)$event->objectid);
+        // Course summary table has been removed.
     }
 }

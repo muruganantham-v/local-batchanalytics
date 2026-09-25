@@ -870,8 +870,10 @@
                         res = bA - bB;
                         break;
                     case 'merit':
-                        var scoreA = (a.spot ? 10 : 0) + (a.pt === 'sel' ? 5 : (a.pt === 'nom' ? 2 : 0));
-                        var scoreB = (b.spot ? 10 : 0) + (b.pt === 'sel' ? 5 : (b.pt === 'nom' ? 2 : 0));
+                        var spotCountA = Number(a.spot_count || (a.spot ? 1 : 0));
+                        var spotCountB = Number(b.spot_count || (b.spot ? 1 : 0));
+                        var scoreA = (spotCountA * 10) + (a.pt === 'sel' ? 5 : (a.pt === 'nom' ? 2 : 0));
+                        var scoreB = (spotCountB * 10) + (b.pt === 'sel' ? 5 : (b.pt === 'nom' ? 2 : 0));
                         res = scoreA - scoreB;
                         break;
                     default:
@@ -1025,7 +1027,7 @@
             var modalSortCol = 'grade';
             var modalSortDir = 'desc';
             var modalSearch = '';
-            var modalScoreFilter = 'all';
+            // modalScoreFilter removed
 
             var categoryHeadersHtml = performanceColumns.map(function(c) {
                 return '<th class="ba-modal-th-sortable" data-modal-col="' + escapeHtml(c.key) + '">' +
@@ -1043,12 +1045,6 @@
                     '</div>' +
                     '<div style="display:flex; align-items:center; gap:10px;">' +
                         '<input type="text" id="ba-band-modal-search" class="ba-modal-input-search" placeholder="Search student name or ID..." style="width:200px;">' +
-                        '<select id="ba-band-modal-filter" class="ba-modal-select" title="Filter by grade">' +
-                            '<option value="all">All Scores</option>' +
-                            '<option value="ge70">Grade &ge; 70%</option>' +
-                            '<option value="40to70">Grade 40% &ndash; 70%</option>' +
-                            '<option value="lt40">Grade &lt; 40%</option>' +
-                        '</select>' +
                         '<button type="button" id="ba-band-modal-export" class="ba-modal-btn-export">' +
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
                                 '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
@@ -1118,12 +1114,7 @@
                             return false;
                         }
                     }
-                    if (modalScoreFilter !== 'all') {
-                        var g = parseFloat(s.grade) || 0;
-                        if (modalScoreFilter === 'ge70' && g < 70) return false;
-                        if (modalScoreFilter === '40to70' && (g < 40 || g > 70)) return false;
-                        if (modalScoreFilter === 'lt40' && g >= 40) return false;
-                    }
+
                     return true;
                 }).sort(function(a, b) {
                     var valA = getModalSortValue(a, modalSortCol);
@@ -1184,7 +1175,7 @@
                 }
 
                 if (countEl) {
-                    var isFiltered = modalSearch || modalScoreFilter !== 'all';
+                    var isFiltered = Boolean(modalSearch);
                     countEl.textContent = isFiltered
                         ? ('Showing ' + list.length + ' of ' + bandStudents.length + ' students (filtered)')
                         : ('Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students');
@@ -1232,13 +1223,7 @@
                 });
             }
 
-            var scoreFilter = modal.querySelector('#ba-band-modal-filter');
-            if (scoreFilter) {
-                scoreFilter.addEventListener('change', function() {
-                    modalScoreFilter = this.value;
-                    renderModalRows();
-                });
-            }
+            
 
             // Close handling
             function closeModal() {
@@ -1389,7 +1374,13 @@
                 var b = bands[globalIdx] || 'mid';
 
                 var meritHtml = '';
-                if (s.spot) meritHtml += '<span class="m m-spot">★ Spot</span> ';
+                var spotCount = Number(s.spot_count || 0);
+                if (spotCount <= 0 && s.spot) spotCount = 1;
+                if (spotCount > 0) {
+                    var stars = '';
+                    for (var k = 0; k < spotCount; k++) stars += '★';
+                    meritHtml += '<span class="m m-spot">' + stars + ' Spot</span> ';
+                }
                 if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
                 else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
                 if (!meritHtml) meritHtml = '<span class="muted">—</span>';
@@ -1616,7 +1607,8 @@
                 var percentileValues = getPercentileValues(stuData);
 
                 stuData.forEach(function(s, idx) {
-                    var band = bands[idx] ? bands[idx].toUpperCase() : 'MID';
+                    var rawBand = (bands[idx] || s._band || 'mid').toLowerCase();
+                    var band = (rawBand === 'top') ? 'top' : ((rawBand === 'bot' || rawBand === 'bottom' || rawBand === 'low') ? 'low' : 'mid');
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
                     var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');

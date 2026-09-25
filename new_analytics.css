@@ -3871,3 +3871,115 @@ body#page-local-batchanalytics-module #page-header h1,
     color: #16a34a !important;
   }
 }
+
+
+/* -----------------------------------------------------------------------
+   SS Activities Date Range Filter (module.php — no planned dates state)
+   ----------------------------------------------------------------------- */
+.ba-ss-date-filter-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    margin-bottom: 16px;
+}
+
+.ba-ss-date-filter-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e40af;
+}
+
+.ba-ss-date-inputs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ba-ss-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.ba-ss-date-field label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ba-date-input {
+    padding: 7px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 13px;
+    color: #1e293b;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    min-width: 155px;
+}
+
+.ba-date-input:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+}
+
+.ba-ss-date-sep {
+    font-size: 16px;
+    color: #94a3b8;
+    margin-top: 18px;
+}
+
+.ba-ss-apply-btn {
+    margin-top: 18px;
+    padding: 8px 18px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+.ba-ss-apply-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.ba-ss-clear-btn {
+    margin-top: 18px;
+    padding: 8px 14px;
+    background: transparent;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.ba-ss-clear-btn:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.ba-ss-date-filter-hint {
+    font-size: 12px;
+    color: #059669;
+    font-weight: 500;
+    padding: 4px 0;
+}
