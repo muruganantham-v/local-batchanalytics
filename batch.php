@@ -393,10 +393,6 @@ if (is_array($ss_raw)) {
         $p = (int)($ss_raw[$k . '_planned'] ?? 0);
         $a = (int)($ss_raw[$k . '_actual'] ?? 0);
 
-        if ($p <= 0 && $a <= 0) {
-            continue;
-        }
-
         $p_formatted = $p > 0 ? userdate($p, '%d %b %Y') : '—';
         $a_formatted = $a > 0 ? userdate($a, '%d %b %Y') : '—';
 
@@ -410,10 +406,13 @@ if (is_array($ss_raw)) {
         } else if ($p > 0 && $p < $now_today_end) {
             $status = 'a';
             $label = 'Due today';
-        } else {
-            $days = $p > 0 ? max(1, floor(($p - $now_today_start) / 86400)) : 0;
+        } else if ($p <= 0) {
             $status = 'b';
-            $label = $days > 0 ? "Upcoming ({$days}d)" : 'Upcoming';
+            $label = 'Not planned';
+        } else {
+            $days = max(1, floor(($p - $now_today_start) / 86400));
+            $status = 'b';
+            $label = "Upcoming ({$days}d)";
         }
 
         $ss_activities[] = [
@@ -425,16 +424,6 @@ if (is_array($ss_raw)) {
             'planned_ts' => $p,
         ];
     }
-}
-
-// Fallback if no soft skills planned in section
-if (empty($ss_activities)) {
-    $ss_activities = [
-        ['activity' => 'SS Induction',        'p_date' => '07 Aug 2026', 'a_date' => '07 Aug 2026', 'status' => 'g', 'label' => 'Completed', 'planned_ts' => 0],
-        ['activity' => 'AANCHOR 1',           'p_date' => '10 Aug 2026', 'a_date' => '10 Aug 2026', 'status' => 'g', 'label' => 'Completed', 'planned_ts' => 0],
-        ['activity' => 'Placement Induction', 'p_date' => '04 Sep 2026', 'a_date' => '—',           'status' => 'r', 'label' => 'Overdue',   'planned_ts' => 0],
-        ['activity' => 'Soft skill 1',        'p_date' => '28 Oct 2026', 'a_date' => '—',           'status' => 'b', 'label' => 'Upcoming',  'planned_ts' => 0],
-    ];
 }
 
 // -------------------------------------------------------------------------
@@ -769,7 +758,6 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                         <div class="ba-mentors-col">
                           <?php foreach ($r['class_mentors'] as $cm): ?>
                             <div class="ba-table-mentor">
-                              <?= \local_batchanalytics\util::render_user_avatar($cm['user'] ?: $cm['name'], 24, 'ba-mentor-mini-avatar', $cm['name']) ?>
                               <span><?= s($cm['name']) ?></span>
                             </div>
                           <?php endforeach; ?>
@@ -783,7 +771,6 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                         <div class="ba-mentors-col">
                           <?php foreach ($r['lab_mentors'] as $lm): ?>
                             <div class="ba-table-mentor">
-                              <?= \local_batchanalytics\util::render_user_avatar($lm['user'] ?: $lm['name'], 24, 'ba-mentor-mini-avatar', $lm['name']) ?>
                               <span><?= s($lm['name']) ?></span>
                             </div>
                           <?php endforeach; ?>
@@ -863,8 +850,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           <div class="bandrow" id="ba-bandrow"></div>
 
           <!-- Students Table -->
-          <div class="tablecard">
-            <table>
+          <div class="tablecard ba-performance-tablecard">
+            <div class="ba-performance-table-scroll">
+              <table>
               <thead>
                 <tr>
                   <th class="sortable" data-sort="band" title="Sort by Band">Band</th>
@@ -879,7 +867,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <tbody id="ba-stuBody">
                 <!-- Populated dynamically with pagination via batch.js -->
               </tbody>
-            </table>
+              </table>
+            </div>
 
             <!-- Student Performance Pagination Controls -->
             <div class="ba-pagination-bar" id="ba-pagination-bar">

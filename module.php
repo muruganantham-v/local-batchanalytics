@@ -711,41 +711,6 @@ if ($courseid > 0) {
     }
 }
 
-// Fallback demo activities for Tracker UI if no course items found
-if (empty($activity_categories)) {
-    $activity_categories = [
-        [
-            'id' => 'assignments', 'name' => 'Assignments', 'completed' => 1, 'pending' => 2,
-            'activities' => [
-                ['cmid' => 101, 'name' => 'Assignment 1: Pointer Arithmetic & Memory Layout', 'completed' => true,  'completiondate' => '2026-09-19'],
-                ['cmid' => 102, 'name' => 'Assignment 2: Bitwise Operators & Bit Manipulation', 'completed' => false, 'completiondate' => ''],
-                ['cmid' => 103, 'name' => 'Assignment 3: Dynamic Memory Allocation (DMA)',     'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'tests', 'name' => 'Module Tests', 'completed' => 1, 'pending' => 1,
-            'activities' => [
-                ['cmid' => 201, 'name' => 'Objective Test: C Storage Classes & Scope', 'completed' => true,  'completiondate' => '2026-09-15'],
-                ['cmid' => 202, 'name' => 'Module Test Conduct: Comprehensive Advanced C', 'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'nominations', 'name' => 'Nominations & Mentorship', 'completed' => 1, 'pending' => 1,
-            'activities' => [
-                ['cmid' => 301, 'name' => 'Spot Award Nomination (Batch Mentor Recommendation)', 'completed' => true,  'completiondate' => '2026-09-14'],
-                ['cmid' => 302, 'name' => 'Power Track Nomination (High Potentials Selection)',  'completed' => false, 'completiondate' => ''],
-            ]
-        ],
-        [
-            'id' => 'projects', 'name' => 'Projects', 'completed' => 0, 'pending' => 2,
-            'activities' => [
-                ['cmid' => 401, 'name' => 'Mini Project: LSB Steganography', 'completed' => false, 'completiondate' => ''],
-                ['cmid' => 402, 'name' => 'Project Evaluation & Code Review', 'completed' => false, 'completiondate' => ''],
-            ]
-        ]
-    ];
-}
-
 // -------------------------------------------------------------------------
 // 6. Tab 2: SS Activities (Module Level, filtered by module planned date range)
 // -------------------------------------------------------------------------
@@ -1091,6 +1056,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         Scheduled activities the mentor performs. Actual date auto-fills and saves directly to the Module Tracker when marked completed.
       </div>
 
+<?php if (empty($activity_categories)): ?>
+        <div class="tablecard">
+          <div class="muted" style="text-align:center; padding:24px;">No mentor activities are configured for this module.</div>
+        </div>
+      <?php else: ?>
       <div class="ba-tracker-wrap">
         <div class="ba-tracker-header-row">
           <!-- Category Tabs -->
@@ -1142,6 +1112,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           </div>
         <?php endforeach; ?>
       </div>
+      <?php endif; ?>
     </div>
 
     <!-- 2. SS Activities Panel (Module Level) -->

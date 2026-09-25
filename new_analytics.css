@@ -2354,7 +2354,18 @@ body#page-local-batchanalytics-module #page-header h1,
   -webkit-overflow-scrolling: touch;
 }
 
-.ba-batch-page #panel-students .tablecard>table,
+/* Keep Student Performance pagination outside the horizontally scrolling table. */
+.ba-batch-page #panel-students .ba-performance-tablecard {
+  overflow: hidden !important;
+}
+
+.ba-batch-page #panel-students .ba-performance-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ba-batch-page #panel-students .ba-performance-table-scroll>table,
 .ba-module-page #panel-mstudents .tablecard>table {
   min-width: 980px;
 }
