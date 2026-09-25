@@ -313,7 +313,7 @@ function initNewBatchAnalytics() {
       if (currentSubTab === "running" && b.isCompleted) return false;
 
       if (searchTerm) {
-        const matchesName = (b.batchId || "").toString().toLowerCase().includes(searchTerm);
+        const matchesName = (b.batchId || "").toString().toLowerCase().includes(searchTerm) || (b.parentBatchName || "").toString().toLowerCase().includes(searchTerm);
         const matchesCourse = (b.courseName || "").toLowerCase().includes(searchTerm);
         const matchesModule = (b.currentModule || "").toLowerCase().includes(searchTerm);
         if (!matchesName && !matchesCourse && !matchesModule) return false;

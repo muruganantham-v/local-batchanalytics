@@ -250,16 +250,37 @@ if ($action === 'getnewbatchdata') {
             die();
         }
 
-        // Fetch all batches sorted by startdate ASC (oldest date first)
-        $batches = $DB->get_records('local_bm_batch', null, 'startdate ASC, id ASC');
+        // Fetch all class sections as primary records
+        $sections = $has_bm_section ? $DB->get_records('local_bm_classsection', null, 'id ASC') : [];
 
-        // Fetch all class sections if table exists
-        $sectionsbybatch = [];
-        if ($has_bm_section) {
-            $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
-            foreach ($sections as $sec) {
-                $sectionsbybatch[$sec->batchid][] = $sec;
-            }
+        // Fetch parent batches for metadata (coursename, deliverymode, startdate)
+        $batches = $has_bm_batch ? $DB->get_records('local_bm_batch', null, 'startdate ASC, id ASC') : [];
+
+        if (empty($sections) && empty($batches)) {
+            echo json_encode([
+                'stats' => [
+                    'runningBatches' => 0,
+                    'totalBatches' => 0,
+                    'completedBatches' => 0,
+                    'onlineBatches' => 0,
+                    'offlineBatches' => 0,
+                    'classMentors' => 0,
+                    'labMentors' => 0,
+                    'onSchedule' => 0,
+                    'minorSlip' => 0,
+                    'delayed' => 0,
+                    'early' => 0,
+                    'totalStudents' => 0
+                ],
+                'batches' => [],
+                'filters' => [
+                    'years' => [],
+                    'courses' => [],
+                    'modes' => [],
+                    'batchNames' => []
+                ]
+            ]);
+            die();
         }
 
         // Check if user is a Manager (site admin, manage capability, or viewallcourses capability)
@@ -268,7 +289,7 @@ if ($action === 'getnewbatchdata') {
             || has_capability('local/batchanalytics:manage', $context, $currentuserid)
             || has_capability('local/batchanalytics:viewallcourses', $context, $currentuserid);
 
-        // Non-managers should only see batches corresponding to courses they are enrolled in or assigned to
+        // Non-managers should only see class sections corresponding to courses/sections they are enrolled in or assigned to
         if (!$is_manager) {
             $user_courses = enrol_get_users_courses($currentuserid, true, ['id', 'fullname', 'shortname']);
             $user_course_ids = array_map('intval', array_keys($user_courses));
@@ -276,71 +297,69 @@ if ($action === 'getnewbatchdata') {
             $user_course_shortnames = array_map(function($c) { return strtolower(trim($c->shortname)); }, $user_courses);
             $user_fullname = trim(fullname($USER));
 
-            $allowed_batch_ids = [];
+            $allowed_section_ids = [];
 
-            // Check class sections for linked module courses and mentor/coordinator assignments
-            if ($has_bm_section) {
-                foreach ($sectionsbybatch as $bid => $s_list) {
-                    foreach ($s_list as $s_item) {
-                        if ((string)$s_item->maacexecutive === (string)$currentuserid
-                            || (string)$s_item->pmmanager === (string)$currentuserid
-                            || $s_item->maacexecutivename === $user_fullname
-                            || $s_item->pmmanagername === $user_fullname) {
-                            $allowed_batch_ids[(int)$bid] = true;
-                            break;
-                        }
-                        $s_modules = \local_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
-                        if (!empty($s_modules)) {
-                            foreach ($s_modules as $sm) {
-                                $mcid = (int)($sm['moodlecourseid'] ?? 0);
-                                if ($mcid > 0 && in_array($mcid, $user_course_ids, true)) {
-                                    $allowed_batch_ids[(int)$bid] = true;
-                                    break 2;
-                                }
-                                $mentors = [
-                                    (string)($sm['primarymentor'] ?? ''),
-                                    (string)($sm['secondarymentor'] ?? ''),
-                                    (string)($sm['labmentor1'] ?? ''),
-                                    (string)($sm['labmentor2'] ?? ''),
-                                    (string)($sm['labmentor3'] ?? '')
-                                ];
-                                if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
-                                    $allowed_batch_ids[(int)$bid] = true;
-                                    break 2;
-                                }
+            if (!empty($sections)) {
+                foreach ($sections as $s_item) {
+                    $parent = !empty($s_item->batchid) && isset($batches[$s_item->batchid]) ? $batches[$s_item->batchid] : null;
+                    if ((string)$s_item->maacexecutive === (string)$currentuserid
+                        || (string)$s_item->pmmanager === (string)$currentuserid
+                        || $s_item->maacexecutivename === $user_fullname
+                        || $s_item->pmmanagername === $user_fullname) {
+                        $allowed_section_ids[(int)$s_item->id] = true;
+                        continue;
+                    }
+                    $s_modules = \local_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
+                    if (!empty($s_modules)) {
+                        foreach ($s_modules as $sm) {
+                            $mcid = (int)($sm['moodlecourseid'] ?? 0);
+                            if ($mcid > 0 && in_array($mcid, $user_course_ids, true)) {
+                                $allowed_section_ids[(int)$s_item->id] = true;
+                                break;
+                            }
+                            $mentors = [
+                                (string)($sm['primarymentor'] ?? ''),
+                                (string)($sm['secondarymentor'] ?? ''),
+                                (string)($sm['labmentor1'] ?? ''),
+                                (string)($sm['labmentor2'] ?? ''),
+                                (string)($sm['labmentor3'] ?? '')
+                            ];
+                            if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
+                                $allowed_section_ids[(int)$s_item->id] = true;
+                                break;
                             }
                         }
                     }
+
+                    if (empty($allowed_section_ids[(int)$s_item->id]) && $parent) {
+                        $bcoursename = strtolower(trim((string)($parent->coursename ?? '')));
+                        if ($bcoursename !== '' && (in_array($bcoursename, $user_course_names, true) || in_array($bcoursename, $user_course_shortnames, true))) {
+                            $allowed_section_ids[(int)$s_item->id] = true;
+                        }
+                    }
                 }
+
+                $sections = array_filter($sections, function($sec) use ($allowed_section_ids) {
+                    return !empty($allowed_section_ids[(int)$sec->id]);
+                });
             }
-
-            // Check batch coursename against enrolled courses
-            foreach ($batches as $b) {
-                $bcoursename = strtolower(trim((string)($b->coursename ?? '')));
-                if ($bcoursename !== '' && (in_array($bcoursename, $user_course_names, true) || in_array($bcoursename, $user_course_shortnames, true))) {
-                    $allowed_batch_ids[(int)$b->id] = true;
-                }
-            }
-
-            // Restrict batches and sections to allowed batches
-            $batches = array_filter($batches, function($b) use ($allowed_batch_ids) {
-                return !empty($allowed_batch_ids[(int)$b->id]);
-            });
-
-            $sectionsbybatch = array_filter($sectionsbybatch, function($bid) use ($allowed_batch_ids) {
-                return !empty($allowed_batch_ids[(int)$bid]);
-            }, ARRAY_FILTER_USE_KEY);
         }
 
-        // Fetch total unique students (for managers: all; for non-managers: only in accessible batches)
+        // Fetch students per class section
+        $studentcounts_by_section = [];
         if ($has_bm_student) {
+            $sql = "SELECT classsectionid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} GROUP BY classsectionid";
+            foreach ($DB->get_records_sql($sql) as $row) {
+                $studentcounts_by_section[(int)$row->classsectionid] = (int)$row->cnt;
+            }
+
             if ($is_manager) {
                 $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}");
             } else {
-                $batch_ids_list = array_map('intval', array_keys($batches));
-                if (!empty($batch_ids_list)) {
-                    list($bin_sql, $bparams) = $DB->get_in_or_equal($batch_ids_list, SQL_PARAMS_NAMED, 'bm_b');
-                    $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE batchid $bin_sql", $bparams);
+                $sec_ids_list = array_map('intval', array_keys($sections));
+                if (!empty($sec_ids_list)) {
+                    list($sin_sql, $sparams) = $DB->get_in_or_equal($sec_ids_list, SQL_PARAMS_NAMED, 'bm_cs');
+                    $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE classsectionid $sin_sql", $sparams);
                 } else {
                     $studentcount = 0;
                 }
@@ -361,51 +380,50 @@ if ($action === 'getnewbatchdata') {
         $labmentors = [];
 
         // Helper to resolve mentor IDs to user names and filter invalid placeholders
-        $resolve_mentor = static function($val) use ($DB) {
+        $resolve_mentor = static function($val) {
             $val = trim((string)$val);
             if ($val === '' || $val === '0' || $val === '—' || strcasecmp($val, 'none') === 0 || strcasecmp($val, 'null') === 0) {
                 return null;
             }
             if (is_numeric($val)) {
-                $u = $DB->get_record('user', ['id' => (int)$val, 'deleted' => 0], 'id, firstname, lastname');
-                if ($u) {
-                    return fullname($u);
+                $profile = \local_batchanalytics\util::get_user_profile_data((int)$val);
+                if (!empty($profile['name'])) {
+                    return $profile['name'];
                 }
             }
             return $val;
         };
 
-        foreach ($batches as $b) {
-            $mode = trim((string)($b->deliverymode ?? ''));
-            $normalizedmode = $mode !== '' ? ucfirst(strtolower($mode)) : 'Offline';
+        // Primary loop: process each Class Section
+        if (!empty($sections)) {
+            foreach ($sections as $sec) {
+                $parent = !empty($sec->batchid) && isset($batches[$sec->batchid]) ? $batches[$sec->batchid] : null;
+                $sec_name = $sec->name ?: ($parent ? $parent->name : 'Section ' . $sec->id);
+                $coursename = ($parent && !empty($parent->coursename)) ? $parent->coursename : 'Embedded Systems & IoT';
+                $raw_mode = ($parent && !empty($parent->deliverymode)) ? $parent->deliverymode : 'Offline';
+                $normalizedmode = $raw_mode !== '' ? ucfirst(strtolower(trim($raw_mode))) : 'Offline';
+                $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
+                $type = ($parent && !empty($parent->submode)) ? ucfirst(strtolower($parent->submode)) : 'Regular';
+                $startdate_ts = ($parent && !empty($parent->startdate)) ? (int)$parent->startdate : ((int)$sec->timecreated ?: time());
+                $startformatted = userdate($startdate_ts, '%d %b %Y');
+                $year = userdate($startdate_ts, '%Y');
 
-            $batch_sections = $sectionsbybatch[$b->id] ?? [];
-            $sec = !empty($batch_sections) ? $batch_sections[0] : null;
+                $sec_students = $studentcounts_by_section[(int)$sec->id] ?? 0;
 
-            $currentmodule = 'N/A';
-            $currentmoduleidx = 1;
-            $currentcourseid = 0;
-            $status = 'on_schedule';
-            $statuslabel = 'On schedule';
-            $delaydays = 0;
-            $totaldelta = 0;
-            $batch_has_modules = false;
-            $batch_all_completed = true;
-            $last_valid_module = null;
-            $batchclassmentors = [];
-            $batchlabmentors = [];
-
-            $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
-
-            foreach ($batch_sections as $curr_sec) {
-                $modules = \local_batchanalytics\util::decode_module_data($curr_sec->moduledata ?? '', true);
+                $modules = \local_batchanalytics\util::decode_module_data($sec->moduledata ?? '', true);
                 if ($is_online) {
                     $modules = \local_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
                 }
-                if (empty($modules)) {
-                    continue;
-                }
-                $batch_has_modules = true;
+
+                $currentmodule = 'N/A';
+                $currentmoduleidx = 1;
+                $currentcourseid = 0;
+                $totaldelta = 0;
+                $has_modules = !empty($modules);
+                $all_completed = $has_modules;
+                $last_valid_module = null;
+                $sec_classmentors = [];
+                $sec_labmentors = [];
 
                 foreach ($modules as $m) {
                     $last_valid_module = $m;
@@ -416,7 +434,7 @@ if ($action === 'getnewbatchdata') {
                             $resolved = $resolve_mentor($m[$cmk]);
                             if ($resolved !== null) {
                                 $classmentors[$resolved] = true;
-                                $batchclassmentors[$resolved] = true;
+                                $sec_classmentors[$resolved] = true;
                             }
                         }
                     }
@@ -427,12 +445,12 @@ if ($action === 'getnewbatchdata') {
                             $resolved = $resolve_mentor($m[$lmk]);
                             if ($resolved !== null) {
                                 $labmentors[$resolved] = true;
-                                $batchlabmentors[$resolved] = true;
+                                $sec_labmentors[$resolved] = true;
                             }
                         }
                     }
 
-                    // Accumulate schedule delta from all modules in the batch
+                    // Accumulate schedule delta from all modules in the section
                     if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
                         $totaldelta += (int)$m['scheduledelta'];
                     } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
@@ -442,7 +460,7 @@ if ($action === 'getnewbatchdata') {
 
                     $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
                     if (!$isdone) {
-                        $batch_all_completed = false;
+                        $all_completed = false;
                     }
 
                     if ($currentmodule === 'N/A' && (!$isdone || count($modules) === 1)) {
@@ -452,61 +470,91 @@ if ($action === 'getnewbatchdata') {
                         $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
                     }
                 }
+
+                if ($has_modules && $currentmodule === 'N/A' && $last_valid_module !== null) {
+                    $currentmodule = !empty($last_valid_module['name']) ? $last_valid_module['name'] : 'Completed';
+                    $currentmoduleidx = (int)$last_valid_module['module'];
+                    $currentcourseid = (int)($last_valid_module['moodlecourseid'] ?? 0);
+                }
+
+                $is_completed = ($has_modules && $all_completed);
+
+                // Determine status based on total accumulated schedule delta
+                $status_info = \local_batchanalytics\util::get_batch_status($totaldelta);
+                $status = $status_info['status'];
+                $statuslabel = $status_info['label'];
+                $delaydays = $totaldelta;
+
+                if ($status === 'delayed') {
+                    $delayedcount++;
+                } else if ($status === 'minor_slip') {
+                    $minorslipcount++;
+                } else if ($status === 'early') {
+                    $earlycount++;
+                } else {
+                    $onschedulecount++;
+                }
+
+                $batchlist[] = [
+                    'id' => (int)$sec->id,
+                    'batchId' => (string)$sec_name,
+                    'courseName' => (string)$coursename,
+                    'mode' => $normalizedmode,
+                    'type' => $type,
+                    'startDate' => $startformatted,
+                    'year' => $year,
+                    'startdateTimestamp' => $startdate_ts,
+                    'currentModule' => $currentmodule,
+                    'moduleIdx' => $currentmoduleidx,
+                    'courseId' => $currentcourseid,
+                    'status' => $status,
+                    'statusLabel' => $statuslabel,
+                    'delayDays' => $delaydays,
+                    'studentCount' => $sec_students,
+                    'classMentors' => array_values(array_keys($sec_classmentors)),
+                    'labMentors' => array_values(array_keys($sec_labmentors)),
+                    'isCompleted' => $is_completed,
+                    'sectionId' => (int)$sec->id,
+                    'parentBatchId' => $parent ? (int)$parent->id : 0,
+                    'parentBatchName' => $parent ? (string)$parent->name : ''
+                ];
             }
+        } else if (!empty($batches)) {
+            // Fallback for batches if no class sections exist in table
+            foreach ($batches as $b) {
+                $mode = trim((string)($b->deliverymode ?? ''));
+                $normalizedmode = $mode !== '' ? ucfirst(strtolower($mode)) : 'Offline';
+                $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
+                $type = !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular';
+                $startdate_ts = !empty($b->startdate) ? (int)$b->startdate : 0;
+                $startformatted = $startdate_ts > 0 ? userdate($startdate_ts, '%d %b %Y') : 'N/A';
+                $year = $startdate_ts > 0 ? userdate($startdate_ts, '%Y') : date('Y');
 
-            if ($batch_has_modules && $currentmodule === 'N/A' && $last_valid_module !== null) {
-                $currentmodule = !empty($last_valid_module['name']) ? $last_valid_module['name'] : 'Completed';
-                $currentmoduleidx = (int)$last_valid_module['module'];
-                $currentcourseid = (int)($last_valid_module['moodlecourseid'] ?? 0);
-            }
-
-            $is_completed = ($batch_has_modules && $batch_all_completed);
-
-            // Determine status based on total accumulated schedule delta
-            $batch_status_info = \local_batchanalytics\util::get_batch_status($totaldelta);
-            $status = $batch_status_info['status'];
-            $delaydays = $totaldelta;
-            $statuslabel = $batch_status_info['label'];
-
-            if ($status === 'delayed') {
-                $delayedcount++;
-            } else if ($status === 'minor_slip') {
-                $minorslipcount++;
-            } else if ($status === 'early') {
-                $earlydays = abs($totaldelta);
-                $earlycount++;
-            } else {
+                $status_info = \local_batchanalytics\util::get_batch_status(0);
                 $onschedulecount++;
+
+                $batchlist[] = [
+                    'id' => (int)$b->id,
+                    'batchId' => (string)($b->name ?? ''),
+                    'courseName' => (string)($b->coursename ?? ''),
+                    'mode' => $normalizedmode,
+                    'type' => $type,
+                    'startDate' => $startformatted,
+                    'year' => $year,
+                    'startdateTimestamp' => $startdate_ts,
+                    'currentModule' => 'N/A',
+                    'moduleIdx' => 1,
+                    'courseId' => 0,
+                    'status' => $status_info['status'],
+                    'statusLabel' => $status_info['label'],
+                    'delayDays' => 0,
+                    'studentCount' => 0,
+                    'classMentors' => [],
+                    'labMentors' => [],
+                    'isCompleted' => false,
+                    'sectionId' => (int)$b->id
+                ];
             }
-
-            $batchstudents = $has_bm_student
-                ? (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE batchid = :bid", ['bid' => $b->id])
-                : 0;
-
-            $startformatted = !empty($b->startdate) ? userdate($b->startdate, '%d %b %Y') : 'N/A';
-            $year = !empty($b->startdate) ? userdate($b->startdate, '%Y') : date('Y');
-
-            $batchlist[] = [
-                'id' => (int)$b->id,
-                'batchId' => (string)($b->name ?? ''),
-                'courseName' => (string)($b->coursename ?? ''),
-                'mode' => $normalizedmode,
-                'type' => !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular',
-                'startDate' => $startformatted,
-                'year' => $year,
-                'startdateTimestamp' => !empty($b->startdate) ? (int)$b->startdate : 0,
-                'currentModule' => $currentmodule,
-                'moduleIdx' => $currentmoduleidx,
-                'courseId' => $currentcourseid,
-                'status' => $status,
-                'statusLabel' => $statuslabel,
-                'delayDays' => $delaydays,
-                'studentCount' => $batchstudents,
-                'classMentors' => array_values(array_keys($batchclassmentors)),
-                'labMentors' => array_values(array_keys($batchlabmentors)),
-                'isCompleted' => $is_completed,
-                'sectionId' => $sec ? (int)$sec->id : (int)$b->id
-            ];
         }
 
         // Sort batchlist with oldest date first (ascending order)
@@ -770,13 +818,13 @@ echo '    </div>';
 echo '    <!-- Search & Filters Controls Card -->';
 echo '    <div class="ba-new-card ba-new-controls-card">';
 echo '      <div class="ba-new-search-row">';
-echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="Search batch code (e.g., 26011, 26022)..." />';
+echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="Search section or batch code (e.g., 26011A, 25002A)..." />';
 echo '        <button id="ba-new-reset-btn" type="button" class="ba-btn-blue-solid" title="Clear all active filters">Reset</button>';
 echo '      </div>';
 echo '      <div class="ba-filters-label">FILTERS</div>';
 echo '      <div class="ba-new-filters-row">';
 echo '        <select id="ba-filter-year" class="ba-new-select"><option value="">Year — All</option></select>';
-echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">Batch No — All</option></select>';
+echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">Section / Batch — All</option></select>';
 echo '        <select id="ba-filter-course" class="ba-new-select"><option value="">Course — All</option></select>';
 echo '        <select id="ba-filter-mode" class="ba-new-select"><option value="">Mode — All</option></select>';
 echo '      </div>';
@@ -807,7 +855,7 @@ echo '      <div class="ba-new-table-wrapper">';
 echo '        <table class="ba-new-table" id="ba-new-batch-table">';
 echo '          <thead>';
 echo '            <tr>';
-echo '              <th>BATCH ID</th>';
+echo '              <th>BATCH / SECTION</th>';
 echo '              <th>COURSE</th>';
 echo '              <th>MODE</th>';
 echo '              <th>TYPE</th>';
