@@ -393,17 +393,18 @@ function initNewBatchAnalytics() {
 
         let batchUrl = "";
         const secId = b.sectionId && b.sectionId > 0 ? b.sectionId : (b.id && b.id > 0 ? b.id : 0);
+        const modeParam = b.mode ? `&mode=${encodeURIComponent(b.mode)}` : "";
         if (secId > 0) {
-          batchUrl = `batch.php?id=${encodeURIComponent(secId)}`;
+          batchUrl = `batch.php?id=${encodeURIComponent(secId)}${modeParam}`;
         } else {
-          batchUrl = "batch.php";
+          batchUrl = `batch.php${modeParam ? '?' + modeParam.substring(1) : ''}`;
         }
 
         let moduleUrl = "";
         if (secId > 0 && b.moduleIdx && b.courseId) {
-          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}&courseid=${encodeURIComponent(b.courseId)}`;
+          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}&courseid=${encodeURIComponent(b.courseId)}${modeParam}`;
         } else if (secId > 0 && b.moduleIdx) {
-          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}`;
+          moduleUrl = `module.php?batchid=${encodeURIComponent(secId)}&module=${encodeURIComponent(b.moduleIdx)}${modeParam}`;
         }
 
         const moduleHtml = moduleUrl

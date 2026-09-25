@@ -127,17 +127,28 @@ if ($section) {
         $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : 'Anitha S';
     }
 
+    $mode_param = optional_param('mode', '', PARAM_TEXT);
+    if (!empty($mode_param)) {
+        $deliverymode = $mode_param;
+    }
+
+    $is_online = \local_batchanalytics\util::is_online_mode($deliverymode);
+
     // Module tracking decoding
     $raw_modules = [];
     if (!empty($section->moduledata)) {
         $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
+        if ($is_online) {
+            $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
+        }
     }
 } else {
     // Graceful fallback sample data conforming to prototype
     $is_sample_data = true;
     $batchid_label  = '26011B';
     $coursename     = 'Embedded Systems & IoT';
-    $deliverymode   = 'Offline';
+    $mode_param     = optional_param('mode', '', PARAM_TEXT);
+    $deliverymode   = !empty($mode_param) ? $mode_param : 'Offline';
     $submode        = 'Regular';
     $startdate_str  = '28 Jul 2026';
     $pmname         = 'Ravi Kumar';
@@ -145,6 +156,7 @@ if ($section) {
     $ssename        = 'Anitha S';
     $sseuser        = null;
     $raw_modules    = [];
+    $is_online      = \local_batchanalytics\util::is_online_mode($deliverymode);
 }
 
 // -------------------------------------------------------------------------
@@ -152,16 +164,7 @@ if ($section) {
 // -------------------------------------------------------------------------
 $schedule_rows = [];
 
-$canonical_modules = [
-    1 => 'Linux Systems',
-    2 => 'Advanced C',
-    3 => 'C++ Programming',
-    4 => 'Data Structures',
-    5 => 'Microcontrollers',
-    6 => 'Linux Internals',
-    7 => 'ELARM',
-    8 => 'Qt / QML',
-];
+$canonical_modules = \local_batchanalytics\util::get_canonical_modules($deliverymode);
 
 $format_mod_date = static function($val): string {
     if (empty($val) || $val === '—' || $val === 0 || $val === '0') {
@@ -186,6 +189,9 @@ if (!empty($raw_modules)) {
         }
         if ($m_name === '') {
             $m_name = $canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx);
+        }
+        if ($is_online && \local_batchanalytics\util::is_qt_module($m_name)) {
+            continue; // Qt / QML must be excluded entirely for online batches (SR-3.2.1)
         }
 
         // Resolve Class Mentor(s) with deduplication and validation
@@ -309,6 +315,11 @@ if (!empty($raw_modules)) {
             'delay' => 'prog', 'courseid' => 0, 'days' => 10
         ]
     ];
+    if ($is_online) {
+        $schedule_rows = array_values(array_filter($schedule_rows, function($r) {
+            return !\local_batchanalytics\util::is_qt_module($r['name'] ?? '');
+        }));
+    }
 }
 
 // Determine active module and tentative end date
@@ -794,7 +805,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                         }
                       ?>
                       <?php if ($course_linked): ?>
-                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id]))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
                       <?php else: ?>
                         <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
                       <?php endif; ?>

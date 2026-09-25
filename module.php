@@ -122,20 +122,21 @@ if ($section && $has_bm_batch && !empty($section->batchid)) {
     $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
 }
 
-$canonical_modules = [
-    1 => 'Linux Systems',
-    2 => 'Advanced C',
-    3 => 'C++ Programming',
-    4 => 'Data Structures',
-    5 => 'Microcontrollers',
-    6 => 'Linux Internals',
-    7 => 'ELARM',
-    8 => 'Qt / QML',
-];
+$mode_param = optional_param('mode', '', PARAM_TEXT);
+if (!empty($mode_param)) {
+    $deliverymode = $mode_param;
+} else if ($batch && !empty($batch->deliverymode)) {
+    $deliverymode = $batch->deliverymode;
+} else if ($section && !empty($section->deliverymode)) {
+    $deliverymode = $section->deliverymode;
+} else {
+    $deliverymode = 'Offline';
+}
 
-$canonical_days = [
-    1 => 5, 2 => 77, 3 => 13, 4 => 29, 5 => 37, 6 => 33, 7 => 10, 8 => 10
-];
+$is_online = \local_batchanalytics\util::is_online_mode($deliverymode);
+
+$canonical_modules = \local_batchanalytics\util::get_canonical_modules($deliverymode);
+$canonical_days = \local_batchanalytics\util::get_canonical_days($deliverymode);
 
 $format_mod_date = static function($val): string {
     if (empty($val) || $val === '—' || $val === 0 || $val === '0') {
@@ -179,6 +180,9 @@ if ($section) {
     $raw_modules = [];
     if (!empty($section->moduledata)) {
         $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
+        if ($is_online) {
+            $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
+        }
     }
 } else {
     $is_sample_data = true;
@@ -202,6 +206,9 @@ if (empty($raw_modules)) {
         ['module' => 7, 'courseshortname' => 'ELARM',            'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '28 Feb 2027', 'plannedend' => '12 Apr 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 10, 'moodlecourseid' => 0],
         ['module' => 8, 'courseshortname' => 'Qt / QML',         'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '13 Apr 2027', 'plannedend' => '25 Apr 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 10, 'moodlecourseid' => 0]
     ];
+    if ($is_online) {
+        $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
+    }
 }
 
 $total_modules = count($raw_modules);
@@ -211,6 +218,12 @@ if ($module_idx > $total_modules) $module_idx = $total_modules;
 // Current active module record
 $cur_mod = $raw_modules[$module_idx - 1] ?? [];
 $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
+
+if ($is_online && \local_batchanalytics\util::is_qt_module($mod_name)) {
+    $module_idx = $total_modules;
+    $cur_mod = $raw_modules[$module_idx - 1] ?? [];
+    $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
+}
 $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
 
 if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
@@ -873,7 +886,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <span class="crumb">
       <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
-      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', ['id' => $batchid]))->out(false)) ?>"><?= s($batchname) ?></a>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <b><?= s($mod_name) ?></b>
     </span>
@@ -898,7 +911,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               $prev_linked = $prev_cid > 0 && $DB->record_exists('course', ['id' => $prev_cid]);
             ?>
             <?php if ($prev_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => $prev_cid]))->out(false)) ?>">
+              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $prev_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
                 ‹ <?= s($prev_name) ?>
               </a>
             <?php else: ?>
@@ -914,7 +927,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               $next_linked = $next_cid > 0 && $DB->record_exists('course', ['id' => $next_cid]);
             ?>
             <?php if ($next_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', ['courseid' => $next_cid]))->out(false)) ?>">
+              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $next_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
                 <?= s($next_name) ?> ›
               </a>
             <?php else: ?>

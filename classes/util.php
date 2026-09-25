@@ -52,6 +52,114 @@ class util {
     ];
 
     /**
+     * Check if the delivery mode represents an online batch.
+     *
+     * @param string|null $mode
+     * @return bool
+     */
+    public static function is_online_mode(?string $mode): bool {
+        if (empty($mode)) {
+            return false;
+        }
+        return stripos((string)$mode, 'online') !== false;
+    }
+
+    /**
+     * Check if a module name, code, or index corresponds to Qt / QML.
+     *
+     * @param string|int|null $name_or_code
+     * @return bool
+     */
+    public static function is_qt_module($name_or_code): bool {
+        if (empty($name_or_code)) {
+            return false;
+        }
+        $clean = strtolower(trim((string)$name_or_code));
+        if ($clean === '8' || $clean === 'module 8' || $clean === 'module8') {
+            return true;
+        }
+        $stripped = preg_replace('/[^a-z0-9]/', '', $clean);
+        return ($stripped === 'qtqml' || $stripped === 'qt' || $stripped === 'qml'
+            || strpos($stripped, 'qtqml') !== false || strpos($clean, 'qt') !== false || strpos($clean, 'qml') !== false);
+    }
+
+    /**
+     * Get canonical module titles by delivery mode.
+     * For Online batches, Qt / QML is completely excluded (SR-3.2.1).
+     *
+     * @param string|null $deliverymode
+     * @return array<int, string>
+     */
+    public static function get_canonical_modules(?string $deliverymode = 'Offline'): array {
+        if (self::is_online_mode($deliverymode)) {
+            return [
+                1 => 'Linux Systems',
+                2 => 'Advanced C',
+                3 => 'C++ Programming',
+                4 => 'Data Structures',
+                5 => 'Microcontrollers',
+                6 => 'Linux Internals',
+                7 => 'ELARM',
+            ];
+        }
+        return [
+            1 => 'Linux Systems',
+            2 => 'Advanced C',
+            3 => 'C++ Programming',
+            4 => 'Data Structures',
+            5 => 'Microcontrollers',
+            6 => 'Linux Internals',
+            7 => 'ELARM',
+            8 => 'Qt / QML',
+        ];
+    }
+
+    /**
+     * Get canonical module durations in days by delivery mode.
+     *
+     * @param string|null $deliverymode
+     * @return array<int, int>
+     */
+    public static function get_canonical_days(?string $deliverymode = 'Offline'): array {
+        if (self::is_online_mode($deliverymode)) {
+            return [
+                1 => 5, 2 => 77, 3 => 13, 4 => 29, 5 => 37, 6 => 33, 7 => 10
+            ];
+        }
+        return [
+            1 => 5, 2 => 77, 3 => 13, 4 => 29, 5 => 37, 6 => 33, 7 => 10, 8 => 10
+        ];
+    }
+
+    /**
+     * Filter module records for a specific delivery mode.
+     * If online, Qt / QML is excluded and module positions re-indexed (SR-3.2.1).
+     *
+     * @param array $modules
+     * @param string|null $deliverymode
+     * @return array
+     */
+    public static function filter_modules_for_mode(array $modules, ?string $deliverymode): array {
+        if (!self::is_online_mode($deliverymode)) {
+            return $modules;
+        }
+
+        $filtered = [];
+        $new_idx = 1;
+        foreach ($modules as $m) {
+            $m_name = $m['name'] ?? $m['courseshortname'] ?? '';
+            $m_idx = $m['module'] ?? $new_idx;
+            if (self::is_qt_module($m_name) || (is_numeric($m_idx) && (int)$m_idx === 8 && self::is_qt_module($m_name ?: '8'))) {
+                continue;
+            }
+            $m['module'] = $new_idx++;
+            $filtered[] = $m;
+        }
+        return $filtered;
+    }
+
+
+    /**
      * Get module total days by name, course name, or module index.
      *
      * @param string|int $module_name_or_idx Module title or 1-based index

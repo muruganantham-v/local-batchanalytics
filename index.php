@@ -395,8 +395,13 @@ if ($action === 'getnewbatchdata') {
             $batchclassmentors = [];
             $batchlabmentors = [];
 
+            $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
+
             foreach ($batch_sections as $curr_sec) {
                 $modules = \local_batchanalytics\util::decode_module_data($curr_sec->moduledata ?? '', true);
+                if ($is_online) {
+                    $modules = \local_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
+                }
                 if (empty($modules)) {
                     continue;
                 }
