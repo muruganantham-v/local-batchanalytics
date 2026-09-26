@@ -62,18 +62,6 @@ if ($hassiteconfig) {
     ));
 
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/crm_field_configuration',
-        get_string('crm_field_configuration', 'local_batchanalytics'),
-        ''
-    ));
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/allowed_course_keywords',
-        get_string('allowed_course_keywords', 'local_batchanalytics'),
-        get_string('allowed_course_keywords_desc', 'local_batchanalytics'),
-        'Advanced C,C++ Programming,Data Structures,Linux Internals,Linux Systems,Microcontroller',
-        PARAM_RAW_TRIMMED
-    ));
-    $settings->add(new admin_setting_heading(
         'local_batchanalytics/student_crm_data',
         get_string('student_crm_data', 'local_batchanalytics'),
         ''

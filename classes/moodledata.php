@@ -67,13 +67,7 @@ class moodledata
      * @return array Array of lowercase keyword strings, empty if no filter configured.
      */
     public function get_allowed_keywords() {
-        $config = get_config('local_batchanalytics', 'allowed_course_keywords');
-        if (empty($config)) {
-            return [];
-        }
-        return array_filter(array_map(function($k) {
-            return strtolower(trim($k));
-        }, explode(',', $config)));
+        return [];
     }
 
     /**

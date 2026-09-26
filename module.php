@@ -481,15 +481,9 @@ $students_sql = "
 $enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
 
 if ($courseid > 0) {
-    // 1. Fetch depth-2 gradebook categories ordered by their gradebook sequence (gi_cat.sortorder)
-    $cat_sql = "
-        SELECT gc.id, gc.fullname, gc.depth, gi_cat.sortorder
-        FROM {grade_categories} gc
-        LEFT JOIN {grade_items} gi_cat ON gi_cat.courseid = gc.courseid AND gi_cat.itemtype = 'category' AND gi_cat.iteminstance = gc.id
-        WHERE gc.courseid = :courseid AND gc.depth = 2
-        ORDER BY gi_cat.sortorder ASC, gc.id ASC
-    ";
-    $depth2_cats = $DB->get_records_sql($cat_sql, ['courseid' => $courseid]);
+    // 1. Fetch tracker categories configured in Site Admin and course grade categories
+    $act_service = new \local_batchanalytics\activity_tracker_service();
+    $configured_categories = $act_service->get_configured_categories();
     $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
 
     // 2. Fetch all mod and manual grade items that are not permanently hidden
@@ -506,41 +500,30 @@ if ($courseid > 0) {
     ";
     $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
 
-    // 3. Initialize depth-2 categories
-    $raw_cats = [];
-    foreach ($depth2_cats as $cat) {
-        $cname = trim($cat->fullname);
-        if ($cname === '' || $cname === '?') {
-            continue;
-        }
-        $raw_cats[$cat->id] = [
-            'categoryid'   => $cat->id,
+    // 3. Initialize configured categories in configured sequence
+    $grouped_cats = [];
+    foreach (array_keys($configured_categories) as $cname) {
+        $grouped_cats[$cname] = [
             'categoryname' => $cname,
             'items'        => [],
             'studentGrades'=> []
         ];
     }
 
-    // 4. Map grade items into depth-2 categories
+    // 4. Map each grade item to its matched configured tracker category (attendance is excluded)
     foreach ($grade_items as $item) {
-        $cat_id = $item->categoryid;
-        if ($cat_id && isset($all_cats[$cat_id])) {
-            $c = $all_cats[$cat_id];
-            while ($c->depth > 2 && !empty($c->parent) && isset($all_cats[$c->parent])) {
-                $c = $all_cats[$c->parent];
-            }
-            if ($c->depth == 2 && isset($raw_cats[$c->id])) {
-                $raw_cats[$c->id]['items'][] = [
-                    'itemid' => $item->itemid,
-                    'grademax' => (float)$item->grademax,
-                    'grademin' => (float)$item->grademin
-                ];
-            }
+        $matched_cat = $act_service->resolve_grade_item_category($item, $all_cats);
+        if ($matched_cat !== null && isset($grouped_cats[$matched_cat])) {
+            $grouped_cats[$matched_cat]['items'][] = [
+                'itemid'   => $item->itemid,
+                'grademax' => (float)$item->grademax,
+                'grademin' => (float)$item->grademin
+            ];
         }
     }
 
-    // Filter out categories that have no grade items
-    $raw_cats = array_filter($raw_cats, function($cdata) {
+    // Filter out categories that have NO grade items in this course (only show cards for present categories)
+    $raw_cats = array_filter($grouped_cats, function($cdata) {
         return !empty($cdata['items']);
     });
 
@@ -693,6 +676,9 @@ if ($courseid > 0) {
     }
 }
 
+// Calculate overall attendance percentage for this module course (displayed in schedule strip)
+$enrolled_userids = array_map(function($s) { return (int)($s->userid ?? $s->id ?? 0); }, $enrolled_students);
+$course_attendance_pct = \local_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
 
 // -------------------------------------------------------------------------
 // 5. Tab 1: Mentor Activities (Embedded Activity Tracker UI)
@@ -957,8 +943,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </div>
 
     <div class="sc">
-      <div class="k">Remarks</div>
-      <div class="v muted">—</div>
+      <div class="k">Attendance</div>
+      <div class="v">
+        <?php if ($course_attendance_pct !== null): ?>
+          <span class="st st-<?= $course_attendance_pct >= 80 ? 'g' : ($course_attendance_pct >= 60 ? 'a' : 'r') ?>"><?= $course_attendance_pct ?>%</span>
+        <?php else: ?>
+          <span class="muted">—</span>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
 

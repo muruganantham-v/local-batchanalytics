@@ -908,5 +908,46 @@ class util {
 
         return $results;
     }
+
+    /**
+     * Calculate average attendance percentage for a course across enrolled students.
+     *
+     * @param int $courseid Course ID
+     * @param int[] $enrolled_userids Optional list of student user IDs to restrict average
+     * @return float|null Attendance percentage (0-100) or null if no attendance recorded
+     */
+    public static function get_course_attendance_percentage(int $courseid, array $enrolled_userids = []): ?float {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return null;
+        }
+
+        $user_filter = "";
+        $params = ['cid' => $courseid];
+        if (!empty($enrolled_userids)) {
+            list($uin, $uparams) = $DB->get_in_or_equal($enrolled_userids, SQL_PARAMS_NAMED, 'attusr');
+            $user_filter = " AND gg.userid $uin";
+            $params = array_merge($params, $uparams);
+        }
+
+        $sql = "
+            SELECT gi.id, AVG(gg.finalgrade) as avg_grade, gi.grademax, gi.grademin
+            FROM {grade_items} gi
+            JOIN {grade_grades} gg ON gg.itemid = gi.id
+            WHERE gi.courseid = :cid
+              AND (gi.itemmodule = 'attendance' OR LOWER(gi.itemname) LIKE '%attend%')
+              $user_filter
+              AND gg.finalgrade IS NOT NULL
+            GROUP BY gi.id, gi.grademax, gi.grademin
+        ";
+        $rec = $DB->get_record_sql($sql, $params);
+        if ($rec && ($rec->grademax - $rec->grademin) > 0) {
+            $pct = (($rec->avg_grade - $rec->grademin) / ($rec->grademax - $rec->grademin)) * 100;
+            return round(max(0, min(100, $pct)), 1);
+        }
+
+        return null;
+    }
 }
 

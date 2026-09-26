@@ -239,6 +239,47 @@ class activity_tracker_service {
         return null;
     }
 
+    /**
+     * Get the configured tracker category names and their aliases.
+     *
+     * @return array [CategoryName => [alias1, alias2, ...], ...]
+     */
+    public function get_configured_categories(): array {
+        return $this->get_tracker_category_aliases();
+    }
+
+    /**
+     * Resolve the configured tracker category for a grade item and its gradebook category.
+     * Attendance activities are ignored (return null).
+     *
+     * @param \stdClass $item Grade item record (with itemname, itemmodule, categoryid, etc.)
+     * @param array $allcategories Course grade categories map [id => category]
+     * @return string|null Configured category name, or null if unassigned
+     */
+    public function resolve_grade_item_category(\stdClass $item, array $allcategories = []): ?string {
+        $itemname = (string)($item->itemname ?? '');
+        $itemmodule = (string)($item->itemmodule ?? '');
+
+        // Attendance is separated from activity categories
+        if ($itemmodule === 'attendance' || stripos($itemname, 'attend') !== false) {
+            return null;
+        }
+
+        $category = !empty($item->categoryid) && isset($allcategories[$item->categoryid])
+            ? $allcategories[$item->categoryid]
+            : null;
+        if ($category && stripos((string)$category->fullname, 'attend') !== false) {
+            return null;
+        }
+
+        $trackercategory = $this->get_category_ancestor_tracker_category($category, $allcategories);
+        if ($trackercategory !== null) {
+            return $trackercategory;
+        }
+
+        return $this->get_module_tracker_category($itemmodule, $itemname);
+    }
+
     /** Match a category name against the administrator-configured aliases. */
     private function get_tracker_category(string $categoryname): ?string {
         foreach ($this->get_tracker_category_aliases() as $trackercategory => $aliases) {

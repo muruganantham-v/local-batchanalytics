@@ -51,10 +51,7 @@ $string['crmconfigmissing'] = 'CRM configuration missing';
 $string['crmconnectionfailed'] = 'CRM connection failed';
 $string['crmtokenfailed'] = 'CRM token request failed';
 
-// Course keywords & CRM fields
-$string['crm_field_configuration'] = 'CRM Field Configuration';
-$string['allowed_course_keywords'] = 'Allowed course keywords';
-$string['allowed_course_keywords_desc'] = 'Comma-separated list of course name keywords. Only courses whose name contains at least one of these keywords will appear. Leave empty to show all courses.';
+// CRM fields
 $string['crm_fields_config'] = 'CRM Fields Configuration';
 $string['crm_fields_config_desc'] = 'Define the CRM fields shown in the PTF/CRM data table. Drag rows to reorder columns. <strong>Numeric</strong>: sort &amp; align as a number. <strong>Restricted</strong>: hide this column from users with only the View capability (Manage users always see all columns).';
 
