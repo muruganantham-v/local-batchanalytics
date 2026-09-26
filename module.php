@@ -420,7 +420,7 @@ function get_ba_category_icon_and_color(string $name, int $index): array {
         'test'       => '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>',
         'project'    => '<path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"></path>',
         'programming'=> '<path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"></path>',
-        'maac'       => '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"></path>',
+        'report'     => '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"></path>',
     ];
 
     $svg_path = $icons['assignment'];
@@ -434,8 +434,8 @@ function get_ba_category_icon_and_color(string $name, int $index): array {
         $svg_path = $icons['programming'];
     } elseif (strpos($n, 'test') !== false || strpos($n, 'module') !== false) {
         $svg_path = $icons['test'];
-    } elseif (strpos($n, 'maac') !== false || strpos($n, 'report') !== false) {
-        $svg_path = $icons['maac'];
+    } elseif (strpos($n, 'report') !== false) {
+        $svg_path = $icons['report'];
     }
 
     $palettes = [
@@ -671,7 +671,6 @@ if ($courseid > 0) {
                 'compClass' => get_ba_comp_class((float)$avgC),
                 'icon_bg' => $style['bg'],
                 'icon_svg' => $style['icon'],
-                'isMaac' => false,
                 'isAttendance' => false
             ];
 
@@ -684,7 +683,6 @@ if ($courseid > 0) {
                 'avgCompFormatted' => $avgCFormatted,
                 'avgFinalGrade' => $avgFinalG,
                 'avgFinalGradeFormatted' => $avgFinalGFormatted,
-                'isMaac' => false,
                 'isAttendance' => false,
                 'studentGrades' => $cat_data['studentGrades']
             ];
@@ -823,10 +821,10 @@ $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
 $scripturl = new moodle_url('/local/batchanalytics/module.js', ['v' => filemtime(__DIR__ . '/module.js')]);
 $PAGE->requires->css($styleurl);
-$PAGE->requires->css($newstyleurl);
+$PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js($scripturl);
 
 echo $OUTPUT->header();
@@ -906,11 +904,6 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
         <div class="status-chip <?= s($status_chip_class) ?>"><?= s($status_chip_text) ?></div>
-        <?php if ($courseid > 0): ?>
-          <a href="<?= s((new moodle_url('/local/batchanalytics/maac.php', ['courseid' => $courseid]))->out(false)) ?>" class="maac-btn" target="_blank" rel="noopener">View MAAC Sheet ›</a>
-        <?php else: ?>
-          <a href="<?= s((new moodle_url('/local/batchanalytics/maac.php', ['courseid' => 2]))->out(false)) ?>" class="maac-btn" target="_blank" rel="noopener">View MAAC Sheet ›</a>
-        <?php endif; ?>
       </div>
     </div>
 

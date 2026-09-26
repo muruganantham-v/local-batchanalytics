@@ -45,7 +45,6 @@ class student_performance_service {
         $customvalues = [];
         $trenddetails = [];
         foreach (array_unique(array_filter(array_map('intval', $courseids))) as $courseid) {
-            $this->append_course_custom_values($courseid, $viewerid, $userids, $customgroups, $customvalues, $trenddetails);
             foreach ($this->get_course_categories($courseid, $userids) as $category) {
                 $name = $category['name'];
                 $key = 'category_' . substr(sha1(strtolower($name)), 0, 12);
@@ -194,59 +193,6 @@ class student_performance_service {
         ];
     }
 
-    /**
-     * Reuse the Advanced Filter MAAC column configuration and formatted values.
-     */
-    private function append_course_custom_values(int $courseid, int $viewerid, array $userids, array &$groups, array &$values, array &$trenddetails): void {
-        try {
-            $dataset = (new maac_service())->get_course_data($courseid, $viewerid);
-        } catch (\Throwable $e) {
-            return;
-        }
-        foreach (($dataset['column_groups'] ?? []) as $group) {
-            $groupname = trim((string)($group['name'] ?? ''));
-            if ($groupname === '') {
-                continue;
-            }
-            $groupkey = 'custom_' . substr(sha1(strtolower($groupname)), 0, 12);
-            if (!isset($groups[$groupkey])) {
-                $groups[$groupkey] = ['key' => $groupkey, 'label' => $groupname, 'columns' => []];
-            }
-            foreach (($group['columns'] ?? []) as $column) {
-                $columnkey = (string)($column['key'] ?? '');
-                if ($columnkey === '' || $columnkey === 'maac_rating') {
-                    continue;
-                }
-                $groups[$groupkey]['columns'][$columnkey] = [
-                    'key' => $columnkey,
-                    'label' => (string)($column['label'] ?? $columnkey),
-                    'type' => (string)($column['type'] ?? 'text'),
-                ];
-            }
-        }
-        $course = $dataset['course'] ?? [];
-        $courselabel = (string)($course['shortname'] ?? $course['fullname'] ?? ('Course ' . $courseid));
-        foreach (($dataset['students'] ?? []) as $student) {
-            $userid = (int)($student['userid'] ?? 0);
-            if (!in_array($userid, $userids, true)) {
-                continue;
-            }
-            if (!empty($student['trend_details']) && is_array($student['trend_details'])) {
-                $trenddetails[$userid][] = [
-                    'courseid' => $courseid,
-                    'course' => $courselabel,
-                    'details' => $student['trend_details'],
-                ];
-            }
-            foreach (($student['custom'] ?? []) as $key => $value) {
-                if ($key === 'maac_rating' || $value === '' || $value === null) {
-                    continue;
-                }
-                $values[$userid][$key][] = $value;
-            }
-        }
-
-    }
     /**
      * Mirrors the Course tab Advanced Filter category, grade, and completion calculation.
      *

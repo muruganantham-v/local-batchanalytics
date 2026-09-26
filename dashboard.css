@@ -1850,29 +1850,6 @@ body#page-local-batchanalytics-module #page-header h1,
   box-shadow: none !important;
 }
 
-/* Module Action Buttons */
-.ba-module-page .maac-btn {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  padding: 8px 18px !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  color: #ffffff !important;
-  background: #0284c7 !important;
-  border-radius: 8px !important;
-  text-decoration: none !important;
-  transition: all 0.15s ease !important;
-  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3) !important;
-  border: none !important;
-  cursor: pointer !important;
-}
-
-.ba-module-page .maac-btn:hover {
-  background: #0369a1 !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 8px rgba(2, 132, 199, 0.35) !important;
-}
 
 .ba-module-page .navbtns a,
 .ba-module-page .navbtns button {
@@ -2087,25 +2064,6 @@ body#page-local-batchanalytics-module #page-header h1,
   opacity: 0.6 !important;
 }
 
-.ba-module-page .maac-btn {
-  font-size: 13px !important;
-  padding: 9px 16px !important;
-  border: none !important;
-  border-radius: 9px !important;
-  background: var(--brand-d, #663399) !important;
-  color: #ffffff !important;
-  font-weight: 700 !important;
-  cursor: pointer !important;
-  text-decoration: none !important;
-  display: inline-block !important;
-  transition: background 0.15s ease !important;
-  box-shadow: none !important;
-}
-
-.ba-module-page .maac-btn:hover {
-  background: #552a80 !important;
-  color: #ffffff !important;
-}
 
 .ba-module-page .people {
   display: flex !important;

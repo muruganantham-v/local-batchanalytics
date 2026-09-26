@@ -295,62 +295,7 @@ class crmapi
 
         return $results;
     }
-    /**
-     * Fetch mentor CRM details by the Moodle batch group name.
-     *
-     * @param string $batchgroup
-     * @return array|null
-     */
-    public function get_mentor_details_by_batch_group(string $batchgroup): ?array {
-        $batchgroup = trim($batchgroup);
-        $module = crm_fields_helper::get_mentor_module_api_name();
-        $batchfield = preg_replace('/[^A-Za-z0-9_]/', '', crm_fields_helper::get_mentor_batch_field_key());
-        $fields = crm_fields_helper::get_mentor_api_field_keys();
 
-        if ($batchgroup === '' || $module === '' || $batchfield === '') {
-            return null;
-        }
-
-        if (!in_array($batchfield, $fields, true)) {
-            $fields[] = $batchfield;
-        }
-
-        $accessToken = $this->get_access_token();
-        if (!$accessToken) {
-            return null;
-        }
-
-        $criteria = '(' . $batchfield . ':equals:' . $this->escape_zoho_value($batchgroup) . ')';
-        $searchUrl = $this->build_search_url($module, $criteria, $fields);
-
-        $curl = new \curl();
-        $curl->setHeader([
-            "Authorization: Zoho-oauthtoken {$accessToken}"
-        ]);
-
-        $response = $curl->get($searchUrl);
-        $json = json_decode($response, true);
-
-        if (!empty($json['data']) && is_array($json['data'])) {
-            return reset($json['data']) ?: null;
-        }
-
-        if (!empty($json['message']) && strtolower((string)$json['message']) !== 'no records found') {
-            debugging('Zoho CRM mentor search request failed for local_batchanalytics', DEBUG_DEVELOPER);
-        }
-
-        return null;
-    }
-
-    /**
-     * Backward-compatible wrapper for older callers.
-     *
-     * @param string $batchname
-     * @return array|null
-     */
-    public function get_mentor_details_by_batch(string $batchname): ?array {
-        return $this->get_mentor_details_by_batch_group($batchname);
-    }
     /**
      * Build a Zoho CRM search URL.
      *

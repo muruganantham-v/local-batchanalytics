@@ -24,9 +24,6 @@ require_capability('local/batchanalytics:view', $context);
 $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context);
 $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);
 
-$moodledata = new \local_batchanalytics\moodledata();
-$can_view_tickets = $moodledata->can_access_ticket_dashboard($userid);
-
 /**
  * Return a safe CRM error for the browser.
  *
@@ -632,10 +629,6 @@ if ($action === 'getnewbatchdata') {
     }
 }
 
-// Note: Task Dashboard API endpoints (action=get_task_data, action=complete_task)
-// have been extracted and archived to local/task_tab_backup/ for Phase 2 implementation.
-
-// ... (HTML Page rendering) ...
 
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
@@ -643,12 +636,12 @@ $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
-$newscripturl = new moodle_url('/local/batchanalytics/new_analytics.js', ['v' => filemtime(__DIR__ . '/new_analytics.js')]);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
+$indexscripturl = new moodle_url('/local/batchanalytics/index.js', ['v' => filemtime(__DIR__ . '/index.js')]);
 
 $PAGE->requires->css($styleurl);
-$PAGE->requires->css($newstyleurl);
-$PAGE->requires->js($newscripturl);
+$PAGE->requires->css($dashboardstyleurl);
+$PAGE->requires->js($indexscripturl);
 
 echo $OUTPUT->header();
 
@@ -658,10 +651,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
 
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
-$mentor_crm_fields_config = \local_batchanalytics\crm_fields_helper::get_mentor_fields();
-$mentor_crm_groups_config = \local_batchanalytics\crm_fields_helper::get_mentor_field_groups();
-$maac_sync_columns = \local_batchanalytics\maac_columns_helper::get_sync_columns();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-import-maac-enabled="' . ((int)get_config('local_batchanalytics', 'import_maac_sheet') ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-tickets="' . ($can_view_tickets ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-fields="' . htmlspecialchars(json_encode($mentor_crm_fields_config), ENT_QUOTES) . '" data-mentor-crm-groups="' . htmlspecialchars(json_encode($mentor_crm_groups_config), ENT_QUOTES) . '" data-maac-sync-columns="' . htmlspecialchars(json_encode($maac_sync_columns), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Batch Analytics Dashboard

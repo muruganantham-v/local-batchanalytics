@@ -353,81 +353,110 @@ if (!empty($schedule_rows)) {
 // -------------------------------------------------------------------------
 // 3. Batch-Level SS Activities (from local_bm_classsection softskillsdata)
 // -------------------------------------------------------------------------
-$softskills_items_def = [
-    ['key' => 'ss_induction', 'label' => 'SS Induction'],
-    ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
-    ['key' => 'placement_induction', 'label' => 'Placement Induction'],
-    ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
-    ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
-    ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
-    ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
-    ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
-    ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
-    ['key' => 'feedback_1', 'label' => 'Feed back 1'],
-    ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
-    ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
-    ['key' => 'feedback_2', 'label' => 'Feed back 2'],
-    ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
-    ['key' => 'pet_1', 'label' => 'PET 1'],
-    ['key' => 'disha_1', 'label' => 'Disha 1'],
-    ['key' => 'disha_2', 'label' => 'Disha 2'],
-    ['key' => 'disha_3', 'label' => 'Disha 3'],
-    ['key' => 'feedback_3', 'label' => 'Feed back 3'],
-    ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
-    ['key' => 'pet_2', 'label' => 'PET 2'],
-    ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
-    ['key' => 'pet_3', 'label' => 'PET 3'],
-    ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
-    ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
-    ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
-];
-
 $ss_activities = [];
 $now_today_start = strtotime('today midnight');
 $now_today_end = $now_today_start + 86400;
 
+$to_ss_timestamp = static function($value): int {
+    if (is_numeric($value)) {
+        return (int)$value;
+    }
+    if (is_string($value) && trim($value) !== '') {
+        $timestamp = strtotime($value);
+        return $timestamp === false ? 0 : $timestamp;
+    }
+    return 0;
+};
+
+$format_ss_label = static function($key): string {
+    $label = trim((string)$key);
+    if ($label === '') {
+        return 'SS Activity';
+    }
+    $label = ucwords(str_replace(['_', '-'], ' ', $label));
+    return preg_replace('/^Ss\\b/', 'SS', $label);
+};
+
+$ss_records = [];
+$flat_ss_records = [];
+$add_ss_record = static function($key, $planned, $actual, $label = '') use (&$ss_records, $to_ss_timestamp, $format_ss_label): void {
+    $planned_ts = $to_ss_timestamp($planned);
+    $actual_ts = $to_ss_timestamp($actual);
+    if ($planned_ts <= 0 && $actual_ts <= 0) {
+        return;
+    }
+    $ss_records[] = [
+        'label' => is_scalar($label) && trim((string)$label) !== '' ? trim((string)$label) : $format_ss_label($key),
+        'planned' => $planned_ts,
+        'actual' => $actual_ts,
+    ];
+};
+
 $ss_raw = $section ? json_decode($section->softskillsdata ?? '{}', true) : [];
 if (is_array($ss_raw)) {
-    foreach ($softskills_items_def as $item) {
-        $k = $item['key'];
-        $p = (int)($ss_raw[$k . '_planned'] ?? 0);
-        $a = (int)($ss_raw[$k . '_actual'] ?? 0);
-
-        $p_formatted = $p > 0 ? userdate($p, '%d %b %Y') : '—';
-        $a_formatted = $a > 0 ? userdate($a, '%d %b %Y') : '—';
-
-        if ($a > 0) {
-            $status = 'g';
-            $label = 'Completed';
-        } else if ($p > 0 && $p < $now_today_start) {
-            $days = max(1, floor(($now_today_start - $p) / 86400));
-            $status = 'r';
-            $label = "Overdue ({$days}d)";
-        } else if ($p > 0 && $p < $now_today_end) {
-            $status = 'a';
-            $label = 'Due today';
-        } else if ($p <= 0) {
-            $status = 'b';
-            $label = 'Not planned';
-        } else {
-            $days = max(1, floor(($p - $now_today_start) / 86400));
-            $status = 'b';
-            $label = "Upcoming ({$days}d)";
+    foreach ($ss_raw as $storedkey => $storedvalue) {
+        if (preg_match('/^(.+)_(planned|actual)$/', (string)$storedkey, $matches)) {
+            $flat_ss_records[$matches[1]][$matches[2]] = $storedvalue;
+            continue;
+        }
+        if (!is_array($storedvalue)) {
+            continue;
         }
 
-        $ss_activities[] = [
-            'activity' => $item['label'],
-            'p_date'   => $p_formatted,
-            'a_date'   => $a_formatted,
-            'status'   => $status,
-            'label'    => $label,
-            'planned_ts' => $p,
-        ];
+        $planned = $storedvalue['planned'] ?? $storedvalue['planneddate'] ?? $storedvalue['planned_date'] ?? null;
+        $actual = $storedvalue['actual'] ?? $storedvalue['actualdate'] ?? $storedvalue['actual_date'] ?? null;
+        if ($planned !== null || $actual !== null) {
+            $add_ss_record($storedkey, $planned, $actual, $storedvalue['label'] ?? $storedvalue['name'] ?? $storedvalue['activity'] ?? '');
+            continue;
+        }
+
+        foreach ($storedvalue as $entrykey => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $add_ss_record(
+                $entry['key'] ?? $entry['id'] ?? $entry['activitykey'] ?? (is_string($entrykey) ? $entrykey : ''),
+                $entry['planned'] ?? $entry['planneddate'] ?? $entry['planned_date'] ?? null,
+                $entry['actual'] ?? $entry['actualdate'] ?? $entry['actual_date'] ?? null,
+                $entry['label'] ?? $entry['name'] ?? $entry['activity'] ?? ''
+            );
+        }
+    }
+    foreach ($flat_ss_records as $activitykey => $dates) {
+        $add_ss_record($activitykey, $dates['planned'] ?? null, $dates['actual'] ?? null);
     }
 }
 
-// -------------------------------------------------------------------------
-// 4. Student Performance Data
+foreach ($ss_records as $record) {
+    $p = $record['planned'];
+    $a = $record['actual'];
+    $p_formatted = $p > 0 ? userdate($p, '%d %b %Y') : '—';
+    $a_formatted = $a > 0 ? userdate($a, '%d %b %Y') : '—';
+
+    if ($a > 0) {
+        $status = 'g';
+        $label = 'Completed';
+    } else if ($p < $now_today_start) {
+        $status = 'r';
+        $label = 'Overdue (' . max(1, floor(($now_today_start - $p) / 86400)) . 'd)';
+    } else if ($p < $now_today_end) {
+        $status = 'a';
+        $label = 'Due today';
+    } else {
+        $status = 'b';
+        $label = 'Upcoming (' . max(1, floor(($p - $now_today_start) / 86400)) . 'd)';
+    }
+
+    $ss_activities[] = [
+        'activity' => $record['label'],
+        'p_date' => $p_formatted,
+        'a_date' => $a_formatted,
+        'status' => $status,
+        'label' => $label,
+        'planned_ts' => $p,
+    ];
+}
+
 // -------------------------------------------------------------------------
 $students_data = [];
 
@@ -629,10 +658,10 @@ $PAGE->set_heading('');
 
 // Load Plugin CSS and JavaScript
 $styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$newstyleurl = new moodle_url('/local/batchanalytics/new_analytics.css', ['v' => filemtime(__DIR__ . '/new_analytics.css')]);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
 $scripturl = new moodle_url('/local/batchanalytics/batch.js', ['v' => filemtime(__DIR__ . '/batch.js')]);
 $PAGE->requires->css($styleurl);
-$PAGE->requires->css($newstyleurl);
+$PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js($scripturl);
 
 // Use the same configured CRM field list and explicit capability check as index.php.
@@ -820,6 +849,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 </tr>
               </thead>
               <tbody>
+                <?php if (empty($ss_activities)): ?>
+                  <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;">No SS activities are configured for this batch.</td></tr>
+                <?php else: ?>
                 <?php foreach ($ss_activities as $act): ?>
                   <tr>
                     <td><span class="val"><?= s($act['activity']) ?></span></td>
@@ -828,6 +860,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                     <td><span class="st st-<?= s($act['status']) ?>"><?= s($act['label']) ?></span></td>
                   </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
               </tbody>
             </table>
           </div>

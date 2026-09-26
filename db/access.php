@@ -58,52 +58,6 @@ $capabilities = array(
             'teacher' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:viewmaac' => array(
-        'captype' => 'read',
-        'contextlevel' => CONTEXT_COURSE,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
-            'teacher' => CAP_ALLOW,
-        ),
-    ),
-    'local/batchanalytics:editmaac' => array(
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_COURSE,
-        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
-            'teacher' => CAP_ALLOW,
-        ),
-    ),
-    'local/batchanalytics:viewtickets' => array(
-        'captype' => 'read',
-        'contextlevel' => CONTEXT_COURSE,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
-            'teacher' => CAP_ALLOW,
-        ),
-    ),
-    'local/batchanalytics:managetickets' => array(
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_COURSE,
-        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
-            'teacher' => CAP_ALLOW,
-        ),
-    ),
-    'local/batchanalytics:manageescalatedtickets' => array(
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_COURSE,
-        'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-        ),
-    ),
     'local/batchanalytics:viewreviewnotes' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,

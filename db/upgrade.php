@@ -288,5 +288,27 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091700, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026092700) {
+        $tables_to_drop = [
+            'local_batchanalytics_ticket_event',
+            'local_batchanalytics_cliq_history',
+            'local_batchanalytics_ticket',
+            'local_batchanalytics_maac',
+            'local_batchanalytics_course_summary',
+        ];
+
+        foreach ($tables_to_drop as $tablename) {
+            $table = new xmldb_table($tablename);
+            if ($dbman->table_exists($table)) {
+                $dbman->drop_table($table);
+            }
+        }
+
+        require_once($CFG->libdir . '/accesslib.php');
+        update_capabilities('local_batchanalytics');
+
+        upgrade_plugin_savepoint(true, 2026092700, 'local', 'batchanalytics');
+    }
+
     return true;
 }
