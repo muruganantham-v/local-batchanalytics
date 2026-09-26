@@ -351,25 +351,11 @@ if (!empty($schedule_rows)) {
 }
 
 // -------------------------------------------------------------------------
-// 3. Batch-Level SS Activities (from local_bm_classsection softskillsdata)
+// 3. Batch-Level SS Activities (dynamically from local_bm_classsection softskillsdata)
 // -------------------------------------------------------------------------
 $ss_activities = [];
 if ($section && !empty($section->softskillsdata)) {
     $ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
-} else if ($is_sample_data) {
-    // Demo fallback for sample batch view
-    $ss_activities = \local_batchanalytics\util::decode_softskills_activities(json_encode([
-        'SS_Induction_Planned' => time() - 86400 * 30, 'SS_Induction_Actual' => time() - 86400 * 28,
-        'AANCHOR_1_Planned' => time() - 86400 * 15, 'AANCHOR_1_Actual' => time() - 86400 * 14,
-        'AANCHOR_2_Planned' => time() + 86400 * 10, 'AANCHOR_2_Actual' => 0,
-        'Placement_Induction_Planned' => time() + 86400 * 25, 'Placement_Induction_Actual' => 0,
-        'LinkedIn_workshop_Planned' => time() + 86400 * 40, 'LinkedIn_workshop_Actual' => 0,
-        'DISHA_Workshop_1_Planned' => time() + 86400 * 55, 'DISHA_Workshop_1_Actual' => 0,
-        'DISHA_Workshop_2_Planned' => time() + 86400 * 70, 'DISHA_Workshop_2_Actual' => 0,
-        'AANCHOR_3_Planned' => time() + 86400 * 85, 'AANCHOR_3_Actual' => 0,
-        'AANCHOR_4_Planned' => time() + 86400 * 100, 'AANCHOR_4_Actual' => 0,
-        'Closure_meeting_Planned' => time() + 86400 * 115, 'Closure_meeting_Actual' => 0,
-    ]));
 }
 
 

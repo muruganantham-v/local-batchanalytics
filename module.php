@@ -749,20 +749,6 @@ if ($section && !empty($section->softskillsdata)) {
             }
         }
     }
-} else if ($is_sample_data && $mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
-    // Demo fallback for sample module view
-    $sample_ss_data = json_encode([
-        'SS_Induction_Planned' => $mod_p_start_ts + 86400 * 2, 'SS_Induction_Actual' => $mod_p_start_ts + 86400 * 2,
-        'AANCHOR_1_Planned' => $mod_p_start_ts + 86400 * 4, 'AANCHOR_1_Actual' => 0,
-    ]);
-    $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($sample_ss_data);
-    $range_start = strtotime('today midnight', $mod_p_start_ts);
-    $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
-    foreach ($all_ss_activities as $act) {
-        if ($act['planned'] > 0 && $act['planned'] >= $range_start && $act['planned'] <= $range_end) {
-            $ss_module_activities[] = $act;
-        }
-    }
 }
 
 // -------------------------------------------------------------------------

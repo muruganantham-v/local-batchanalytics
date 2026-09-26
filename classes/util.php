@@ -781,62 +781,69 @@ class util {
 
     /**
      * Decode and extract soft skill activities from local_bm_classsection softskillsdata.
+     * All activities and keys are parsed dynamically from the database record with zero hardcoding.
      *
-     * @param string|null $softskillsdata_raw JSON string from local_bm_classsection.softskillsdata
-     * @return array List of normalized activities with planned, actual, status, etc.
+     * @param string|array|object|null $softskillsdata_raw Raw data from local_bm_classsection.softskillsdata
+     * @return array List of dynamically extracted activities with planned, actual, status, etc.
      */
-    public static function decode_softskills_activities(?string $softskillsdata_raw): array {
+    public static function decode_softskills_activities($softskillsdata_raw): array {
         if (empty($softskillsdata_raw)) {
             return [];
         }
 
-        $raw = json_decode($softskillsdata_raw, true);
+        if (is_array($softskillsdata_raw)) {
+            $raw = $softskillsdata_raw;
+        } else if (is_string($softskillsdata_raw)) {
+            $raw = json_decode($softskillsdata_raw, true);
+        } else if (is_object($softskillsdata_raw)) {
+            $raw = (array)$softskillsdata_raw;
+        } else {
+            return [];
+        }
+
         if (!is_array($raw) || empty($raw)) {
             return [];
         }
 
-        // Canonical activity definition map: base key => display title
-        $canonical_labels = [
-            'SS_Induction'        => 'SS Induction',
-            'AANCHOR_1'           => 'AANCHOR 1',
-            'AANCHOR_2'           => 'AANCHOR 2',
-            'Placement_Induction' => 'Placement Induction',
-            'LinkedIn_workshop'   => 'LinkedIn workshop',
-            'DISHA_Workshop_1'    => 'DISHA Workshop 1',
-            'DISHA_Workshop_2'    => 'DISHA Workshop 2',
-            'AANCHOR_3'           => 'AANCHOR 3',
-            'AANCHOR_4'           => 'AANCHOR 4',
-            'Closure_meeting'     => 'Closure meeting',
-        ];
-
         $grouped = [];
 
-        // Parse all keys in $raw case-insensitively
+        // Parse all keys in $raw dynamically without hardcoding any activity names
         foreach ($raw as $key => $val) {
+            if (is_array($val) || is_object($val)) {
+                $val = (array)$val;
+                $act_name = (string)($val['activity'] ?? $val['name'] ?? $val['title'] ?? $key);
+                $base = trim($act_name);
+                if ($base === '') {
+                    continue;
+                }
+                $p_val = $val['planned'] ?? $val['planned_date'] ?? $val['planneddate'] ?? 0;
+                $a_val = $val['actual'] ?? $val['actual_date'] ?? $val['actualdate'] ?? 0;
+                $p_ts = is_numeric($p_val) ? (int)$p_val : (strtotime((string)$p_val) ?: 0);
+                $a_ts = is_numeric($a_val) ? (int)$a_val : (strtotime((string)$a_val) ?: 0);
+
+                $grouped[$base] = [
+                    'key'     => $base,
+                    'label'   => trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base))),
+                    'planned' => $p_ts,
+                    'actual'  => $a_ts,
+                ];
+                continue;
+            }
+
             if (!is_scalar($val)) {
                 continue;
             }
+
             $key = trim((string)$key);
             if (preg_match('/^(.+)_(planned|actual)$/i', $key, $m)) {
                 $base = $m[1];
                 $type = strtolower($m[2]); // 'planned' or 'actual'
 
-                // Match base against canonical labels case-insensitively
-                $matched_base = null;
-                foreach ($canonical_labels as $canon_k => $canon_lbl) {
-                    if (strcasecmp($canon_k, $base) === 0) {
-                        $matched_base = $canon_k;
-                        break;
-                    }
-                }
-                if (!$matched_base) {
-                    $matched_base = $base;
-                }
-
-                if (!isset($grouped[$matched_base])) {
-                    $grouped[$matched_base] = [
-                        'key'     => $matched_base,
-                        'label'   => $canonical_labels[$matched_base] ?? ucwords(str_replace(['_', '-'], ' ', $matched_base)),
+                if (!isset($grouped[$base])) {
+                    $label = trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base)));
+                    $grouped[$base] = [
+                        'key'     => $base,
+                        'label'   => $label,
                         'planned' => 0,
                         'actual'  => 0,
                     ];
@@ -851,27 +858,15 @@ class util {
                         $ts = $parsed;
                     }
                 }
-                $grouped[$matched_base][$type] = $ts;
+                $grouped[$base][$type] = $ts;
             }
-        }
-
-        // Preserve canonical order first, then any extra keys
-        $ordered = [];
-        foreach ($canonical_labels as $canon_k => $canon_lbl) {
-            if (isset($grouped[$canon_k])) {
-                $ordered[] = $grouped[$canon_k];
-                unset($grouped[$canon_k]);
-            }
-        }
-        foreach ($grouped as $g) {
-            $ordered[] = $g;
         }
 
         $today_start = strtotime('today midnight');
         $today_end   = $today_start + 86400;
 
         $results = [];
-        foreach ($ordered as $entry) {
+        foreach ($grouped as $entry) {
             $p = (int)$entry['planned'];
             $a = (int)$entry['actual'];
 
