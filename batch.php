@@ -354,108 +354,24 @@ if (!empty($schedule_rows)) {
 // 3. Batch-Level SS Activities (from local_bm_classsection softskillsdata)
 // -------------------------------------------------------------------------
 $ss_activities = [];
-$now_today_start = strtotime('today midnight');
-$now_today_end = $now_today_start + 86400;
-
-$to_ss_timestamp = static function($value): int {
-    if (is_numeric($value)) {
-        return (int)$value;
-    }
-    if (is_string($value) && trim($value) !== '') {
-        $timestamp = strtotime($value);
-        return $timestamp === false ? 0 : $timestamp;
-    }
-    return 0;
-};
-
-$format_ss_label = static function($key): string {
-    $label = trim((string)$key);
-    if ($label === '') {
-        return 'SS Activity';
-    }
-    $label = ucwords(str_replace(['_', '-'], ' ', $label));
-    return preg_replace('/^Ss\\b/', 'SS', $label);
-};
-
-$ss_records = [];
-$flat_ss_records = [];
-$add_ss_record = static function($key, $planned, $actual, $label = '') use (&$ss_records, $to_ss_timestamp, $format_ss_label): void {
-    $planned_ts = $to_ss_timestamp($planned);
-    $actual_ts = $to_ss_timestamp($actual);
-    if ($planned_ts <= 0 && $actual_ts <= 0) {
-        return;
-    }
-    $ss_records[] = [
-        'label' => is_scalar($label) && trim((string)$label) !== '' ? trim((string)$label) : $format_ss_label($key),
-        'planned' => $planned_ts,
-        'actual' => $actual_ts,
-    ];
-};
-
-$ss_raw = $section ? json_decode($section->softskillsdata ?? '{}', true) : [];
-if (is_array($ss_raw)) {
-    foreach ($ss_raw as $storedkey => $storedvalue) {
-        if (preg_match('/^(.+)_(planned|actual)$/', (string)$storedkey, $matches)) {
-            $flat_ss_records[$matches[1]][$matches[2]] = $storedvalue;
-            continue;
-        }
-        if (!is_array($storedvalue)) {
-            continue;
-        }
-
-        $planned = $storedvalue['planned'] ?? $storedvalue['planneddate'] ?? $storedvalue['planned_date'] ?? null;
-        $actual = $storedvalue['actual'] ?? $storedvalue['actualdate'] ?? $storedvalue['actual_date'] ?? null;
-        if ($planned !== null || $actual !== null) {
-            $add_ss_record($storedkey, $planned, $actual, $storedvalue['label'] ?? $storedvalue['name'] ?? $storedvalue['activity'] ?? '');
-            continue;
-        }
-
-        foreach ($storedvalue as $entrykey => $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $add_ss_record(
-                $entry['key'] ?? $entry['id'] ?? $entry['activitykey'] ?? (is_string($entrykey) ? $entrykey : ''),
-                $entry['planned'] ?? $entry['planneddate'] ?? $entry['planned_date'] ?? null,
-                $entry['actual'] ?? $entry['actualdate'] ?? $entry['actual_date'] ?? null,
-                $entry['label'] ?? $entry['name'] ?? $entry['activity'] ?? ''
-            );
-        }
-    }
-    foreach ($flat_ss_records as $activitykey => $dates) {
-        $add_ss_record($activitykey, $dates['planned'] ?? null, $dates['actual'] ?? null);
-    }
+if ($section && !empty($section->softskillsdata)) {
+    $ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
+} else if ($is_sample_data) {
+    // Demo fallback for sample batch view
+    $ss_activities = \local_batchanalytics\util::decode_softskills_activities(json_encode([
+        'SS_Induction_Planned' => time() - 86400 * 30, 'SS_Induction_Actual' => time() - 86400 * 28,
+        'AANCHOR_1_Planned' => time() - 86400 * 15, 'AANCHOR_1_Actual' => time() - 86400 * 14,
+        'AANCHOR_2_Planned' => time() + 86400 * 10, 'AANCHOR_2_Actual' => 0,
+        'Placement_Induction_Planned' => time() + 86400 * 25, 'Placement_Induction_Actual' => 0,
+        'LinkedIn_workshop_Planned' => time() + 86400 * 40, 'LinkedIn_workshop_Actual' => 0,
+        'DISHA_Workshop_1_Planned' => time() + 86400 * 55, 'DISHA_Workshop_1_Actual' => 0,
+        'DISHA_Workshop_2_Planned' => time() + 86400 * 70, 'DISHA_Workshop_2_Actual' => 0,
+        'AANCHOR_3_Planned' => time() + 86400 * 85, 'AANCHOR_3_Actual' => 0,
+        'AANCHOR_4_Planned' => time() + 86400 * 100, 'AANCHOR_4_Actual' => 0,
+        'Closure_meeting_Planned' => time() + 86400 * 115, 'Closure_meeting_Actual' => 0,
+    ]));
 }
 
-foreach ($ss_records as $record) {
-    $p = $record['planned'];
-    $a = $record['actual'];
-    $p_formatted = $p > 0 ? userdate($p, '%d %b %Y') : '—';
-    $a_formatted = $a > 0 ? userdate($a, '%d %b %Y') : '—';
-
-    if ($a > 0) {
-        $status = 'g';
-        $label = 'Completed';
-    } else if ($p < $now_today_start) {
-        $status = 'r';
-        $label = 'Overdue (' . max(1, floor(($now_today_start - $p) / 86400)) . 'd)';
-    } else if ($p < $now_today_end) {
-        $status = 'a';
-        $label = 'Due today';
-    } else {
-        $status = 'b';
-        $label = 'Upcoming (' . max(1, floor(($p - $now_today_start) / 86400)) . 'd)';
-    }
-
-    $ss_activities[] = [
-        'activity' => $record['label'],
-        'p_date' => $p_formatted,
-        'a_date' => $a_formatted,
-        'status' => $status,
-        'label' => $label,
-        'planned_ts' => $p,
-    ];
-}
 
 // -------------------------------------------------------------------------
 $students_data = [];

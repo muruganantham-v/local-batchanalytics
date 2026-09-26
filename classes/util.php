@@ -778,5 +778,140 @@ class util {
         $fontsize = max(10, (int)round($size * 0.42));
         return '<span class="ba-user-avatar ba-avatar-initials ' . s($extraclass) . '" style="display:inline-flex;align-items:center;justify-content:center;width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;font-size:' . $fontsize . 'px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366f1,#8b5cf6);flex-shrink:0;" title="' . s($name) . '">' . s($initials) . '</span>';
     }
+
+    /**
+     * Decode and extract soft skill activities from local_bm_classsection softskillsdata.
+     *
+     * @param string|null $softskillsdata_raw JSON string from local_bm_classsection.softskillsdata
+     * @return array List of normalized activities with planned, actual, status, etc.
+     */
+    public static function decode_softskills_activities(?string $softskillsdata_raw): array {
+        if (empty($softskillsdata_raw)) {
+            return [];
+        }
+
+        $raw = json_decode($softskillsdata_raw, true);
+        if (!is_array($raw) || empty($raw)) {
+            return [];
+        }
+
+        // Canonical activity definition map: base key => display title
+        $canonical_labels = [
+            'SS_Induction'        => 'SS Induction',
+            'AANCHOR_1'           => 'AANCHOR 1',
+            'AANCHOR_2'           => 'AANCHOR 2',
+            'Placement_Induction' => 'Placement Induction',
+            'LinkedIn_workshop'   => 'LinkedIn workshop',
+            'DISHA_Workshop_1'    => 'DISHA Workshop 1',
+            'DISHA_Workshop_2'    => 'DISHA Workshop 2',
+            'AANCHOR_3'           => 'AANCHOR 3',
+            'AANCHOR_4'           => 'AANCHOR 4',
+            'Closure_meeting'     => 'Closure meeting',
+        ];
+
+        $grouped = [];
+
+        // Parse all keys in $raw case-insensitively
+        foreach ($raw as $key => $val) {
+            if (!is_scalar($val)) {
+                continue;
+            }
+            $key = trim((string)$key);
+            if (preg_match('/^(.+)_(planned|actual)$/i', $key, $m)) {
+                $base = $m[1];
+                $type = strtolower($m[2]); // 'planned' or 'actual'
+
+                // Match base against canonical labels case-insensitively
+                $matched_base = null;
+                foreach ($canonical_labels as $canon_k => $canon_lbl) {
+                    if (strcasecmp($canon_k, $base) === 0) {
+                        $matched_base = $canon_k;
+                        break;
+                    }
+                }
+                if (!$matched_base) {
+                    $matched_base = $base;
+                }
+
+                if (!isset($grouped[$matched_base])) {
+                    $grouped[$matched_base] = [
+                        'key'     => $matched_base,
+                        'label'   => $canonical_labels[$matched_base] ?? ucwords(str_replace(['_', '-'], ' ', $matched_base)),
+                        'planned' => 0,
+                        'actual'  => 0,
+                    ];
+                }
+
+                $ts = 0;
+                if (is_numeric($val)) {
+                    $ts = (int)$val;
+                } else if (is_string($val) && trim($val) !== '') {
+                    $parsed = strtotime($val);
+                    if ($parsed !== false) {
+                        $ts = $parsed;
+                    }
+                }
+                $grouped[$matched_base][$type] = $ts;
+            }
+        }
+
+        // Preserve canonical order first, then any extra keys
+        $ordered = [];
+        foreach ($canonical_labels as $canon_k => $canon_lbl) {
+            if (isset($grouped[$canon_k])) {
+                $ordered[] = $grouped[$canon_k];
+                unset($grouped[$canon_k]);
+            }
+        }
+        foreach ($grouped as $g) {
+            $ordered[] = $g;
+        }
+
+        $today_start = strtotime('today midnight');
+        $today_end   = $today_start + 86400;
+
+        $results = [];
+        foreach ($ordered as $entry) {
+            $p = (int)$entry['planned'];
+            $a = (int)$entry['actual'];
+
+            if ($a > 0) {
+                $status = 'g';
+                $label  = 'Completed';
+            } else if ($p > 0 && $p < $today_start) {
+                $days   = max(1, floor(($today_start - $p) / 86400));
+                $status = 'r';
+                $label  = "Overdue ({$days}d)";
+            } else if ($p >= $today_start && $p < $today_end) {
+                $status = 'a';
+                $label  = 'Due today';
+            } else if ($p > 0) {
+                $days   = max(1, floor(($p - $today_start) / 86400));
+                $status = 'b';
+                $label  = "Upcoming ({$days}d)";
+            } else {
+                $status = 'n';
+                $label  = 'Not scheduled';
+            }
+
+            $p_str = $p > 0 ? userdate($p, '%d %b %Y') : '—';
+            $a_str = $a > 0 ? userdate($a, '%d %b %Y') : '—';
+
+            $results[] = [
+                'key'          => $entry['key'],
+                'activity'     => $entry['label'],
+                'planned'      => $p,
+                'actual'       => $a,
+                'p_date'       => $p_str,
+                'a_date'       => $a_str,
+                'planned_date' => $p_str,
+                'actual_date'  => $a_str,
+                'status'       => $status,
+                'label'        => $label,
+            ];
+        }
+
+        return $results;
+    }
 }
 

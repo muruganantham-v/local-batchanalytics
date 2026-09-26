@@ -712,6 +712,9 @@ if ($courseid > 0) {
 // -------------------------------------------------------------------------
 // 6. Tab 2: SS Activities (Module Level, filtered by module planned date range)
 // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// 6. Soft Skills Activities for this Module
+// -------------------------------------------------------------------------
 $ss_module_activities = [];
 
 $mod_p_start_raw = $cur_mod['plannedstart'] ?? 0;
@@ -733,74 +736,31 @@ if (is_numeric($mod_p_end_raw) && (int)$mod_p_end_raw > 100000) {
     if ($parsed !== false) $mod_p_end_ts = $parsed;
 }
 
-$today_mid = strtotime('today midnight');
-$today_next = $today_mid + 86400;
+if ($section && !empty($section->softskillsdata)) {
+    $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
+    if ($mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
+        $range_start = strtotime('today midnight', $mod_p_start_ts);
+        $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
 
-$softskills_items_def = [
-    ['key' => 'ss_induction', 'label' => 'SS Induction'],
-    ['key' => 'softskill_1', 'label' => 'Soft skill 1'],
-    ['key' => 'placement_induction', 'label' => 'Placement Induction'],
-    ['key' => 'softskill_2', 'label' => 'Soft skill 2'],
-    ['key' => 'softskill_3', 'label' => 'Soft skill 3'],
-    ['key' => 'motivation_talk_pms', 'label' => 'Motivation Talk by PMs'],
-    ['key' => 'softskill_4', 'label' => 'Soft skill 4'],
-    ['key' => 'softskill_5', 'label' => 'Soft skill 5'],
-    ['key' => 'softskill_6', 'label' => 'Soft skill 6'],
-    ['key' => 'feedback_1', 'label' => 'Feed back 1'],
-    ['key' => 'pet_scheduling_announcement', 'label' => 'PET Scheduling and Announcement'],
-    ['key' => 'softskill_7', 'label' => 'Soft skill 7'],
-    ['key' => 'feedback_2', 'label' => 'Feed back 2'],
-    ['key' => 'softskill_8', 'label' => 'Soft skill 8'],
-    ['key' => 'pet_1', 'label' => 'PET 1'],
-    ['key' => 'disha_1', 'label' => 'Disha 1'],
-    ['key' => 'disha_2', 'label' => 'Disha 2'],
-    ['key' => 'disha_3', 'label' => 'Disha 3'],
-    ['key' => 'feedback_3', 'label' => 'Feed back 3'],
-    ['key' => 'softskill_9', 'label' => 'Soft skill 9'],
-    ['key' => 'pet_2', 'label' => 'PET 2'],
-    ['key' => 'softskill_10', 'label' => 'Soft skill 10'],
-    ['key' => 'pet_3', 'label' => 'PET 3'],
-    ['key' => 'softskill_11', 'label' => 'Soft skill 11'],
-    ['key' => 'softskill_12', 'label' => 'Soft skill 12'],
-    ['key' => 'closure_certificate_distribution', 'label' => 'Closure & Certificate distribution'],
-];
-
-$ss_mod_raw = $section ? json_decode($section->softskillsdata ?? '{}', true) : [];
-
-if (is_array($ss_mod_raw) && $mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
+        foreach ($all_ss_activities as $act) {
+            // Filter: activity planned date falls between module planned start and end date
+            if ($act['planned'] > 0 && $act['planned'] >= $range_start && $act['planned'] <= $range_end) {
+                $ss_module_activities[] = $act;
+            }
+        }
+    }
+} else if ($is_sample_data && $mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
+    // Demo fallback for sample module view
+    $sample_ss_data = json_encode([
+        'SS_Induction_Planned' => $mod_p_start_ts + 86400 * 2, 'SS_Induction_Actual' => $mod_p_start_ts + 86400 * 2,
+        'AANCHOR_1_Planned' => $mod_p_start_ts + 86400 * 4, 'AANCHOR_1_Actual' => 0,
+    ]);
+    $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($sample_ss_data);
     $range_start = strtotime('today midnight', $mod_p_start_ts);
     $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
-
-    foreach ($softskills_items_def as $item) {
-        $k = $item['key'];
-        $p = (int)($ss_mod_raw[$k . '_planned'] ?? 0);
-        $a = (int)($ss_mod_raw[$k . '_actual'] ?? 0);
-
-        // Filter: activity planned date falls between module planned start and end date
-        if ($p >= $range_start && $p <= $range_end) {
-            if ($a > 0) {
-                $status = 'g';
-                $label = 'Completed';
-            } else if ($p < $today_mid) {
-                $days = max(1, floor(($today_mid - $p) / 86400));
-                $status = 'r';
-                $label = "Overdue ({$days}d)";
-            } else if ($p < $today_next) {
-                $status = 'a';
-                $label = 'Due today';
-            } else {
-                $days = max(1, floor(($p - $today_mid) / 86400));
-                $status = 'b';
-                $label = "Upcoming ({$days}d)";
-            }
-
-            $ss_module_activities[] = [
-                'activity' => $item['label'],
-                'planned'  => date('d M Y', $p),
-                'actual'   => $a > 0 ? date('d M Y', $a) : '—',
-                'status'   => $status,
-                'label'    => $label,
-            ];
+    foreach ($all_ss_activities as $act) {
+        if ($act['planned'] > 0 && $act['planned'] >= $range_start && $act['planned'] <= $range_end) {
+            $ss_module_activities[] = $act;
         }
     }
 }
@@ -1130,8 +1090,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <?php foreach ($ss_module_activities as $r): ?>
                 <tr>
                   <td><span class="val"><?= s($r['activity']) ?></span></td>
-                  <td class="date"><?= s($r['planned']) ?></td>
-                  <td class="date"><?= format_cell_muted($r['actual']) ?></td>
+                  <td class="date"><?= s($r['p_date']) ?></td>
+                  <td class="date"><?= format_cell_muted($r['a_date']) ?></td>
                   <td><span class="st st-<?= s($r['status']) ?>"><?= s($r['label']) ?></span></td>
                 </tr>
               <?php endforeach; ?>
