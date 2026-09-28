@@ -2327,6 +2327,37 @@ body#page-local-batchanalytics-module #page-header h1,
   -webkit-overflow-scrolling: touch;
 }
 
+/* Mentor Activities Horizontal Scrolling on Smaller Screens */
+.ba-module-page #panel-mentor .tablecard,
+.ba-module-page .ba-mentor-tablecard,
+.ba-module-page .ba-mentor-table-scroll {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+}
+
+.ba-module-page .ba-mentor-table {
+  min-width: 860px !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.ba-module-page .ba-mentor-table td {
+  white-space: nowrap !important;
+}
+
+.ba-module-page .ba-mentor-table td:first-child {
+  white-space: normal !important;
+  min-width: 180px !important;
+}
+
+@media (max-width: 768px) {
+  .ba-module-page #panel-mentor .ba-tracker-wrap {
+    padding: 14px 10px !important;
+  }
+}
+
 /* Keep Student Performance pagination outside the horizontally scrolling table. */
 .ba-batch-page #panel-students .ba-performance-tablecard,
 .ba-module-page #panel-mstudents .ba-performance-tablecard {

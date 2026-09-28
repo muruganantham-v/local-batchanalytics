@@ -1115,7 +1115,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           <div id="ba-mentor-status-msg" class="ba-tracker-status-msg"></div>
         </div>
 
-        <div class="tablecard">
+        <div class="tablecard ba-mentor-tablecard ba-mentor-table-scroll">
           <table class="ba-mentor-table">
             <thead>
               <tr>

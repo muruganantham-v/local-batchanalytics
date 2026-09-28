@@ -2959,10 +2959,38 @@ input:checked+.ba-slider:before {
   border-color: #e1e4e8;
 }
 
+.ba-module-page #panel-mentor .tablecard,
+.ba-module-page .ba-mentor-tablecard,
+.ba-module-page .ba-mentor-table-scroll {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+}
+
+.ba-module-page .ba-mentor-table {
+  min-width: 860px !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
 .ba-module-page .ba-mentor-table td {
   padding: 12px 14px;
   vertical-align: middle;
+  white-space: nowrap !important;
 }
+
+.ba-module-page .ba-mentor-table td:first-child {
+  white-space: normal !important;
+  min-width: 180px !important;
+}
+
+@media (max-width: 768px) {
+  .ba-module-page #panel-mentor .ba-tracker-wrap {
+    padding: 14px 10px !important;
+  }
+}
+
 .ba-module-page .ba-mentor-group-badge {
   display: inline-flex;
   align-items: center;
