@@ -14,21 +14,41 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
  * Service for managing mentor operational activities, course grouping, due days, and single-record JSON storage.
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mentor_activity_service {
 
     /** @var string Table name storing mentor activity records */
-    public const TABLE_NAME = 'local_batchanalytics_mentor_act';
+    public const TABLE_NAME = 'block_batchanalytics_mentor_act';
+
+    /**
+     * Get the resolved active table name (supports legacy table fallback).
+     *
+     * @return string
+     */
+    public static function get_table_name(): string {
+        global $DB;
+        static $tbl = null;
+        if ($tbl !== null) {
+            return $tbl;
+        }
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists('block_batchanalytics_mentor_act')) {
+            $tbl = 'block_batchanalytics_mentor_act';
+        } else {
+            $tbl = 'local_batchanalytics_mentor_act';
+        }
+        return $tbl;
+    }
 
     /** @var array Default pool of master mentor activities with field API keys */
     public const DEFAULT_MASTER_ACTIVITIES = [
@@ -79,7 +99,7 @@ class mentor_activity_service {
      */
     public static function is_table_available(): bool {
         global $DB;
-        return $DB->get_manager()->table_exists(self::TABLE_NAME);
+        return $DB->get_manager()->table_exists(self::get_table_name());
     }
 
     /**
@@ -186,7 +206,7 @@ class mentor_activity_service {
      * @return array<int, array{key: string, name: string}>
      */
     public static function get_master_activities(): array {
-        $raw = get_config('local_batchanalytics', 'mentor_master_activities');
+        $raw = util::get_config_val('mentor_master_activities');
         if ($raw === false || trim((string)$raw) === '') {
             return self::DEFAULT_MASTER_ACTIVITIES;
         }
@@ -247,7 +267,7 @@ class mentor_activity_service {
      * @return array<string, array<int, array{key: string, name: string, duedays: int}>>
      */
     public static function get_grouping_rules(): array {
-        $raw = get_config('local_batchanalytics', 'mentor_activity_grouping');
+        $raw = util::get_config_val('mentor_activity_grouping');
         if ($raw === false || trim((string)$raw) === '') {
             $decoded = self::DEFAULT_GROUPING_RULES;
         } else {
@@ -330,7 +350,7 @@ class mentor_activity_service {
      * @return array<string, string>
      */
     public static function get_available_group_options(): array {
-        $options = ['' => get_string('mentor_activity_autodetect', 'local_batchanalytics')];
+        $options = ['' => get_string('mentor_activity_autodetect', 'block_batchanalytics')];
         $rules = self::get_grouping_rules();
         foreach (array_keys($rules) as $grp) {
             $options[$grp] = $grp;
@@ -350,7 +370,7 @@ class mentor_activity_service {
             return '';
         }
 
-        $rec = $DB->get_record(self::TABLE_NAME, ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
+        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
         return $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
     }
 
@@ -368,13 +388,13 @@ class mentor_activity_service {
         }
 
         $groupname = trim($groupname);
-        $rec = $DB->get_record(self::TABLE_NAME, ['courseid' => $courseid]);
+        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
 
         $now = time();
         if ($rec) {
             $rec->selectedgroup = $groupname;
             $rec->timemodified = $now;
-            return $DB->update_record(self::TABLE_NAME, $rec);
+            return $DB->update_record(self::get_table_name(), $rec);
         }
 
         $newrec = new \stdClass();
@@ -382,7 +402,7 @@ class mentor_activity_service {
         $newrec->selectedgroup = $groupname;
         $newrec->activitiesdata = json_encode([]);
         $newrec->timemodified = $now;
-        return (bool)$DB->insert_record(self::TABLE_NAME, $newrec);
+        return (bool)$DB->insert_record(self::get_table_name(), $newrec);
     }
 
     /**
@@ -464,7 +484,7 @@ class mentor_activity_service {
         $modifier_ids = [];
 
         if ($courseid > 0 && self::is_table_available()) {
-            $rec = $DB->get_record(self::TABLE_NAME, ['courseid' => $courseid], 'activitiesdata', IGNORE_MISSING);
+            $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'activitiesdata', IGNORE_MISSING);
             if ($rec && !empty($rec->activitiesdata)) {
                 $raw_list = json_decode($rec->activitiesdata, true);
                 if (is_array($raw_list)) {
@@ -578,7 +598,7 @@ class mentor_activity_service {
 
         $activityname = trim($activityname);
         if ($activityname === '') {
-            throw new \moodle_exception('invalidactivity', 'local_batchanalytics');
+            throw new \moodle_exception('invalidactivity', 'block_batchanalytics');
         }
 
         $now = time();
@@ -632,14 +652,14 @@ class mentor_activity_service {
         if ($rec) {
             $rec->activitiesdata = $json_data;
             $rec->timemodified = $now;
-            $DB->update_record(self::TABLE_NAME, $rec);
+            $DB->update_record(self::get_table_name(), $rec);
         } else {
             $newrec = new \stdClass();
             $newrec->courseid = $courseid;
             $newrec->selectedgroup = '';
             $newrec->activitiesdata = $json_data;
             $newrec->timemodified = $now;
-            $DB->insert_record(self::TABLE_NAME, $newrec);
+            $DB->insert_record(self::get_table_name(), $newrec);
         }
 
         return $updated_item;

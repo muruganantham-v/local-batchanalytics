@@ -1,24 +1,43 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
  * Loads and stores course activity delivery status by Gradebook category.
  *
- * @package local_batchanalytics
+ * @package block_batchanalytics
  */
 class activity_tracker_service {
     /** @var array|null Normalized aliases cached for this request. */
     private ?array $trackercategoryaliases = null;
 
     /**
+     * Get the resolved active table name (supports legacy table fallback).
+     *
+     * @return string
+     */
+    public static function get_table_name(): string {
+        global $DB;
+        static $tbl = null;
+        if ($tbl !== null) {
+            return $tbl;
+        }
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists('block_batchanalytics_activity_tracker')) {
+            $tbl = 'block_batchanalytics_activity_tracker';
+        } else {
+            $tbl = 'local_batchanalytics_activity_tracker';
+        }
+        return $tbl;
+    }
+
+    /**
      * @return bool
      */
     public function is_table_available(): bool {
         global $DB;
-
-        return $DB->get_manager()->table_exists(new \xmldb_table('local_batchanalytics_activity_tracker'));
+        return $DB->get_manager()->table_exists(self::get_table_name());
     }
 
     /**
@@ -31,7 +50,7 @@ class activity_tracker_service {
         $this->require_table();
         $course = get_course($courseid);
         $activities = $this->get_course_activities($course);
-        $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
+        $saved = $DB->get_records(self::get_table_name(), ['courseid' => $courseid], '',
             'id, cmid, completed, completiondate, timemodified');
         $savedbycmid = [];
         foreach ($saved as $record) {
@@ -111,12 +130,12 @@ class activity_tracker_service {
         $activities = $this->get_course_activities($course);
         $available = array_column($activities, null, 'cmid');
         if (!isset($available[$cmid])) {
-            throw new \moodle_exception('invalidactivity', 'local_batchanalytics');
+            throw new \moodle_exception('invalidactivity', 'block_batchanalytics');
         }
 
         $completiondate = $this->normalise_date($completiondate);
         $now = time();
-        $record = $DB->get_record('local_batchanalytics_activity_tracker', [
+        $record = $DB->get_record(self::get_table_name(), [
             'courseid' => $courseid,
             'cmid' => $cmid,
         ], '*', IGNORE_MISSING);
@@ -125,7 +144,7 @@ class activity_tracker_service {
             $record->completiondate = $completiondate;
             $record->modifiedby = $userid;
             $record->timemodified = $now;
-            $DB->update_record('local_batchanalytics_activity_tracker', $record);
+            $DB->update_record(self::get_table_name(), $record);
         } else {
             $record = (object)[
                 'courseid' => $courseid,
@@ -135,7 +154,7 @@ class activity_tracker_service {
                 'modifiedby' => $userid,
                 'timemodified' => $now,
             ];
-            $record->id = $DB->insert_record('local_batchanalytics_activity_tracker', $record);
+            $record->id = $DB->insert_record(self::get_table_name(), $record);
         }
 
         return [
@@ -311,7 +330,7 @@ class activity_tracker_service {
             return $this->trackercategoryaliases;
         }
 
-        $categories = json_decode((string)get_config('local_batchanalytics', 'module_tracker_categories'), true);
+        $categories = json_decode((string)util::get_config_val('module_tracker_categories'), true);
         if (!is_array($categories) || empty($categories)) {
             $categories = self::get_legacy_tracker_categories();
         } else {
@@ -386,7 +405,7 @@ class activity_tracker_service {
         $categories = [];
         foreach ($defaults as $default) {
             $setting = 'module_tracker_' . strtolower(rtrim($default['name'], 's')) . '_aliases';
-            $aliases = (string)get_config('local_batchanalytics', $setting);
+            $aliases = (string)util::get_config_val($setting);
             $categories[] = [
                 'name' => $default['name'],
                 'aliases' => trim($aliases) !== '' ? $aliases : $default['aliases'],
@@ -408,7 +427,7 @@ class activity_tracker_service {
         $errors = \DateTimeImmutable::getLastErrors();
         if (!$date || ($errors !== false && ($errors['warning_count'] || $errors['error_count']))
                 || $date->format('Y-m-d') !== $value) {
-            throw new \moodle_exception('invalidcompletiondate', 'local_batchanalytics');
+            throw new \moodle_exception('invalidcompletiondate', 'block_batchanalytics');
         }
         return $value;
     }
@@ -418,7 +437,7 @@ class activity_tracker_service {
      */
     private function require_table(): void {
         if (!$this->is_table_available()) {
-            throw new \moodle_exception('activity_tracker_upgrade_required', 'local_batchanalytics');
+            throw new \moodle_exception('activity_tracker_upgrade_required', 'block_batchanalytics');
         }
     }
 }

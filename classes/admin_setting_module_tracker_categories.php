@@ -1,5 +1,5 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -16,7 +16,15 @@ class admin_setting_module_tracker_categories extends \admin_setting {
     }
 
     public function get_setting() {
-        return $this->config_read($this->name);
+        $val = $this->config_read($this->name);
+        if ($val === null || $val === false || $val === '') {
+            $legacyname = str_replace('block_batchanalytics', 'local_batchanalytics', $this->name);
+            $legacyval = $this->config_read($legacyname);
+            if ($legacyval !== null && $legacyval !== false && $legacyval !== '') {
+                return $legacyval;
+            }
+        }
+        return $val;
     }
 
     public function get_defaultsetting() {

@@ -1,5 +1,5 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -19,21 +19,21 @@ class hook_callbacks {
         }
 
         $context = \context_system::instance();
-        if (!is_siteadmin() && !has_capability('local/batchanalytics:view', $context)) {
+        if (!is_siteadmin() && !has_capability('block/batchanalytics:view', $context)) {
             return;
         }
 
         $primary = $hook->get_primaryview();
-        if ($primary->find('local_batchanalytics_primary', \navigation_node::TYPE_CUSTOM)) {
+        if ($primary->find('block_batchanalytics_primary', \navigation_node::TYPE_CUSTOM)) {
             return;
         }
 
         $primary->add(
-            get_string('pluginname', 'local_batchanalytics'),
-            new \moodle_url('/local/batchanalytics/index.php'),
+            get_string('pluginname', 'block_batchanalytics'),
+            new \moodle_url('/blocks/batchanalytics/index.php'),
             \navigation_node::TYPE_CUSTOM,
             null,
-            'local_batchanalytics_primary',
+            'block_batchanalytics_primary',
             new \pix_icon('i/report', '')
         );
     }
@@ -49,22 +49,22 @@ class hook_callbacks {
         $course = $hook->formwrapper->get_course();
         $courseid = !empty($course->id) ? (int)$course->id : 0;
 
-        $mform->addElement('header', 'local_batchanalytics_mentor_hdr', get_string('mentor_activity_grouping_hdr', 'local_batchanalytics'));
-        $mform->setExpanded('local_batchanalytics_mentor_hdr', false);
+        $mform->addElement('header', 'block_batchanalytics_mentor_hdr', get_string('mentor_activity_grouping_hdr', 'block_batchanalytics'));
+        $mform->setExpanded('block_batchanalytics_mentor_hdr', false);
 
         $options = mentor_activity_service::get_available_group_options();
         $mform->addElement(
             'select',
-            'local_batchanalytics_mentor_group',
-            get_string('mentor_activity_group_select', 'local_batchanalytics'),
+            'block_batchanalytics_mentor_group',
+            get_string('mentor_activity_group_select', 'block_batchanalytics'),
             $options
         );
-        $mform->setType('local_batchanalytics_mentor_group', PARAM_TEXT);
-        $mform->addHelpButton('local_batchanalytics_mentor_group', 'mentor_activity_group_select', 'local_batchanalytics');
+        $mform->setType('block_batchanalytics_mentor_group', PARAM_TEXT);
+        $mform->addHelpButton('block_batchanalytics_mentor_group', 'mentor_activity_group_select', 'block_batchanalytics');
 
         if ($courseid > 0) {
             $selected = mentor_activity_service::get_course_selected_group($courseid);
-            $mform->setDefault('local_batchanalytics_mentor_group', $selected);
+            $mform->setDefault('block_batchanalytics_mentor_group', $selected);
         }
     }
 
@@ -77,12 +77,11 @@ class hook_callbacks {
     public static function course_edit_form_submission(\core_course\hook\after_form_submission $hook): void {
         $data = $hook->get_data();
         $courseid = !empty($data->id) ? (int)$data->id : 0;
-        if ($courseid > 0 && isset($data->local_batchanalytics_mentor_group)) {
+        if ($courseid > 0 && isset($data->block_batchanalytics_mentor_group)) {
             mentor_activity_service::save_course_selected_group(
                 $courseid,
-                trim((string)$data->local_batchanalytics_mentor_group)
+                trim((string)$data->block_batchanalytics_mentor_group)
             );
         }
     }
 }
-

@@ -19,7 +19,7 @@
  *
  * Sourced from local_bm_classsection and local_bm_batch (Batch Management)
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026 Emertxe Information Technologies
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -30,12 +30,12 @@ require_once(__DIR__ . '/classes/batch_notes_service.php');
 require_login();
 
 $context = context_system::instance();
-require_capability('local/batchanalytics:view', $context);
+require_capability('block/batchanalytics:view', $context);
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 if ($action === 'addnote') {
     require_sesskey();
-    require_capability('local/batchanalytics:editreviewnotes', $context);
+    require_capability('block/batchanalytics:editreviewnotes', $context);
 
     header('Content-Type: application/json; charset=utf-8');
     try {
@@ -44,7 +44,7 @@ if ($action === 'addnote') {
         // Strictly use the authenticated logged-in user
         $author = fullname($USER);
 
-        $saved = \local_batchanalytics\batch_notes_service::add_note($batchid, (int)$USER->id, $author, $note);
+        $saved = \block_batchanalytics\batch_notes_service::add_note($batchid, (int)$USER->id, $author, $note);
         echo json_encode(['success' => true, 'note' => $saved]);
     } catch (\Throwable $e) {
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -104,7 +104,7 @@ if ($section) {
     $pmuser = null;
     $pmname = '';
     if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
-        $pmprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
+        $pmprofile = \block_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
         if (!empty($pmprofile['user'])) {
             $pmuser = $pmprofile['user'];
             $pmname = $pmprofile['name'];
@@ -118,7 +118,7 @@ if ($section) {
     $sseuser = null;
     $ssename = '';
     if (!empty($section->maacexecutive) && is_numeric($section->maacexecutive) && (int)$section->maacexecutive > 0) {
-        $sseprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
+        $sseprofile = \block_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
         if (!empty($sseprofile['user'])) {
             $sseuser = $sseprofile['user'];
             $ssename = $sseprofile['name'];
@@ -133,14 +133,14 @@ if ($section) {
         $deliverymode = $mode_param;
     }
 
-    $is_online = \local_batchanalytics\util::is_online_mode($deliverymode);
+    $is_online = \block_batchanalytics\util::is_online_mode($deliverymode);
 
     // Module tracking decoding
     $raw_modules = [];
     if (!empty($section->moduledata)) {
-        $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
+        $raw_modules = \block_batchanalytics\util::decode_module_data($section->moduledata, true);
         if ($is_online) {
-            $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
+            $raw_modules = \block_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
         }
     }
 } else {
@@ -162,7 +162,7 @@ if ($section) {
 // -------------------------------------------------------------------------
 $schedule_rows = [];
 
-$canonical_modules = \local_batchanalytics\util::get_canonical_modules($deliverymode);
+$canonical_modules = \block_batchanalytics\util::get_canonical_modules($deliverymode);
 
 $format_mod_date = static function($val): string {
     if (empty($val) || $val === '—' || $val === 0 || $val === '0') {
@@ -198,7 +198,7 @@ if (!empty($raw_modules)) {
         $seen_cm = [];
         foreach (['primarymentor', 'secondarymentor'] as $cf) {
             if (!empty($mod[$cf]) && $mod[$cf] !== '—') {
-                $cm_data = \local_batchanalytics\util::get_user_profile_data($mod[$cf]);
+                $cm_data = \block_batchanalytics\util::get_user_profile_data($mod[$cf]);
                 $mname = $cm_data['name'];
                 if ($mname === '' && !is_numeric($mod[$cf])) {
                     $mname = trim((string)$mod[$cf]);
@@ -222,7 +222,7 @@ if (!empty($raw_modules)) {
         $seen_lm = [];
         foreach (['labmentor1', 'labmentor2', 'labmentor3'] as $lf) {
             if (!empty($mod[$lf]) && $mod[$lf] !== '—') {
-                $lm_data = \local_batchanalytics\util::get_user_profile_data($mod[$lf]);
+                $lm_data = \block_batchanalytics\util::get_user_profile_data($mod[$lf]);
                 $lmname = $lm_data['name'];
                 if ($lmname === '' && !is_numeric($mod[$lf])) {
                     $lmname = trim((string)$mod[$lf]);
@@ -266,7 +266,7 @@ if (!empty($raw_modules)) {
             'a_end'         => $a_end,
             'delay'         => $delay_code,
             'courseid'      => $course_id,
-            'days'          => !empty($mod['planneddays']) ? (int)$mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($m_name, 10),
+            'days'          => !empty($mod['planneddays']) ? (int)$mod['planneddays'] : \block_batchanalytics\util::get_module_total_days($m_name, 10),
         ];
     }
 } else {
@@ -364,7 +364,7 @@ foreach ($enrolledstudents as $studentrecord) {
 }
 // Reuse the Course-tab Advanced Filter Gradebook dataset across linked modules.
 $performance_courseids = array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')));
-$performance_data = (new \local_batchanalytics\student_performance_service())->build(
+$performance_data = (new \block_batchanalytics\student_performance_service())->build(
     $students_data,
     $performance_courseids,
     (int)$USER->id
@@ -377,13 +377,13 @@ $performance_custom_groups = $performance_data['customgroups'] ?? [];
 // 5. Review Notes
 // -------------------------------------------------------------------------
 // Check review notes permissions
-$can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context);
-$can_edit_notes = has_capability('local/batchanalytics:editreviewnotes', $context);
+$can_view_notes = has_capability('block/batchanalytics:viewreviewnotes', $context);
+$can_edit_notes = has_capability('block/batchanalytics:editreviewnotes', $context);
 
 $display_notes = [];
 $has_real_notes = false;
 if ($can_view_notes) {
-    $db_notes = \local_batchanalytics\batch_notes_service::get_notes($batch_id);
+    $db_notes = \block_batchanalytics\batch_notes_service::get_notes($batch_id);
     if (!empty($db_notes)) {
         $display_notes = $db_notes;
         $has_real_notes = true;
@@ -437,7 +437,7 @@ foreach ($schedule_rows as $sr) {
         $batch_has_delay = true;
     }
 }
-$batch_status_info = \local_batchanalytics\util::get_batch_status($batch_has_delay ? $batch_total_delay : 0);
+$batch_status_info = \block_batchanalytics\util::get_batch_status($batch_has_delay ? $batch_total_delay : 0);
 $batch_status_chip_class = $batch_status_info['chip_class'];
 if ($batch_total_delay < 0) {
     $batch_status_chip_text = 'Early · -' . abs($batch_total_delay) . ' days';
@@ -450,22 +450,22 @@ if ($batch_total_delay < 0) {
 }
 
 $PAGE->set_context($context);
-$PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]));
+$PAGE->set_url(new moodle_url('/blocks/batchanalytics/batch.php', ['id' => $id]));
 $PAGE->set_title('Batch ' . $batchid_label . ' – Batch Analytics');
 $PAGE->set_heading('');
 
 // Load Plugin CSS and JavaScript
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$scripturl = new moodle_url('/local/batchanalytics/batch.js', ['v' => filemtime(__DIR__ . '/batch.js')]);
+$styleurl = new moodle_url('/blocks/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
+$dashboardstyleurl = new moodle_url('/blocks/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
+$scripturl = new moodle_url('/blocks/batchanalytics/batch.js', ['v' => filemtime(__DIR__ . '/batch.js')]);
 $PAGE->requires->css($styleurl);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js($scripturl);
 
 // Use the same configured CRM field list and explicit capability check as index.php.
-$crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
-$batch_can_manage = is_siteadmin($USER->id) || has_capability('local/batchanalytics:manage', $context);
-$crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
+$crm_fields_config = \block_batchanalytics\crm_fields_helper::get_fields();
+$batch_can_manage = is_siteadmin($USER->id) || has_capability('block/batchanalytics:manage', $context);
+$crm_index_url = (new moodle_url('/blocks/batchanalytics/index.php'))->out(false);
 
 echo $OUTPUT->header();
 
@@ -475,7 +475,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
 ?>
 
-<div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"
+<div class="block-batchanalytics-wrap local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"
   data-batchid="<?= (int)$batch_id ?>"
   data-sesskey="<?= sesskey() ?>"
   data-students="<?= s(json_encode($students_data)) ?>"
@@ -488,7 +488,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
+      <a href="<?= s((new moodle_url('/blocks/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <b><?= s($batchid_label) ?></b>
     </span>
@@ -617,7 +617,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                           }
                         ?>
                         <?php if ($course_linked): ?>
-                          <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                          <a href="<?= s((new moodle_url('/blocks/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
                         <?php else: ?>
                           <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
                         <?php endif; ?>
@@ -876,7 +876,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           </div>
           <?php else: ?>
           <div class="ba-note-permission-msg" style="padding: 16px; background: #f8fafc; border: 1px dashed var(--line); border-radius: 8px; color: var(--mute, #64748b); font-size: 13px;">
-            <?= s(get_string('nopermissiontoviewnotes', 'local_batchanalytics')) ?>
+            <?= s(get_string('nopermissiontoviewnotes', 'block_batchanalytics')) ?>
           </div>
           <?php endif; ?>
         </div>
@@ -886,7 +886,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
   </div> <!-- /.shell -->
 
-</div> <!-- /.local-batchanalytics-wrap -->
+</div> <!-- /.block-batchanalytics-wrap -->
 
 <?php
 echo $OUTPUT->footer();

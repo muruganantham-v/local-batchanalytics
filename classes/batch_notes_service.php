@@ -1,17 +1,39 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
  * Service for storing and retrieving batch review notes.
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class batch_notes_service {
-    const TABLE = 'local_batchanalytics_batch_notes';
+    const TABLE = 'block_batchanalytics_batch_notes';
+
+    /**
+     * Get active resolved table name with legacy fallback.
+     *
+     * @return string
+     */
+    public static function get_table_name(): string {
+        global $DB;
+        static $tbl = null;
+        if ($tbl !== null) {
+            return $tbl;
+        }
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists(self::TABLE)) {
+            $tbl = self::TABLE;
+        } else if ($dbman->table_exists('local_batchanalytics_batch_notes')) {
+            $tbl = 'local_batchanalytics_batch_notes';
+        } else {
+            $tbl = self::TABLE;
+        }
+        return $tbl;
+    }
 
     /**
      * Ensure the database table exists.
@@ -19,7 +41,8 @@ final class batch_notes_service {
     public static function ensure_table_exists(): void {
         global $DB;
         $dbman = $DB->get_manager();
-        if (!$dbman->table_exists(self::TABLE)) {
+        $target = self::get_table_name();
+        if (!$dbman->table_exists($target)) {
             $table = new \xmldb_table(self::TABLE);
             $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
             $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
@@ -49,7 +72,7 @@ final class batch_notes_service {
             return [];
         }
 
-        $records = $DB->get_records(self::TABLE, ['batchid' => $batchid], 'timecreated DESC, id DESC');
+        $records = $DB->get_records(self::get_table_name(), ['batchid' => $batchid], 'timecreated DESC, id DESC');
         $notes = [];
         foreach ($records as $r) {
             $notes[] = [
@@ -94,7 +117,7 @@ final class batch_notes_service {
             'timecreated' => time(),
         ];
 
-        $id = $DB->insert_record(self::TABLE, $record);
+        $id = $DB->insert_record(self::get_table_name(), $record);
         $record->id = $id;
 
         return [
@@ -117,6 +140,6 @@ final class batch_notes_service {
     public static function delete_note(int $noteid): bool {
         global $DB;
         self::ensure_table_exists();
-        return $DB->delete_records(self::TABLE, ['id' => $noteid]);
+        return $DB->delete_records(self::get_table_name(), ['id' => $noteid]);
     }
 }

@@ -15,9 +15,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Capability definitions for local_batchanalytics
+ * Capability definitions for block_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,7 +25,25 @@
 defined('MOODLE_INTERNAL') || die();
 
 $capabilities = array(
-    'local/batchanalytics:view' => array(
+    'block/batchanalytics:myaddinstance' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'user' => CAP_ALLOW,
+        ),
+        'clonepermissionsfrom' => 'moodle/my:manageblocks',
+    ),
+    'block/batchanalytics:addinstance' => array(
+        'riskbitmask' => RISK_SPAM | RISK_XSS,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_BLOCK,
+        'archetypes' => array(
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ),
+        'clonepermissionsfrom' => 'moodle/site:manageblocks',
+    ),
+    'block/batchanalytics:view' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => array(
@@ -34,7 +52,7 @@ $capabilities = array(
             'teacher' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:manage' => array(
+    'block/batchanalytics:manage' => array(
         'captype' => 'write',
         'contextlevel' => CONTEXT_SYSTEM,
         'riskbitmask' => RISK_CONFIG | RISK_DATALOSS,
@@ -42,14 +60,14 @@ $capabilities = array(
             'manager' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:viewallcourses' => array(
+    'block/batchanalytics:viewallcourses' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => array(
             'manager' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:viewenrolledcourses' => array(
+    'block/batchanalytics:viewenrolledcourses' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_COURSE,
         'archetypes' => array(
@@ -58,7 +76,7 @@ $capabilities = array(
             'teacher' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:viewreviewnotes' => array(
+    'block/batchanalytics:viewreviewnotes' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => array(
@@ -67,7 +85,7 @@ $capabilities = array(
             'teacher' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:editreviewnotes' => array(
+    'block/batchanalytics:editreviewnotes' => array(
         'captype' => 'write',
         'contextlevel' => CONTEXT_SYSTEM,
         'riskbitmask' => RISK_SPAM,

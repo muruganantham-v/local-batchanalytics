@@ -1,7 +1,7 @@
 /**
  * New Batch Analytics Dashboard JavaScript
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -15,7 +15,7 @@ function initNewBatchAnalytics() {
   if (!container) return;
 
   const BASE_URL = window.location.href.split("?")[0];
-  const sesskey = document.querySelector(".local-batchanalytics-wrap")?.dataset.sesskey || "";
+  const sesskey = document.querySelector(".block-batchanalytics-wrap, .local-batchanalytics-wrap")?.dataset.sesskey || "";
 
   let rawData = null;
   let currentSubTab = "running";

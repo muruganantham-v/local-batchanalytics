@@ -10,12 +10,12 @@
  * Builds compact Student Performance data with the Course tab Advanced Filter
  * Gradebook calculation and category rules.
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026 Emertxe Information Technologies
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 

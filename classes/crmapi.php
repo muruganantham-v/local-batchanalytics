@@ -1,5 +1,5 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -19,7 +19,7 @@ class crmapi
     /** @var int */
     private static $access_token_expires = 0;
 
-    // Field list is loaded from admin config (local_batchanalytics/crm_fields_config).
+    // Field list is loaded from admin config (block_batchanalytics/crm_fields_config).
     // Falls back to the defaults defined in crm_fields_helper if not yet configured.
     private $crm_fields = [];
 
@@ -28,11 +28,11 @@ class crmapi
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
 
-        $this->client_id = trim(get_config('local_batchanalytics', 'zoho_client_id') ?: '');
-        $this->client_secret = trim(get_config('local_batchanalytics', 'zoho_client_secret') ?: '');
-        $this->refresh_token = trim(get_config('local_batchanalytics', 'zoho_refresh_token') ?: '');
-        $this->accounts_url = trim(get_config('local_batchanalytics', 'zoho_accounts_url') ?: 'https://accounts.zoho.com');
-        $this->api_base_url = trim(get_config('local_batchanalytics', 'zoho_api_base_url') ?: 'https://www.zohoapis.com');
+        $this->client_id = trim(util::get_config_val('zoho_client_id') ?: '');
+        $this->client_secret = trim(util::get_config_val('zoho_client_secret') ?: '');
+        $this->refresh_token = trim(util::get_config_val('zoho_refresh_token') ?: '');
+        $this->accounts_url = trim(util::get_config_val('zoho_accounts_url') ?: 'https://accounts.zoho.com');
+        $this->api_base_url = trim(util::get_config_val('zoho_api_base_url') ?: 'https://www.zohoapis.com');
         $this->student_module_api_name = crm_fields_helper::get_student_module_api_name();
 
         // Load API field keys from admin config (excludes computed CALC_* / placed_company).
@@ -46,12 +46,12 @@ class crmapi
         }
 
         if (empty($this->client_id) || empty($this->client_secret) || empty($this->refresh_token)) {
-            debugging('Zoho CRM credentials are not fully configured for local_batchanalytics', DEBUG_DEVELOPER);
+            debugging('Zoho CRM credentials are not fully configured for block_batchanalytics', DEBUG_DEVELOPER);
             return null;
         }
 
         try {
-            $cache = \cache::make('local_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
+            $cache = \cache::make('block_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
             $cached_token = $cache->get('zoho_access_token');
             if (is_array($cached_token) && $cached_token['expires'] > time() + 60) {
                 self::$access_token_cache = $cached_token['token'];
@@ -75,14 +75,14 @@ class crmapi
         $json = json_decode($response);
 
         if (empty($json->access_token)) {
-            debugging('Zoho CRM token acquisition failed for local_batchanalytics', DEBUG_DEVELOPER);
+            debugging('Zoho CRM token acquisition failed for block_batchanalytics', DEBUG_DEVELOPER);
             return null;
         }
 
         $expiry = time() + (int)($json->expires_in ?? 3600);
 
         try {
-            $cache = \cache::make('local_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
+            $cache = \cache::make('block_batchanalytics', 'zohotokendata'); // F-18: dedicated store, no TTL
             $cache->set('zoho_access_token', [
                 'token' => $json->access_token,
                 'expires' => $expiry
@@ -106,7 +106,7 @@ class crmapi
         self::$access_token_expires = 0;
 
         try {
-            $cache = \cache::make('local_batchanalytics', 'zohotokendata');
+            $cache = \cache::make('block_batchanalytics', 'zohotokendata');
             $cache->delete('zoho_access_token');
         } catch (\Exception $e) {
             // A fresh request can still obtain a new token without the cache store.

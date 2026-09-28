@@ -23,92 +23,92 @@ require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
 require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('local_batchanalytics', get_string('pluginname', 'local_batchanalytics'));
+    $settings = new admin_settingpage('blocksettingbatchanalytics', get_string('pluginname', 'block_batchanalytics'));
 
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/zoho_configuration',
-        get_string('zoho_configuration', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_configuration',
+        get_string('zoho_configuration', 'block_batchanalytics'),
         ''
     ));
     $settings->add(new admin_setting_configtext(
-        'local_batchanalytics/zoho_client_id',
-        get_string('zoho_client_id', 'local_batchanalytics'),
-        get_string('zoho_client_id_desc', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_client_id',
+        get_string('zoho_client_id', 'block_batchanalytics'),
+        get_string('zoho_client_id_desc', 'block_batchanalytics'),
         '',
         PARAM_RAW_TRIMMED
     ));
     $settings->add(new admin_setting_configpasswordunmask(
-        'local_batchanalytics/zoho_client_secret',
-        get_string('zoho_client_secret', 'local_batchanalytics'),
-        get_string('zoho_client_secret_desc', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_client_secret',
+        get_string('zoho_client_secret', 'block_batchanalytics'),
+        get_string('zoho_client_secret_desc', 'block_batchanalytics'),
         ''
     ));
     $settings->add(new admin_setting_configpasswordunmask(
-        'local_batchanalytics/zoho_refresh_token',
-        get_string('zoho_refresh_token', 'local_batchanalytics'),
-        get_string('zoho_refresh_token_desc', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_refresh_token',
+        get_string('zoho_refresh_token', 'block_batchanalytics'),
+        get_string('zoho_refresh_token_desc', 'block_batchanalytics'),
         ''
     ));
     $settings->add(new admin_setting_configtext(
-        'local_batchanalytics/zoho_accounts_url',
-        get_string('zoho_accounts_url', 'local_batchanalytics'),
-        get_string('zoho_accounts_url_desc', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_accounts_url',
+        get_string('zoho_accounts_url', 'block_batchanalytics'),
+        get_string('zoho_accounts_url_desc', 'block_batchanalytics'),
         'https://accounts.zoho.com',
         PARAM_URL
     ));
     $settings->add(new admin_setting_configtext(
-        'local_batchanalytics/zoho_api_base_url',
-        get_string('zoho_api_base_url', 'local_batchanalytics'),
-        get_string('zoho_api_base_url_desc', 'local_batchanalytics'),
+        'block_batchanalytics/zoho_api_base_url',
+        get_string('zoho_api_base_url', 'block_batchanalytics'),
+        get_string('zoho_api_base_url_desc', 'block_batchanalytics'),
         'https://www.zohoapis.com',
         PARAM_URL
     ));
 
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/student_crm_data',
-        get_string('student_crm_data', 'local_batchanalytics'),
+        'block_batchanalytics/student_crm_data',
+        get_string('student_crm_data', 'block_batchanalytics'),
         ''
     ));
     $settings->add(new admin_setting_configtext(
-        'local_batchanalytics/student_crm_module_api_name',
-        get_string('student_crm_module_api_name', 'local_batchanalytics'),
-        get_string('student_crm_module_api_name_desc', 'local_batchanalytics'),
+        'block_batchanalytics/student_crm_module_api_name',
+        get_string('student_crm_module_api_name', 'block_batchanalytics'),
+        get_string('student_crm_module_api_name_desc', 'block_batchanalytics'),
         'Child_Admission',
         PARAM_RAW_TRIMMED
     ));
-    $settings->add(new \local_batchanalytics\admin_setting_crm_fields(
-        'local_batchanalytics/crm_fields_config',
-        get_string('crm_fields_config', 'local_batchanalytics'),
-        get_string('crm_fields_config_desc', 'local_batchanalytics')
+    $settings->add(new \block_batchanalytics\admin_setting_crm_fields(
+        'block_batchanalytics/crm_fields_config',
+        get_string('crm_fields_config', 'block_batchanalytics'),
+        get_string('crm_fields_config_desc', 'block_batchanalytics')
     ));
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/module_tracker_configuration',
-        get_string('module_tracker_configuration', 'local_batchanalytics'),
+        'block_batchanalytics/module_tracker_configuration',
+        get_string('module_tracker_configuration', 'block_batchanalytics'),
         ''
     ));
-    $settings->add(new \local_batchanalytics\admin_setting_module_tracker_categories(
-        'local_batchanalytics/module_tracker_categories',
-        get_string('module_tracker_categories', 'local_batchanalytics'),
-        get_string('module_tracker_categories_desc', 'local_batchanalytics')
+    $settings->add(new \block_batchanalytics\admin_setting_module_tracker_categories(
+        'block_batchanalytics/module_tracker_categories',
+        get_string('module_tracker_categories', 'block_batchanalytics'),
+        get_string('module_tracker_categories_desc', 'block_batchanalytics')
     ));
 
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/mentor_activities_heading',
-        get_string('mentor_activities_heading', 'local_batchanalytics'),
-        get_string('mentor_activities_heading_desc', 'local_batchanalytics')
+        'block_batchanalytics/mentor_activities_heading',
+        get_string('mentor_activities_heading', 'block_batchanalytics'),
+        get_string('mentor_activities_heading_desc', 'block_batchanalytics')
     ));
 
-    $settings->add(new \local_batchanalytics\admin_setting_mentor_master_activities(
-        'local_batchanalytics/mentor_master_activities',
-        get_string('mentor_master_activities', 'local_batchanalytics'),
-        get_string('mentor_master_activities_desc', 'local_batchanalytics')
+    $settings->add(new \block_batchanalytics\admin_setting_mentor_master_activities(
+        'block_batchanalytics/mentor_master_activities',
+        get_string('mentor_master_activities', 'block_batchanalytics'),
+        get_string('mentor_master_activities_desc', 'block_batchanalytics')
     ));
 
-    $settings->add(new \local_batchanalytics\admin_setting_mentor_activity_grouping(
-        'local_batchanalytics/mentor_activity_grouping',
-        get_string('mentor_activity_grouping', 'local_batchanalytics'),
-        get_string('mentor_activity_grouping_desc', 'local_batchanalytics')
+    $settings->add(new \block_batchanalytics\admin_setting_mentor_activity_grouping(
+        'block_batchanalytics/mentor_activity_grouping',
+        get_string('mentor_activity_grouping', 'block_batchanalytics'),
+        get_string('mentor_activity_grouping_desc', 'block_batchanalytics')
     ));
 
-    $ADMIN->add('localplugins', $settings);
+    $ADMIN->add('blocksettings', $settings);
 }

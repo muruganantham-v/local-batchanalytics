@@ -15,9 +15,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * English language strings for local_batchanalytics
+ * English language strings for block_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Batch Analytics';
+$string['batchanalytics:addinstance'] = 'Add a new Batch Analytics block';
+$string['batchanalytics:myaddinstance'] = 'Add a new Batch Analytics block to Dashboard';
 $string['batchanalytics:view'] = 'View batch analytics';
 $string['batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
 $string['batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
@@ -84,4 +86,3 @@ $string['mentor_activity_autodetect'] = 'Auto-detect from Course Name';
 $string['mentor_activities_empty'] = 'No mentor activities found for this module.';
 $string['mentor_activities_saved'] = 'Mentor activity saved successfully.';
 $string['mentor_activities_group_badge'] = 'Activity Group';
-

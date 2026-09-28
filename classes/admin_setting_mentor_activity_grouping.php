@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -24,7 +24,7 @@ require_once($CFG->libdir . '/adminlib.php');
 /**
  * Admin setting for course grouping rules with selectable activities, configurable due days, and drag-and-drop.
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -35,7 +35,15 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
     }
 
     public function get_setting() {
-        return $this->config_read($this->name);
+        $val = $this->config_read($this->name);
+        if ($val === null || $val === false || $val === '') {
+            $legacyname = str_replace('block_batchanalytics', 'local_batchanalytics', $this->name);
+            $legacyval = $this->config_read($legacyname);
+            if ($legacyval !== null && $legacyval !== false && $legacyval !== '') {
+                return $legacyval;
+            }
+        }
+        return $val;
     }
 
     public function get_defaultsetting() {

@@ -15,11 +15,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Module Detail Screen for local_batchanalytics
+ * Module Detail Screen for block_batchanalytics
  *
  * Sourced from local_bm_classsection moduledata (Batch Management)
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026 Emertxe Information Technologies
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -29,7 +29,7 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
-require_capability('local/batchanalytics:view', $context);
+require_capability('block/batchanalytics:view', $context);
 
 global $DB, $PAGE, $OUTPUT, $USER;
 
@@ -55,7 +55,7 @@ if ($action === 'saveactivity') {
         $cid = required_param('courseid', PARAM_INT);
 
         if ($cid > 0) {
-            $service = new \local_batchanalytics\activity_tracker_service();
+            $service = new \block_batchanalytics\activity_tracker_service();
             if ($service->is_table_available()) {
                 $saved = $service->save_activity_status($cid, $USER->id, $cmid, (bool)$completed, $completiondate);
                 echo json_encode(['status' => 'ok', 'data' => $saved]);
@@ -90,14 +90,14 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         $planned_ts = optional_param('plannedts', 0, PARAM_INT);
 
         if ($cid > 0 && !empty($target_name)) {
-            $saved = \local_batchanalytics\mentor_activity_service::save_activity_status(
+            $saved = \block_batchanalytics\mentor_activity_service::save_activity_status(
                 $cid,
                 $target_name,
                 (bool)$completed,
                 $completiondate,
                 $USER->id
             );
-            $action_info = \local_batchanalytics\mentor_activity_service::compute_action_status((bool)$completed, $planned_ts);
+            $action_info = \block_batchanalytics\mentor_activity_service::compute_action_status((bool)$completed, $planned_ts);
             $username = fullname($USER);
             echo json_encode([
                 'status'         => 'ok',
@@ -106,7 +106,7 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
                 'action_label'   => $action_info['label'],
                 'action_class'   => $action_info['class'],
                 'action_status'  => $action_info['status'],
-                'message'        => get_string('mentor_activities_saved', 'local_batchanalytics')
+                'message'        => get_string('mentor_activities_saved', 'block_batchanalytics')
             ]);
             die();
         }
@@ -134,7 +134,7 @@ if ($courseid > 0 && $has_bm_section) {
     $all_sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
     foreach ($all_sections as $sec) {
         if (!empty($sec->moduledata)) {
-            $mdata_list = \local_batchanalytics\util::decode_module_data($sec->moduledata, false);
+            $mdata_list = \block_batchanalytics\util::decode_module_data($sec->moduledata, false);
             foreach ($mdata_list as $m_info) {
                 if (isset($m_info['moodlecourseid']) && (int)$m_info['moodlecourseid'] === $courseid) {
                     $section = $sec;
@@ -180,10 +180,10 @@ if (!empty($mode_param)) {
     $deliverymode = 'Offline';
 }
 
-$is_online = \local_batchanalytics\util::is_online_mode($deliverymode);
+$is_online = \block_batchanalytics\util::is_online_mode($deliverymode);
 
-$canonical_modules = \local_batchanalytics\util::get_canonical_modules($deliverymode);
-$canonical_days = \local_batchanalytics\util::get_canonical_days($deliverymode);
+$canonical_modules = \block_batchanalytics\util::get_canonical_modules($deliverymode);
+$canonical_days = \block_batchanalytics\util::get_canonical_days($deliverymode);
 
 $format_mod_date = static function($val): string {
     if (empty($val) || $val === '—' || $val === 0 || $val === '0') {
@@ -201,7 +201,7 @@ if ($section) {
     // Program Manager resolution: prioritize resolving by userid
     $pmuser = null;
     if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
-        $pmprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
+        $pmprofile = \block_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
         if (!empty($pmprofile['user'])) {
             $pmuser = $pmprofile['user'];
             $pmname = $pmprofile['name'];
@@ -214,7 +214,7 @@ if ($section) {
     // MAAC Executive (SSE) resolution: prioritize resolving by userid
     $sseuser = null;
     if (!empty($section->maacexecutive) && is_numeric($section->maacexecutive) && (int)$section->maacexecutive > 0) {
-        $sseprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
+        $sseprofile = \block_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
         if (!empty($sseprofile['user'])) {
             $sseuser = $sseprofile['user'];
             $ssename = $sseprofile['name'];
@@ -226,9 +226,9 @@ if ($section) {
 
     $raw_modules = [];
     if (!empty($section->moduledata)) {
-        $raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, true);
+        $raw_modules = \block_batchanalytics\util::decode_module_data($section->moduledata, true);
         if ($is_online) {
-            $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
+            $raw_modules = \block_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
         }
     }
 } else {
@@ -254,12 +254,12 @@ if ($total_modules === 0) {
     $cur_mod = $raw_modules[$module_idx - 1] ?? [];
     $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
 
-    if ($is_online && \local_batchanalytics\util::is_qt_module($mod_name)) {
+    if ($is_online && \block_batchanalytics\util::is_qt_module($mod_name)) {
         $module_idx = $total_modules;
         $cur_mod = $raw_modules[$module_idx - 1] ?? [];
         $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
     }
-    $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
+    $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \block_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
 }
 
 if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
@@ -274,7 +274,7 @@ $resolve_mentor_record = static function($raw_val, string $role_label) use ($DB)
     if (empty($raw_val) || $raw_val === '—' || $raw_val === 0 || $raw_val === '0') {
         return null;
     }
-    $profile = \local_batchanalytics\util::get_user_profile_data($raw_val);
+    $profile = \block_batchanalytics\util::get_user_profile_data($raw_val);
     $mentor_name = $profile['name'];
     $mentor_user = $profile['user'];
     if (!$mentor_user && !is_numeric($raw_val)) {
@@ -347,8 +347,8 @@ $delta = isset($cur_mod['scheduledelta']) && is_numeric($cur_mod['scheduledelta'
 $is_in_progress = ($a_start !== '—' && $a_end === '—');
 $is_completed = ($a_end !== '—');
 
-$mod_days = \local_batchanalytics\util::get_module_total_days($mod_name, $planned_days);
-$mod_status_info = \local_batchanalytics\util::get_module_status($delta, $mod_name, $mod_days);
+$mod_days = \block_batchanalytics\util::get_module_total_days($mod_name, $planned_days);
+$mod_status_info = \block_batchanalytics\util::get_module_status($delta, $mod_name, $mod_days);
 
 if ($is_in_progress && ($delta === null || $delta === 0)) {
     $status_chip_text = 'In progress · On schedule';
@@ -415,7 +415,7 @@ if ($courseid > 0) {
 foreach ($enrolledstudents as $studentrecord) {
     $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);
     $merit_labels = $spot_count > 0 ? [str_repeat('★', $spot_count) . ' Spot'] : [];
-    $profile = \local_batchanalytics\util::get_user_profile_data($studentrecord, 2);
+    $profile = \block_batchanalytics\util::get_user_profile_data($studentrecord, 2);
     $students_data[] = [
         'userid' => (int)$studentrecord->id,
         'name' => $profile['name'],
@@ -435,7 +435,7 @@ foreach ($enrolledstudents as $studentrecord) {
     ];
 }
 // Reuse the Course-tab Advanced Filter Gradebook dataset for this table.
-$performance_data = (new \local_batchanalytics\student_performance_service())->build(
+$performance_data = (new \block_batchanalytics\student_performance_service())->build(
     $students_data,
     $courseid > 0 ? [$courseid] : [],
     (int)$USER->id
@@ -518,7 +518,7 @@ $enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['cours
 
 if ($courseid > 0) {
     // 1. Fetch tracker categories configured in Site Admin and course grade categories
-    $act_service = new \local_batchanalytics\activity_tracker_service();
+    $act_service = new \block_batchanalytics\activity_tracker_service();
     $configured_categories = $act_service->get_configured_categories();
     $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
 
@@ -767,7 +767,7 @@ if ($courseid > 0) {
 
 // Calculate overall attendance percentage for this module course (displayed in schedule strip)
 $enrolled_userids = array_map(function($s) { return (int)($s->userid ?? $s->id ?? 0); }, $enrolled_students);
-$course_attendance_pct = \local_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
+$course_attendance_pct = \block_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
 
 // Module Planned Date timestamps (used for both Mentor Activities due dates and SS Activities)
 $mod_p_start_raw = $cur_mod['plannedstart'] ?? 0;
@@ -800,7 +800,7 @@ $mentor_activity_data = [
 ];
 
 if ($courseid > 0) {
-    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts);
+    $mentor_activity_data = \block_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts);
 }
 
 // -------------------------------------------------------------------------
@@ -809,7 +809,7 @@ if ($courseid > 0) {
 $ss_module_activities = [];
 
 if ($section && !empty($section->softskillsdata)) {
-    $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
+    $all_ss_activities = \block_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
     if ($mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
         $range_start = strtotime('today midnight', $mod_p_start_ts);
         $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
@@ -828,9 +828,9 @@ if ($section && !empty($section->softskillsdata)) {
 // -------------------------------------------------------------------------
 $PAGE->set_context($context);
 if ($courseid > 0) {
-    $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', ['courseid' => $courseid]));
+    $PAGE->set_url(new moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $courseid]));
 } else {
-    $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', [
+    $PAGE->set_url(new moodle_url('/blocks/batchanalytics/module.php', [
         'batchid' => $batchid,
         'module'  => $module_idx,
     ]));
@@ -838,9 +838,9 @@ if ($courseid > 0) {
 $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$scripturl = new moodle_url('/local/batchanalytics/module.js', ['v' => filemtime(__DIR__ . '/module.js')]);
+$styleurl = new moodle_url('/blocks/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
+$dashboardstyleurl = new moodle_url('/blocks/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
+$scripturl = new moodle_url('/blocks/batchanalytics/module.js', ['v' => filemtime(__DIR__ . '/module.js')]);
 $PAGE->requires->css($styleurl);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js($scripturl);
@@ -853,7 +853,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
 ?>
 
-<div class="local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"
+<div class="block-batchanalytics-wrap local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"
      data-courseid="<?= (int)$courseid ?>"
      data-batchid="<?= (int)$batchid ?>"
      data-sesskey="<?= sesskey() ?>"
@@ -865,9 +865,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
   <!-- Breadcrumb Bar in Prototype Style -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
+      <a href="<?= s((new moodle_url('/blocks/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
-      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
+      <a href="<?= s((new moodle_url('/blocks/batchanalytics/batch.php', array_filter(['id' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <?php if ($courseid > 0): ?>
         <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" target="_blank" rel="noopener noreferrer" title="Open course" style="font-weight:700; color:inherit; text-decoration:none;"><b><?= s($mod_name) ?></b></a>
@@ -904,7 +904,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               $prev_linked = $prev_cid > 0 && $DB->record_exists('course', ['id' => $prev_cid]);
             ?>
             <?php if ($prev_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $prev_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
+              <a href="<?= s((new moodle_url('/blocks/batchanalytics/module.php', array_filter(['courseid' => $prev_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
                 ‹ <?= s($prev_name) ?>
               </a>
             <?php else: ?>
@@ -920,7 +920,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               $next_linked = $next_cid > 0 && $DB->record_exists('course', ['id' => $next_cid]);
             ?>
             <?php if ($next_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $next_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
+              <a href="<?= s((new moodle_url('/blocks/batchanalytics/module.php', array_filter(['courseid' => $next_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
                 <?= s($next_name) ?> ›
               </a>
             <?php else: ?>
@@ -943,7 +943,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <div class="role">Program Manager</div>
         <div class="pwrap">
           <div class="pav">
-            <?= \local_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
+            <?= \block_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
           </div>
           <span class="name"><?= s($pmname) ?></span>
         </div>
@@ -952,7 +952,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <div class="role">SS / MAAC Executive</div>
         <div class="pwrap">
           <div class="pav">
-            <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
+            <?= \block_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
           </div>
           <span class="name"><?= s($ssename) ?></span>
         </div>
@@ -971,7 +971,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <div class="ba-mentors-col">
           <?php foreach ($class_mentors as $cm): ?>
             <div class="mentorcell">
-              <?= \local_batchanalytics\util::render_user_avatar($cm['user'] ?? null, 30, 'pav', $cm['name']) ?>
+              <?= \block_batchanalytics\util::render_user_avatar($cm['user'] ?? null, 30, 'pav', $cm['name']) ?>
               <div class="mentor-meta">
                 <span class="v"><?= s($cm['name']) ?></span>
                 <?php if (count($class_mentors) > 1): ?>
@@ -992,7 +992,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <div class="ba-mentors-col">
           <?php foreach ($lab_mentors as $lm): ?>
             <div class="mentorcell">
-              <?= \local_batchanalytics\util::render_user_avatar($lm['user'] ?? null, 30, 'pav', $lm['name']) ?>
+              <?= \block_batchanalytics\util::render_user_avatar($lm['user'] ?? null, 30, 'pav', $lm['name']) ?>
               <div class="mentor-meta">
                 <span class="v"><?= s($lm['name']) ?></span>
                 <?php if (count($lab_mentors) > 1): ?>
@@ -1104,7 +1104,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
       <?php if (empty($mentor_activity_data['activities'])): ?>
         <div class="tablecard">
-          <div class="muted" style="text-align:center; padding:24px;"><?= get_string('mentor_activities_empty', 'local_batchanalytics') ?></div>
+          <div class="muted" style="text-align:center; padding:24px;"><?= get_string('mentor_activities_empty', 'block_batchanalytics') ?></div>
         </div>
       <?php else: ?>
       <div class="ba-tracker-wrap">
@@ -1277,7 +1277,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
   </div> <!-- /.shell -->
 
-</div> <!-- /.local-batchanalytics-wrap -->
+</div> <!-- /.block-batchanalytics-wrap -->
 
 <?php
 echo $OUTPUT->footer();

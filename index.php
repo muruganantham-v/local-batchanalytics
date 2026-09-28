@@ -18,11 +18,11 @@ require_login();
 $context = context_system::instance();
 $userid = $USER->id;
 
-// Capability-based permission check. Assign 'local/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
-require_capability('local/batchanalytics:view', $context);
+// Capability-based permission check. Assign 'block/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
+require_capability('block/batchanalytics:view', $context);
 
-$can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context);
-$can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);
+$can_manage = is_siteadmin($userid) || has_capability('block/batchanalytics:manage', $context);
+$can_view_all_courses = $can_manage || has_capability('block/batchanalytics:viewallcourses', $context);
 
 /**
  * Return a safe CRM error for the browser.
@@ -68,7 +68,7 @@ $format_crm_error = static function(\Throwable $exception): array {
 // Load restricted CRM fields for view-only users.
 $restricted_crm_fields = [];
 if (!$can_manage) {
-    $restricted_crm_fields = \local_batchanalytics\crm_fields_helper::get_restricted_keys();
+    $restricted_crm_fields = \block_batchanalytics\crm_fields_helper::get_restricted_keys();
 }
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
@@ -86,7 +86,7 @@ if ($action === 'getptfdata') {
     }
     require_sesskey();
 
-    if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
+    if (!\block_batchanalytics\util::check_crm_rate_limit($userid)) {
         http_response_code(429);
         echo json_encode(['error' => 'Rate limit exceeded. Please try again later.']);
         die();
@@ -107,11 +107,11 @@ if ($action === 'getptfdata') {
     }
 
     try {
-        $crm = new \local_batchanalytics\crmapi();
+        $crm = new \block_batchanalytics\crmapi();
 
         if (!empty($usernames)) {
             $usernameList = array_slice(array_filter(array_map('trim', explode(',', $usernames))), 0, 500);
-            $mdata = new \local_batchanalytics\moodledata();
+            $mdata = new \block_batchanalytics\moodledata();
             $usernameList = $mdata->filter_accessible_student_usernames($usernameList, $userid);
             if (empty($usernameList)) {
                 echo json_encode(['students' => []]);
@@ -134,7 +134,7 @@ if ($action === 'getptfdata') {
                 $rec_data = $record;
                 $rec_ctc = $rec_data['CTC'] ?? '-';
                 if (!$can_manage && !empty($restricted_crm_fields)) {
-                    $rec_data = \local_batchanalytics\crm_fields_helper::filter_crm_fields($rec_data, $restricted_crm_fields);
+                    $rec_data = \block_batchanalytics\crm_fields_helper::filter_crm_fields($rec_data, $restricted_crm_fields);
                     if (in_array('CTC', $restricted_crm_fields)) {
                         $rec_ctc = null;
                     }
@@ -151,7 +151,7 @@ if ($action === 'getptfdata') {
             die();
         }
 
-        $mdata = new \local_batchanalytics\moodledata();
+        $mdata = new \block_batchanalytics\moodledata();
         $allowedusernames = $mdata->filter_accessible_student_usernames([$username], $userid);
         if (empty($allowedusernames)) {
             http_response_code(403);
@@ -167,7 +167,7 @@ if ($action === 'getptfdata') {
                 'username' => $username,
                 'placed_company' => 'Not Placed',
                 'CTC' => '-',
-                'error' => get_string('crmconfigmissing', 'local_batchanalytics')
+                'error' => get_string('crmconfigmissing', 'block_batchanalytics')
             ]);
             die();
         }
@@ -184,7 +184,7 @@ if ($action === 'getptfdata') {
 
         // Build response dynamically from configured API fields.
         $data = ['username' => $username, 'placed_company' => $company];
-        foreach (\local_batchanalytics\crm_fields_helper::get_api_field_keys() as $field_key) {
+        foreach (\block_batchanalytics\crm_fields_helper::get_api_field_keys() as $field_key) {
             if ($field_key === 'College_Name') {
                 $data[$field_key] = $record['College_Name'] ?? ($record['Other_College_Name'] ?? '-');
             } else {
@@ -193,7 +193,7 @@ if ($action === 'getptfdata') {
         }
 
         if (!$can_manage && !empty($restricted_crm_fields)) {
-            $data = \local_batchanalytics\crm_fields_helper::filter_crm_fields($data, $restricted_crm_fields);
+            $data = \block_batchanalytics\crm_fields_helper::filter_crm_fields($data, $restricted_crm_fields);
         }
 
         echo json_encode($data);
@@ -306,7 +306,7 @@ if ($action === 'getnewbatchdata') {
                         $allowed_section_ids[(int)$s_item->id] = true;
                         continue;
                     }
-                    $s_modules = \local_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
+                    $s_modules = \block_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
                     if (!empty($s_modules)) {
                         foreach ($s_modules as $sm) {
                             $mcid = (int)($sm['moodlecourseid'] ?? 0);
@@ -383,7 +383,7 @@ if ($action === 'getnewbatchdata') {
                 return null;
             }
             if (is_numeric($val)) {
-                $profile = \local_batchanalytics\util::get_user_profile_data((int)$val);
+                $profile = \block_batchanalytics\util::get_user_profile_data((int)$val);
                 if (!empty($profile['name'])) {
                     return $profile['name'];
                 }
@@ -399,7 +399,7 @@ if ($action === 'getnewbatchdata') {
                 $coursename = ($parent && !empty($parent->coursename)) ? $parent->coursename : 'Embedded Systems & IoT';
                 $raw_mode = ($parent && !empty($parent->deliverymode)) ? $parent->deliverymode : 'Offline';
                 $normalizedmode = $raw_mode !== '' ? ucfirst(strtolower(trim($raw_mode))) : 'Offline';
-                $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
+                $is_online = \block_batchanalytics\util::is_online_mode($normalizedmode);
                 $type = ($parent && !empty($parent->submode)) ? ucfirst(strtolower($parent->submode)) : 'Regular';
                 $startdate_ts = ($parent && !empty($parent->startdate)) ? (int)$parent->startdate : ((int)$sec->timecreated ?: time());
                 $startformatted = userdate($startdate_ts, '%d %b %Y');
@@ -407,9 +407,9 @@ if ($action === 'getnewbatchdata') {
 
                 $sec_students = $studentcounts_by_section[(int)$sec->id] ?? 0;
 
-                $modules = \local_batchanalytics\util::decode_module_data($sec->moduledata ?? '', true);
+                $modules = \block_batchanalytics\util::decode_module_data($sec->moduledata ?? '', true);
                 if ($is_online) {
-                    $modules = \local_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
+                    $modules = \block_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
                 }
 
                 $currentmodule = 'N/A';
@@ -477,7 +477,7 @@ if ($action === 'getnewbatchdata') {
                 $is_completed = ($has_modules && $all_completed);
 
                 // Determine status based on total accumulated schedule delta
-                $status_info = \local_batchanalytics\util::get_batch_status($totaldelta);
+                $status_info = \block_batchanalytics\util::get_batch_status($totaldelta);
                 $status = $status_info['status'];
                 $statuslabel = $status_info['label'];
                 $delaydays = $totaldelta;
@@ -521,13 +521,13 @@ if ($action === 'getnewbatchdata') {
             foreach ($batches as $b) {
                 $mode = trim((string)($b->deliverymode ?? ''));
                 $normalizedmode = $mode !== '' ? ucfirst(strtolower($mode)) : 'Offline';
-                $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
+                $is_online = \block_batchanalytics\util::is_online_mode($normalizedmode);
                 $type = !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular';
                 $startdate_ts = !empty($b->startdate) ? (int)$b->startdate : 0;
                 $startformatted = $startdate_ts > 0 ? userdate($startdate_ts, '%d %b %Y') : 'N/A';
                 $year = $startdate_ts > 0 ? userdate($startdate_ts, '%Y') : date('Y');
 
-                $status_info = \local_batchanalytics\util::get_batch_status(0);
+                $status_info = \block_batchanalytics\util::get_batch_status(0);
                 $onschedulecount++;
 
                 $batchlist[] = [
@@ -631,13 +631,13 @@ if ($action === 'getnewbatchdata') {
 
 
 $PAGE->set_context($context);
-$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
-$PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
+$PAGE->set_url(new moodle_url('/blocks/batchanalytics/index.php'));
+$PAGE->set_title(get_string('pluginname', 'block_batchanalytics'));
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$indexscripturl = new moodle_url('/local/batchanalytics/index.js', ['v' => filemtime(__DIR__ . '/index.js')]);
+$styleurl = new moodle_url('/blocks/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
+$dashboardstyleurl = new moodle_url('/blocks/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
+$indexscripturl = new moodle_url('/blocks/batchanalytics/index.js', ['v' => filemtime(__DIR__ . '/index.js')]);
 
 $PAGE->requires->css($styleurl);
 $PAGE->requires->css($dashboardstyleurl);
@@ -650,8 +650,8 @@ echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
 echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
 
 
-$crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+$crm_fields_config = \block_batchanalytics\crm_fields_helper::get_fields();
+echo '<div class="block-batchanalytics-wrap local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Batch Analytics Dashboard

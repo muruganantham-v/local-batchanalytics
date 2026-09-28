@@ -1,12 +1,12 @@
 <?php
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
  * Helper for reading the CRM fields configuration.
  *
- * Stored as JSON in local_batchanalytics/crm_fields_config.
+ * Stored as JSON in block_batchanalytics/crm_fields_config.
  * Each entry: { "key": "Field_Key", "label": "Display Label", "numeric": bool, "restricted": bool }
  *
  * "key"        — Zoho CRM field name (or a computed key like CALC_STATUS / placed_company).
@@ -66,7 +66,7 @@ class crm_fields_helper {
      * Return all field definitions from config, or defaults if not configured.
      */
     public static function get_fields(): array {
-        $raw = get_config('local_batchanalytics', 'crm_fields_config');
+        $raw = util::get_config_val('crm_fields_config');
         if (!empty($raw)) {
             $parsed = json_decode($raw, true);
             if (is_array($parsed) && !empty($parsed)) {
@@ -122,7 +122,7 @@ class crm_fields_helper {
      * Return the configured student CRM module API name.
      */
     public static function get_student_module_api_name(): string {
-        $module = trim((string)get_config('local_batchanalytics', 'student_crm_module_api_name'));
+        $module = trim((string)util::get_config_val('student_crm_module_api_name'));
         return $module !== '' ? $module : 'Child_Admission';
     }
 }

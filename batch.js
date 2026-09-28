@@ -1,7 +1,7 @@
 /**
- * Client-side functionality for Batch Detail Screen in local_batchanalytics
+ * Client-side functionality for Batch Detail Screen in block_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026 Emertxe Information Technologies
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */

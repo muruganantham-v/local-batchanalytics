@@ -15,14 +15,14 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Data access class for local_batchanalytics
+ * Data access class for block_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -37,7 +37,7 @@ class moodledata
      */
     public static function can_manage_all(int $userid): bool {
         $context = \context_system::instance();
-        return is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
+        return is_siteadmin($userid) || has_capability('block/batchanalytics:manage', $context, $userid);
     }
 
     /**
@@ -48,7 +48,7 @@ class moodledata
      */
     private function can_view_all_courses(int $userid): bool {
         $context = \context_system::instance();
-        return self::can_manage_all($userid) || has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+        return self::can_manage_all($userid) || has_capability('block/batchanalytics:viewallcourses', $context, $userid);
     }
 
     /**
@@ -60,7 +60,7 @@ class moodledata
      */
     public function can_view_enrolled_course(int $courseid, int $userid): bool {
         $context = \context_course::instance($courseid, IGNORE_MISSING);
-        return $context && has_capability('local/batchanalytics:viewenrolledcourses', $context, $userid);
+        return $context && has_capability('block/batchanalytics:viewenrolledcourses', $context, $userid);
     }
     /**
      * Get allowed course keywords from settings.

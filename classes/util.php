@@ -14,11 +14,29 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_batchanalytics;
+namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
 class util {
+    /**
+     * Retrieve a configuration value with fallback from local_batchanalytics.
+     *
+     * @param string $name Configuration setting name.
+     * @param mixed $default Default value if unset.
+     * @return mixed
+     */
+    public static function get_config_val(string $name, $default = '') {
+        $val = get_config('block_batchanalytics', $name);
+        if ($val === false || $val === null || $val === '') {
+            $legacy = get_config('local_batchanalytics', $name);
+            if ($legacy !== false && $legacy !== null && $legacy !== '') {
+                return $legacy;
+            }
+        }
+        return ($val !== false && $val !== null) ? $val : $default;
+    }
+
     /**
      * Canonical module durations in days as defined by curriculum.
      *
@@ -447,7 +465,7 @@ class util {
      */
     public static function read_cached_batch_response(string $cachekey): ?array {
         try {
-            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache = \cache::make('block_batchanalytics', 'batchdata');
             $payload = $cache->get($cachekey);
             return is_array($payload) ? $payload : null;
         } catch (\Exception $e) {
@@ -460,7 +478,7 @@ class util {
      */
     public static function write_cached_batch_response(string $cachekey, array $payload): void {
         try {
-            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache = \cache::make('block_batchanalytics', 'batchdata');
             $cache->set($cachekey, $payload);
         } catch (\Exception $e) {
             // Ignore if cache is unavailable
@@ -472,7 +490,7 @@ class util {
      */
     public static function purge_batch_response_cache(): void {
         try {
-            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache = \cache::make('block_batchanalytics', 'batchdata');
             $cache->purge();
         } catch (\Exception $e) {
             // Ignore if cache is unavailable.
@@ -485,7 +503,7 @@ class util {
      */
     public static function check_crm_rate_limit(int $userid): bool {
         try {
-            $cache = \cache::make('local_batchanalytics', 'crmratelimit');
+            $cache = \cache::make('block_batchanalytics', 'crmratelimit');
             $key = 'user_' . $userid;
             $now = time();
             $window = $cache->get($key);
