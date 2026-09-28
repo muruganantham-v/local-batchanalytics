@@ -1092,14 +1092,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <!-- 1. Mentor Activities Panel (Operational Mentor Activities) -->
     <div id="panel-mentor" class="panel active">
       <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>
+        <!-- <div>
           Key operational activities performed by mentors for this module. Marking completed auto-fills today's date and saves instantly.
         </div>
         <div class="ba-mentor-group-badge" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:14px; font-size:12px; font-weight:600;">
           <span style="opacity:0.8;">Group:</span>
           <span><?= s($mentor_activity_data['group']) ?></span>
           <span style="font-size:11px; font-weight:normal; opacity:0.75;"><?= $mentor_activity_data['is_manual'] ? '(Course Setting)' : '(Auto-matched)' ?></span>
-        </div>
+        </div> -->
       </div>
 
       <?php if (empty($mentor_activity_data['activities'])): ?>
