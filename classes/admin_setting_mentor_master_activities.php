@@ -22,7 +22,7 @@ global $CFG;
 require_once($CFG->libdir . '/adminlib.php');
 
 /**
- * Admin setting for managing the master pool of mentor activities with drag-and-drop reordering.
+ * Admin setting for managing the master pool of mentor activities with API names and drag-and-drop reordering.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -53,10 +53,10 @@ class admin_setting_mentor_master_activities extends \admin_setting {
     }
 
     /**
-     * Parse raw string / json into a clean list of unique activity names.
+     * Parse raw string / json into a clean list of unique activities with key and name.
      *
      * @param mixed $data
-     * @return string[]|null
+     * @return array<int, array{key: string, name: string}>|null
      */
     private function normalise_activities($data): ?array {
         if (is_string($data)) {
@@ -74,15 +74,27 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         }
 
         $clean = [];
+        $seen = [];
         foreach ($data as $item) {
             $name = '';
+            $key = '';
             if (is_string($item)) {
                 $name = trim(strip_tags($item));
-            } else if (is_array($item) && isset($item['name'])) {
-                $name = trim(strip_tags((string)$item['name']));
+                $key = mentor_activity_service::slugify_key($name);
+            } else if (is_array($item)) {
+                $name = trim(strip_tags((string)($item['name'] ?? '')));
+                $key = trim(strip_tags((string)($item['key'] ?? '')));
+                if ($key === '' && $name !== '') {
+                    $key = mentor_activity_service::slugify_key($name);
+                }
             }
-            if ($name !== '' && !in_array($name, $clean, true)) {
-                $clean[] = $name;
+
+            if ($name !== '' && !isset($seen[$key])) {
+                $seen[$key] = true;
+                $clean[] = [
+                    'key'  => $key,
+                    'name' => $name,
+                ];
             }
         }
 
@@ -100,10 +112,11 @@ class admin_setting_mentor_master_activities extends \admin_setting {
 
         $form = '<input type="hidden" id="' . $id . '" name="' . $name . '" value="'
             . htmlspecialchars(json_encode($activities), ENT_QUOTES) . '">';
-        $form .= '<table id="' . $id . '_table" style="width:100%;max-width:680px;border-collapse:collapse;margin-bottom:8px">';
+        $form .= '<table id="' . $id . '_table" style="width:100%;max-width:760px;border-collapse:collapse;margin-bottom:8px">';
         $form .= '<thead><tr style="background:#f5f5f5;font-size:0.85em">';
         $form .= '<th style="width:28px"></th>';
-        $form .= '<th style="text-align:left;padding:6px 8px">Activity Name</th>';
+        $form .= '<th style="text-align:left;padding:6px 8px;width:38%">Stored Field API Name</th>';
+        $form .= '<th style="text-align:left;padding:6px 8px">Activity Display Name</th>';
         $form .= '<th style="width:36px"></th></tr></thead>';
         $form .= '<tbody id="' . $id . '_tbody">';
         foreach ($activities as $act) {
@@ -117,10 +130,14 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
     }
 
-    private function render_row(string $actname): string {
-        $name = htmlspecialchars($actname, ENT_QUOTES);
+    private function render_row(array $act): string {
+        $key = htmlspecialchars((string)($act['key'] ?? ''), ENT_QUOTES);
+        $name = htmlspecialchars((string)($act['name'] ?? ''), ENT_QUOTES);
+
         $html = '<tr draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
         $html .= '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>';
+        $html .= '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-key form-control form-control-sm" value="'
+            . $key . '" placeholder="e.g. assignment_evaluation" style="font-family:monospace;font-size:0.85em"></td>';
         $html .= '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-name form-control form-control-sm" value="'
             . $name . '" placeholder="e.g. Assignment evaluation" style="font-size:0.88em"></td>';
         $html .= '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
@@ -135,26 +152,55 @@ class admin_setting_mentor_master_activities extends \admin_setting {
   var tbody = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
 
+  function slugify(text) {
+    return text.toString().toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
   function serialize() {
     var result = [];
+    var seen = {};
     tbody.querySelectorAll('tr').forEach(function (row) {
-      var input = row.querySelector('.ba-mentor-master-act-name');
-      if (!input) return;
-      var val = input.value.trim();
-      if (val && result.indexOf(val) === -1) {
-        result.push(val);
+      var keyInput = row.querySelector('.ba-mentor-master-act-key');
+      var nameInput = row.querySelector('.ba-mentor-master-act-name');
+      if (!nameInput) return;
+
+      var name = nameInput.value.trim();
+      var key = keyInput ? keyInput.value.trim() : '';
+      if (!name) return;
+
+      if (!key) {
+        key = slugify(name);
+        if (keyInput) keyInput.value = key;
+      }
+
+      if (!seen[key]) {
+        seen[key] = true;
+        result.push({ key: key, name: name });
       }
     });
     hidden.value = JSON.stringify(result);
 
-    // Notify grouping rules settings to update their multi-select options
+    // Notify grouping rules setting to sync activities dropdown
     if (typeof window.baOnMentorActivitiesChanged === 'function') {
       window.baOnMentorActivitiesChanged(result);
     }
   }
 
   tbody.addEventListener('change', serialize);
-  tbody.addEventListener('input', serialize);
+  tbody.addEventListener('input', function (e) {
+    if (e.target.classList.contains('ba-mentor-master-act-name')) {
+      var tr = e.target.closest('tr');
+      var keyInput = tr ? tr.querySelector('.ba-mentor-master-act-key') : null;
+      if (keyInput && (!keyInput.value || keyInput.dataset.auto === '1')) {
+        keyInput.value = slugify(e.target.value);
+        keyInput.dataset.auto = '1';
+      }
+    }
+    serialize();
+  });
+
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', serialize);
 
@@ -194,10 +240,15 @@ function baMentorMasterAddRow(id) {
   tr.style.cssText = 'border-bottom:1px solid #e0e0e0;cursor:grab';
   tr.innerHTML =
     '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>'
+    + '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-key form-control form-control-sm" placeholder="e.g. new_activity" style="font-family:monospace;font-size:0.85em"></td>'
     + '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-name form-control form-control-sm" placeholder="e.g. New Activity" style="font-size:0.88em"></td>'
     + '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
   tbody.appendChild(tr);
-  tr.querySelector('.ba-mentor-master-act-name').focus();
+
+  var nameInput = tr.querySelector('.ba-mentor-master-act-name');
+  var keyInput = tr.querySelector('.ba-mentor-master-act-key');
+  if (keyInput) keyInput.dataset.auto = '1';
+  if (nameInput) nameInput.focus();
 
   tr.addEventListener('change', function () {
     tbody.dispatchEvent(new Event('change', { bubbles: true }));

@@ -74,6 +74,7 @@
 
             var isCompleted = chk.checked ? 1 : 0;
             var compDate = dateInput ? dateInput.value : '';
+            var actKey = chk.getAttribute('data-actkey') || '';
 
             if (mentorStatusMsg) {
                 mentorStatusMsg.textContent = 'Saving activity status…';
@@ -85,6 +86,7 @@
             formData.append('sesskey', sesskey);
             formData.append('courseid', courseId);
             formData.append('activityname', actName);
+            formData.append('activitykey', actKey);
             formData.append('completed', isCompleted);
             formData.append('completiondate', compDate);
 

@@ -19,7 +19,7 @@ namespace local_batchanalytics;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Service for managing mentor operational activities, course grouping, and single-record JSON storage.
+ * Service for managing mentor operational activities, course grouping, due days, and single-record JSON storage.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -30,18 +30,47 @@ class mentor_activity_service {
     /** @var string Table name storing mentor activity records */
     public const TABLE_NAME = 'local_batchanalytics_mentor_act';
 
-    /** @var array Default pool of master mentor activities */
+    /** @var array Default pool of master mentor activities with field API keys */
     public const DEFAULT_MASTER_ACTIVITIES = [
-        'Assignment evaluation',
-        'Project evaluation',
-        'Spot award nomination - mid c',
-        'Spot award nomination - End C',
-        'Spot award nomination',
-        'Power track nomination',
+        ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation'],
+        ['key' => 'project_evaluation', 'name' => 'Project evaluation'],
+        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c'],
+        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C'],
+        ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination'],
+        ['key' => 'power_track_nomination', 'name' => 'Power track nomination'],
     ];
 
-    /** @var string Default grouping rules text */
-    public const DEFAULT_GROUPING_RULES = "Advanced C: Assignment evaluation, Project evaluation, Spot award nomination - mid c, Spot award nomination - End C, Power track nomination\nData Structure: Assignment evaluation, Project evaluation, Spot award nomination, Power track nomination\nDefault: Assignment evaluation, Project evaluation, Spot award nomination, Power track nomination";
+    /** @var array Default grouping rules with due days */
+    public const DEFAULT_GROUPING_RULES = [
+        [
+            'group' => 'Advanced C',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
+                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 10],
+                ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+            ],
+        ],
+        [
+            'group' => 'Data Structure',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+            ],
+        ],
+        [
+            'group' => 'Default',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+            ],
+        ],
+    ];
 
     /**
      * Check if the database table exists.
@@ -54,9 +83,56 @@ class mentor_activity_service {
     }
 
     /**
-     * Get the master list of mentor activities configured in Site Admin.
+     * Helper to slugify an activity name into a clean API field key.
      *
-     * @return string[]
+     * @param string $name
+     * @return string
+     */
+    public static function slugify_key(string $name): string {
+        $slug = preg_replace('/[^a-zA-Z0-9]+/', '_', trim($name));
+        $slug = strtolower(trim($slug, '_'));
+        return $slug ?: 'act_' . substr(md5($name), 0, 8);
+    }
+
+    /**
+     * Calculate target date by adding N working days (excluding Saturdays and Sundays).
+     *
+     * @param int $start_ts Start timestamp (midnight).
+     * @param int $working_days Number of working days from start date.
+     * @return int Calculated timestamp.
+     */
+    public static function add_working_days(int $start_ts, int $working_days): int {
+        if ($start_ts <= 0) {
+            return 0;
+        }
+
+        $curr = strtotime('today midnight', $start_ts);
+        // If start date itself is on a weekend, roll forward to Monday first
+        $dow = (int)date('w', $curr);
+        if ($dow === 6) { // Saturday
+            $curr = strtotime('+2 days', $curr);
+        } else if ($dow === 0) { // Sunday
+            $curr = strtotime('+1 day', $curr);
+        }
+
+        $working_days = max(0, $working_days);
+        $added = 0;
+        while ($added < $working_days) {
+            $curr = strtotime('+1 day', $curr);
+            $w = (int)date('w', $curr);
+            if ($w !== 0 && $w !== 6) { // Skip Sunday (0) and Saturday (6)
+                $added++;
+            }
+        }
+
+        return $curr;
+    }
+
+    /**
+     * Get the master list of mentor activities configured in Site Admin.
+     * Returns an array of items: [['key' => '...', 'name' => '...'], ...]
+     *
+     * @return array<int, array{key: string, name: string}>
      */
     public static function get_master_activities(): array {
         $raw = get_config('local_batchanalytics', 'mentor_master_activities');
@@ -67,10 +143,27 @@ class mentor_activity_service {
         $decoded = json_decode((string)$raw, true);
         if (is_array($decoded)) {
             $activities = [];
+            $seen_keys = [];
             foreach ($decoded as $item) {
-                $name = is_string($item) ? trim(strip_tags($item)) : (is_array($item) ? trim(strip_tags((string)($item['name'] ?? ''))) : '');
-                if ($name !== '' && !in_array($name, $activities, true)) {
-                    $activities[] = $name;
+                if (is_string($item)) {
+                    $name = trim(strip_tags($item));
+                    $key = self::slugify_key($name);
+                } else if (is_array($item)) {
+                    $name = trim(strip_tags((string)($item['name'] ?? '')));
+                    $key = trim(strip_tags((string)($item['key'] ?? '')));
+                    if ($key === '' && $name !== '') {
+                        $key = self::slugify_key($name);
+                    }
+                } else {
+                    continue;
+                }
+
+                if ($name !== '' && !isset($seen_keys[$key])) {
+                    $seen_keys[$key] = true;
+                    $activities[] = [
+                        'key'  => $key,
+                        'name' => $name,
+                    ];
                 }
             }
             if (!empty($activities)) {
@@ -78,12 +171,18 @@ class mentor_activity_service {
             }
         }
 
+        // Fallback for line-separated strings
         $lines = preg_split('/\r\n|\r|\n/', (string)$raw);
         $activities = [];
+        $seen = [];
         foreach ($lines as $line) {
-            $line = trim(strip_tags($line));
-            if ($line !== '' && !in_array($line, $activities, true)) {
-                $activities[] = $line;
+            $name = trim(strip_tags($line));
+            if ($name !== '' && !isset($seen[$name])) {
+                $seen[$name] = true;
+                $activities[] = [
+                    'key'  => self::slugify_key($name),
+                    'name' => $name,
+                ];
             }
         }
 
@@ -91,17 +190,19 @@ class mentor_activity_service {
     }
 
     /**
-     * Get the parsed course grouping rules.
+     * Get the parsed course grouping rules with due days.
+     * Returns associative array: group name => list of activity objects.
      *
-     * @return array<string, string[]> Associative array of group name => list of activity names.
+     * @return array<string, array<int, array{key: string, name: string, duedays: int}>>
      */
     public static function get_grouping_rules(): array {
         $raw = get_config('local_batchanalytics', 'mentor_activity_grouping');
         if ($raw === false || trim((string)$raw) === '') {
-            $raw = self::DEFAULT_GROUPING_RULES;
+            $decoded = self::DEFAULT_GROUPING_RULES;
+        } else {
+            $decoded = json_decode((string)$raw, true);
         }
 
-        $decoded = json_decode((string)$raw, true);
         if (is_array($decoded)) {
             $rules = [];
             foreach ($decoded as $item) {
@@ -112,60 +213,62 @@ class mentor_activity_service {
                 if ($grp === '') {
                     continue;
                 }
-                $acts = $item['activities'] ?? [];
-                if (is_string($acts)) {
-                    $acts = explode(',', $acts);
+                $raw_acts = $item['activities'] ?? [];
+                if (is_string($raw_acts)) {
+                    $raw_acts = explode(',', $raw_acts);
                 }
-                if (is_array($acts)) {
-                    $clean_acts = [];
-                    foreach ($acts as $a) {
-                        $cleaned = trim(strip_tags((string)$a));
-                        if ($cleaned !== '' && !in_array($cleaned, $clean_acts, true)) {
-                            $clean_acts[] = $cleaned;
+
+                $clean_acts = [];
+                $seen_keys = [];
+
+                if (is_array($raw_acts)) {
+                    foreach ($raw_acts as $act) {
+                        if (is_string($act)) {
+                            $name = trim(strip_tags($act));
+                            $key = self::slugify_key($name);
+                            $duedays = 5;
+                        } else if (is_array($act)) {
+                            $name = trim(strip_tags((string)($act['name'] ?? '')));
+                            $key = trim(strip_tags((string)($act['key'] ?? '')));
+                            if ($key === '' && $name !== '') {
+                                $key = self::slugify_key($name);
+                            }
+                            $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
+                        } else {
+                            continue;
+                        }
+
+                        if ($name !== '' && !isset($seen_keys[$key])) {
+                            $seen_keys[$key] = true;
+                            $clean_acts[] = [
+                                'key'     => $key,
+                                'name'    => $name,
+                                'duedays' => max(0, $duedays),
+                            ];
                         }
                     }
-                    if (!empty($clean_acts)) {
-                        $rules[$grp] = $clean_acts;
-                    }
+                }
+
+                if (!empty($clean_acts)) {
+                    $rules[$grp] = $clean_acts;
                 }
             }
+
             if (!empty($rules)) {
                 return $rules;
             }
         }
 
-        $lines = preg_split('/\r\n|\r|\n/', (string)$raw);
+        // Fallback for legacy text string format
         $rules = [];
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '' || strpos($line, ':') === false) {
-                continue;
-            }
-
-            [$group_name, $acts_str] = explode(':', $line, 2);
-            $group_name = trim(strip_tags($group_name));
-            if ($group_name === '') {
-                continue;
-            }
-
-            $acts = array_map('trim', explode(',', $acts_str));
-            $clean_acts = [];
-            foreach ($acts as $a) {
-                $cleaned = trim(strip_tags((string)$a));
-                if ($cleaned !== '' && !in_array($cleaned, $clean_acts, true)) {
-                    $clean_acts[] = $cleaned;
-                }
-            }
-
-            if (!empty($clean_acts)) {
-                $rules[$group_name] = $clean_acts;
-            }
-        }
-
-        if (empty($rules)) {
-            $rules['Default'] = self::get_master_activities();
-        }
+        $default_master = self::get_master_activities();
+        $rules['Default'] = array_map(static function($a) {
+            return [
+                'key'     => $a['key'],
+                'name'    => $a['name'],
+                'duedays' => 5,
+            ];
+        }, $default_master);
 
         return $rules;
     }
@@ -280,20 +383,31 @@ class mentor_activity_service {
     }
 
     /**
-     * Retrieve all mentor activities for a course with current completion status.
+     * Retrieve all mentor activities for a course with due dates and completion status.
      *
      * @param int $courseid
      * @param string $coursename
+     * @param int $mod_p_start_ts Module planned start timestamp.
      * @return array
      */
-    public static function get_course_mentor_activities(int $courseid, string $coursename = ''): array {
+    public static function get_course_mentor_activities(int $courseid, string $coursename = '', int $mod_p_start_ts = 0): array {
         global $DB;
 
         $resolved = self::resolve_group_for_course($courseid, $coursename);
         $groupname = $resolved['group'];
         $rules = self::get_grouping_rules();
 
-        $expected_activities = $rules[$groupname] ?? ($rules['Default'] ?? self::get_master_activities());
+        $expected_activities = $rules[$groupname] ?? ($rules['Default'] ?? []);
+        if (empty($expected_activities)) {
+            $master = self::get_master_activities();
+            $expected_activities = array_map(static function($a) {
+                return [
+                    'key'     => $a['key'],
+                    'name'    => $a['name'],
+                    'duedays' => 5,
+                ];
+            }, $master);
+        }
 
         $saved_map = [];
         $modifier_ids = [];
@@ -304,12 +418,14 @@ class mentor_activity_service {
                 $raw_list = json_decode($rec->activitiesdata, true);
                 if (is_array($raw_list)) {
                     foreach ($raw_list as $item) {
+                        if (!empty($item['key'])) {
+                            $saved_map[mb_strtolower(trim($item['key']))] = $item;
+                        }
                         if (!empty($item['name'])) {
-                            $key = mb_strtolower(trim($item['name']));
-                            $saved_map[$key] = $item;
-                            if (!empty($item['modifiedby'])) {
-                                $modifier_ids[] = (int)$item['modifiedby'];
-                            }
+                            $saved_map[mb_strtolower(trim($item['name']))] = $item;
+                        }
+                        if (!empty($item['modifiedby'])) {
+                            $modifier_ids[] = (int)$item['modifiedby'];
                         }
                     }
                 }
@@ -328,9 +444,25 @@ class mentor_activity_service {
         }
 
         $activities = [];
-        foreach ($expected_activities as $actname) {
-            $key = mb_strtolower(trim($actname));
-            $saved = $saved_map[$key] ?? null;
+        foreach ($expected_activities as $act) {
+            $act_name = $act['name'];
+            $act_key = $act['key'] ?? self::slugify_key($act_name);
+            $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
+
+            // Calculate planned due date excluding Saturdays & Sundays
+            $planned_ts = 0;
+            $planned_date = '';
+            $planned_date_formatted = '—';
+
+            if ($mod_p_start_ts > 0) {
+                $planned_ts = self::add_working_days($mod_p_start_ts, $duedays);
+                $planned_date = date('Y-m-d', $planned_ts);
+                $planned_date_formatted = date('d M Y', $planned_ts);
+            }
+
+            $lookup_key = mb_strtolower(trim($act_key));
+            $lookup_name = mb_strtolower(trim($act_name));
+            $saved = $saved_map[$lookup_key] ?? ($saved_map[$lookup_name] ?? null);
 
             $completed = !empty($saved['completed']);
             $completiondate = !empty($saved['completiondate']) ? (string)$saved['completiondate'] : '';
@@ -338,21 +470,33 @@ class mentor_activity_service {
             $timemodified = !empty($saved['timemodified']) ? (int)$saved['timemodified'] : 0;
             $modifiedbyname = $users_map[$modifiedby] ?? '';
 
+            $is_overdue = false;
+            if (!$completed && $planned_ts > 0 && time() > ($planned_ts + 86400)) {
+                $is_overdue = true;
+            }
+
             $activities[] = [
-                'name'           => $actname,
-                'completed'      => $completed,
-                'completiondate' => $completiondate,
-                'modifiedby'     => $modifiedby,
-                'modifiedbyname' => $modifiedbyname,
-                'timemodified'   => $timemodified,
+                'key'                    => $act_key,
+                'name'                   => $act_name,
+                'duedays'                => $duedays,
+                'planned_date'           => $planned_date,
+                'planned_date_formatted' => $planned_date_formatted,
+                'planned_ts'             => $planned_ts,
+                'is_overdue'             => $is_overdue,
+                'completed'              => $completed,
+                'completiondate'         => $completiondate,
+                'modifiedby'             => $modifiedby,
+                'modifiedbyname'         => $modifiedbyname,
+                'timemodified'           => $timemodified,
             ];
         }
 
         return [
-            'courseid'   => $courseid,
-            'group'      => $groupname,
-            'is_manual'  => $resolved['is_manual'],
-            'activities' => $activities,
+            'courseid'        => $courseid,
+            'group'           => $groupname,
+            'is_manual'       => $resolved['is_manual'],
+            'mod_p_start_ts'  => $mod_p_start_ts,
+            'activities'      => $activities,
         ];
     }
 
@@ -360,7 +504,7 @@ class mentor_activity_service {
      * Save an activity's completion status into the course's single JSON record.
      *
      * @param int $courseid
-     * @param string $activityname
+     * @param string $activityname Activity name or key.
      * @param bool $completed
      * @param string $completiondate
      * @param int $userid
@@ -400,10 +544,14 @@ class mentor_activity_service {
 
         $found = false;
         $updated_item = null;
-        $key_target = mb_strtolower($activityname);
+        $target_key = mb_strtolower(self::slugify_key($activityname));
+        $target_name = mb_strtolower($activityname);
 
         foreach ($activities_list as &$item) {
-            if (!empty($item['name']) && mb_strtolower(trim($item['name'])) === $key_target) {
+            $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
+            $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+
+            if ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name) {
                 $item['completed'] = $completed ? 1 : 0;
                 $item['completiondate'] = $date_val;
                 $item['modifiedby'] = $userid;
@@ -417,6 +565,7 @@ class mentor_activity_service {
 
         if (!$found) {
             $updated_item = [
+                'key'            => self::slugify_key($activityname),
                 'name'           => $activityname,
                 'completed'      => $completed ? 1 : 0,
                 'completiondate' => $date_val,

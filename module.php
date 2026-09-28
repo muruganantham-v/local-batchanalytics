@@ -79,14 +79,16 @@ if ($action === 'save_mentor_activity') {
     try {
         require_sesskey();
         $cid = required_param('courseid', PARAM_INT);
-        $actname = required_param('activityname', PARAM_RAW_TRIMMED);
+        $actname = optional_param('activityname', '', PARAM_RAW_TRIMMED);
+        $actkey = optional_param('activitykey', '', PARAM_RAW_TRIMMED);
+        $target_name = !empty($actname) ? $actname : $actkey;
         $completed = optional_param('completed', 0, PARAM_BOOL);
         $completiondate = optional_param('completiondate', '', PARAM_RAW_TRIMMED);
 
-        if ($cid > 0 && !empty($actname)) {
+        if ($cid > 0 && !empty($target_name)) {
             $saved = \local_batchanalytics\mentor_activity_service::save_activity_status(
                 $cid,
-                $actname,
+                $target_name,
                 (bool)$completed,
                 $completiondate,
                 $USER->id
@@ -759,28 +761,7 @@ if ($courseid > 0) {
 $enrolled_userids = array_map(function($s) { return (int)($s->userid ?? $s->id ?? 0); }, $enrolled_students);
 $course_attendance_pct = \local_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
 
-// -------------------------------------------------------------------------
-// 5. Tab 1: Mentor Activities (Operational Mentor Activities)
-// -------------------------------------------------------------------------
-$mentor_activity_data = [
-    'courseid' => $courseid,
-    'group' => 'Default',
-    'is_manual' => false,
-    'activities' => []
-];
-
-if ($courseid > 0) {
-    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name);
-}
-
-// -------------------------------------------------------------------------
-// 6. Tab 2: SS Activities (Module Level, filtered by module planned date range)
-// -------------------------------------------------------------------------
-// -------------------------------------------------------------------------
-// 6. Soft Skills Activities for this Module
-// -------------------------------------------------------------------------
-$ss_module_activities = [];
-
+// Module Planned Date timestamps (used for both Mentor Activities due dates and SS Activities)
 $mod_p_start_raw = $cur_mod['plannedstart'] ?? 0;
 $mod_p_end_raw = $cur_mod['plannedend'] ?? 0;
 
@@ -799,6 +780,25 @@ if (is_numeric($mod_p_end_raw) && (int)$mod_p_end_raw > 100000) {
     $parsed = strtotime($mod_p_end_raw);
     if ($parsed !== false) $mod_p_end_ts = $parsed;
 }
+
+// -------------------------------------------------------------------------
+// 5. Tab 1: Mentor Activities (Operational Mentor Activities)
+// -------------------------------------------------------------------------
+$mentor_activity_data = [
+    'courseid' => $courseid,
+    'group' => 'Default',
+    'is_manual' => false,
+    'activities' => []
+];
+
+if ($courseid > 0) {
+    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts);
+}
+
+// -------------------------------------------------------------------------
+// 6. Soft Skills Activities for this Module
+// -------------------------------------------------------------------------
+$ss_module_activities = [];
 
 if ($section && !empty($section->softskillsdata)) {
     $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
@@ -1096,23 +1096,42 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <thead>
               <tr>
                 <th>Activity Name</th>
-                <th style="width:160px;">Status</th>
-                <th style="width:200px;">Completion Date</th>
-                <th style="width:200px;">Last Updated By</th>
+                <th style="width:170px;">Planned Due Date</th>
+                <th style="width:150px;">Status</th>
+                <th style="width:180px;">Completion Date</th>
+                <th style="width:180px;">Last Updated By</th>
               </tr>
             </thead>
             <tbody>
               <?php foreach ($mentor_activity_data['activities'] as $act): ?>
                 <tr>
-                  <td><span class="val" style="font-weight:600; color:#1f2937;"><?= s($act['name']) ?></span></td>
+                  <td>
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                      <span class="val" style="font-weight:600; color:#1f2937;"><?= s($act['name']) ?></span>
+                      <span style="font-family:monospace; font-size:11px; color:#6b7280;"><?= s($act['key'] ?? '') ?></span>
+                    </div>
+                  </td>
+                  <td>
+                    <?php if (!empty($act['planned_date_formatted']) && $act['planned_date_formatted'] !== '—'): ?>
+                      <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="val" style="font-weight:600; font-size:13px; color:#374151;"><?= s($act['planned_date_formatted']) ?></span>
+                        <span class="muted" style="font-size:11px;">(+<?= (int)$act['duedays'] ?>d)</span>
+                      </div>
+                      <?php if (!empty($act['is_overdue'])): ?>
+                        <span class="st st-r" style="font-size:10.5px; padding:1px 6px; margin-top:2px;">Overdue</span>
+                      <?php endif; ?>
+                    <?php else: ?>
+                      <span class="muted">+<?= (int)$act['duedays'] ?> working days</span>
+                    <?php endif; ?>
+                  </td>
                   <td>
                     <label class="ba-tracker-check">
-                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
+                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
                       <span>Completed</span>
                     </label>
                   </td>
                   <td>
-                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>"
+                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>"
                            value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
                   </td>
                   <td>

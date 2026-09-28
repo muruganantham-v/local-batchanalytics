@@ -22,7 +22,7 @@ global $CFG;
 require_once($CFG->libdir . '/adminlib.php');
 
 /**
- * Admin setting for course grouping rules with group name, multi-select activities, and drag-and-drop reordering.
+ * Admin setting for course grouping rules with selectable activities, configurable due days, and drag-and-drop.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -39,37 +39,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
     }
 
     public function get_defaultsetting() {
-        $default_rules = [
-            [
-                'group' => 'Advanced C',
-                'activities' => [
-                    'Assignment evaluation',
-                    'Project evaluation',
-                    'Spot award nomination - mid c',
-                    'Spot award nomination - End C',
-                    'Power track nomination',
-                ],
-            ],
-            [
-                'group' => 'Data Structure',
-                'activities' => [
-                    'Assignment evaluation',
-                    'Project evaluation',
-                    'Spot award nomination',
-                    'Power track nomination',
-                ],
-            ],
-            [
-                'group' => 'Default',
-                'activities' => [
-                    'Assignment evaluation',
-                    'Project evaluation',
-                    'Spot award nomination',
-                    'Power track nomination',
-                ],
-            ],
-        ];
-        return json_encode($default_rules);
+        return json_encode(mentor_activity_service::DEFAULT_GROUPING_RULES);
     }
 
     public function write_setting($data) {
@@ -108,12 +78,19 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
                         continue;
                     }
                     $acts = array_map('trim', explode(',', $acts_str));
-                    $acts = array_values(array_filter($acts, static function($a) {
-                        return $a !== '';
-                    }));
+                    $clean_acts = [];
+                    foreach ($acts as $a) {
+                        if ($a !== '') {
+                            $clean_acts[] = [
+                                'key'     => mentor_activity_service::slugify_key($a),
+                                'name'    => $a,
+                                'duedays' => 5,
+                            ];
+                        }
+                    }
                     $rules[] = [
-                        'group' => $grp,
-                        'activities' => $acts,
+                        'group'      => $grp,
+                        'activities' => $clean_acts,
                     ];
                 }
                 $data = $rules;
@@ -143,24 +120,44 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
             $seen_groups[$key] = true;
 
             $raw_acts = $item['activities'] ?? [];
-            if (!is_array($raw_acts)) {
-                if (is_string($raw_acts)) {
-                    $raw_acts = explode(',', $raw_acts);
-                } else {
-                    $raw_acts = [];
-                }
+            if (is_string($raw_acts)) {
+                $raw_acts = explode(',', $raw_acts);
             }
 
             $clean_acts = [];
-            foreach ($raw_acts as $act) {
-                $a = trim(strip_tags((string)$act));
-                if ($a !== '' && !in_array($a, $clean_acts, true)) {
-                    $clean_acts[] = $a;
+            $seen_act_keys = [];
+
+            if (is_array($raw_acts)) {
+                foreach ($raw_acts as $act) {
+                    $name = '';
+                    $act_key = '';
+                    $duedays = 5;
+
+                    if (is_string($act)) {
+                        $name = trim(strip_tags($act));
+                        $act_key = mentor_activity_service::slugify_key($name);
+                    } else if (is_array($act)) {
+                        $name = trim(strip_tags((string)($act['name'] ?? '')));
+                        $act_key = trim(strip_tags((string)($act['key'] ?? '')));
+                        if ($act_key === '' && $name !== '') {
+                            $act_key = mentor_activity_service::slugify_key($name);
+                        }
+                        $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
+                    }
+
+                    if ($name !== '' && !isset($seen_act_keys[$act_key])) {
+                        $seen_act_keys[$act_key] = true;
+                        $clean_acts[] = [
+                            'key'     => $act_key,
+                            'name'    => $name,
+                            'duedays' => max(0, $duedays),
+                        ];
+                    }
                 }
             }
 
             $clean[] = [
-                'group' => $grp,
+                'group'      => $grp,
                 'activities' => $clean_acts,
             ];
         }
@@ -174,18 +171,18 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
 
         $rules = $this->normalise_rules($data);
         if ($rules === null || empty($rules)) {
-            $rules = json_decode($this->get_defaultsetting(), true);
+            $rules = mentor_activity_service::DEFAULT_GROUPING_RULES;
         }
 
         $master_activities = mentor_activity_service::get_master_activities();
 
         $form = '<input type="hidden" id="' . $id . '" name="' . $name . '" value="'
             . htmlspecialchars(json_encode($rules), ENT_QUOTES) . '">';
-        $form .= '<table id="' . $id . '_table" style="width:100%;max-width:850px;border-collapse:collapse;margin-bottom:8px">';
+        $form .= '<table id="' . $id . '_table" style="width:100%;max-width:960px;border-collapse:collapse;margin-bottom:8px">';
         $form .= '<thead><tr style="background:#f5f5f5;font-size:0.85em">';
         $form .= '<th style="width:28px"></th>';
-        $form .= '<th style="text-align:left;padding:6px 8px;width:32%">Course Match / Group Name</th>';
-        $form .= '<th style="text-align:left;padding:6px 8px">Assigned Activities (Multi-Select)</th>';
+        $form .= '<th style="text-align:left;padding:6px 8px;width:28%">Course Match / Group Name</th>';
+        $form .= '<th style="text-align:left;padding:6px 8px">Assigned Activities &amp; Due Days</th>';
         $form .= '<th style="width:36px"></th></tr></thead>';
         $form .= '<tbody id="' . $id . '_tbody">';
         foreach ($rules as $rule) {
@@ -201,39 +198,77 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
 
     private function render_row(array $rule, array $all_acts): string {
         $group = htmlspecialchars((string)($rule['group'] ?? ''), ENT_QUOTES);
-        $selected_acts = array_map('trim', (array)($rule['activities'] ?? []));
+        $assigned_acts = (array)($rule['activities'] ?? []);
 
         $html = '<tr draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
         $html .= '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>';
-        $html .= '<td style="padding:4px 6px;vertical-align:top">';
+        $html .= '<td style="padding:6px 8px;vertical-align:top">';
         $html .= '<input type="text" class="ba-mentor-group-name form-control form-control-sm" value="'
             . $group . '" placeholder="e.g. Advanced C" style="font-size:0.88em;font-weight:600;">';
         $html .= '<div style="font-size:11px;color:#6b7280;margin-top:4px;">Matches course name keywords or acts as a dropdown option.</div>';
         $html .= '</td>';
 
-        $html .= '<td style="padding:4px 6px;vertical-align:top">';
-        $html .= '<select multiple class="ba-mentor-group-acts form-control form-control-sm" size="5" style="min-height:110px;font-size:0.85em;padding:4px;">';
+        $html .= '<td style="padding:6px 8px;vertical-align:top">';
 
-        // Include any selected activities even if not in master list currently
-        $combined_acts = array_unique(array_merge($all_acts, $selected_acts));
-
-        foreach ($combined_acts as $act) {
-            $isSelected = in_array(trim($act), $selected_acts, true);
-            $html .= '<option value="' . htmlspecialchars($act, ENT_QUOTES) . '"'
-                . ($isSelected ? ' selected' : '') . '>'
-                . htmlspecialchars($act, ENT_QUOTES)
+        // Top toolbar: select activity + due days + add button
+        $html .= '<div class="ba-act-add-bar" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">';
+        $html .= '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:220px;font-size:0.85em;">';
+        foreach ($all_acts as $act) {
+            $act_key = htmlspecialchars($act['key'], ENT_QUOTES);
+            $act_name = htmlspecialchars($act['name'], ENT_QUOTES);
+            $html .= '<option value="' . $act_key . '" data-name="' . $act_name . '">'
+                . $act_name . ' (' . $act_key . ')'
                 . '</option>';
         }
-
         $html .= '</select>';
-        $html .= '<div style="font-size:11px;color:#6b7280;margin-top:3px;display:flex;justify-content:space-between;">'
-            . '<span>Click items to toggle · Hold Ctrl/Cmd for multi-select</span>'
-            . '<span class="ba-group-selected-count" style="font-weight:600;color:#1e40af;">' . count($selected_acts) . ' selected</span>'
-            . '</div>';
+
+        $html .= '<div style="display:inline-flex;align-items:center;gap:4px;">';
+        $html .= '<span style="font-size:12px;color:#4b5563;">Due in:</span>';
+        $html .= '<input type="number" min="0" class="ba-group-act-days-picker form-control form-control-sm" value="5" style="width:65px;padding:2px 5px;font-size:12px;">';
+        $html .= '<span style="font-size:12px;color:#4b5563;">working days</span>';
+        $html .= '</div>';
+
+        $html .= '<button type="button" class="btn btn-secondary btn-sm ba-btn-add-activity" onclick="baAddActivityToGroup(this);" style="padding:2px 8px;font-size:12px;">+ Add Activity</button>';
+        $html .= '</div>';
+
+        // Assigned activities table
+        $html .= '<div class="ba-assigned-acts-wrap" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 6px;">';
+        $html .= '<table class="ba-assigned-acts-table" style="width:100%;border-collapse:collapse;">';
+        $html .= '<thead><tr style="font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:left;">';
+        $html .= '<th style="padding:3px 6px;">Activity Name (Field API Key)</th>';
+        $html .= '<th style="padding:3px 6px;width:140px;">Due Days (Working)</th>';
+        $html .= '<th style="width:28px;"></th>';
+        $html .= '</tr></thead>';
+        $html .= '<tbody class="ba-assigned-acts-tbody">';
+
+        foreach ($assigned_acts as $assigned) {
+            $act_name = is_array($assigned) ? ($assigned['name'] ?? '') : (string)$assigned;
+            $act_key = is_array($assigned) ? ($assigned['key'] ?? mentor_activity_service::slugify_key($act_name)) : mentor_activity_service::slugify_key($act_name);
+            $duedays = is_array($assigned) && isset($assigned['duedays']) ? (int)$assigned['duedays'] : 5;
+
+            $html .= '<tr class="ba-assigned-act-row" data-key="' . htmlspecialchars($act_key, ENT_QUOTES) . '" data-name="' . htmlspecialchars($act_name, ENT_QUOTES) . '" style="border-bottom:1px solid #f3f4f6;">';
+            $html .= '<td style="padding:4px 6px;">';
+            $html .= '<span style="font-weight:600;font-size:12px;color:#1f2937;">' . htmlspecialchars($act_name, ENT_QUOTES) . '</span>';
+            $html .= '<span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' . htmlspecialchars($act_key, ENT_QUOTES) . ')</span>';
+            $html .= '</td>';
+            $html .= '<td style="padding:4px 6px;">';
+            $html .= '<div style="display:inline-flex;align-items:center;gap:4px;">';
+            $html .= '<input type="number" min="0" class="ba-act-duedays form-control form-control-sm" value="' . $duedays . '" style="width:65px;padding:2px 5px;font-size:12px;">';
+            $html .= '<span style="font-size:11px;color:#6b7280;">days</span>';
+            $html .= '</div>';
+            $html .= '</td>';
+            $html .= '<td style="padding:4px 6px;text-align:center;">';
+            $html .= '<button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>';
+            $html .= '</td>';
+            $html .= '</tr>';
+        }
+
+        $html .= '</tbody></table>';
+        $html .= '</div>';
         $html .= '</td>';
 
-        $html .= '<td style="text-align:center;padding:4px 6px;vertical-align:top">';
-        $html .= '<button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>';
+        $html .= '<td style="text-align:center;padding:6px 8px;vertical-align:top">';
+        $html .= '<button type="button" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>';
         $html .= '</td>';
         $html .= '</tr>';
 
@@ -249,63 +284,45 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
   var hidden = document.getElementById('{$id}');
   var currentMasterPool = {$master_json};
 
-  function updateSelectedCount(selectEl) {
-    var count = 0;
-    for (var i = 0; i < selectEl.options.length; i++) {
-      if (selectEl.options[i].selected) count++;
-    }
-    var tr = selectEl.closest('tr');
-    if (tr) {
-      var badge = tr.querySelector('.ba-group-selected-count');
-      if (badge) badge.textContent = count + ' selected';
-    }
-  }
+  window.baTriggerGroupSerialize = function() {
+    serialize();
+  };
 
   function serialize() {
     var result = [];
-    tbody.querySelectorAll('tr').forEach(function (row) {
+    tbody.querySelectorAll('tr[draggable="true"]').forEach(function (row) {
       var nameInput = row.querySelector('.ba-mentor-group-name');
-      var selectEl = row.querySelector('.ba-mentor-group-acts');
-      if (!nameInput || !selectEl) return;
+      if (!nameInput) return;
 
       var groupName = nameInput.value.trim();
       if (!groupName) return;
 
-      var selectedActs = [];
-      for (var i = 0; i < selectEl.options.length; i++) {
-        if (selectEl.options[i].selected) {
-          selectedActs.push(selectEl.options[i].value);
+      var assignedActs = [];
+      row.querySelectorAll('.ba-assigned-act-row').forEach(function (actRow) {
+        var key = actRow.getAttribute('data-key');
+        var name = actRow.getAttribute('data-name');
+        var daysInput = actRow.querySelector('.ba-act-duedays');
+        var days = daysInput ? parseInt(daysInput.value, 10) : 5;
+        if (isNaN(days) || days < 0) days = 0;
+
+        if (key && name) {
+          assignedActs.push({
+            key: key,
+            name: name,
+            duedays: days
+          });
         }
-      }
+      });
 
       result.push({
         group: groupName,
-        activities: selectedActs
+        activities: assignedActs
       });
     });
     hidden.value = JSON.stringify(result);
   }
 
-  // Toggle on mousedown without needing Ctrl
-  tbody.addEventListener('mousedown', function (e) {
-    if (e.target.tagName === 'OPTION') {
-      e.preventDefault();
-      var opt = e.target;
-      opt.selected = !opt.selected;
-      var sel = opt.closest('select');
-      if (sel) {
-        updateSelectedCount(sel);
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }
-  });
-
-  tbody.addEventListener('change', function (e) {
-    if (e.target.classList.contains('ba-mentor-group-acts')) {
-      updateSelectedCount(e.target);
-    }
-    serialize();
-  });
+  tbody.addEventListener('change', serialize);
   tbody.addEventListener('input', serialize);
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', serialize);
@@ -315,47 +332,29 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
     if (!Array.isArray(newActivitiesList)) return;
     currentMasterPool = newActivitiesList;
 
-    tbody.querySelectorAll('tr').forEach(function (row) {
-      var selectEl = row.querySelector('.ba-mentor-group-acts');
-      if (!selectEl) return;
+    tbody.querySelectorAll('tr[draggable="true"]').forEach(function (row) {
+      var picker = row.querySelector('.ba-group-act-picker');
+      if (!picker) return;
 
-      var currentlySelected = [];
-      for (var i = 0; i < selectEl.options.length; i++) {
-        if (selectEl.options[i].selected) {
-          currentlySelected.push(selectEl.options[i].value);
-        }
-      }
+      var curVal = picker.value;
+      picker.innerHTML = '';
 
-      // Rebuild options preserving selection
-      selectEl.innerHTML = '';
-      var allOptions = [];
-      newActivitiesList.forEach(function (a) {
-        if (allOptions.indexOf(a) === -1) allOptions.push(a);
-      });
-      currentlySelected.forEach(function (a) {
-        if (allOptions.indexOf(a) === -1) allOptions.push(a);
-      });
-
-      allOptions.forEach(function (act) {
+      newActivitiesList.forEach(function (act) {
         var opt = document.createElement('option');
-        opt.value = act;
-        opt.textContent = act;
-        if (currentlySelected.indexOf(act) !== -1) {
-          opt.selected = true;
-        }
-        selectEl.appendChild(opt);
+        opt.value = act.key;
+        opt.setAttribute('data-name', act.name);
+        opt.textContent = act.name + ' (' + act.key + ')';
+        if (act.key === curVal) opt.selected = true;
+        picker.appendChild(opt);
       });
-
-      updateSelectedCount(selectEl);
     });
-    serialize();
   };
 
-  // ---- HTML5 drag-and-drop reorder ----
+  // ---- HTML5 drag-and-drop reorder for groups ----
   var dragging = null;
 
   tbody.addEventListener('dragstart', function (e) {
-    dragging = e.target.closest('tr');
+    dragging = e.target.closest('tr[draggable="true"]');
     if (dragging) {
       dragging.style.opacity = '0.4';
       e.dataTransfer.effectAllowed = 'move';
@@ -371,7 +370,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
   tbody.addEventListener('dragover', function (e) {
     e.preventDefault();
     if (!dragging) return;
-    var target = e.target.closest('tr');
+    var target = e.target.closest('tr[draggable="true"]');
     if (target && target !== dragging && target.parentNode === tbody) {
       var rect = target.getBoundingClientRect();
       var after = e.clientY > rect.top + rect.height / 2;
@@ -384,6 +383,56 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
   };
 })();
 
+function baAddActivityToGroup(btn) {
+  var bar = btn.closest('.ba-act-add-bar');
+  if (!bar) return;
+  var picker = bar.querySelector('.ba-group-act-picker');
+  var daysPicker = bar.querySelector('.ba-group-act-days-picker');
+  var actTbody = bar.parentNode.querySelector('.ba-assigned-acts-tbody');
+
+  if (!picker || !picker.selectedOptions || picker.selectedOptions.length === 0 || !actTbody) return;
+
+  var selOpt = picker.selectedOptions[0];
+  var key = selOpt.value;
+  var name = selOpt.getAttribute('data-name') || key;
+  var days = daysPicker ? parseInt(daysPicker.value, 10) : 5;
+  if (isNaN(days) || days < 0) days = 5;
+
+  // Check if activity already exists in this group
+  var existingRow = actTbody.querySelector('.ba-assigned-act-row[data-key="' + key.replace(/"/g, '\\"') + '"]');
+  if (existingRow) {
+    var dInput = existingRow.querySelector('.ba-act-duedays');
+    if (dInput) dInput.value = days;
+    existingRow.style.background = '#fef3c7';
+    setTimeout(function() { existingRow.style.background = ''; }, 1000);
+    baTriggerGroupSerialize();
+    return;
+  }
+
+  var tr = document.createElement('tr');
+  tr.className = 'ba-assigned-act-row';
+  tr.setAttribute('data-key', key);
+  tr.setAttribute('data-name', name);
+  tr.style.cssText = 'border-bottom:1px solid #f3f4f6;';
+  tr.innerHTML =
+    '<td style="padding:4px 6px;">'
+    + '<span style="font-weight:600;font-size:12px;color:#1f2937;">' + name.replace(/</g, '&lt;') + '</span>'
+    + '<span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' + key.replace(/</g, '&lt;') + ')</span>'
+    + '</td>'
+    + '<td style="padding:4px 6px;">'
+    + '<div style="display:inline-flex;align-items:center;gap:4px;">'
+    + '<input type="number" min="0" class="ba-act-duedays form-control form-control-sm" value="' + days + '" style="width:65px;padding:2px 5px;font-size:12px;">'
+    + '<span style="font-size:11px;color:#6b7280;">days</span>'
+    + '</div>'
+    + '</td>'
+    + '<td style="padding:4px 6px;text-align:center;">'
+    + '<button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>'
+    + '</td>';
+
+  actTbody.appendChild(tr);
+  baTriggerGroupSerialize();
+}
+
 function baMentorGroupingAddRow(id) {
   var tbody = document.getElementById(id + '_tbody');
   var masterPool = typeof window.baGetMasterActivitiesPool === 'function'
@@ -392,8 +441,8 @@ function baMentorGroupingAddRow(id) {
 
   var optHtml = '';
   masterPool.forEach(function (act) {
-    optHtml += '<option value="' + act.replace(/"/g, '&quot;') + '" selected>'
-      + act.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    optHtml += '<option value="' + act.key.replace(/"/g, '&quot;') + '" data-name="' + act.name.replace(/"/g, '&quot;') + '">'
+      + act.name.replace(/</g, '&lt;') + ' (' + act.key.replace(/</g, '&lt;') + ')'
       + '</option>';
   });
 
@@ -402,32 +451,40 @@ function baMentorGroupingAddRow(id) {
   tr.style.cssText = 'border-bottom:1px solid #e0e0e0;cursor:grab';
   tr.innerHTML =
     '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>'
-    + '<td style="padding:4px 6px;vertical-align:top">'
+    + '<td style="padding:6px 8px;vertical-align:top">'
     + '<input type="text" class="ba-mentor-group-name form-control form-control-sm" placeholder="e.g. Python Fullstack" style="font-size:0.88em;font-weight:600;">'
     + '<div style="font-size:11px;color:#6b7280;margin-top:4px;">Matches course name keywords or acts as a dropdown option.</div>'
     + '</td>'
-    + '<td style="padding:4px 6px;vertical-align:top">'
-    + '<select multiple class="ba-mentor-group-acts form-control form-control-sm" size="5" style="min-height:110px;font-size:0.85em;padding:4px;">'
+    + '<td style="padding:6px 8px;vertical-align:top">'
+    + '<div class="ba-act-add-bar" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">'
+    + '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:220px;font-size:0.85em;">'
     + optHtml
     + '</select>'
-    + '<div style="font-size:11px;color:#6b7280;margin-top:3px;display:flex;justify-content:space-between;">'
-    + '<span>Click items to toggle · Hold Ctrl/Cmd for multi-select</span>'
-    + '<span class="ba-group-selected-count" style="font-weight:600;color:#1e40af;">' + masterPool.length + ' selected</span>'
+    + '<div style="display:inline-flex;align-items:center;gap:4px;">'
+    + '<span style="font-size:12px;color:#4b5563;">Due in:</span>'
+    + '<input type="number" min="0" class="ba-group-act-days-picker form-control form-control-sm" value="5" style="width:65px;padding:2px 5px;font-size:12px;">'
+    + '<span style="font-size:12px;color:#4b5563;">working days</span>'
+    + '</div>'
+    + '<button type="button" class="btn btn-secondary btn-sm ba-btn-add-activity" onclick="baAddActivityToGroup(this);" style="padding:2px 8px;font-size:12px;">+ Add Activity</button>'
+    + '</div>'
+    + '<div class="ba-assigned-acts-wrap" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 6px;">'
+    + '<table class="ba-assigned-acts-table" style="width:100%;border-collapse:collapse;">'
+    + '<thead><tr style="font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:left;">'
+    + '<th style="padding:3px 6px;">Activity Name (Field API Key)</th>'
+    + '<th style="padding:3px 6px;width:140px;">Due Days (Working)</th>'
+    + '<th style="width:28px;"></th>'
+    + '</tr></thead>'
+    + '<tbody class="ba-assigned-acts-tbody"></tbody>'
+    + '</table>'
     + '</div>'
     + '</td>'
-    + '<td style="text-align:center;padding:4px 6px;vertical-align:top">'
-    + '<button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>'
+    + '<td style="text-align:center;padding:6px 8px;vertical-align:top">'
+    + '<button type="button" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>'
     + '</td>';
 
   tbody.appendChild(tr);
   tr.querySelector('.ba-mentor-group-name').focus();
-
-  tr.addEventListener('change', function () {
-    tbody.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  tr.addEventListener('input', function () {
-    tbody.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+  baTriggerGroupSerialize();
 }
 </script>
 ENDJS;
