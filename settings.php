@@ -23,7 +23,9 @@ require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
 require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('blocksettingbatchanalytics', get_string('pluginname', 'block_batchanalytics'));
+    if (empty($settings)) {
+        $settings = new admin_settingpage('blocksettingbatchanalytics', get_string('pluginname', 'block_batchanalytics'));
+    }
 
     $settings->add(new admin_setting_heading(
         'block_batchanalytics/zoho_configuration',
@@ -156,5 +158,7 @@ if ($hassiteconfig) {
         $role_choices
     ));
 
-    $ADMIN->add('blocksettings', $settings);
+    if (!empty($ADMIN) && empty($ADMIN->locate('blocksettingbatchanalytics'))) {
+        $ADMIN->add('blocksettings', $settings);
+    }
 }

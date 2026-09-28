@@ -17,15 +17,15 @@
 /**
  * Version information for local_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026092802;
+$plugin->version   = 2026092803;
 $plugin->requires  = 2024042200;
 $plugin->component = 'block_batchanalytics';
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '2.1.0';
+$plugin->release   = '2.1.1';
