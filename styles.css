@@ -2363,6 +2363,29 @@ input:checked+.ba-slider:before {
   color: #1f2328;
   letter-spacing: -0.3px;
 }
+.ba-module-page .mhead h1 a,
+.ba-module-page .ba-module-title-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 0.15s ease;
+}
+.ba-module-page .mhead h1 a:hover,
+.ba-module-page .ba-module-title-link:hover {
+  color: var(--primary, #0284c7);
+  text-decoration: none;
+}
+.ba-module-page .ba-module-title-link .ba-ext-icon {
+  opacity: 0.45;
+  transition: opacity 0.2s ease, transform 0.2s ease, stroke 0.2s ease;
+}
+.ba-module-page .ba-module-title-link:hover .ba-ext-icon {
+  opacity: 1;
+  transform: translate(2px, -2px);
+  stroke: var(--primary, #0284c7);
+}
 
 .ba-module-page .mhead .meta {
   font-size: 13.5px;
