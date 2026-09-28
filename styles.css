@@ -2765,12 +2765,12 @@ input:checked+.ba-slider:before {
   background-color: #e2e8f0;
 }
 .ba-table th.sortable.sort-asc::after {
-  content: " â–²";
+  content: " \25B2";
   font-size: 9px;
   color: var(--brand, #1b6ec2);
 }
 .ba-table th.sortable.sort-desc::after {
-  content: " â–¼";
+  content: " \25BC";
   font-size: 9px;
   color: var(--brand, #1b6ec2);
 }
@@ -3282,46 +3282,59 @@ input:checked+.ba-slider:before {
 }
 
 .ba-batch-page thead th.sortable::after,
-.ba-module-page thead th.sortable::after {
-  content: ' â†•';
+.ba-module-page thead th.sortable::after,
+#panel-students thead th.sortable::after,
+#panel-mstudents thead th.sortable::after {
+  content: '\2195';
   position: absolute;
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 11px;
-  opacity: 0.35;
+  line-height: 1;
+  opacity: 0.4;
   color: #64748b;
-  font-family: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 .ba-batch-page thead th.sortable:hover::after,
-.ba-module-page thead th.sortable:hover::after {
-  opacity: 0.75;
-  color: #334155;
+.ba-module-page thead th.sortable:hover::after,
+#panel-students thead th.sortable:hover::after,
+#panel-mstudents thead th.sortable:hover::after {
+  opacity: 0.85;
+  color: #0f172a;
 }
 
 .ba-batch-page thead th.sortable.sort-asc,
 .ba-module-page thead th.sortable.sort-asc,
 .ba-batch-page thead th.sortable.sort-desc,
-.ba-module-page thead th.sortable.sort-desc {
-  background-color: #eef2f6;
-  color: var(--brand-d, #3c1053);
+.ba-module-page thead th.sortable.sort-desc,
+#panel-students thead th.sortable.sort-asc,
+#panel-mstudents thead th.sortable.sort-asc,
+#panel-students thead th.sortable.sort-desc,
+#panel-mstudents thead th.sortable.sort-desc {
+  background-color: #f0f9ff !important;
+  color: #0284c7 !important;
 }
 
 .ba-batch-page thead th.sortable.sort-asc::after,
-.ba-module-page thead th.sortable.sort-asc::after {
-  content: ' â–²';
+.ba-module-page thead th.sortable.sort-asc::after,
+#panel-students thead th.sortable.sort-asc::after,
+#panel-mstudents thead th.sortable.sort-asc::after {
+  content: '\25B2';
   opacity: 1;
-  color: var(--brand, #1b6ec2);
-  font-size: 10px;
+  color: #0284c7;
+  font-size: 9px;
 }
 
 .ba-batch-page thead th.sortable.sort-desc::after,
-.ba-module-page thead th.sortable.sort-desc::after {
-  content: ' â–¼';
+.ba-module-page thead th.sortable.sort-desc::after,
+#panel-students thead th.sortable.sort-desc::after,
+#panel-mstudents thead th.sortable.sort-desc::after {
+  content: '\25BC';
   opacity: 1;
-  color: var(--brand, #1b6ec2);
-  font-size: 10px;
+  color: #0284c7;
+  font-size: 9px;
 }
 
 /* ==========================================================================

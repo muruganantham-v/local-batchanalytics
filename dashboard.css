@@ -3514,9 +3514,10 @@ body#page-local-batchanalytics-module #page-header h1,
 .ba-new-table-card,
 .ba-new-table-card * {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
 
-  /* ==================== COURSE METRICS KPI MODAL MODERN UI ==================== */
-  .ba-category-modal-dialog {
+/* ==================== COURSE METRICS KPI MODAL MODERN UI ==================== */
+.ba-category-modal-dialog {
     width: min(1000px, 95vw) !important;
     max-width: 95vw !important;
     max-height: 90vh !important;
@@ -3768,15 +3769,16 @@ body#page-local-batchanalytics-module #page-header h1,
   }
 
   .ba-category-modal-dialog .ba-table th.sortable::after {
-    content: '↕' !important;
+    content: '\2195' !important;
     position: absolute !important;
     right: 10px !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
-    font-size: 12px !important;
+    font-size: 11px !important;
     color: #94a3b8 !important;
     opacity: 0.6 !important;
     font-weight: normal !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
   }
 
   .ba-category-modal-dialog .ba-table th.sortable:hover::after {
@@ -3791,17 +3793,17 @@ body#page-local-batchanalytics-module #page-header h1,
   }
 
   .ba-category-modal-dialog .ba-table th.sortable.sort-asc::after {
-    content: '▲' !important;
+    content: '\25B2' !important;
     opacity: 1 !important;
     color: #0284c7 !important;
-    font-size: 10px !important;
+    font-size: 9px !important;
   }
 
   .ba-category-modal-dialog .ba-table th.sortable.sort-desc::after {
-    content: '▼' !important;
+    content: '\25BC' !important;
     opacity: 1 !important;
     color: #0284c7 !important;
-    font-size: 10px !important;
+    font-size: 9px !important;
   }
 
   .ba-category-modal-dialog .ba-table td {
@@ -3895,7 +3897,6 @@ body#page-local-batchanalytics-module #page-header h1,
   .ba-category-modal-dialog .ba-tfoot-val.ba-val-final {
     color: #16a34a !important;
   }
-}
 
 
 /* -----------------------------------------------------------------------

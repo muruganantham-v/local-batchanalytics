@@ -625,16 +625,67 @@ if ($courseid > 0) {
             $avgCFormatted = number_format($avgC, 2);
             $avgFinalGFormatted = number_format($avgFinalG, 2);
 
+            // Calculate 50th percentile (Median) grade and assign rank percentiles to students
+            $valid_percentages = [];
+            foreach ($cat_data['studentGrades'] as $sg_item) {
+                if ($sg_item['percentage'] !== null && $sg_item['percentage'] !== '') {
+                    $valid_percentages[] = (float)$sg_item['percentage'];
+                }
+            }
+            sort($valid_percentages);
+            $vp_count = count($valid_percentages);
+            if ($vp_count > 0) {
+                $mid = (int)floor(($vp_count - 1) / 2);
+                $median_grade = ($vp_count % 2 === 0)
+                    ? (($valid_percentages[$mid] + $valid_percentages[$mid + 1]) / 2)
+                    : $valid_percentages[$mid];
+            } else {
+                $median_grade = 0.0;
+            }
+            $medianGradeFormatted = number_format($median_grade, 2);
+
+            // Compute student category rank percentiles
+            $sorted_by_grade = $cat_data['studentGrades'];
+            usort($sorted_by_grade, static function($a, $b) {
+                $scA = $a['percentage'] !== null ? (float)$a['percentage'] : -1.0;
+                $scB = $b['percentage'] !== null ? (float)$b['percentage'] : -1.0;
+                return $scB <=> $scA;
+            });
+            $tot_s = count($sorted_by_grade);
+            $user_cat_percentiles = [];
+            $prev_score = null;
+            $prev_pct = null;
+            foreach ($sorted_by_grade as $s_idx => $s_entry) {
+                $sc = $s_entry['percentage'] !== null ? (float)$s_entry['percentage'] : null;
+                if ($sc === null) {
+                    $p_val = 0;
+                } else {
+                    $p_val = $tot_s <= 1 ? 100 : (int)round((($tot_s - $s_idx - 1) / ($tot_s - 1)) * 100);
+                    if ($prev_score !== null && $sc == $prev_score) {
+                        $p_val = $prev_pct;
+                    }
+                }
+                $user_cat_percentiles[$s_entry['userid']] = $p_val;
+                $prev_score = $sc;
+                $prev_pct = $p_val;
+            }
+            foreach ($cat_data['studentGrades'] as &$sg_entry) {
+                $sg_entry['percentile'] = $user_cat_percentiles[$sg_entry['userid']] ?? 0;
+            }
+            unset($sg_entry);
+
             $style = get_ba_category_icon_and_color($display_name, $kpi_card_idx);
             $kpi_card_idx++;
 
             $module_kpis[] = [
                 'label' => $display_name,
                 'clean_name' => $cat_clean_name,
-                'val'   => $avgCFormatted . '%',
-                'sub'   => 'Completion ' . $avgCFormatted . '%',
+                'val'   => $avgGFormatted . '%',
+                'sub'   => 'Avg Grade · Completion ' . $avgCFormatted . '%',
                 'avgGrade' => $avgG,
                 'avgGradeFormatted' => $avgGFormatted,
+                'medianGrade' => $median_grade,
+                'medianGradeFormatted' => $medianGradeFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
                 'avgFinalGrade' => $avgFinalG,
@@ -650,6 +701,8 @@ if ($courseid > 0) {
                 'totalItems' => $gradable_items_in_cat,
                 'avgGrade' => $avgG,
                 'avgGradeFormatted' => $avgGFormatted,
+                'medianGrade' => $median_grade,
+                'medianGradeFormatted' => $medianGradeFormatted,
                 'avgCompletion' => $avgC,
                 'avgCompFormatted' => $avgCFormatted,
                 'avgFinalGrade' => $avgFinalG,
@@ -942,19 +995,28 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </div>
   </div>
 
-  <!-- Module KPIs (Gradebook category completion rate of all students) -->
-  <div class="sec-label">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
+  <!-- Module KPIs (Gradebook category performance) -->
+  <div class="ba-kpi-section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+    <div class="sec-label" style="margin-bottom:0;">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
+    <div class="toggle ba-kpi-toggle" id="ba-kpi-toggle" style="margin:0;">
+      <span class="on" id="ba-kpi-tg-grade" role="button" tabindex="0">Grade</span>
+      <span id="ba-kpi-tg-pct" role="button" tabindex="0">Percentile</span>
+    </div>
+  </div>
   <div class="kpirow" id="kpirow">
     <?php if (empty($module_kpis)): ?>
       <div class="ba-kpi-empty-msg">No data available for this module.</div>
     <?php else: ?>
       <?php foreach ($module_kpis as $kpi): ?>
-        <?php
-          $val_display = $kpi['val'];
-        ?>
-        <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>" role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-          <div class="kv"><?= s($val_display) ?></div>
+        <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>"
+             data-grade="<?= s($kpi['avgGradeFormatted']) ?>%"
+             data-percentile="<?= s($kpi['medianGradeFormatted']) ?>%"
+             data-sub-grade="Avg Grade · Comp <?= s($kpi['avgCompFormatted']) ?>%"
+             data-sub-pct="50th %ile (Median) · Comp <?= s($kpi['avgCompFormatted']) ?>%"
+             role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
+          <div class="kv"><?= s($kpi['avgGradeFormatted']) ?>%</div>
           <div class="kl"><?= s($kpi['label']) ?></div>
+          <div class="ksub" style="font-size:11px; color:#64748b; margin-top:2px;">Avg Grade · <?= s($kpi['avgCompFormatted']) ?>% comp</div>
         </div>
       <?php endforeach; ?>
     <?php endif; ?>
