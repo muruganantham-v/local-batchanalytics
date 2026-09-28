@@ -89,21 +89,19 @@ class block_batchanalytics extends block_base {
             return $this->content;
         }
 
-        // Include dashboard CSS.
-        $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/dashboard.css'));
-
         $courseid = 0;
         if (!empty($PAGE->course) && (int)$PAGE->course->id > 1) {
             $courseid = (int)$PAGE->course->id;
         }
 
-        $html = '<div class="ba-block-widget" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#1e293b; font-size:13px; line-height:1.5;">';
-
-        // Course page context.
+        // Course page context: render course-scoped mentor checklist summary
         if ($courseid > 0) {
+            $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]));
+
             $moduleurl = new moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $courseid]);
             $coursename = format_string($PAGE->course->fullname);
 
+            $html = '<div class="ba-block-widget" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#1e293b; font-size:13px; line-height:1.5;">';
             $html .= '<div style="margin-bottom:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">';
             $html .= '  <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.5px;">Current Course</div>';
             $html .= '  <div style="font-weight:600; color:#0f172a; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' . s($coursename) . '">' . s($coursename) . '</div>';
@@ -149,40 +147,93 @@ class block_batchanalytics extends block_base {
             $html .= '  <span>View Module Analytics</span>';
             $html .= '  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>';
             $html .= '</a>';
-
-        } else {
-            // Dashboard / Frontpage context.
-            $homeurl = new moodle_url('/blocks/batchanalytics/index.php');
-
-            // Quick summary counts if bm tables exist.
-            $totalbatches = 0;
-            $dbman = $DB->get_manager();
-            if ($dbman->table_exists('local_bm_classsection')) {
-                $totalbatches = (int)$DB->count_records('local_bm_classsection');
-            } else if ($dbman->table_exists('local_bm_batch')) {
-                $totalbatches = (int)$DB->count_records('local_bm_batch');
-            }
-
-            $html .= '<div style="margin-bottom:12px; background:linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); border:1px solid #dbeafe; border-radius:8px; padding:12px;">';
-            $html .= '  <div style="display:flex; justify-content:space-between; align-items:center;">';
-            $html .= '    <div>';
-            $html .= '      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.5px;">Active Batches</div>';
-            $html .= '      <div style="font-size:22px; font-weight:800; color:#1e40af; line-height:1.2;">' . $totalbatches . '</div>';
-            $html .= '    </div>';
-            $html .= '    <div style="background:#dbeafe; color:#1e40af; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center;">';
-            $html .= '      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>';
-            $html .= '    </div>';
-            $html .= '  </div>';
-            $html .= '  <div style="font-size:11px; color:#64748b; margin-top:6px;">Real-time performance, attendance &amp; mentor tracking.</div>';
             $html .= '</div>';
 
-            $html .= '<a href="' . s($homeurl->out(false)) . '" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#1e293b; color:#ffffff; font-weight:600; font-size:12px; padding:9px 12px; border-radius:6px; text-decoration:none; transition:background 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'#1e293b\'">';
-            $html .= '  <span>Open Batch Analytics</span>';
-            $html .= '  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>';
-            $html .= '</a>';
-        }
+        } else {
+            // Dashboard (/my/) & Frontpage context: Render full prototype Home page
+            $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/block_home.css', ['v' => filemtime(__DIR__ . '/block_home.css')]));
+            $PAGE->requires->js(new moodle_url('/blocks/batchanalytics/block_home.js', ['v' => filemtime(__DIR__ . '/block_home.js')]));
 
-        $html .= '</div>';
+            $fullcockpiturl = new moodle_url('/blocks/batchanalytics/index.php');
+            $apiurl = (new moodle_url('/blocks/batchanalytics/index.php'))->out(false);
+
+            $html = '
+<div class="block-batchanalytics-wrap ba-block-home-wrap" id="ba-block-home-container"
+     data-sesskey="' . s(sesskey()) . '"
+     data-api-url="' . s($apiurl) . '">
+
+  <div class="shell">
+
+    <!-- Header Section -->
+    <div class="ba-block-header">
+      <div>
+        <h1>Emertxe <span class="accent">–</span> Batch Analytics</h1>
+        <div class="sub">Overview of all running batches</div>
+      </div>
+      <div>
+        <a href="' . s($fullcockpiturl->out(false)) . '" class="viewbtn" title="Open full-screen Batch Analytics cockpit">
+          <span>Full Cockpit ↗</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Portfolio At a Glance -->
+    <div class="sec-label">Portfolio at a glance</div>
+    <div class="tiles" id="ba-block-tiles">
+      <!-- Populated dynamically via block_home.js -->
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Search & Filters Card -->
+    <div class="searchcard">
+      <div class="searchrow">
+        <input type="text" id="ba-block-search" placeholder="Search batch code (e.g., 26011, 26022)…">
+        <button type="button" class="btn btn-primary" id="ba-block-btn-search">Search</button>
+      </div>
+      <div class="flabel">Filters</div>
+      <div class="filters">
+        <select id="ba-block-f-year"><option value="">Year — All</option></select>
+        <select id="ba-block-f-batch"><option value="">Batch No — All</option></select>
+        <select id="ba-block-f-course"><option value="">Course — All</option></select>
+        <select id="ba-block-f-mode"><option value="">Mode — All</option><option value="Online">Online</option><option value="Offline">Offline</option></select>
+      </div>
+    </div>
+
+    <!-- Sub-tabs (Running vs Completed) -->
+    <div class="listtabs">
+      <div class="ltab active" id="ba-block-tab-running" role="button" tabindex="0">Current Running Batches</div>
+      <div class="ltab" id="ba-block-tab-completed" role="button" tabindex="0">Completed Batches</div>
+    </div>
+
+    <!-- Results State -->
+    <div id="ba-block-resultsState">
+      <div class="rhead">
+        <span class="title"><span class="bar"></span><span id="ba-block-resultsTitle">Current Running Batches</span></span>
+        <span class="pageinfo" id="ba-block-pageInfo">Loading batches...</span>
+      </div>
+      <div class="tablecard">
+        <table>
+          <thead id="ba-block-listHead"></thead>
+          <tbody id="ba-block-rowsBody">
+            <tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">Loading batches...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager" id="ba-block-pager"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="ba-block-emptyState" class="empty">
+      <h2>No matching batch found</h2>
+      <p>We couldn’t find a batch for that code. Check it and search again.</p>
+    </div>
+
+  </div> <!-- /.shell -->
+
+</div> <!-- /.ba-block-home-wrap -->
+';
+        }
 
         $this->content->text = $html;
         return $this->content;
