@@ -24,6 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once(__DIR__ . '/classes/task_service.php');
+
 class block_batchanalytics extends block_base {
 
     /**
@@ -150,88 +152,138 @@ class block_batchanalytics extends block_base {
             $html .= '</div>';
 
         } else {
-            // Dashboard (/my/) & Frontpage context: Render full prototype Home page
-            $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/block_home.css', ['v' => filemtime(__DIR__ . '/block_home.css')]));
-            $PAGE->requires->js(new moodle_url('/blocks/batchanalytics/block_home.js', ['v' => filemtime(__DIR__ . '/block_home.js')]));
+            // Dashboard (/my/) & Frontpage context: Render To-Do task dashboard
+            $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/block_task_dashboard.css', ['v' => filemtime(__DIR__ . '/block_task_dashboard.css')]));
+            $PAGE->requires->js(new moodle_url('/blocks/batchanalytics/block_task_dashboard.js', ['v' => filemtime(__DIR__ . '/block_task_dashboard.js')]));
 
             $fullcockpiturl = new moodle_url('/blocks/batchanalytics/index.php');
             $apiurl = (new moodle_url('/blocks/batchanalytics/index.php'))->out(false);
 
+            $dashdata = \block_batchanalytics\task_service::get_dashboard_data((int)$USER->id);
+
+            $role_options_html = '';
+            foreach ($dashdata['available_roles'] as $rcode => $rname) {
+                $sel = ($dashdata['active_role'] === $rcode) ? ' selected' : '';
+                $role_options_html .= '<option value="' . s($rcode) . '"' . $sel . '>' . s($rname) . '</option>';
+            }
+
             $html = '
-<div class="block-batchanalytics-wrap ba-block-home-wrap" id="ba-block-home-container"
+<div class="block-batchanalytics-wrap ba-task-dash-wrap" id="ba-task-dash-container"
      data-sesskey="' . s(sesskey()) . '"
      data-api-url="' . s($apiurl) . '">
 
-  <div class="shell">
+  <!-- Header Section with Greeting, Role Subtitle, Role Switcher & Cockpit link -->
+  <div class="greet">
+    <div>
+      <h1 id="ba-dash-greeting">' . s($dashdata['greeting']) . '</h1>
+      <div class="sub" id="ba-dash-rolesub">' . s($dashdata['role_subtitle']) . '</div>
+    </div>
+    <div class="header-right">';
 
-    <!-- Header Section -->
-    <div class="ba-block-header">
+            if ($dashdata['can_switch_roles']) {
+                $html .= '
+      <div class="roleswitch">
+        <div class="lbl">Viewing as</div>
+        <select id="ba-role-selector">' . $role_options_html . '</select>
+      </div>';
+            }
+
+            $html .= '
       <div>
-        <h1>Emertxe <span class="accent">–</span> Batch Analytics</h1>
-        <div class="sub">Overview of all running batches</div>
-      </div>
-      <div>
-        <a href="' . s($fullcockpiturl->out(false)) . '" class="viewbtn" title="Open full-screen Batch Analytics cockpit">
+        <a href="' . s($fullcockpiturl->out(false)) . '" class="btn-cockpit" title="Open full Batch Analytics cockpit">
           <span>Full Cockpit ↗</span>
         </a>
       </div>
     </div>
+  </div>
 
-    <!-- Portfolio At a Glance -->
-    <div class="sec-label">Portfolio at a glance</div>
-    <div class="tiles" id="ba-block-tiles">
-      <!-- Populated dynamically via block_home.js -->
-    </div>
+  <!-- Glance Stat Cards -->
+  <div class="glance" id="ba-dash-glance">';
+            foreach ($dashdata['glance'] as $g) {
+                $alert_class = !empty($g['alert']) ? ' alert' : '';
+                $html .= '<div class="gt' . $alert_class . '">';
+                $html .= '  <div class="v">' . s($g['val']) . '</div>';
+                $html .= '  <div class="k">' . s($g['lbl']) . '</div>';
+                $html .= '</div>';
+            }
+            $html .= '</div>
 
-    <div class="divider"></div>
-
-    <!-- Search & Filters Card -->
-    <div class="searchcard">
-      <div class="searchrow">
-        <input type="text" id="ba-block-search" placeholder="Search batch code (e.g., 26011, 26022)…">
-        <button type="button" class="btn btn-primary" id="ba-block-btn-search">Search</button>
+  <!-- 2 Columns: Left = My To-Do, Right = Forthcoming -->
+  <div class="cols">
+    <!-- Left Column: My To-Do -->
+    <div class="dpanel">
+      <div class="ph">
+        <h2>My To-Do <span class="badge" id="ba-dash-todo-count">' . count($dashdata['todo']) . ' pending</span></h2>
+        <select class="filter-select" id="ba-todo-filter">
+          <option value="all">All tasks</option>
+          <option value="overdue">Overdue only</option>
+          <option value="today">Due today</option>
+          <option value="soon">Due next 7 days</option>
+        </select>
       </div>
-      <div class="flabel">Filters</div>
-      <div class="filters">
-        <select id="ba-block-f-year"><option value="">Year — All</option></select>
-        <select id="ba-block-f-batch"><option value="">Batch No — All</option></select>
-        <select id="ba-block-f-course"><option value="">Course — All</option></select>
-        <select id="ba-block-f-mode"><option value="">Mode — All</option><option value="Online">Online</option><option value="Offline">Offline</option></select>
+      <div id="ba-dash-todo-list">';
+
+            if (empty($dashdata['todo'])) {
+                $html .= '<div class="empty-box">✓ No pending tasks</div>';
+            } else {
+                foreach ($dashdata['todo'] as $t) {
+                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : 'Go to module →';
+                    $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
+                    $html .= '  <div class="body">';
+                    $html .= '    <div class="t">' . s($t['title']) . '</div>';
+                    $html .= '    <div class="m">' . s($t['meta']) . '</div>';
+                    $html .= '    <a href="' . s($t['dest_url']) . '" class="go">' . s($dest_label) . '</a>';
+                    $html .= '  </div>';
+                    $html .= '  <div class="actions">';
+                    $html .= '    <span class="due ' . s($t['status_class']) . '">' . s($t['status_label']) . '</span>';
+                    $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
+                    $html .= '  </div>';
+                    $html .= '</div>';
+                }
+            }
+
+            $html .= '
       </div>
     </div>
 
-    <!-- Sub-tabs (Running vs Completed) -->
-    <div class="listtabs">
-      <div class="ltab active" id="ba-block-tab-running" role="button" tabindex="0">Current Running Batches</div>
-      <div class="ltab" id="ba-block-tab-completed" role="button" tabindex="0">Completed Batches</div>
-    </div>
-
-    <!-- Results State -->
-    <div id="ba-block-resultsState">
-      <div class="rhead">
-        <span class="title"><span class="bar"></span><span id="ba-block-resultsTitle">Current Running Batches</span></span>
-        <span class="pageinfo" id="ba-block-pageInfo">Loading batches...</span>
+    <!-- Right Column: Forthcoming -->
+    <div class="dpanel">
+      <div class="ph">
+        <h2>Forthcoming</h2>
+        <span class="badge">Next 7 days</span>
       </div>
-      <div class="tablecard">
-        <table>
-          <thead id="ba-block-listHead"></thead>
-          <tbody id="ba-block-rowsBody">
-            <tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">Loading batches...</td></tr>
-          </tbody>
-        </table>
+      <div id="ba-dash-fc-list">';
+
+            if (empty($dashdata['forthcoming'])) {
+                $html .= '<div class="empty-box">Nothing scheduled in the next 7 days</div>';
+            } else {
+                foreach ($dashdata['forthcoming'] as $f) {
+                    $html .= '<div class="fc">';
+                    $html .= '  <div class="t">' . s($f['title']) . '</div>';
+                    $html .= '  <div class="m">' . s($f['meta']) . '</div>';
+                    $html .= '</div>';
+                }
+            }
+
+            $html .= '
       </div>
-      <div class="pager" id="ba-block-pager"></div>
     </div>
+  </div>
 
-    <!-- Empty State -->
-    <div id="ba-block-emptyState" class="empty">
-      <h2>No matching batch found</h2>
-      <p>We couldn’t find a batch for that code. Check it and search again.</p>
+  <!-- Mark Complete Confirmation Modal -->
+  <div class="overlay" id="ba-task-modal-overlay">
+    <div class="modal">
+      <h3>Mark Activity Complete</h3>
+      <p>Confirm completion of this milestone activity:</p>
+      <div class="act-name" id="ba-modal-task-name">—</div>
+      <div class="mbtns">
+        <button type="button" class="cancel" id="ba-modal-btn-cancel">Cancel</button>
+        <button type="button" class="confirm" id="ba-modal-btn-confirm">Confirm Complete</button>
+      </div>
     </div>
+  </div>
 
-  </div> <!-- /.shell -->
-
-</div> <!-- /.ba-block-home-wrap -->
+</div>
 ';
         }
 

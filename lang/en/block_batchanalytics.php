@@ -86,3 +86,19 @@ $string['mentor_activity_autodetect'] = 'Auto-detect from Course Name';
 $string['mentor_activities_empty'] = 'No mentor activities found for this module.';
 $string['mentor_activities_saved'] = 'Mentor activity saved successfully.';
 $string['mentor_activities_group_badge'] = 'Activity Group';
+
+// Role & Operational Task Configuration
+$string['role_configuration'] = 'Operational Roles & Task Assignments';
+$string['role_configuration_desc'] = 'Select which Moodle roles function as Mentors, SS Executives, Program Managers, and Assistant Managers. Assigned users will automatically see their module mentor activities and batch soft skill tasks in their Dashboard To-Do block.';
+$string['mentor_roles'] = 'Mentor Roles';
+$string['mentor_roles_desc'] = 'Users with these roles (or assigned as mentors in batch module data) will see module mentor activities due.';
+$string['ssexecutive_roles'] = 'SS / MAAC Executive Roles';
+$string['ssexecutive_roles_desc'] = 'Users with these roles (or assigned as maacexecutive in class sections) will see batch soft skill activities.';
+$string['program_manager_roles'] = 'Program Manager Roles';
+$string['program_manager_roles_desc'] = 'Users with these roles (or assigned as pmmanager in class sections) will see batch milestones and soft skill activities.';
+$string['assistant_manager_roles'] = 'Assistant Manager Roles';
+$string['assistant_manager_roles_desc'] = 'Users with these roles will see batch setup and soft skill planning activities.';
+$string['mytodolist'] = 'My To-Do';
+$string['forthcoming'] = 'Forthcoming';
+$string['markcomplete'] = 'Mark Complete';
+$string['completed'] = 'Completed';

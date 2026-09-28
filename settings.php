@@ -110,5 +110,51 @@ if ($hassiteconfig) {
         get_string('mentor_activity_grouping_desc', 'block_batchanalytics')
     ));
 
+    // Role selection settings for operational task assignments
+    $settings->add(new admin_setting_heading(
+        'block_batchanalytics/role_configuration',
+        get_string('role_configuration', 'block_batchanalytics'),
+        get_string('role_configuration_desc', 'block_batchanalytics')
+    ));
+
+    $role_choices = [];
+    $all_roles = $DB->get_records('role', null, 'sortorder ASC', 'id, name, shortname');
+    foreach ($all_roles as $r) {
+        $rname = !empty($r->name) ? format_string($r->name) : $r->shortname;
+        $role_choices[(string)$r->id] = $rname . ' (' . $r->shortname . ')';
+    }
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'block_batchanalytics/mentor_roles',
+        get_string('mentor_roles', 'block_batchanalytics'),
+        get_string('mentor_roles_desc', 'block_batchanalytics'),
+        [],
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'block_batchanalytics/ssexecutive_roles',
+        get_string('ssexecutive_roles', 'block_batchanalytics'),
+        get_string('ssexecutive_roles_desc', 'block_batchanalytics'),
+        [],
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'block_batchanalytics/program_manager_roles',
+        get_string('program_manager_roles', 'block_batchanalytics'),
+        get_string('program_manager_roles_desc', 'block_batchanalytics'),
+        [],
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'block_batchanalytics/assistant_manager_roles',
+        get_string('assistant_manager_roles', 'block_batchanalytics'),
+        get_string('assistant_manager_roles_desc', 'block_batchanalytics'),
+        [],
+        $role_choices
+    ));
+
     $ADMIN->add('blocksettings', $settings);
 }

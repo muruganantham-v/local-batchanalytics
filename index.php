@@ -205,6 +205,43 @@ if ($action === 'getptfdata') {
     die();
 }
 
+if ($action === 'get_dashboard_tasks') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+        $data = \block_batchanalytics\task_service::get_dashboard_data((int)$USER->id, $role);
+        echo json_encode(['success' => true, 'data' => $data]);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'complete_task') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $type = required_param('type', PARAM_ALPHANUMEXT);
+        $params = [
+            'courseid' => optional_param('courseid', 0, PARAM_INT),
+            'batchid'  => optional_param('batchid', 0, PARAM_INT),
+            'act_name' => optional_param('act_name', '', PARAM_RAW),
+            'act_key'  => optional_param('act_key', '', PARAM_RAW),
+        ];
+        $res = \block_batchanalytics\task_service::mark_activity_complete((int)$USER->id, $type, $params);
+        echo json_encode($res);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
 
 if ($action === 'getnewbatchdata') {
     while (ob_get_level()) {

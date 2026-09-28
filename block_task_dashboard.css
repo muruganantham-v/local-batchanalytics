@@ -1,0 +1,400 @@
+/* Scoped styling for Batch Analytics Dashboard To-Do Block */
+.ba-task-dash-wrap {
+  --blue: #1b6ec2;
+  --blue-hover: #15589c;
+  --brand: #6b359a;
+  --brand-d: #4a2169;
+  --line: #e2e8f0;
+  --mute: #64748b;
+  --green: #16a34a;
+  --green-bg: #dcfce7;
+  --amber: #b45309;
+  --amber-bg: #fef3c7;
+  --red: #b91c1c;
+  --red-bg: #fee2e2;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  color: #1e293b;
+  line-height: 1.5;
+  background: #f8fafc;
+  padding: 18px;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.ba-task-dash-wrap * {
+  box-sizing: border-box;
+}
+
+/* Header & Greeting */
+.ba-task-dash-wrap .greet {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 22px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ba-task-dash-wrap .greet h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+}
+.ba-task-dash-wrap .greet .sub {
+  font-size: 13.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+.ba-task-dash-wrap .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ba-task-dash-wrap .roleswitch {
+  text-align: right;
+}
+.ba-task-dash-wrap .roleswitch .lbl {
+  font-size: 10.5px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.ba-task-dash-wrap .roleswitch select {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 600;
+  outline: none;
+}
+.ba-task-dash-wrap .btn-cockpit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #ffffff !important;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none !important;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.ba-task-dash-wrap .btn-cockpit:hover {
+  background: #334155;
+  color: #ffffff !important;
+}
+
+/* Glance Stat Cards */
+.ba-task-dash-wrap .glance {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (max-width: 900px) {
+  .ba-task-dash-wrap .glance {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.ba-task-dash-wrap .gt {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.ba-task-dash-wrap .gt .v {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1;
+}
+.ba-task-dash-wrap .gt .k {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 7px;
+  font-weight: 600;
+}
+.ba-task-dash-wrap .gt.alert {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+.ba-task-dash-wrap .gt.alert .v {
+  color: #dc2626;
+}
+
+/* Columns (To-Do & Forthcoming) */
+.ba-task-dash-wrap .cols {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 960px) {
+  .ba-task-dash-wrap .cols {
+    grid-template-columns: 1fr;
+  }
+}
+.ba-task-dash-wrap .dpanel {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+.ba-task-dash-wrap .dpanel .ph {
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+}
+.ba-task-dash-wrap .dpanel .ph h2 {
+  font-size: 14.5px;
+  color: #0f172a;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+.ba-task-dash-wrap .dpanel .ph h2::before {
+  content: "";
+  width: 4px;
+  height: 15px;
+  background: var(--brand);
+  border-radius: 2px;
+}
+.ba-task-dash-wrap .dpanel .ph select.filter-select {
+  padding: 5px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 11.5px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  outline: none;
+  font-weight: 600;
+}
+.ba-task-dash-wrap .badge {
+  font-size: 10.5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 2px 9px;
+  color: #475569;
+  font-weight: 600;
+  background: #f1f5f9;
+}
+
+/* To-Do Item */
+.ba-task-dash-wrap .todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s;
+}
+.ba-task-dash-wrap .todo:last-child {
+  border-bottom: none;
+}
+.ba-task-dash-wrap .todo:hover {
+  background: #f8fafc;
+}
+.ba-task-dash-wrap .todo.done {
+  opacity: .6;
+  background: #f8fafc;
+}
+.ba-task-dash-wrap .todo .body {
+  flex: 1;
+}
+.ba-task-dash-wrap .todo .t {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.ba-task-dash-wrap .todo.done .t {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.ba-task-dash-wrap .todo .m {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 3px;
+}
+.ba-task-dash-wrap .todo .go {
+  font-size: 11px;
+  color: var(--blue);
+  font-weight: 600;
+  margin-top: 5px;
+  display: inline-block;
+  cursor: pointer;
+  text-decoration: none !important;
+}
+.ba-task-dash-wrap .todo .go:hover {
+  text-decoration: underline !important;
+}
+.ba-task-dash-wrap .todo .actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 9px;
+}
+.ba-task-dash-wrap .due {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.ba-task-dash-wrap .due.soon {
+  background: #f1f5f9;
+  color: #475569;
+}
+.ba-task-dash-wrap .due.today {
+  background: #fef3c7;
+  color: #b45309;
+}
+.ba-task-dash-wrap .due.over {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.ba-task-dash-wrap .due.esc {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+.ba-task-dash-wrap .mc-btn2 {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border: 1px solid var(--blue);
+  background: #fff;
+  color: var(--blue);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.ba-task-dash-wrap .mc-btn2:hover {
+  background: var(--blue);
+  color: #fff;
+}
+.ba-task-dash-wrap .done-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  color: #15803d;
+  background: #dcfce7;
+  white-space: nowrap;
+}
+
+/* Forthcoming Items */
+.ba-task-dash-wrap .fc {
+  padding: 13px 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.ba-task-dash-wrap .fc:last-child {
+  border-bottom: none;
+}
+.ba-task-dash-wrap .fc .t {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+.ba-task-dash-wrap .fc .m {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 3px;
+}
+.ba-task-dash-wrap .empty-box {
+  padding: 34px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+/* Modal Overlay */
+.ba-task-dash-wrap .overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.ba-task-dash-wrap .overlay.show {
+  display: flex;
+}
+.ba-task-dash-wrap .modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 440px;
+  max-width: 92%;
+  padding: 24px;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+}
+.ba-task-dash-wrap .modal h3 {
+  font-size: 18px;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  font-weight: 800;
+}
+.ba-task-dash-wrap .modal p {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+.ba-task-dash-wrap .modal .act-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 14px 0 20px;
+}
+.ba-task-dash-wrap .modal .mbtns {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.ba-task-dash-wrap .modal .cancel {
+  padding: 9px 18px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+}
+.ba-task-dash-wrap .modal .confirm {
+  padding: 9px 20px;
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ba-task-dash-wrap .modal .confirm:hover {
+  background: #15803d;
+}
