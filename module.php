@@ -1060,7 +1060,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
       <span id="ba-kpi-tg-pct" role="button" tabindex="0">Percentile</span>
     </div>
   </div>
-  <div class="kpirow" id="kpirow">
+  <?php
+    $kpi_count = !empty($module_kpis) ? count($module_kpis) : 0;
+    $desktop_cols = $kpi_count > 6 ? 5 : max(1, $kpi_count);
+  ?>
+  <div class="kpirow <?= $kpi_count === 1 ? 'kpirow-single' : '' ?>" id="kpirow" style="--kpi-desktop-cols: <?= (int)$desktop_cols ?>;">
     <?php if (empty($module_kpis)): ?>
       <div class="ba-kpi-empty-msg">No data available for this module.</div>
     <?php else: ?>

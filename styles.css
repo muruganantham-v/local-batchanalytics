@@ -2677,14 +2677,27 @@ input:checked+.ba-slider:before {
 }
 .ba-module-page .kpirow {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 220px));
+  grid-template-columns: repeat(var(--kpi-desktop-cols, 5), 1fr);
   gap: 12px;
   margin-bottom: 26px;
   width: 100%;
 }
-@media (max-width: 480px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+.ba-module-page .kpirow.kpirow-single {
+  grid-template-columns: minmax(180px, 240px);
+}
+@media (max-width: 1024px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 380px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: 1fr;
   }
 }
 .ba-module-page .ba-kpi-empty-msg {

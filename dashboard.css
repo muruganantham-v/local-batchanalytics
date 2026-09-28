@@ -2172,15 +2172,31 @@ body#page-local-batchanalytics-module #page-header h1,
 /* Module KPIs (Evenly Sized with Min & Max Constraints) */
 .ba-module-page .kpirow {
   display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 220px)) !important;
+  grid-template-columns: repeat(var(--kpi-desktop-cols, 5), 1fr) !important;
   gap: 12px !important;
   margin-bottom: 26px !important;
   width: 100% !important;
 }
 
-@media (max-width: 480px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+.ba-module-page .kpirow.kpirow-single {
+  grid-template-columns: minmax(180px, 240px) !important;
+}
+
+@media (max-width: 1024px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .ba-module-page .kpirow:not(.kpirow-single) {
+    grid-template-columns: 1fr !important;
   }
 }
 
