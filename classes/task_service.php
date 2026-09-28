@@ -128,21 +128,6 @@ class task_service {
             }
         }
 
-        // Check if teacher in any course
-        if (!$assigned_class_mentor && !$has_mentor_role) {
-            $editingteacher_roleid = (int)$DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
-            $teacher_roleid        = (int)$DB->get_field('role', 'id', ['shortname' => 'teacher']);
-            $mentor_roleid         = (int)$DB->get_field('role', 'id', ['shortname' => 'mentor_resource_access']);
-            $teacher_rids = array_values(array_filter([$editingteacher_roleid, $teacher_roleid, $mentor_roleid]));
-            if (!empty($teacher_rids)) {
-                [$tsql, $tparams] = $DB->get_in_or_equal($teacher_rids, SQL_PARAMS_NAMED, 'tr');
-                $tparams['uid'] = $userid;
-                if ($DB->record_exists_select('role_assignments', "userid = :uid AND roleid $tsql", $tparams)) {
-                    $has_mentor_role = true;
-                }
-            }
-        }
-
         // Composite personas
         $is_class_mentor = $assigned_class_mentor || $has_mentor_role;
         $is_lab_mentor   = $assigned_lab_mentor;
@@ -151,13 +136,17 @@ class task_service {
         $is_asst         = $has_asst_role;
 
         return [
-            'is_manager'      => $is_manager,
-            'is_class_mentor' => $is_class_mentor,
-            'is_lab_mentor'   => $is_lab_mentor,
-            'is_mentor'       => ($is_class_mentor || $is_lab_mentor),
-            'is_sse'          => $is_sse,
-            'is_pm'           => $is_pm,
-            'is_asst'         => $is_asst,
+            'is_manager'            => $is_manager,
+            'is_class_mentor'       => $is_class_mentor,
+            'is_lab_mentor'         => $is_lab_mentor,
+            'is_mentor'             => ($is_class_mentor || $is_lab_mentor),
+            'is_sse'                => $is_sse,
+            'is_pm'                 => $is_pm,
+            'is_asst'               => $is_asst,
+            'assigned_class_mentor' => $assigned_class_mentor,
+            'assigned_lab_mentor'   => $assigned_lab_mentor,
+            'assigned_sse'          => $assigned_sse,
+            'assigned_pm'           => $assigned_pm,
         ];
     }
 
@@ -193,20 +182,14 @@ class task_service {
         $available_roles = [];
         if ($is_manager) {
             $available_roles = [
+                'pm'     => 'Program Manager',
+                'sse'    => 'SS / MAAC Executive',
                 'class'  => 'Class Mentor',
                 'lab'    => 'Lab Mentor',
-                'sse'    => 'SS / MAAC Executive',
-                'pm'     => 'Program Manager',
                 'asst'   => 'Assistant Manager',
                 'all'    => 'All Roles',
             ];
         } else {
-            if ($personas['is_class_mentor']) {
-                $available_roles['class'] = 'Class Mentor';
-            }
-            if ($personas['is_lab_mentor']) {
-                $available_roles['lab'] = 'Lab Mentor';
-            }
             if ($personas['is_sse']) {
                 $available_roles['sse'] = 'SS / MAAC Executive';
             }
@@ -216,6 +199,12 @@ class task_service {
             if ($personas['is_asst']) {
                 $available_roles['asst'] = 'Assistant Manager';
             }
+            if ($personas['is_class_mentor']) {
+                $available_roles['class'] = 'Class Mentor';
+            }
+            if ($personas['is_lab_mentor']) {
+                $available_roles['lab'] = 'Lab Mentor';
+            }
             if (count($available_roles) > 1) {
                 $available_roles['all'] = 'All Roles';
             }
@@ -224,13 +213,17 @@ class task_service {
             }
         }
 
-        // Resolve active viewing role
+        // Resolve active viewing role based on user direct assignment, then configured role
         $active_role = $requested_role;
         if ($active_role !== '' && isset($available_roles[$active_role])) {
-            // Keep requested role if valid
-        } else if ($personas['is_class_mentor']) {
+            // Keep requested role if explicitly requested.
+        } else if ($personas['assigned_sse']) {
+            $active_role = 'sse';
+        } else if ($personas['assigned_pm']) {
+            $active_role = 'pm';
+        } else if ($personas['assigned_class_mentor']) {
             $active_role = 'class';
-        } else if ($personas['is_lab_mentor']) {
+        } else if ($personas['assigned_lab_mentor']) {
             $active_role = 'lab';
         } else if ($personas['is_sse']) {
             $active_role = 'sse';
@@ -238,10 +231,14 @@ class task_service {
             $active_role = 'pm';
         } else if ($personas['is_asst']) {
             $active_role = 'asst';
-        } else if (isset($available_roles['all'])) {
-            $active_role = 'all';
+        } else if ($personas['is_class_mentor']) {
+            $active_role = 'class';
+        } else if ($personas['is_lab_mentor']) {
+            $active_role = 'lab';
+        } else if ($is_manager) {
+            $active_role = 'pm';
         } else {
-            $active_role = array_key_first($available_roles) ?: 'class';
+            $active_role = 'class';
         }
 
         // Fetch batches and class sections
@@ -262,16 +259,22 @@ class task_service {
         $filtered_sections = [];
         foreach ($sections as $sec) {
             $match = false;
-            if ($is_manager && in_array($active_role, ['all', 'pm', 'asst'], true)) {
-                $match = true;
-            } else if ($active_role === 'sse') {
-                if ($is_manager || (string)$sec->maacexecutive === (string)$userid || ($user_fullname !== '' && $sec->maacexecutivename === $user_fullname)) {
+            if ($active_role === 'sse') {
+                if ((string)$sec->maacexecutive === (string)$userid || ($user_fullname !== '' && $sec->maacexecutivename === $user_fullname)) {
+                    $match = true;
+                } else if ($is_manager && !$personas['assigned_sse']) {
+                    // Manager with no specific batch assignment overseeing active batches
                     $match = true;
                 }
             } else if ($active_role === 'pm') {
-                if ($is_manager || (string)$sec->pmmanager === (string)$userid || ($user_fullname !== '' && $sec->pmmanagername === $user_fullname)) {
+                if ((string)$sec->pmmanager === (string)$userid || ($user_fullname !== '' && $sec->pmmanagername === $user_fullname)) {
+                    $match = true;
+                } else if ($is_manager && !$personas['assigned_pm']) {
+                    // Manager with no specific batch assignment overseeing active batches
                     $match = true;
                 }
+            } else if ($active_role === 'asst') {
+                $match = true;
             } else if ($active_role === 'class' || $active_role === 'lab') {
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
@@ -279,7 +282,7 @@ class task_service {
                         ? [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? '')]
                         : [(string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')];
 
-                    if ($is_manager || in_array((string)$userid, $mentors, true) || ($user_fullname !== '' && in_array($user_fullname, $mentors, true))) {
+                    if (in_array((string)$userid, $mentors, true) || ($user_fullname !== '' && in_array($user_fullname, $mentors, true))) {
                         $match = true;
                         break;
                     }
@@ -323,17 +326,15 @@ class task_service {
                         continue;
                     }
 
-                    // Check if mentor assigned
-                    if (!$is_manager) {
-                        $mentors = ($active_role === 'class')
-                            ? [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? '')]
-                            : ($active_role === 'lab'
-                                ? [(string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]
-                                : [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? ''), (string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]);
+                    // Check if mentor assigned to this specific module
+                    $mentors = ($active_role === 'class')
+                        ? [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? '')]
+                        : ($active_role === 'lab'
+                            ? [(string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]
+                            : [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? ''), (string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]);
 
-                        if (!in_array((string)$userid, $mentors, true) && ($user_fullname === '' || !in_array($user_fullname, $mentors, true))) {
-                            continue;
-                        }
+                    if (!in_array((string)$userid, $mentors, true) && ($user_fullname === '' || !in_array($user_fullname, $mentors, true))) {
+                        continue;
                     }
 
                     $mod_name = $sm['name'] ?? 'Module';

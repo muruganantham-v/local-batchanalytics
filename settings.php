@@ -157,8 +157,4 @@ if ($hassiteconfig) {
         '0',
         $role_choices
     ));
-
-    if (!empty($ADMIN) && empty($ADMIN->locate('blocksettingbatchanalytics'))) {
-        $ADMIN->add('blocksettings', $settings);
-    }
 }
