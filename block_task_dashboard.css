@@ -63,21 +63,26 @@
 /* Glance Stat Cards */
 .ba-task-dash-wrap .glance {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
 @media (max-width: 900px) {
   .ba-task-dash-wrap .glance {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .ba-task-dash-wrap .gt {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  padding: 16px 20px;
+  padding: 18px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 104px;
+  box-sizing: border-box;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .ba-task-dash-wrap .gt:hover {
@@ -98,6 +103,10 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 .ba-task-dash-wrap .gt.alert {
   border-color: #fca5a5;
@@ -113,8 +122,9 @@
 /* Columns (To-Do & Forthcoming) */
 .ba-task-dash-wrap .cols {
   display: grid;
-  grid-template-columns: 1.65fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 18px;
+  align-items: stretch;
 }
 @media (max-width: 960px) {
   .ba-task-dash-wrap .cols {
@@ -129,6 +139,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 .ba-task-dash-wrap .dpanel .ph {
   padding: 14px 18px;

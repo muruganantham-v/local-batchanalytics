@@ -551,7 +551,7 @@ class task_service {
         $glance = [
             [
                 'val'   => (string)$tasks_due_week,
-                'lbl'   => 'Tasks due this week',
+                'lbl'   => 'Due this week',
                 'alert' => 0,
             ],
             [
