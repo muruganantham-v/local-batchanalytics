@@ -70,6 +70,44 @@ if ($action === 'saveactivity') {
     die();
 }
 
+if ($action === 'save_mentor_activity') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        require_sesskey();
+        $cid = required_param('courseid', PARAM_INT);
+        $actname = required_param('activityname', PARAM_RAW_TRIMMED);
+        $completed = optional_param('completed', 0, PARAM_BOOL);
+        $completiondate = optional_param('completiondate', '', PARAM_RAW_TRIMMED);
+
+        if ($cid > 0 && !empty($actname)) {
+            $saved = \local_batchanalytics\mentor_activity_service::save_activity_status(
+                $cid,
+                $actname,
+                (bool)$completed,
+                $completiondate,
+                $USER->id
+            );
+            $username = fullname($USER);
+            echo json_encode([
+                'status' => 'ok',
+                'data' => $saved,
+                'modifiedbyname' => $username,
+                'message' => get_string('mentor_activities_saved', 'local_batchanalytics')
+            ]);
+            die();
+        }
+        throw new \moodle_exception('invalidcourseid');
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+    die();
+}
+
 // -------------------------------------------------------------------------
 // 2. Data Retrieval from Batch Management (local_bm_classsection & batch)
 // -------------------------------------------------------------------------
@@ -722,18 +760,17 @@ $enrolled_userids = array_map(function($s) { return (int)($s->userid ?? $s->id ?
 $course_attendance_pct = \local_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
 
 // -------------------------------------------------------------------------
-// 5. Tab 1: Mentor Activities (Embedded Activity Tracker UI)
+// 5. Tab 1: Mentor Activities (Operational Mentor Activities)
 // -------------------------------------------------------------------------
-$activity_categories = [];
+$mentor_activity_data = [
+    'courseid' => $courseid,
+    'group' => 'Default',
+    'is_manual' => false,
+    'activities' => []
+];
 
 if ($courseid > 0) {
-    $act_service = new \local_batchanalytics\activity_tracker_service();
-    if ($act_service->is_table_available()) {
-        $tracker_data = $act_service->get_course_data($courseid);
-        if (!empty($tracker_data['categories'])) {
-            $activity_categories = $tracker_data['categories'];
-        }
-    }
+    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name);
 }
 
 // -------------------------------------------------------------------------
@@ -1028,67 +1065,66 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
   <div class="ba-module-panels">
 
-    <!-- 1. Mentor Activities Panel (Embedded Activity Tracker UI) -->
+    <!-- 1. Mentor Activities Panel (Operational Mentor Activities) -->
     <div id="panel-mentor" class="panel active">
-      <div class="panel-note">
-        Scheduled activities the mentor performs. Actual date auto-fills and saves directly to the Module Tracker when marked completed.
+      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          Key operational activities performed by mentors for this module. Marking completed auto-fills today's date and saves instantly.
+        </div>
+        <div class="ba-mentor-group-badge" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:14px; font-size:12px; font-weight:600;">
+          <span style="opacity:0.8;">Group:</span>
+          <span><?= s($mentor_activity_data['group']) ?></span>
+          <span style="font-size:11px; font-weight:normal; opacity:0.75;"><?= $mentor_activity_data['is_manual'] ? '(Course Setting)' : '(Auto-matched)' ?></span>
+        </div>
       </div>
 
-<?php if (empty($activity_categories)): ?>
+      <?php if (empty($mentor_activity_data['activities'])): ?>
         <div class="tablecard">
-          <div class="muted" style="text-align:center; padding:24px;">No mentor activities are configured for this module.</div>
+          <div class="muted" style="text-align:center; padding:24px;"><?= get_string('mentor_activities_empty', 'local_batchanalytics') ?></div>
         </div>
       <?php else: ?>
       <div class="ba-tracker-wrap">
-        <div class="ba-tracker-header-row">
-          <!-- Category Tabs -->
-          <div class="ba-tracker-categories">
-            <?php foreach ($activity_categories as $idx => $cat): ?>
-              <button type="button" class="ba-tracker-cat-btn <?= $idx === 0 ? 'active' : '' ?>" data-cat="<?= s($cat['id']) ?>">
-                <?= s($cat['name']) ?>
-                <span class="ba-tracker-badge"><?= count($cat['activities']) ?></span>
-              </button>
-            <?php endforeach; ?>
+        <div class="ba-tracker-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:13px; font-weight:600; color:#374151;">
+            Checklist (<?= count($mentor_activity_data['activities']) ?> activities)
           </div>
-
-          <div id="ba-tracker-status-msg" class="ba-tracker-status-msg"></div>
+          <div id="ba-mentor-status-msg" class="ba-tracker-status-msg"></div>
         </div>
 
-        <!-- Activity Tables by Category -->
-        <?php foreach ($activity_categories as $idx => $cat): ?>
-          <div class="ba-tracker-category-table tablecard" id="tracker-cat-<?= s($cat['id']) ?>" style="<?= $idx === 0 ? 'display:block;' : 'display:none;' ?>">
-            <table>
-              <thead>
+        <div class="tablecard">
+          <table class="ba-mentor-table">
+            <thead>
+              <tr>
+                <th>Activity Name</th>
+                <th style="width:160px;">Status</th>
+                <th style="width:200px;">Completion Date</th>
+                <th style="width:200px;">Last Updated By</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($mentor_activity_data['activities'] as $act): ?>
                 <tr>
-                  <th>Activity Name</th>
-                  <th style="width:160px;">Status</th>
-                  <th style="width:200px;">Completion Date</th>
+                  <td><span class="val" style="font-weight:600; color:#1f2937;"><?= s($act['name']) ?></span></td>
+                  <td>
+                    <label class="ba-tracker-check">
+                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
+                      <span>Completed</span>
+                    </label>
+                  </td>
+                  <td>
+                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>"
+                           value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
+                  </td>
+                  <td>
+                    <span class="ba-mentor-updatedby" data-actname="<?= s($act['name']) ?>" style="font-size:12px; color:#4b5563;">
+                      <?= !empty($act['modifiedbyname']) ? s($act['modifiedbyname']) : '<span class="muted">—</span>' ?>
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                <?php if (empty($cat['activities'])): ?>
-                  <tr><td colspan="3" class="muted" style="text-align:center; padding:24px;">No activities in this category.</td></tr>
-                <?php else: ?>
-                  <?php foreach ($cat['activities'] as $act): ?>
-                    <tr>
-                      <td><span class="val"><?= s($act['name']) ?></span></td>
-                      <td>
-                        <label class="ba-tracker-check">
-                          <input type="checkbox" data-cmid="<?= (int)$act['cmid'] ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
-                          <span>Completed</span>
-                        </label>
-                      </td>
-                      <td>
-                        <input type="date" class="ba-tracker-date" data-cmid="<?= (int)$act['cmid'] ?>"
-                               value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
-        <?php endforeach; ?>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
       </div>
       <?php endif; ?>
     </div>

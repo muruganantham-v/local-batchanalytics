@@ -55,3 +55,51 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
     $navigation->add_node($node);
 }
 
+/**
+ * Course form definition callback (legacy fallback).
+ *
+ * @param moodleform $mform
+ * @param stdClass $course
+ */
+function local_batchanalytics_courseform_definition($mform, $course) {
+    if ($mform->elementExists('local_batchanalytics_mentor_hdr')) {
+        return;
+    }
+
+    $courseid = !empty($course->id) ? (int)$course->id : 0;
+    $mform->addElement('header', 'local_batchanalytics_mentor_hdr', get_string('mentor_activity_grouping_hdr', 'local_batchanalytics'));
+    $mform->setExpanded('local_batchanalytics_mentor_hdr', false);
+
+    $options = \local_batchanalytics\mentor_activity_service::get_available_group_options();
+    $mform->addElement(
+        'select',
+        'local_batchanalytics_mentor_group',
+        get_string('mentor_activity_group_select', 'local_batchanalytics'),
+        $options
+    );
+    $mform->setType('local_batchanalytics_mentor_group', PARAM_TEXT);
+    $mform->addHelpButton('local_batchanalytics_mentor_group', 'mentor_activity_group_select', 'local_batchanalytics');
+
+    if ($courseid > 0) {
+        $selected = \local_batchanalytics\mentor_activity_service::get_course_selected_group($courseid);
+        $mform->setDefault('local_batchanalytics_mentor_group', $selected);
+    }
+}
+
+/**
+ * Course form submitted data callback (legacy fallback).
+ *
+ * @param stdClass $course
+ * @param stdClass $data
+ */
+function local_batchanalytics_courseform_submited_data($course, $data) {
+    $courseid = !empty($course->id) ? (int)$course->id : (!empty($data->id) ? (int)$data->id : 0);
+    if ($courseid > 0 && isset($data->local_batchanalytics_mentor_group)) {
+        \local_batchanalytics\mentor_activity_service::save_course_selected_group(
+            $courseid,
+            trim((string)$data->local_batchanalytics_mentor_group)
+        );
+    }
+}
+
+

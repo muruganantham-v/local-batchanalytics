@@ -18,6 +18,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/classes/admin_setting_crm_fields.php');
 require_once(__DIR__ . '/classes/admin_setting_module_tracker_categories.php');
+require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
     $settings = new admin_settingpage('local_batchanalytics', get_string('pluginname', 'local_batchanalytics'));
@@ -87,6 +88,30 @@ if ($hassiteconfig) {
         'local_batchanalytics/module_tracker_categories',
         get_string('module_tracker_categories', 'local_batchanalytics'),
         get_string('module_tracker_categories_desc', 'local_batchanalytics')
+    ));
+
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/mentor_activities_heading',
+        get_string('mentor_activities_heading', 'local_batchanalytics'),
+        get_string('mentor_activities_heading_desc', 'local_batchanalytics')
+    ));
+
+    $default_master = implode("\n", \local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES);
+    $settings->add(new admin_setting_configtextarea(
+        'local_batchanalytics/mentor_master_activities',
+        get_string('mentor_master_activities', 'local_batchanalytics'),
+        get_string('mentor_master_activities_desc', 'local_batchanalytics'),
+        $default_master,
+        PARAM_RAW_TRIMMED
+    ));
+
+    $default_grouping = \local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES;
+    $settings->add(new admin_setting_configtextarea(
+        'local_batchanalytics/mentor_activity_grouping',
+        get_string('mentor_activity_grouping', 'local_batchanalytics'),
+        get_string('mentor_activity_grouping_desc', 'local_batchanalytics'),
+        $default_grouping,
+        PARAM_RAW_TRIMMED
     ));
 
     $ADMIN->add('localplugins', $settings);

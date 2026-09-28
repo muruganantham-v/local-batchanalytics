@@ -2925,6 +2925,23 @@ input:checked+.ba-slider:before {
   border-color: #e1e4e8;
 }
 
+.ba-module-page .ba-mentor-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+.ba-module-page .ba-mentor-group-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Advanced Filter Toolbar (Student Performance) */
 .ba-module-page .ba-adv-filter-box {
   background: #ffffff;

@@ -37,30 +37,15 @@
             });
         });
 
-        // 2. Activity Tracker UI
-        var catBtns = container.querySelectorAll('.ba-tracker-cat-btn');
-        var catTables = container.querySelectorAll('.ba-tracker-category-table');
-        var statusMsg = document.getElementById('ba-tracker-status-msg');
-
-        catBtns.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var catKey = this.getAttribute('data-cat');
-                catBtns.forEach(function(b) { b.classList.remove('active'); });
-                catTables.forEach(function(t) { t.style.display = 'none'; });
-
-                this.classList.add('active');
-                var activeTable = document.getElementById('tracker-cat-' + catKey);
-                if (activeTable) {
-                    activeTable.style.display = 'block';
-                }
-            });
-        });
+        // 2. Mentor Activities Checklist UI
+        var mentorStatusMsg = document.getElementById('ba-mentor-status-msg');
 
         // Checkbox & Date picker auto-fill and save
-        container.querySelectorAll('.ba-tracker-check input').forEach(function(chk) {
+        container.querySelectorAll('.ba-mentor-check').forEach(function(chk) {
             chk.addEventListener('change', function() {
-                var cmid = this.getAttribute('data-cmid');
-                var dateInput = container.querySelector('.ba-tracker-date[data-cmid="' + cmid + '"]');
+                var actName = this.getAttribute('data-actname') || '';
+                var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
+                var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
                 if (this.checked && dateInput && !dateInput.value) {
                     var now = new Date();
                     var localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
@@ -69,35 +54,37 @@
                 if (dateInput) {
                     dateInput.disabled = !this.checked;
                 }
-                saveTrackerActivity(cmid);
+                saveMentorActivity(actName);
             });
         });
 
-        container.querySelectorAll('.ba-tracker-date').forEach(function(dateInput) {
+        container.querySelectorAll('.ba-mentor-date').forEach(function(dateInput) {
             dateInput.addEventListener('change', function() {
-                var cmid = this.getAttribute('data-cmid');
-                saveTrackerActivity(cmid);
+                var actName = this.getAttribute('data-actname') || '';
+                saveMentorActivity(actName);
             });
         });
 
-        function saveTrackerActivity(cmid) {
-            var chk = container.querySelector('.ba-tracker-check input[data-cmid="' + cmid + '"]');
-            var dateInput = container.querySelector('.ba-tracker-date[data-cmid="' + cmid + '"]');
+        function saveMentorActivity(actName) {
+            var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
+            var chk = container.querySelector('.ba-mentor-check[data-actname="' + escapedName + '"]');
+            var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
+            var updatedBySpan = container.querySelector('.ba-mentor-updatedby[data-actname="' + escapedName + '"]');
             if (!chk) return;
 
             var isCompleted = chk.checked ? 1 : 0;
             var compDate = dateInput ? dateInput.value : '';
 
-            if (statusMsg) {
-                statusMsg.textContent = 'Saving activity status…';
-                statusMsg.style.color = '#1b6ec2';
+            if (mentorStatusMsg) {
+                mentorStatusMsg.textContent = 'Saving activity status…';
+                mentorStatusMsg.style.color = '#1b6ec2';
             }
 
             var formData = new FormData();
-            formData.append('action', 'saveactivity');
+            formData.append('action', 'save_mentor_activity');
             formData.append('sesskey', sesskey);
             formData.append('courseid', courseId);
-            formData.append('cmid', cmid);
+            formData.append('activityname', actName);
             formData.append('completed', isCompleted);
             formData.append('completiondate', compDate);
 
@@ -107,25 +94,29 @@
             })
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                if (statusMsg) {
-                    statusMsg.textContent = '✓ Activity updated successfully';
-                    statusMsg.style.color = '#1e8e4e';
+                if (mentorStatusMsg) {
+                    mentorStatusMsg.textContent = '✓ Activity updated successfully';
+                    mentorStatusMsg.style.color = '#1e8e4e';
                     setTimeout(function() {
-                        statusMsg.textContent = '';
+                        mentorStatusMsg.textContent = '';
                     }, 3000);
+                }
+                if (data && data.modifiedbyname && updatedBySpan) {
+                    updatedBySpan.textContent = data.modifiedbyname;
                 }
             })
             .catch(function(err) {
-                console.warn('Tracker save response:', err);
-                if (statusMsg) {
-                    statusMsg.textContent = '✓ Status saved locally';
-                    statusMsg.style.color = '#1e8e4e';
+                console.warn('Mentor activity save error:', err);
+                if (mentorStatusMsg) {
+                    mentorStatusMsg.textContent = '✗ Error saving activity';
+                    mentorStatusMsg.style.color = '#d93025';
                     setTimeout(function() {
-                        statusMsg.textContent = '';
-                    }, 2500);
+                        mentorStatusMsg.textContent = '';
+                    }, 3500);
                 }
             });
         }
+
 
         // 3. Student Performance: Banding & Pagination (Matching Prototype & Batch Detail)
         var stuData = [];

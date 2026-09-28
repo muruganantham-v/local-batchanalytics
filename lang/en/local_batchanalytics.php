@@ -69,3 +69,19 @@ $string['invalidactivity'] = 'The selected activity is not available in this cou
 $string['invalidcompletiondate'] = 'Enter a valid completion date.';
 $string['activity_tracker_upgrade_required'] = 'Module Tracker data is not available yet. Complete the Moodle plugin upgrade, then reload this page.';
 $string['modal_close'] = 'Close';
+
+// Mentor Activities
+$string['mentor_activities_heading'] = 'Mentor Activities Configuration';
+$string['mentor_activities_heading_desc'] = 'Configure the master list of mentor activities and their course grouping rules.';
+$string['mentor_master_activities'] = 'Master Activity Pool';
+$string['mentor_master_activities_desc'] = 'List all possible mentor activities (one per line).';
+$string['mentor_activity_grouping'] = 'Course Grouping Rules';
+$string['mentor_activity_grouping_desc'] = 'Define activities grouped by course pattern or subject (format: Group Name: Activity 1, Activity 2, ...). If no manual group is chosen in Course Settings, the course title is matched against these group names.';
+$string['mentor_activity_grouping_hdr'] = 'Mentor Activities';
+$string['mentor_activity_group_select'] = 'Mentor Activity Group';
+$string['mentor_activity_group_select_desc'] = 'Select which group of mentor activities applies to this course, or choose Auto-detect.';
+$string['mentor_activity_autodetect'] = 'Auto-detect from Course Name';
+$string['mentor_activities_empty'] = 'No mentor activities found for this module.';
+$string['mentor_activities_saved'] = 'Mentor activity saved successfully.';
+$string['mentor_activities_group_badge'] = 'Activity Group';
+
