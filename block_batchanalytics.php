@@ -173,6 +173,8 @@ class block_batchanalytics extends block_base {
      data-sesskey="' . s(sesskey()) . '"
      data-api-url="' . s($apiurl) . '">
 
+  <script type="application/json" id="ba-dash-initial-data">' . json_encode($dashdata, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . '</script>
+
   <!-- Header Section with Greeting and Auto-detected Role Subtitle -->
   <div class="greet">
     <div>
@@ -205,8 +207,29 @@ class block_batchanalytics extends block_base {
           <option value="soon">Due next 7 days</option>
         </select>
       </div>
-      <div id="ba-dash-todo-list">
-        <!-- Populated and paginated dynamically via block_task_dashboard.js -->
+      <div id="ba-dash-todo-list">';
+
+            if (empty($dashdata['todo'])) {
+                $html .= '<div class="empty-box">✓ No pending tasks matching this filter</div>';
+            } else {
+                $initial_todos = array_slice($dashdata['todo'], 0, 5);
+                foreach ($initial_todos as $t) {
+                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : 'Go to module →';
+                    $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
+                    $html .= '  <div class="body">';
+                    $html .= '    <div class="t">' . s($t['title']) . '</div>';
+                    $html .= '    <div class="m">' . s($t['meta']) . '</div>';
+                    $html .= '    <a href="' . s($t['dest_url']) . '" class="go">' . s($dest_label) . '</a>';
+                    $html .= '  </div>';
+                    $html .= '  <div class="actions">';
+                    $html .= '    <span class="due ' . s($t['status_class']) . '">' . s($t['status_label']) . '</span>';
+                    $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
+                    $html .= '  </div>';
+                    $html .= '</div>';
+                }
+            }
+
+            $html .= '
       </div>
       <div id="ba-dash-todo-pagination" class="ba-pagination-wrap">
         <!-- Pagination controls dynamically rendered -->

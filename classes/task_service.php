@@ -72,6 +72,25 @@ class task_service {
     }
 
     /**
+     * Check if a user can view batch analytics dashboard or pages based on capabilities or assigned personas.
+     *
+     * @param int $userid
+     * @return bool
+     */
+    public static function can_view_dashboard(int $userid): bool {
+        $context = \context_system::instance();
+        if (has_capability('block/batchanalytics:view', $context, $userid)) {
+            return true;
+        }
+        $personas = self::resolve_user_personas($userid);
+        return !empty($personas['is_manager'])
+            || !empty($personas['is_mentor'])
+            || !empty($personas['is_sse'])
+            || !empty($personas['is_pm'])
+            || !empty($personas['is_asst']);
+    }
+
+    /**
      * Resolve the operational personas and permissions for a user.
      *
      * @param int $userid
@@ -82,6 +101,28 @@ class task_service {
 
         $user_obj = ($userid === (int)$USER->id) ? $USER : $DB->get_record('user', ['id' => $userid]);
         $fullname = $user_obj ? trim(fullname($user_obj)) : '';
+        $username = $user_obj ? trim($user_obj->username) : '';
+        $email    = $user_obj ? trim($user_obj->email) : '';
+
+        $is_user_match = static function($val) use ($userid, $fullname, $username, $email): bool {
+            if ($val === null || $val === false || trim((string)$val) === '') {
+                return false;
+            }
+            $s = trim((string)$val);
+            if ($s === (string)$userid) {
+                return true;
+            }
+            if ($fullname !== '' && strcasecmp($s, $fullname) === 0) {
+                return true;
+            }
+            if ($username !== '' && strcasecmp($s, $username) === 0) {
+                return true;
+            }
+            if ($email !== '' && strcasecmp($s, $email) === 0) {
+                return true;
+            }
+            return false;
+        };
 
         $context = \context_system::instance();
         $is_manager = is_siteadmin($userid)
@@ -105,24 +146,40 @@ class task_service {
             $sections = $DB->get_records('local_bm_classsection', null, '', 'id, maacexecutive, maacexecutivename, pmmanager, pmmanagername, moduledata');
             foreach ($sections as $sec) {
                 // SS / MAAC Executive check
-                if ((string)$sec->maacexecutive === (string)$userid || ($fullname !== '' && $sec->maacexecutivename === $fullname)) {
+                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)) {
                     $assigned_sse = true;
                 }
                 // Program Manager check
-                if ((string)$sec->pmmanager === (string)$userid || ($fullname !== '' && $sec->pmmanagername === $fullname)) {
+                if ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
                     $assigned_pm = true;
                 }
                 // Mentor check in moduledata
                 $modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($modules as $m) {
-                    $class_mentors = [(string)($m['primarymentor'] ?? ''), (string)($m['secondarymentor'] ?? '')];
-                    $lab_mentors   = [(string)($m['labmentor1'] ?? ''), (string)($m['labmentor2'] ?? ''), (string)($m['labmentor3'] ?? '')];
+                    $class_mentors = [$m['primarymentor'] ?? '', $m['secondarymentor'] ?? ''];
+                    $lab_mentors   = [$m['labmentor1'] ?? '', $m['labmentor2'] ?? '', $m['labmentor3'] ?? ''];
 
-                    if (in_array((string)$userid, $class_mentors, true) || ($fullname !== '' && in_array($fullname, $class_mentors, true))) {
-                        $assigned_class_mentor = true;
+                    foreach ($class_mentors as $cm) {
+                        if ($is_user_match($cm)) {
+                            $assigned_class_mentor = true;
+                            break;
+                        }
                     }
-                    if (in_array((string)$userid, $lab_mentors, true) || ($fullname !== '' && in_array($fullname, $lab_mentors, true))) {
-                        $assigned_lab_mentor = true;
+                    foreach ($lab_mentors as $lm) {
+                        if ($is_user_match($lm)) {
+                            $assigned_lab_mentor = true;
+                            break;
+                        }
+                    }
+
+                    if (!$assigned_class_mentor && $has_mentor_role) {
+                        $cid = (int)($m['moodlecourseid'] ?? 0);
+                        if ($cid > 0) {
+                            $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
+                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                                $assigned_class_mentor = true;
+                            }
+                        }
                     }
                 }
             }
@@ -147,6 +204,10 @@ class task_service {
             'assigned_lab_mentor'   => $assigned_lab_mentor,
             'assigned_sse'          => $assigned_sse,
             'assigned_pm'           => $assigned_pm,
+            'has_mentor_role'       => $has_mentor_role,
+            'has_sse_role'          => $has_sse_role,
+            'has_pm_role'           => $has_pm_role,
+            'has_asst_role'         => $has_asst_role,
         ];
     }
 
@@ -163,6 +224,28 @@ class task_service {
         $user_obj = ($userid === (int)$USER->id) ? $USER : $DB->get_record('user', ['id' => $userid]);
         $firstname = $user_obj ? ($user_obj->firstname ?: fullname($user_obj)) : 'User';
         $user_fullname = $user_obj ? trim(fullname($user_obj)) : '';
+        $user_username = $user_obj ? trim($user_obj->username) : '';
+        $user_email    = $user_obj ? trim($user_obj->email) : '';
+
+        $is_user_match = static function($val) use ($userid, $user_fullname, $user_username, $user_email): bool {
+            if ($val === null || $val === false || trim((string)$val) === '') {
+                return false;
+            }
+            $s = trim((string)$val);
+            if ($s === (string)$userid) {
+                return true;
+            }
+            if ($user_fullname !== '' && strcasecmp($s, $user_fullname) === 0) {
+                return true;
+            }
+            if ($user_username !== '' && strcasecmp($s, $user_username) === 0) {
+                return true;
+            }
+            if ($user_email !== '' && strcasecmp($s, $user_email) === 0) {
+                return true;
+            }
+            return false;
+        };
 
         // Time-based greeting
         $hour = (int)date('G');
@@ -260,17 +343,17 @@ class task_service {
         foreach ($sections as $sec) {
             $match = false;
             if ($active_role === 'sse') {
-                if ((string)$sec->maacexecutive === (string)$userid || ($user_fullname !== '' && $sec->maacexecutivename === $user_fullname)) {
+                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)) {
                     $match = true;
-                } else if ($is_manager && !$personas['assigned_sse']) {
-                    // Manager with no specific batch assignment overseeing active batches
+                } else if (!$personas['assigned_sse'] && ($personas['is_sse'] || $is_manager)) {
+                    // Fallback to active batches if user has role but no specific batch tag
                     $match = true;
                 }
             } else if ($active_role === 'pm') {
-                if ((string)$sec->pmmanager === (string)$userid || ($user_fullname !== '' && $sec->pmmanagername === $user_fullname)) {
+                if ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
                     $match = true;
-                } else if ($is_manager && !$personas['assigned_pm']) {
-                    // Manager with no specific batch assignment overseeing active batches
+                } else if (!$personas['assigned_pm'] && ($personas['is_pm'] || $is_manager)) {
+                    // Fallback to active batches if user has role but no specific batch tag
                     $match = true;
                 }
             } else if ($active_role === 'asst') {
@@ -279,10 +362,28 @@ class task_service {
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
                     $mentors = ($active_role === 'class')
-                        ? [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? '')]
-                        : [(string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')];
+                        ? [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? '')]
+                        : [($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')];
 
-                    if (in_array((string)$userid, $mentors, true) || ($user_fullname !== '' && in_array($user_fullname, $mentors, true))) {
+                    $is_mentor_in_mod = false;
+                    foreach ($mentors as $m_cand) {
+                        if ($is_user_match($m_cand)) {
+                            $is_mentor_in_mod = true;
+                            break;
+                        }
+                    }
+
+                    if (!$is_mentor_in_mod && $personas['has_mentor_role']) {
+                        $cid = (int)($sm['moodlecourseid'] ?? 0);
+                        if ($cid > 0) {
+                            $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
+                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                                $is_mentor_in_mod = true;
+                            }
+                        }
+                    }
+
+                    if ($is_mentor_in_mod) {
                         $match = true;
                         break;
                     }
@@ -328,12 +429,27 @@ class task_service {
 
                     // Check if mentor assigned to this specific module
                     $mentors = ($active_role === 'class')
-                        ? [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? '')]
+                        ? [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? '')]
                         : ($active_role === 'lab'
-                            ? [(string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]
-                            : [(string)($sm['primarymentor'] ?? ''), (string)($sm['secondarymentor'] ?? ''), (string)($sm['labmentor1'] ?? ''), (string)($sm['labmentor2'] ?? ''), (string)($sm['labmentor3'] ?? '')]);
+                            ? [($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')]
+                            : [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? ''), ($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')]);
 
-                    if (!in_array((string)$userid, $mentors, true) && ($user_fullname === '' || !in_array($user_fullname, $mentors, true))) {
+                    $is_assigned = false;
+                    foreach ($mentors as $m_cand) {
+                        if ($is_user_match($m_cand)) {
+                            $is_assigned = true;
+                            break;
+                        }
+                    }
+
+                    if (!$is_assigned && $personas['has_mentor_role']) {
+                        $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
+                        if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                            $is_assigned = true;
+                        }
+                    }
+
+                    if (!$is_assigned) {
                         continue;
                     }
 

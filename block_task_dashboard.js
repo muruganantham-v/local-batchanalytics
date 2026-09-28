@@ -50,7 +50,18 @@
       });
     }
 
-    loadDashboardData();
+    var initDataEl = document.getElementById('ba-dash-initial-data');
+    if (initDataEl && initDataEl.textContent.trim()) {
+      try {
+        var d = JSON.parse(initDataEl.textContent);
+        applyData(d);
+      } catch (e) {
+        console.error('Error parsing initial dashboard data:', e);
+        loadDashboardData();
+      }
+    } else {
+      loadDashboardData();
+    }
   }
 
   function loadDashboardData() {

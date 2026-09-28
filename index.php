@@ -16,10 +16,54 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
-$userid = $USER->id;
+$userid = (int)$USER->id;
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
+
+// Dashboard block AJAX endpoints (available to any authenticated user with a dashboard block)
+if ($action === 'get_dashboard_tasks') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+        $data = \block_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        echo json_encode(['success' => true, 'data' => $data]);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'complete_task') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $type = required_param('type', PARAM_ALPHANUMEXT);
+        $params = [
+            'courseid' => optional_param('courseid', 0, PARAM_INT),
+            'batchid'  => optional_param('batchid', 0, PARAM_INT),
+            'act_name' => optional_param('act_name', '', PARAM_RAW),
+            'act_key'  => optional_param('act_key', '', PARAM_RAW),
+        ];
+        $res = \block_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
+        echo json_encode($res);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
 
 // Capability-based permission check. Assign 'block/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
-require_capability('block/batchanalytics:view', $context);
+if (!has_capability('block/batchanalytics:view', $context)) {
+    if (!\block_batchanalytics\task_service::can_view_dashboard($userid)) {
+        require_capability('block/batchanalytics:view', $context);
+    }
+}
 
 $can_manage = is_siteadmin($userid) || has_capability('block/batchanalytics:manage', $context);
 $can_view_all_courses = $can_manage || has_capability('block/batchanalytics:viewallcourses', $context);
@@ -205,43 +249,6 @@ if ($action === 'getptfdata') {
     die();
 }
 
-if ($action === 'get_dashboard_tasks') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        require_sesskey();
-        $role = optional_param('role', '', PARAM_ALPHANUMEXT);
-        $data = \block_batchanalytics\task_service::get_dashboard_data((int)$USER->id, $role);
-        echo json_encode(['success' => true, 'data' => $data]);
-    } catch (\Throwable $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
-    die();
-}
-
-if ($action === 'complete_task') {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        require_sesskey();
-        $type = required_param('type', PARAM_ALPHANUMEXT);
-        $params = [
-            'courseid' => optional_param('courseid', 0, PARAM_INT),
-            'batchid'  => optional_param('batchid', 0, PARAM_INT),
-            'act_name' => optional_param('act_name', '', PARAM_RAW),
-            'act_key'  => optional_param('act_key', '', PARAM_RAW),
-        ];
-        $res = \block_batchanalytics\task_service::mark_activity_complete((int)$USER->id, $type, $params);
-        echo json_encode($res);
-    } catch (\Throwable $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
-    die();
-}
 
 if ($action === 'getnewbatchdata') {
     while (ob_get_level()) {

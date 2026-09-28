@@ -30,7 +30,11 @@ require_once(__DIR__ . '/classes/batch_notes_service.php');
 require_login();
 
 $context = context_system::instance();
-require_capability('block/batchanalytics:view', $context);
+if (!has_capability('block/batchanalytics:view', $context)) {
+    if (!\block_batchanalytics\task_service::can_view_dashboard((int)$USER->id)) {
+        require_capability('block/batchanalytics:view', $context);
+    }
+}
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 if ($action === 'addnote') {
