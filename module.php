@@ -1153,6 +1153,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
                 <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
                 <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
+                <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
                 <?php foreach ($performance_columns as $column): ?>
                   <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
                 <?php endforeach; ?>

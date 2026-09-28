@@ -94,9 +94,11 @@ class student_performance_service {
             $reordered_columns[$ckey] = $columns[$ckey];
         }
         $columns = $reordered_columns;
+        $student_attendance = $this->get_students_attendance($courseids, $userids);
 
         foreach ($students as &$student) {
             $userid = (int)($student['userid'] ?? 0);
+            $student['attendance'] = isset($student_attendance[$userid]) ? $student_attendance[$userid] : null;
             $student['categories'] = [];
             $overall = [];
             foreach ($columns as $key => $column) {
@@ -355,5 +357,58 @@ class student_performance_service {
         unset($category);
 
         return array_values($categories);
+    }
+
+    /**
+     * Fetch attendance percentage for each user across the given courses.
+     *
+     * @param int[] $courseids
+     * @param int[] $userids
+     * @return array<int, float> [userid => attendance_percentage]
+     */
+    private function get_students_attendance(array $courseids, array $userids): array {
+        global $DB;
+
+        $valid_courseids = array_unique(array_filter(array_map('intval', $courseids)));
+        if (empty($valid_courseids) || empty($userids)) {
+            return [];
+        }
+
+        list($cin_sql, $cparams) = $DB->get_in_or_equal($valid_courseids, SQL_PARAMS_NAMED, 'attcourse');
+        list($uin_sql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'attuser');
+        $attparams = array_merge($cparams, $uparams);
+
+        $attsql = "
+            SELECT gg.userid, gg.finalgrade, gi.grademin, gi.grademax
+              FROM {grade_items} gi
+              JOIN {grade_grades} gg ON gg.itemid = gi.id
+             WHERE gi.courseid $cin_sql
+               AND (gi.itemmodule = 'attendance' OR LOWER(gi.itemname) LIKE '%attend%')
+               AND gi.hidden = 0
+               AND gg.finalgrade IS NOT NULL
+               AND gg.excluded = 0
+               AND gg.hidden = 0
+               AND gg.userid $uin_sql
+        ";
+
+        $attrecords = $DB->get_recordset_sql($attsql, $attparams);
+        $user_atts = [];
+        foreach ($attrecords as $rec) {
+            $range = (float)$rec->grademax - (float)$rec->grademin;
+            if ($range > 0) {
+                $pct = (((float)$rec->finalgrade - (float)$rec->grademin) / $range) * 100;
+                $user_atts[(int)$rec->userid][] = max(0.0, min(100.0, $pct));
+            }
+        }
+        $attrecords->close();
+
+        $result = [];
+        foreach ($user_atts as $uid => $pct_list) {
+            if (!empty($pct_list)) {
+                $result[$uid] = round(array_sum($pct_list) / count($pct_list), 1);
+            }
+        }
+
+        return $result;
     }
 }

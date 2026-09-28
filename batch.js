@@ -701,7 +701,7 @@
         }
 
         function getVisiblePerformanceColumnCount() {
-            return 4 + performanceColumns.length;
+            return 5 + performanceColumns.length;
         }
 
         function renderPerformanceHeaders() {
@@ -713,7 +713,8 @@
             var html = '<tr>' +
                 '<th class="sortable" data-sort="band" title="Sort by Band">Band</th>' +
                 '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
-                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>';
+                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>' +
+                '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
             performanceColumns.forEach(function(column) {
                 html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
@@ -1336,6 +1337,7 @@
                         '</div>' +
                     '</td>' +
                     '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                    '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
                     performanceColumns.map(function(column) {
                         return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
                     }).join('') +
@@ -1513,7 +1515,7 @@
         // Export Filtered Students to CSV
         if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile', 'Attendance'];
                 performanceColumns.forEach(function(column) {
                     var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
                     csvHeaders.push(column.label + suffix);
@@ -1532,8 +1534,9 @@
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
                     var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
+                    var attVal = (s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? s.attendance + '%' : '—';
                     var merit = (s.merit_text || '').replace(/"/g, '""');
-                    var row = [band, name, id, grade];
+                    var row = [band, name, id, grade, attVal];
                     performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     row.push(merit);
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
