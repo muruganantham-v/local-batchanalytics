@@ -32,16 +32,17 @@ class block_batchanalytics extends block_base {
      * Initialise the block.
      */
     public function init() {
-        $this->title = '';
+        $this->title = get_string('pluginname', 'block_batchanalytics');
     }
 
     /**
-     * Hide block header to remove default "Batch Analytics" card title.
+     * Hide block header to remove default "Batch Analytics" card title when not editing.
+     * In edit mode, header remains visible so users can configure, move, or hide the block.
      *
      * @return bool
      */
     public function hide_header() {
-        return true;
+        return empty($this->page->user_is_editing);
     }
 
     /**
@@ -261,8 +262,8 @@ class block_batchanalytics extends block_base {
   </div>
 
   <!-- Mark Complete Confirmation Modal -->
-  <div class="overlay" id="ba-task-modal-overlay">
-    <div class="modal">
+  <div class="ba-task-modal-overlay" id="ba-task-modal-overlay">
+    <div class="ba-task-modal-box">
       <h3>Mark Activity Complete</h3>
       <p>Confirm completion of this milestone activity:</p>
       <div class="act-name" id="ba-modal-task-name">—</div>

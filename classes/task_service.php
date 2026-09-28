@@ -126,8 +126,7 @@ class task_service {
 
         $context = \context_system::instance();
         $is_manager = is_siteadmin($userid)
-            || has_capability('block/batchanalytics:manage', $context, $userid)
-            || has_capability('local/batchanalytics:manage', $context, $userid);
+            || has_capability('block/batchanalytics:manage', $context, $userid);
 
         // Role config matches
         $has_mentor_role = self::user_has_configured_role($userid, 'mentor_roles');
@@ -261,68 +260,52 @@ class task_service {
         $personas = self::resolve_user_personas($userid);
         $is_manager = $personas['is_manager'];
 
-        // Available roles for switcher
+        // Normalize requested role to the 4 operational types: mentors, sspm, am, admin
+        $normalized_role = trim($requested_role);
+        if (in_array($normalized_role, ['class', 'lab', 'mentor'], true)) {
+            $normalized_role = 'mentors';
+        } else if (in_array($normalized_role, ['sse', 'pm'], true)) {
+            $normalized_role = 'sspm';
+        } else if (in_array($normalized_role, ['asst', 'assistant'], true)) {
+            $normalized_role = 'am';
+        } else if (in_array($normalized_role, ['all'], true)) {
+            $normalized_role = 'admin';
+        }
+
+        // Define the 4 operational types
         $available_roles = [];
         if ($is_manager) {
             $available_roles = [
-                'pm'     => 'Program Manager',
-                'sse'    => 'SS / MAAC Executive',
-                'class'  => 'Class Mentor',
-                'lab'    => 'Lab Mentor',
-                'asst'   => 'Assistant Manager',
-                'all'    => 'All Roles',
+                'admin'   => 'Admin',
+                'mentors' => 'Mentors',
+                'sspm'    => 'SS / PM',
+                'am'      => 'Assistant Manager',
             ];
+            $default_role = 'admin';
         } else {
-            if ($personas['is_sse']) {
-                $available_roles['sse'] = 'SS / MAAC Executive';
+            if ($personas['is_mentor']) {
+                $available_roles['mentors'] = 'Mentors';
             }
-            if ($personas['is_pm']) {
-                $available_roles['pm'] = 'Program Manager';
+            if ($personas['is_sse'] || $personas['is_pm']) {
+                $available_roles['sspm'] = 'SS / PM';
             }
             if ($personas['is_asst']) {
-                $available_roles['asst'] = 'Assistant Manager';
+                $available_roles['am'] = 'Assistant Manager';
             }
-            if ($personas['is_class_mentor']) {
-                $available_roles['class'] = 'Class Mentor';
-            }
-            if ($personas['is_lab_mentor']) {
-                $available_roles['lab'] = 'Lab Mentor';
-            }
-            if (count($available_roles) > 1) {
-                $available_roles['all'] = 'All Roles';
-            }
+
             if (empty($available_roles)) {
-                $available_roles['class'] = 'Class Mentor';
+                $available_roles['mentors'] = 'Mentors';
+                $default_role = 'mentors';
+            } else if (isset($available_roles['am']) && $personas['is_asst'] && !$personas['is_mentor'] && !$personas['is_sse']) {
+                $default_role = 'am';
+            } else if (isset($available_roles['sspm']) && ($personas['assigned_sse'] || $personas['assigned_pm'] || $personas['is_sse'] || $personas['is_pm']) && !$personas['is_mentor']) {
+                $default_role = 'sspm';
+            } else {
+                $default_role = array_key_first($available_roles);
             }
         }
 
-        // Resolve active viewing role based on user direct assignment, then configured role
-        $active_role = $requested_role;
-        if ($active_role !== '' && isset($available_roles[$active_role])) {
-            // Keep requested role if explicitly requested.
-        } else if ($personas['assigned_sse']) {
-            $active_role = 'sse';
-        } else if ($personas['assigned_pm']) {
-            $active_role = 'pm';
-        } else if ($personas['assigned_class_mentor']) {
-            $active_role = 'class';
-        } else if ($personas['assigned_lab_mentor']) {
-            $active_role = 'lab';
-        } else if ($personas['is_sse']) {
-            $active_role = 'sse';
-        } else if ($personas['is_pm']) {
-            $active_role = 'pm';
-        } else if ($personas['is_asst']) {
-            $active_role = 'asst';
-        } else if ($personas['is_class_mentor']) {
-            $active_role = 'class';
-        } else if ($personas['is_lab_mentor']) {
-            $active_role = 'lab';
-        } else if ($is_manager) {
-            $active_role = 'pm';
-        } else {
-            $active_role = 'class';
-        }
+        $active_role = ($normalized_role !== '' && isset($available_roles[$normalized_role])) ? $normalized_role : $default_role;
 
         // Fetch batches and class sections
         $dbman = $DB->get_manager();
@@ -342,28 +325,25 @@ class task_service {
         $filtered_sections = [];
         foreach ($sections as $sec) {
             $match = false;
-            if ($active_role === 'sse') {
-                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)) {
-                    $match = true;
-                } else if (!$personas['assigned_sse'] && ($personas['is_sse'] || $is_manager)) {
-                    // Fallback to active batches if user has role but no specific batch tag
-                    $match = true;
-                }
-            } else if ($active_role === 'pm') {
-                if ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
-                    $match = true;
-                } else if (!$personas['assigned_pm'] && ($personas['is_pm'] || $is_manager)) {
-                    // Fallback to active batches if user has role but no specific batch tag
-                    $match = true;
-                }
-            } else if ($active_role === 'asst') {
+            if ($active_role === 'admin' || $active_role === 'am') {
                 $match = true;
-            } else if ($active_role === 'class' || $active_role === 'lab') {
+            } else if ($active_role === 'sspm') {
+                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)
+                    || $is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
+                    $match = true;
+                } else if (!$personas['assigned_sse'] && !$personas['assigned_pm'] && ($personas['is_sse'] || $personas['is_pm'] || $is_manager)) {
+                    $match = true;
+                }
+            } else if ($active_role === 'mentors') {
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
-                    $mentors = ($active_role === 'class')
-                        ? [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? '')]
-                        : [($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')];
+                    $mentors = [
+                        $sm['primarymentor'] ?? '',
+                        $sm['secondarymentor'] ?? '',
+                        $sm['labmentor1'] ?? '',
+                        $sm['labmentor2'] ?? '',
+                        $sm['labmentor3'] ?? ''
+                    ];
 
                     $is_mentor_in_mod = false;
                     foreach ($mentors as $m_cand) {
@@ -388,8 +368,6 @@ class task_service {
                         break;
                     }
                 }
-            } else {
-                $match = true;
             }
 
             if ($match) {
@@ -416,9 +394,9 @@ class task_service {
         $forthcoming_list = [];
 
         // ---------------------------------------------------------------------
-        // 1. MENTOR ACTIVITIES (for Class Mentor / Lab Mentor / All Roles)
+        // 1. MENTOR ACTIVITIES (for Mentors or Admin)
         // ---------------------------------------------------------------------
-        if (in_array($active_role, ['class', 'lab', 'all'], true)) {
+        if ($active_role === 'mentors' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
@@ -427,30 +405,33 @@ class task_service {
                         continue;
                     }
 
-                    // Check if mentor assigned to this specific module
-                    $mentors = ($active_role === 'class')
-                        ? [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? '')]
-                        : ($active_role === 'lab'
-                            ? [($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')]
-                            : [($sm['primarymentor'] ?? ''), ($sm['secondarymentor'] ?? ''), ($sm['labmentor1'] ?? ''), ($sm['labmentor2'] ?? ''), ($sm['labmentor3'] ?? '')]);
+                    if ($active_role === 'mentors') {
+                        $mentors = [
+                            $sm['primarymentor'] ?? '',
+                            $sm['secondarymentor'] ?? '',
+                            $sm['labmentor1'] ?? '',
+                            $sm['labmentor2'] ?? '',
+                            $sm['labmentor3'] ?? ''
+                        ];
 
-                    $is_assigned = false;
-                    foreach ($mentors as $m_cand) {
-                        if ($is_user_match($m_cand)) {
-                            $is_assigned = true;
-                            break;
+                        $is_assigned = false;
+                        foreach ($mentors as $m_cand) {
+                            if ($is_user_match($m_cand)) {
+                                $is_assigned = true;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!$is_assigned && $personas['has_mentor_role']) {
-                        $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
-                        if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
-                            $is_assigned = true;
+                        if (!$is_assigned && $personas['has_mentor_role']) {
+                            $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
+                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                                $is_assigned = true;
+                            }
                         }
-                    }
 
-                    if (!$is_assigned) {
-                        continue;
+                        if (!$is_assigned) {
+                            continue;
+                        }
                     }
 
                     $mod_name = $sm['name'] ?? 'Module';
@@ -466,15 +447,19 @@ class task_service {
                             }
 
                             $p_ts = (int)($act['planned_ts'] ?? 0);
+                            if ($p_ts <= 0) {
+                                continue;
+                            }
+
                             $act_name = $act['name'];
                             $batch_name = $sec->name ?: ('Batch ' . $sec->id);
 
                             $dest_url = (new \moodle_url('/blocks/batchanalytics/module.php', [
-                                'courseid' => $courseid,
-                                'batchid'  => $sec->id,
+                                'courseid'  => $courseid,
+                                'sectionid' => $sec->id,
                             ]))->out(false);
 
-                            if ($p_ts > 0 && $p_ts < $today_midnight) {
+                            if ($p_ts < $today_midnight) {
                                 $days = max(1, (int)floor(($today_midnight - $p_ts) / 86400));
                                 $todo_list[] = [
                                     'id'            => 'mentor_' . $courseid . '_' . $act['key'],
@@ -530,11 +515,14 @@ class task_service {
                                     'act_name'      => $act_name,
                                     'planned_ts'    => $p_ts,
                                 ];
-                            } else if ($p_ts > $next_week_end) {
+                            }
+
+                            // Forthcoming: strictly next 7 days only
+                            if ($p_ts >= $today_midnight && $p_ts <= $next_week_end) {
                                 $days = (int)floor(($p_ts - $today_midnight) / 86400);
                                 $forthcoming_list[] = [
                                     'title' => $act_name . ' — ' . $mod_name,
-                                    'meta'  => 'Batch ' . $batch_name . ' · in ' . $days . ' days',
+                                    'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
                                     'ts'    => $p_ts,
                                 ];
                             }
@@ -547,9 +535,9 @@ class task_service {
         }
 
         // ---------------------------------------------------------------------
-        // 2. SS ACTIVITIES (for SS Executive / Program Manager / Assistant Manager / All)
+        // 2. SS / PM ACTIVITIES (for SS / PM or Admin)
         // ---------------------------------------------------------------------
-        if (in_array($active_role, ['sse', 'pm', 'asst', 'all'], true)) {
+        if ($active_role === 'sspm' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
                 if (empty($sec->softskillsdata)) {
                     continue;
@@ -564,11 +552,11 @@ class task_service {
                     $p_ts = (int)($ss['planned'] ?? 0);
                     $a_ts = (int)($ss['actual'] ?? 0);
 
-                    if ($a_ts > 0) {
-                        continue; // Already completed
+                    if ($a_ts > 0 || $p_ts <= 0) {
+                        continue; // Already completed or unassigned
                     }
 
-                    if ($p_ts > 0 && $p_ts < $today_midnight) {
+                    if ($p_ts < $today_midnight) {
                         $days = max(1, (int)floor(($today_midnight - $p_ts) / 86400));
                         $todo_list[] = [
                             'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
@@ -624,12 +612,173 @@ class task_service {
                             'act_name'      => $act_name,
                             'planned_ts'    => $p_ts,
                         ];
-                    } else if ($p_ts > $next_week_end) {
+                    }
+
+                    // Forthcoming: strictly next 7 days only
+                    if ($p_ts >= $today_midnight && $p_ts <= $next_week_end) {
                         $days = (int)floor(($p_ts - $today_midnight) / 86400);
                         $forthcoming_list[] = [
                             'title' => $act_name,
-                            'meta'  => 'Batch ' . $batch_name . ' · in ' . $days . ' days',
+                            'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
                             'ts'    => $p_ts,
+                        ];
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 3. ASSISTANT MANAGER (AM) MODULE ACTIVITIES (for AM or Admin)
+        // Enter actual start date, mark module completion by end date, update mentors
+        // ---------------------------------------------------------------------
+        if ($active_role === 'am' || $active_role === 'admin') {
+            foreach ($filtered_sections as $sec) {
+                if (empty($sec->moduledata)) {
+                    continue;
+                }
+
+                $modules = util::decode_module_data($sec->moduledata, true);
+                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $dest_batch_url = (new \moodle_url('/blocks/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
+
+                foreach ($modules as $mod_key => $m) {
+                    $mod_name = $m['name'] ?? ('Module ' . $mod_key);
+                    $cid = (int)($m['moodlecourseid'] ?? 0);
+                    $p_start = (int)($m['plannedstart'] ?? 0);
+                    $p_end = (int)($m['plannedend'] ?? 0);
+                    $a_start = (int)($m['actualstart'] ?? 0);
+                    $a_end = (int)($m['actualend'] ?? 0);
+                    $primary_mentor = trim((string)($m['primarymentor'] ?? ''));
+
+                    $dest_mod_url = ($cid > 0)
+                        ? (new \moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $cid, 'sectionid' => $sec->id]))->out(false)
+                        : $dest_batch_url;
+
+                    // 1. Enter actual start date of the module
+                    if ($p_start > 0 && empty($a_start) && $p_start <= $next_week_end) {
+                        if ($p_start < $today_midnight) {
+                            $days = max(1, (int)floor(($today_midnight - $p_start) / 86400));
+                            $urgency = 1;
+                            $status_class = 'over';
+                            $status_label = 'Overdue ' . $days . 'd';
+                        } else if ($p_start < $today_end) {
+                            $urgency = 2;
+                            $status_class = 'today';
+                            $status_label = 'Due today';
+                        } else {
+                            $days = max(1, (int)floor(($p_start - $today_midnight) / 86400));
+                            $urgency = 3;
+                            $status_class = 'soon';
+                            $status_label = 'Due in ' . $days . 'd';
+                        }
+
+                        $todo_list[] = [
+                            'id'            => 'am_start_' . $sec->id . '_' . $mod_key,
+                            'title'         => 'Enter actual start date — ' . $mod_name,
+                            'meta'          => 'Batch ' . $batch_name . ' · Planned start ' . userdate($p_start, '%d %b %Y'),
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => $urgency,
+                            'status_class'  => $status_class,
+                            'status_label'  => $status_label,
+                            'dest_type'     => ($cid > 0 ? 'module' : 'batch'),
+                            'dest_url'      => $dest_mod_url,
+                            'action_type'   => 'am_start',
+                            'batchid'       => (int)$sec->id,
+                            'courseid'      => $cid,
+                            'act_key'       => (string)$mod_key,
+                            'act_name'      => 'Enter actual start date — ' . $mod_name,
+                            'planned_ts'    => $p_start,
+                        ];
+
+                        if ($p_start >= $today_midnight && $p_start <= $next_week_end) {
+                            $days = (int)floor(($p_start - $today_midnight) / 86400);
+                            $forthcoming_list[] = [
+                                'title' => 'Enter actual start date — ' . $mod_name,
+                                'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                'ts'    => $p_start,
+                            ];
+                        }
+                    }
+
+                    // 2. Mark module completion by end date
+                    if ($p_end > 0 && empty($a_end) && $p_end <= $next_week_end) {
+                        if ($p_end < $today_midnight) {
+                            $days = max(1, (int)floor(($today_midnight - $p_end) / 86400));
+                            $urgency = 1;
+                            $status_class = 'over';
+                            $status_label = 'Overdue ' . $days . 'd';
+                        } else if ($p_end < $today_end) {
+                            $urgency = 2;
+                            $status_class = 'today';
+                            $status_label = 'Due today';
+                        } else {
+                            $days = max(1, (int)floor(($p_end - $today_midnight) / 86400));
+                            $urgency = 3;
+                            $status_class = 'soon';
+                            $status_label = 'Due in ' . $days . 'd';
+                        }
+
+                        $todo_list[] = [
+                            'id'            => 'am_end_' . $sec->id . '_' . $mod_key,
+                            'title'         => 'Mark module completion — ' . $mod_name,
+                            'meta'          => 'Batch ' . $batch_name . ' · Planned end ' . userdate($p_end, '%d %b %Y'),
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => $urgency,
+                            'status_class'  => $status_class,
+                            'status_label'  => $status_label,
+                            'dest_type'     => ($cid > 0 ? 'module' : 'batch'),
+                            'dest_url'      => $dest_mod_url,
+                            'action_type'   => 'am_end',
+                            'batchid'       => (int)$sec->id,
+                            'courseid'      => $cid,
+                            'act_key'       => (string)$mod_key,
+                            'act_name'      => 'Mark module completion — ' . $mod_name,
+                            'planned_ts'    => $p_end,
+                        ];
+
+                        if ($p_end >= $today_midnight && $p_end <= $next_week_end) {
+                            $days = (int)floor(($p_end - $today_midnight) / 86400);
+                            $forthcoming_list[] = [
+                                'title' => 'Mark module completion — ' . $mod_name,
+                                'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                'ts'    => $p_end,
+                            ];
+                        }
+                    }
+
+                    // 3. Update mentors for this current module
+                    if ($p_start <= $next_week_end && empty($a_end) && $primary_mentor === '') {
+                        if ($p_start < $today_midnight) {
+                            $urgency = 1;
+                            $status_class = 'over';
+                            $status_label = 'Mentor missing';
+                        } else if ($p_start < $today_end) {
+                            $urgency = 2;
+                            $status_class = 'today';
+                            $status_label = 'Due today';
+                        } else {
+                            $days = max(1, (int)floor(($p_start - $today_midnight) / 86400));
+                            $urgency = 3;
+                            $status_class = 'soon';
+                            $status_label = 'Due in ' . $days . 'd';
+                        }
+
+                        $todo_list[] = [
+                            'id'            => 'am_mentor_' . $sec->id . '_' . $mod_key,
+                            'title'         => 'Update mentors for current module — ' . $mod_name,
+                            'meta'          => 'Batch ' . $batch_name . ' · Primary mentor unassigned',
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => $urgency,
+                            'status_class'  => $status_class,
+                            'status_label'  => $status_label,
+                            'dest_type'     => 'batch',
+                            'dest_url'      => $dest_batch_url,
+                            'action_type'   => 'am_mentor',
+                            'batchid'       => (int)$sec->id,
+                            'courseid'      => $cid,
+                            'act_key'       => (string)$mod_key,
+                            'act_name'      => 'Update mentors for current module — ' . $mod_name,
+                            'planned_ts'    => $p_start,
                         ];
                     }
                 }
@@ -644,7 +793,7 @@ class task_service {
             return $a['planned_ts'] <=> $b['planned_ts'];
         });
 
-        // Sort Forthcoming by date
+        // Sort Forthcoming strictly by date ascending
         usort($forthcoming_list, static function($a, $b) {
             return $a['ts'] <=> $b['ts'];
         });
@@ -662,8 +811,14 @@ class task_service {
         }
 
         $batches_count = count($filtered_sections);
-        $role_label = $available_roles[$active_role] ?? 'Operational View';
-        $role_subtitle = $role_label . ' · ' . $batches_count . ' ' . ($batches_count === 1 ? 'batch' : 'batches') . ' assigned';
+        $role_labels = [
+            'admin'   => 'Admin · Operational Cockpit (All Activities)',
+            'mentors' => 'Mentors · Module Activities',
+            'sspm'    => 'SS / PM · Soft Skills Activities',
+            'am'      => 'Assistant Manager · Module Operations',
+        ];
+        $role_base = $role_labels[$active_role] ?? 'Operational View';
+        $role_subtitle = $role_base . ' · ' . $batches_count . ' ' . ($batches_count === 1 ? 'batch' : 'batches');
 
         $glance = [
             [
@@ -705,7 +860,7 @@ class task_service {
      * Mark an operational activity complete.
      *
      * @param int $userid
-     * @param string $action_type 'mentor' or 'ss'
+     * @param string $action_type 'mentor', 'ss', 'am_start', 'am_end', or 'am_mentor'
      * @param array $params
      * @return array
      * @throws \moodle_exception
@@ -787,6 +942,50 @@ class task_service {
                     'actual_ts' => $now,
                 ];
             }
+        }
+
+        if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_mentor') {
+            $batchid = (int)($params['batchid'] ?? 0);
+            $mod_key = trim((string)($params['act_key'] ?? ''));
+            if ($batchid <= 0 || $mod_key === '') {
+                throw new \moodle_exception('invalidparams', 'block_batchanalytics');
+            }
+
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                throw new \moodle_exception('invalidbatch', 'block_batchanalytics');
+            }
+
+            $modules = json_decode($sec->moduledata ?? '', true);
+            if (!is_array($modules) || !isset($modules[$mod_key])) {
+                throw new \moodle_exception('invalidmodule', 'block_batchanalytics');
+            }
+
+            $now = time();
+            if ($action_type === 'am_start') {
+                $modules[$mod_key]['actualstart'] = $now;
+            } else if ($action_type === 'am_end') {
+                $modules[$mod_key]['actualend'] = $now;
+                if (empty($modules[$mod_key]['actualstart'])) {
+                    $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $now);
+                }
+            } else if ($action_type === 'am_mentor') {
+                if (empty($modules[$mod_key]['primarymentor'])) {
+                    $modules[$mod_key]['primarymentor'] = (string)$userid;
+                }
+            }
+
+            $sec->moduledata = json_encode($modules);
+            $sec->timemodified = $now;
+            $DB->update_record('local_bm_classsection', $sec);
+
+            return [
+                'success' => true,
+                'type'    => $action_type,
+                'batchid' => $batchid,
+                'mod_key' => $mod_key,
+                'now'     => $now,
+            ];
         }
 
         throw new \moodle_exception('invalidaction', 'block_batchanalytics');

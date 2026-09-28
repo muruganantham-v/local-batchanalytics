@@ -33,6 +33,16 @@
       });
     }
 
+    // Delegated click listener for Mark Complete buttons
+    container.addEventListener('click', function(e) {
+      var btn = e.target.closest('.mc-btn2');
+      if (btn) {
+        e.preventDefault();
+        var tid = btn.getAttribute('data-task-id');
+        openCompleteModal(tid);
+      }
+    });
+
     // Modal listeners
     var overlay = document.getElementById('ba-task-modal-overlay');
     var btnCancel = document.getElementById('ba-modal-btn-cancel');
@@ -204,27 +214,27 @@
     // Prev button
     html += '<button type="button" class="ba-pbtn" id="ba-pbtn-prev"' + (currentPage <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
 
-    // Page number buttons
-    var maxButtons = 5;
-    var startPage = Math.max(1, currentPage - 2);
-    var endPage = Math.min(totalPages, startPage + maxButtons - 1);
-    if (endPage - startPage < maxButtons - 1) {
-      startPage = Math.max(1, endPage - maxButtons + 1);
+    // Page 1
+    html += '<button type="button" class="ba-pbtn ba-pnum' + (currentPage === 1 ? ' active' : '') + '" data-page="1">1</button>';
+
+    // Left ellipsis
+    if (currentPage > 2) {
+      html += '<span class="ba-page-ellipsis">…</span>';
     }
 
-    if (startPage > 1) {
-      html += '<button type="button" class="ba-pbtn ba-pnum" data-page="1">1</button>';
-      if (startPage > 2) html += '<span style="color:#94a3b8; padding:0 3px;">…</span>';
+    // Current page (if not 1 and not totalPages)
+    if (currentPage > 1 && currentPage < totalPages) {
+      html += '<button type="button" class="ba-pbtn ba-pnum active" data-page="' + currentPage + '">' + currentPage + '</button>';
     }
 
-    for (var p = startPage; p <= endPage; p++) {
-      var activeCls = (p === currentPage) ? ' active' : '';
-      html += '<button type="button" class="ba-pbtn ba-pnum' + activeCls + '" data-page="' + p + '">' + p + '</button>';
+    // Right ellipsis
+    if (currentPage < totalPages - 1) {
+      html += '<span class="ba-page-ellipsis">…</span>';
     }
 
-    if (endPage < totalPages) {
-      if (endPage < totalPages - 1) html += '<span style="color:#94a3b8; padding:0 3px;">…</span>';
-      html += '<button type="button" class="ba-pbtn ba-pnum" data-page="' + totalPages + '">' + totalPages + '</button>';
+    // End page
+    if (totalPages > 1) {
+      html += '<button type="button" class="ba-pbtn ba-pnum' + (currentPage === totalPages ? ' active' : '') + '" data-page="' + totalPages + '">' + totalPages + '</button>';
     }
 
     // Next button

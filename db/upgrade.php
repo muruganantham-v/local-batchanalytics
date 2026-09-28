@@ -49,5 +49,39 @@ function xmldb_block_batchanalytics_upgrade($oldversion) {
         }
     }
 
+    if ($oldversion < 2026092806) {
+        // Consolidate any legacy local/batchanalytics capabilities into block/batchanalytics.
+        $legacy_caps = [
+            'local/batchanalytics:view' => 'block/batchanalytics:view',
+            'local/batchanalytics:manage' => 'block/batchanalytics:manage',
+            'local/batchanalytics:viewallcourses' => 'block/batchanalytics:viewallcourses',
+            'local/batchanalytics:viewenrolledcourses' => 'block/batchanalytics:viewenrolledcourses',
+            'local/batchanalytics:viewreviewnotes' => 'block/batchanalytics:viewreviewnotes',
+            'local/batchanalytics:editreviewnotes' => 'block/batchanalytics:editreviewnotes',
+        ];
+
+        foreach ($legacy_caps as $oldcap => $newcap) {
+            $old_rcs = $DB->get_records('role_capabilities', ['capability' => $oldcap]);
+            foreach ($old_rcs as $rc) {
+                if (!$DB->record_exists('role_capabilities', ['roleid' => $rc->roleid, 'capability' => $newcap, 'contextid' => $rc->contextid])) {
+                    $new_rc = clone($rc);
+                    unset($new_rc->id);
+                    $new_rc->capability = $newcap;
+                    $DB->insert_record('role_capabilities', $new_rc);
+                }
+            }
+            $DB->delete_records('role_capabilities', ['capability' => $oldcap]);
+            $DB->delete_records('capabilities', ['name' => $oldcap]);
+        }
+
+        // Clean up any remaining local_batchanalytics component entries in capabilities table.
+        $DB->delete_records('capabilities', ['component' => 'local_batchanalytics']);
+
+        // Purge capability cache so Define Roles shows single unified group.
+        accesslib_clear_all_caches(true);
+
+        upgrade_block_savepoint(true, 2026092806, 'batchanalytics');
+    }
+
     return true;
 }

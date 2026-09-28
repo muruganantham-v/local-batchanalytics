@@ -327,8 +327,8 @@ if ($action === 'getnewbatchdata') {
         // Check if user is a Manager (site admin, manage capability, or viewallcourses capability)
         $currentuserid = (int)$USER->id;
         $is_manager = is_siteadmin($currentuserid)
-            || has_capability('local/batchanalytics:manage', $context, $currentuserid)
-            || has_capability('local/batchanalytics:viewallcourses', $context, $currentuserid);
+            || has_capability('block/batchanalytics:manage', $context, $currentuserid)
+            || has_capability('block/batchanalytics:viewallcourses', $context, $currentuserid);
 
         // Non-managers should only see class sections corresponding to courses/sections they are enrolled in or assigned to
         if (!$is_manager) {
