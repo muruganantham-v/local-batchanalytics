@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Batch Detail Screen for local_batchanalytics
+ * Batch Detail Screen for block_batchanalytics
  *
  * Sourced from local_bm_classsection and local_bm_batch (Batch Management)
  *
@@ -188,7 +188,7 @@ if (!empty($raw_modules)) {
         if ($m_name === '') {
             $m_name = $canonical_modules[$mod_idx] ?? ('Module ' . $mod_idx);
         }
-        if ($is_online && \local_batchanalytics\util::is_qt_module($m_name)) {
+        if ($is_online && \block_batchanalytics\util::is_qt_module($m_name)) {
             continue; // Qt / QML must be excluded entirely for online batches (SR-3.2.1)
         }
 
@@ -306,7 +306,7 @@ if (!empty($schedule_rows)) {
 // -------------------------------------------------------------------------
 $ss_activities = [];
 if ($section && !empty($section->softskillsdata)) {
-    $ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
+    $ss_activities = \block_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
 }
 
 
@@ -343,7 +343,7 @@ if ($studentroleid > 0) {
 foreach ($enrolledstudents as $studentrecord) {
     $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);
     $merit_labels = $spot_count > 0 ? [str_repeat('★', $spot_count) . ' Spot'] : [];
-    $profile = \local_batchanalytics\util::get_user_profile_data($studentrecord, 2);
+    $profile = \block_batchanalytics\util::get_user_profile_data($studentrecord, 2);
     $students_data[] = [
         'userid' => (int)$studentrecord->id,
         'username' => !empty($studentrecord->username) ? $studentrecord->username : '',
@@ -416,7 +416,7 @@ function format_delay_chip($d, $mod_name = '', $mod_days = 0) {
     if ($d === null) {
         return '<span class="muted">—</span>';
     }
-    $ms = \local_batchanalytics\util::get_module_status($d, $mod_name, $mod_days);
+    $ms = \block_batchanalytics\util::get_module_status($d, $mod_name, $mod_days);
     return '<span class="st st-' . s($ms['chip_class']) . '">' . s($ms['label']) . '</span>';
 }
 
@@ -519,7 +519,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <div class="role">Program Manager</div>
             <div class="pwrap">
               <div class="pav">
-                <?= \local_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
+                <?= \block_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
               </div>
               <span class="name"><?= s($pmname) ?></span>
             </div>
@@ -528,7 +528,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <div class="role">SS / MAAC Executive</div>
             <div class="pwrap">
               <div class="pav">
-                <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
+                <?= \block_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
               </div>
               <span class="name"><?= s($ssename) ?></span>
             </div>
