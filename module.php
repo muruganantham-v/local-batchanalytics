@@ -87,6 +87,7 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         $target_name = !empty($actname) ? $actname : $actkey;
         $completed = optional_param('completed', 0, PARAM_BOOL);
         $completiondate = optional_param('completiondate', '', PARAM_RAW_TRIMMED);
+        $planned_ts = optional_param('plannedts', 0, PARAM_INT);
 
         if ($cid > 0 && !empty($target_name)) {
             $saved = \local_batchanalytics\mentor_activity_service::save_activity_status(
@@ -96,12 +97,16 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
                 $completiondate,
                 $USER->id
             );
+            $action_info = \local_batchanalytics\mentor_activity_service::compute_action_status((bool)$completed, $planned_ts);
             $username = fullname($USER);
             echo json_encode([
-                'status' => 'ok',
-                'data' => $saved,
+                'status'         => 'ok',
+                'data'           => $saved,
                 'modifiedbyname' => $username,
-                'message' => get_string('mentor_activities_saved', 'local_batchanalytics')
+                'action_label'   => $action_info['label'],
+                'action_class'   => $action_info['class'],
+                'action_status'  => $action_info['status'],
+                'message'        => get_string('mentor_activities_saved', 'local_batchanalytics')
             ]);
             die();
         }
@@ -1099,20 +1104,18 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <thead>
               <tr>
                 <th>Activity Name</th>
-                <th style="width:170px;">Planned Due Date</th>
-                <th style="width:150px;">Status</th>
-                <th style="width:180px;">Completion Date</th>
-                <th style="width:180px;">Last Updated By</th>
+                <th style="width:160px;">Planned Due Date</th>
+                <th style="width:145px;">Action</th>
+                <th style="width:170px;">Completion Date</th>
+                <th style="width:140px;">Status</th>
+                <th style="width:170px;">Last Updated By</th>
               </tr>
             </thead>
             <tbody>
               <?php foreach ($mentor_activity_data['activities'] as $act): ?>
-                <tr>
+                <tr data-planned-ts="<?= (int)$act['planned_ts'] ?>">
                   <td>
-                    <div style="display:flex; flex-direction:column; gap:2px;">
-                      <span class="val" style="font-weight:600; color:#1f2937;"><?= s($act['name']) ?></span>
-                      <span style="font-family:monospace; font-size:11px; color:#6b7280;"><?= s($act['key'] ?? '') ?></span>
-                    </div>
+                    <span class="val" style="font-weight:600; color:#1f2937;"><?= s($act['name']) ?></span>
                   </td>
                   <td>
                     <?php if (!empty($act['planned_date_formatted']) && $act['planned_date_formatted'] !== '—'): ?>
@@ -1120,22 +1123,24 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                         <span class="val" style="font-weight:600; font-size:13px; color:#374151;"><?= s($act['planned_date_formatted']) ?></span>
                         <span class="muted" style="font-size:11px;">(+<?= (int)$act['duedays'] ?>d)</span>
                       </div>
-                      <?php if (!empty($act['is_overdue'])): ?>
-                        <span class="st st-r" style="font-size:10.5px; padding:1px 6px; margin-top:2px;">Overdue</span>
-                      <?php endif; ?>
                     <?php else: ?>
                       <span class="muted">+<?= (int)$act['duedays'] ?> working days</span>
                     <?php endif; ?>
                   </td>
                   <td>
-                    <label class="ba-tracker-check">
-                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
-                      <span>Completed</span>
-                    </label>
+                    <span class="ba-mentor-action-badge st <?= s($act['action_class']) ?>" data-actname="<?= s($act['name']) ?>">
+                      <?= s($act['action_label']) ?>
+                    </span>
                   </td>
                   <td>
                     <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>"
                            value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
+                  </td>
+                  <td>
+                    <label class="ba-tracker-check">
+                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>" data-planned-ts="<?= (int)$act['planned_ts'] ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
+                      <span>Completed</span>
+                    </label>
                   </td>
                   <td>
                     <span class="ba-mentor-updatedby" data-actname="<?= s($act['name']) ?>" style="font-size:12px; color:#4b5563;">

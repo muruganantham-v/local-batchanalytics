@@ -40,10 +40,43 @@
         // 2. Mentor Activities Checklist UI
         var mentorStatusMsg = document.getElementById('ba-mentor-status-msg');
 
+        function updateMentorActionBadge(actName, isCompleted, plannedTs) {
+            var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
+            var badge = container.querySelector('.ba-mentor-action-badge[data-actname="' + escapedName + '"]');
+            if (!badge) return;
+
+            if (isCompleted) {
+                badge.className = 'ba-mentor-action-badge st st-g';
+                badge.textContent = 'Completed';
+                return;
+            }
+
+            var now = new Date();
+            var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+            var pts = parseInt(plannedTs, 10) || 0;
+
+            if (pts <= 0 || todayMidnight <= pts) {
+                badge.className = 'ba-mentor-action-badge st st-b';
+                badge.textContent = 'Upcoming';
+            } else {
+                var diffSec = todayMidnight - pts;
+                var overdueDays = Math.round(diffSec / 86400);
+                if (overdueDays < 5) {
+                    badge.className = 'ba-mentor-action-badge st st-a';
+                    badge.textContent = 'Pending';
+                } else {
+                    var daysStr = overdueDays === 1 ? '1 day' : overdueDays + ' days';
+                    badge.className = 'ba-mentor-action-badge st st-r';
+                    badge.textContent = 'Overdue (' + daysStr + ')';
+                }
+            }
+        }
+
         // Checkbox & Date picker auto-fill and save
         container.querySelectorAll('.ba-mentor-check').forEach(function(chk) {
             chk.addEventListener('change', function() {
                 var actName = this.getAttribute('data-actname') || '';
+                var plannedTs = this.getAttribute('data-planned-ts') || 0;
                 var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
                 var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
                 if (this.checked && dateInput && !dateInput.value) {
@@ -54,6 +87,7 @@
                 if (dateInput) {
                     dateInput.disabled = !this.checked;
                 }
+                updateMentorActionBadge(actName, this.checked, plannedTs);
                 saveMentorActivity(actName);
             });
         });
@@ -70,11 +104,13 @@
             var chk = container.querySelector('.ba-mentor-check[data-actname="' + escapedName + '"]');
             var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
             var updatedBySpan = container.querySelector('.ba-mentor-updatedby[data-actname="' + escapedName + '"]');
+            var actionBadge = container.querySelector('.ba-mentor-action-badge[data-actname="' + escapedName + '"]');
             if (!chk) return;
 
             var isCompleted = chk.checked ? 1 : 0;
             var compDate = dateInput ? dateInput.value : '';
             var actKey = chk.getAttribute('data-actkey') || '';
+            var plannedTs = chk.getAttribute('data-planned-ts') || 0;
 
             if (mentorStatusMsg) {
                 mentorStatusMsg.textContent = 'Saving activity status…';
@@ -89,6 +125,7 @@
             formData.append('activitykey', actKey);
             formData.append('completed', isCompleted);
             formData.append('completiondate', compDate);
+            formData.append('plannedts', plannedTs);
 
             fetch(window.location.href, {
                 method: 'POST',
@@ -118,6 +155,10 @@
                 }
                 if (data && data.modifiedbyname && updatedBySpan) {
                     updatedBySpan.textContent = data.modifiedbyname;
+                }
+                if (data && data.action_label && data.action_class && actionBadge) {
+                    actionBadge.className = 'ba-mentor-action-badge st ' + data.action_class;
+                    actionBadge.textContent = data.action_label;
                 }
             })
             .catch(function(err) {

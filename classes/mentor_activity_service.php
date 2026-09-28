@@ -129,6 +129,57 @@ class mentor_activity_service {
     }
 
     /**
+     * Compute action status, label, and CSS class for a mentor activity.
+     * Displays:
+     * - 'Completed' (st-g) if completed
+     * - 'Upcoming' (st-b) if planned due date is future or not set
+     * - 'Pending' (st-a) if overdue by less than 5 days
+     * - 'Overdue (X days)' (st-r) if overdue by 5 or more days
+     *
+     * @param bool $completed Whether the activity is completed.
+     * @param int $planned_ts Planned due date timestamp.
+     * @return array{status: string, label: string, class: string, overdue_days: int}
+     */
+    public static function compute_action_status(bool $completed, int $planned_ts): array {
+        if ($completed) {
+            return [
+                'status'       => 'completed',
+                'label'        => 'Completed',
+                'class'        => 'st-g',
+                'overdue_days' => 0,
+            ];
+        }
+
+        $today_midnight = strtotime('today midnight');
+        if ($planned_ts <= 0 || $today_midnight <= $planned_ts) {
+            return [
+                'status'       => 'upcoming',
+                'label'        => 'Upcoming',
+                'class'        => 'st-b',
+                'overdue_days' => 0,
+            ];
+        }
+
+        $overdue_days = (int)round(($today_midnight - $planned_ts) / 86400);
+        if ($overdue_days < 5) {
+            return [
+                'status'       => 'pending',
+                'label'        => 'Pending',
+                'class'        => 'st-a',
+                'overdue_days' => $overdue_days,
+            ];
+        }
+
+        $days_str = $overdue_days === 1 ? '1 day' : $overdue_days . ' days';
+        return [
+            'status'       => 'overdue',
+            'label'        => 'Overdue (' . $days_str . ')',
+            'class'        => 'st-r',
+            'overdue_days' => $overdue_days,
+        ];
+    }
+
+    /**
      * Get the master list of mentor activities configured in Site Admin.
      * Returns an array of items: [['key' => '...', 'name' => '...'], ...]
      *
@@ -470,10 +521,7 @@ class mentor_activity_service {
             $timemodified = !empty($saved['timemodified']) ? (int)$saved['timemodified'] : 0;
             $modifiedbyname = $users_map[$modifiedby] ?? '';
 
-            $is_overdue = false;
-            if (!$completed && $planned_ts > 0 && time() > ($planned_ts + 86400)) {
-                $is_overdue = true;
-            }
+            $action_info = self::compute_action_status($completed, $planned_ts);
 
             $activities[] = [
                 'key'                    => $act_key,
@@ -482,7 +530,11 @@ class mentor_activity_service {
                 'planned_date'           => $planned_date,
                 'planned_date_formatted' => $planned_date_formatted,
                 'planned_ts'             => $planned_ts,
-                'is_overdue'             => $is_overdue,
+                'is_overdue'             => ($action_info['status'] === 'overdue'),
+                'overdue_days'           => $action_info['overdue_days'],
+                'action_status'          => $action_info['status'],
+                'action_label'           => $action_info['label'],
+                'action_class'           => $action_info['class'],
                 'completed'              => $completed,
                 'completiondate'         => $completiondate,
                 'modifiedby'             => $modifiedby,
