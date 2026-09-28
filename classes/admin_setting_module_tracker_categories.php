@@ -3,6 +3,9 @@ namespace local_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
+global $CFG;
+require_once($CFG->libdir . '/adminlib.php');
+
 /**
  * Admin setting for the configurable Module Tracker category tabs.
  */
@@ -42,6 +45,7 @@ class admin_setting_module_tracker_categories extends \admin_setting {
             . htmlspecialchars(json_encode($categories), ENT_QUOTES) . '">';
         $form .= '<table id="' . $id . '_table" style="width:100%;border-collapse:collapse;margin-bottom:6px">';
         $form .= '<thead><tr style="background:#f5f5f5;font-size:0.85em">';
+        $form .= '<th style="width:28px"></th>';
         $form .= '<th style="text-align:left;padding:4px 6px;width:34%">Category name</th>';
         $form .= '<th style="text-align:left;padding:4px 6px">Comma-separated Gradebook category names</th>';
         $form .= '<th style="width:36px"></th></tr></thead>';
@@ -109,7 +113,8 @@ class admin_setting_module_tracker_categories extends \admin_setting {
     private function render_row(array $category): string {
         $name = htmlspecialchars((string)($category['name'] ?? ''), ENT_QUOTES);
         $aliases = htmlspecialchars((string)($category['aliases'] ?? ''), ENT_QUOTES);
-        $html = '<tr style="border-bottom:1px solid #e0e0e0">';
+        $html = '<tr draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
+        $html .= '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>';
         $html .= '<td style="padding:3px 4px"><input type="text" class="ba-module-tracker-category-name form-control form-control-sm" value="'
             . $name . '" placeholder="e.g. Assignments" style="font-size:0.85em"></td>';
         $html .= '<td style="padding:3px 4px"><input type="text" class="ba-module-tracker-category-aliases form-control form-control-sm" value="'
@@ -133,8 +138,11 @@ class admin_setting_module_tracker_categories extends \admin_setting {
   function serialize() {
     var result = [];
     tbody.querySelectorAll('tr').forEach(function (row) {
-      var name = row.querySelector('.ba-module-tracker-category-name').value.trim();
-      var aliases = row.querySelector('.ba-module-tracker-category-aliases').value.trim();
+      var nameInput = row.querySelector('.ba-module-tracker-category-name');
+      var aliasesInput = row.querySelector('.ba-module-tracker-category-aliases');
+      if (!nameInput || !aliasesInput) return;
+      var name = nameInput.value.trim();
+      var aliases = aliasesInput.value.trim();
       if (name && aliases) result.push({ name: name, aliases: aliases });
     });
     hidden.value = JSON.stringify(result);
@@ -144,18 +152,55 @@ class admin_setting_module_tracker_categories extends \admin_setting {
   tbody.addEventListener('input', serialize);
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', serialize);
+
+  // ---- HTML5 drag-and-drop reorder ----
+  var dragging = null;
+
+  tbody.addEventListener('dragstart', function (e) {
+    dragging = e.target.closest('tr');
+    if (dragging) {
+      dragging.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  });
+
+  tbody.addEventListener('dragend', function () {
+    if (dragging) dragging.style.opacity = '';
+    dragging = null;
+    serialize();
+  });
+
+  tbody.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    if (!dragging) return;
+    var target = e.target.closest('tr');
+    if (target && target !== dragging && target.parentNode === tbody) {
+      var rect = target.getBoundingClientRect();
+      var after = e.clientY > rect.top + rect.height / 2;
+      tbody.insertBefore(dragging, after ? target.nextSibling : target);
+    }
+  });
 })();
 
 function baModuleTrackerAddCategory(id) {
   var tbody = document.getElementById(id + '_tbody');
   var tr = document.createElement('tr');
-  tr.style.cssText = 'border-bottom:1px solid #e0e0e0';
+  tr.setAttribute('draggable', 'true');
+  tr.style.cssText = 'border-bottom:1px solid #e0e0e0;cursor:grab';
   tr.innerHTML =
-    '<td style="padding:3px 4px"><input type="text" class="ba-module-tracker-category-name form-control form-control-sm" placeholder="e.g. Assignments" style="font-size:0.85em"></td>'
+    '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>'
+    + '<td style="padding:3px 4px"><input type="text" class="ba-module-tracker-category-name form-control form-control-sm" placeholder="e.g. Assignments" style="font-size:0.85em"></td>'
     + '<td style="padding:3px 4px"><input type="text" class="ba-module-tracker-category-aliases form-control form-control-sm" placeholder="e.g. assignment, lab assignment" style="font-size:0.85em"></td>'
     + '<td style="text-align:center;padding:3px 4px"><button type="button" onclick="this.closest(\'tr\').remove()" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
   tbody.appendChild(tr);
   tr.querySelector('.ba-module-tracker-category-name').focus();
+
+  tr.addEventListener('change', function () {
+    tbody.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  tr.addEventListener('input', function () {
+    tbody.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 }
 </script>
 ENDJS;

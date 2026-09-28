@@ -64,16 +64,30 @@ class mentor_activity_service {
             return self::DEFAULT_MASTER_ACTIVITIES;
         }
 
+        $decoded = json_decode((string)$raw, true);
+        if (is_array($decoded)) {
+            $activities = [];
+            foreach ($decoded as $item) {
+                $name = is_string($item) ? trim(strip_tags($item)) : (is_array($item) ? trim(strip_tags((string)($item['name'] ?? ''))) : '');
+                if ($name !== '' && !in_array($name, $activities, true)) {
+                    $activities[] = $name;
+                }
+            }
+            if (!empty($activities)) {
+                return $activities;
+            }
+        }
+
         $lines = preg_split('/\r\n|\r|\n/', (string)$raw);
         $activities = [];
         foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line !== '') {
+            $line = trim(strip_tags($line));
+            if ($line !== '' && !in_array($line, $activities, true)) {
                 $activities[] = $line;
             }
         }
 
-        return !empty($activities) ? array_values(array_unique($activities)) : self::DEFAULT_MASTER_ACTIVITIES;
+        return !empty($activities) ? $activities : self::DEFAULT_MASTER_ACTIVITIES;
     }
 
     /**
@@ -87,6 +101,39 @@ class mentor_activity_service {
             $raw = self::DEFAULT_GROUPING_RULES;
         }
 
+        $decoded = json_decode((string)$raw, true);
+        if (is_array($decoded)) {
+            $rules = [];
+            foreach ($decoded as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $grp = trim(strip_tags((string)($item['group'] ?? '')));
+                if ($grp === '') {
+                    continue;
+                }
+                $acts = $item['activities'] ?? [];
+                if (is_string($acts)) {
+                    $acts = explode(',', $acts);
+                }
+                if (is_array($acts)) {
+                    $clean_acts = [];
+                    foreach ($acts as $a) {
+                        $cleaned = trim(strip_tags((string)$a));
+                        if ($cleaned !== '' && !in_array($cleaned, $clean_acts, true)) {
+                            $clean_acts[] = $cleaned;
+                        }
+                    }
+                    if (!empty($clean_acts)) {
+                        $rules[$grp] = $clean_acts;
+                    }
+                }
+            }
+            if (!empty($rules)) {
+                return $rules;
+            }
+        }
+
         $lines = preg_split('/\r\n|\r|\n/', (string)$raw);
         $rules = [];
 
@@ -97,18 +144,22 @@ class mentor_activity_service {
             }
 
             [$group_name, $acts_str] = explode(':', $line, 2);
-            $group_name = trim($group_name);
+            $group_name = trim(strip_tags($group_name));
             if ($group_name === '') {
                 continue;
             }
 
             $acts = array_map('trim', explode(',', $acts_str));
-            $acts = array_values(array_filter($acts, static function($a) {
-                return $a !== '';
-            }));
+            $clean_acts = [];
+            foreach ($acts as $a) {
+                $cleaned = trim(strip_tags((string)$a));
+                if ($cleaned !== '' && !in_array($cleaned, $clean_acts, true)) {
+                    $clean_acts[] = $cleaned;
+                }
+            }
 
-            if (!empty($acts)) {
-                $rules[$group_name] = $acts;
+            if (!empty($clean_acts)) {
+                $rules[$group_name] = $clean_acts;
             }
         }
 
