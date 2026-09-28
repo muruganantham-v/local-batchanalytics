@@ -1118,8 +1118,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <tr>
                 <th>Activity Name</th>
                 <th style="width:160px;">Planned Due Date</th>
-                <th style="width:145px;">Action</th>
                 <th style="width:170px;">Completion Date</th>
+                <th style="width:145px;">Action</th>
                 <th style="width:140px;">Status</th>
                 <th style="width:170px;">Last Updated By</th>
               </tr>
@@ -1141,13 +1141,13 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                     <?php endif; ?>
                   </td>
                   <td>
+                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>"
+                           value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
+                  </td>
+                  <td>
                     <span class="ba-mentor-action-badge st <?= s($act['action_class']) ?>" data-actname="<?= s($act['name']) ?>">
                       <?= s($act['action_label']) ?>
                     </span>
-                  </td>
-                  <td>
-                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>"
-                           value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
                   </td>
                   <td>
                     <label class="ba-tracker-check">
