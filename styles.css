@@ -2676,22 +2676,15 @@ input:checked+.ba-slider:before {
   text-transform: none !important;
 }
 .ba-module-page .kpirow {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 26px;
-}
-@media (max-width: 1000px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-@media (max-width: 600px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  width: 100%;
 }
 .ba-module-page .ba-kpi-empty-msg {
+  flex: 1 1 100%;
+  width: 100%;
   grid-column: 1 / -1;
   padding: 24px 20px;
   text-align: center;
@@ -2704,6 +2697,9 @@ input:checked+.ba-slider:before {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 .ba-module-page .kpi {
+  flex: 1 1 0px;
+  min-width: 140px;
+  box-sizing: border-box;
   background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 12px;

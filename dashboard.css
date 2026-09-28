@@ -2169,27 +2169,18 @@ body#page-local-batchanalytics-module #page-header h1,
   background: var(--red, #c0392b) !important;
 }
 
-/* Module KPIs (Exact Prototype Style) */
+/* Module KPIs (Evenly Spread Cards) */
 .ba-module-page .kpirow {
-  display: grid !important;
-  grid-template-columns: repeat(6, 1fr) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
   gap: 12px !important;
   margin-bottom: 26px !important;
-}
-
-@media (max-width: 1024px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-}
-
-@media (max-width: 600px) {
-  .ba-module-page .kpirow {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
+  width: 100% !important;
 }
 
 .ba-module-page .ba-kpi-empty-msg {
+  flex: 1 1 100% !important;
+  width: 100% !important;
   grid-column: 1 / -1 !important;
   padding: 24px 20px !important;
   text-align: center !important;
@@ -2203,6 +2194,9 @@ body#page-local-batchanalytics-module #page-header h1,
 }
 
 .ba-module-page .kpi {
+  flex: 1 1 0px !important;
+  min-width: 140px !important;
+  box-sizing: border-box !important;
   border: 1px solid var(--line, #e3e6ea) !important;
   border-radius: 12px !important;
   padding: 16px !important;

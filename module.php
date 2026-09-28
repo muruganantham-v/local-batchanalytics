@@ -870,7 +870,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
       <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <?php if ($courseid > 0): ?>
-        <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" title="Open course" style="font-weight:700; color:inherit; text-decoration:none;"><b><?= s($mod_name) ?></b></a>
+        <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" target="_blank" rel="noopener noreferrer" title="Open course" style="font-weight:700; color:inherit; text-decoration:none;"><b><?= s($mod_name) ?></b></a>
       <?php else: ?>
         <b><?= s($mod_name) ?></b>
       <?php endif; ?>
@@ -885,9 +885,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
       <div>
         <h1>
           <?php if ($courseid > 0): ?>
-            <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" class="ba-module-title-link" title="Open course: <?= s($mod_name) ?>">
+            <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" class="ba-module-title-link" target="_blank" rel="noopener noreferrer" title="Open course: <?= s($mod_name) ?>">
               <?= s($mod_name) ?>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="ba-ext-icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
             </a>
           <?php else: ?>
             <?= s($mod_name) ?>
