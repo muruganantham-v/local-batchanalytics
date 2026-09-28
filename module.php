@@ -80,7 +80,6 @@ $has_bm_student = $dbman->table_exists('local_bm_student');
 
 $section = null;
 $batch = null;
-$is_sample_data = false;
 
 if ($courseid > 0 && $has_bm_section) {
     // If courseid is provided, search all class sections to find the matching section and module index
@@ -161,7 +160,7 @@ if ($section) {
         }
     }
     if (empty($pmname)) {
-        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : 'Ravi Kumar';
+        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : '—';
     }
 
     // MAAC Executive (SSE) resolution: prioritize resolving by userid
@@ -174,7 +173,7 @@ if ($section) {
         }
     }
     if (empty($ssename)) {
-        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : 'Anitha S';
+        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : '—';
     }
 
     $raw_modules = [];
@@ -185,46 +184,35 @@ if ($section) {
         }
     }
 } else {
-    $is_sample_data = true;
-    $batchname = '26011B';
-    $pmname = 'Ravi Kumar';
+    $batchname = $id > 0 ? ('Batch ' . $id) : 'Batch';
+    $pmname = '—';
     $pmuser = null;
-    $ssename = 'Anitha S';
+    $ssename = '—';
     $sseuser = null;
     $raw_modules = [];
 }
 
-// Fallback module sequence if raw_modules is empty
-if (empty($raw_modules)) {
-    $raw_modules = [
-        ['module' => 1, 'courseshortname' => 'Linux Systems',   'primarymentor' => 'Meera R',   'labmentor1' => '—',           'plannedstart' => '28 Jul 2026', 'plannedend' => '03 Aug 2026', 'actualstart' => '28 Jul 2026', 'actualend' => '03 Aug 2026', 'scheduledelta' => 0,      'planneddays' => 5,  'moodlecourseid' => 0],
-        ['module' => 2, 'courseshortname' => 'Advanced C',       'primarymentor' => 'Suresh P',  'labmentor1' => 'Kiran R',     'plannedstart' => '04 Aug 2026', 'plannedend' => '28 Oct 2026', 'actualstart' => '04 Aug 2026', 'actualend' => '—',           'scheduledelta' => 'prog',  'planneddays' => 77, 'moodlecourseid' => 2],
-        ['module' => 3, 'courseshortname' => 'C++ Programming',  'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '29 Oct 2026', 'plannedend' => '11 Nov 2026', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 13, 'moodlecourseid' => 0],
-        ['module' => 4, 'courseshortname' => 'Data Structures',  'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '12 Nov 2026', 'plannedend' => '11 Dec 2026', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 29, 'moodlecourseid' => 0],
-        ['module' => 5, 'courseshortname' => 'Microcontrollers', 'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '12 Dec 2026', 'plannedend' => '23 Jan 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 37, 'moodlecourseid' => 0],
-        ['module' => 6, 'courseshortname' => 'Linux Internals',  'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '24 Jan 2027', 'plannedend' => '27 Feb 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 33, 'moodlecourseid' => 0],
-        ['module' => 7, 'courseshortname' => 'ELARM',            'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '28 Feb 2027', 'plannedend' => '12 Apr 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 10, 'moodlecourseid' => 0],
-        ['module' => 8, 'courseshortname' => 'Qt / QML',         'primarymentor' => '—',         'labmentor1' => '—',           'plannedstart' => '13 Apr 2027', 'plannedend' => '25 Apr 2027', 'actualstart' => '—',           'actualend' => '—',           'scheduledelta' => null,    'planneddays' => 10, 'moodlecourseid' => 0]
-    ];
-    if ($is_online) {
-        $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
-    }
-}
-
 $total_modules = count($raw_modules);
-if ($module_idx < 1) $module_idx = 1;
-if ($module_idx > $total_modules) $module_idx = $total_modules;
+if ($total_modules === 0) {
+    $module_idx = 0;
+    $cur_mod = [];
+    $mod_name = '—';
+    $planned_days = 0;
+} else {
+    if ($module_idx < 1) $module_idx = 1;
+    if ($module_idx > $total_modules) $module_idx = $total_modules;
 
-// Current active module record
-$cur_mod = $raw_modules[$module_idx - 1] ?? [];
-$mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
-
-if ($is_online && \local_batchanalytics\util::is_qt_module($mod_name)) {
-    $module_idx = $total_modules;
+    // Current active module record
     $cur_mod = $raw_modules[$module_idx - 1] ?? [];
     $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
+
+    if ($is_online && \local_batchanalytics\util::is_qt_module($mod_name)) {
+        $module_idx = $total_modules;
+        $cur_mod = $raw_modules[$module_idx - 1] ?? [];
+        $mod_name = !empty($cur_mod['name']) ? $cur_mod['name'] : (!empty($cur_mod['courseshortname']) ? $cur_mod['courseshortname'] : ($canonical_modules[$module_idx] ?? ('Module ' . $module_idx)));
+    }
+    $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
 }
-$planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
 
 if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
     $courseid = (int)$cur_mod['moodlecourseid'];
@@ -925,7 +913,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <div class="sc">
       <div class="k">Actual End</div>
       <div class="v <?= $a_end === '—' ? 'muted' : '' ?>">
-        <?= $a_end === '—' ? '— (in progress)' : s($a_end) ?>
+        <?= $a_end === '—' ? ($is_in_progress ? '— (in progress)' : '—') : s($a_end) ?>
       </div>
     </div>
 

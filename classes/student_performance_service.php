@@ -70,6 +70,31 @@ class student_performance_service {
             }
         }
 
+        // Reorder columns: configured categories in defined order, then others, and MAAC Ratings always last
+        $ordered_keys = [];
+        $configured_cats = (new activity_tracker_service())->get_configured_categories();
+        foreach (array_keys($configured_cats) as $cname) {
+            $ckey = 'category_' . substr(sha1(strtolower($cname)), 0, 12);
+            if (isset($columns[$ckey])) {
+                $ordered_keys[] = $ckey;
+            }
+        }
+        foreach (array_keys($columns) as $ckey) {
+            if (!in_array($ckey, $ordered_keys, true) && empty($columns[$ckey]['ismaac'])) {
+                $ordered_keys[] = $ckey;
+            }
+        }
+        foreach (array_keys($columns) as $ckey) {
+            if (!empty($columns[$ckey]['ismaac'])) {
+                $ordered_keys[] = $ckey;
+            }
+        }
+        $reordered_columns = [];
+        foreach ($ordered_keys as $ckey) {
+            $reordered_columns[$ckey] = $columns[$ckey];
+        }
+        $columns = $reordered_columns;
+
         foreach ($students as &$student) {
             $userid = (int)($student['userid'] ?? 0);
             $student['categories'] = [];
@@ -203,51 +228,77 @@ class student_performance_service {
     private function get_course_categories(int $courseid, array $userids): array {
         global $DB;
 
-        $itemssql = "SELECT gi.id AS itemid, gi.itemtype, gi.grademax, gi.grademin,
+        $act_service = new activity_tracker_service();
+        $configured_categories = $act_service->get_configured_categories();
+        $allcategories = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+
+        $itemssql = "SELECT gi.id AS itemid, gi.itemtype, gi.itemmodule, gi.itemname, gi.grademax, gi.grademin,
                             gc.id AS categoryid, gc.fullname AS categoryname
                        FROM {grade_items} gi
                   LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
                       WHERE gi.courseid = :courseid
                         AND (gi.itemtype IN ('mod', 'manual') OR gi.itemtype = 'course')
                         AND gi.hidden = 0
-                   ORDER BY gc.fullname, gi.itemname";
+                   ORDER BY gi.sortorder ASC, gi.id ASC";
         $gradeitems = $DB->get_records_sql($itemssql, ['courseid' => $courseid]);
-        $allcategories = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+
+        // Initialize configured tracker categories in order
         $categories = [];
-        foreach ($gradeitems as $item) {
-            if ($item->itemtype === 'course') {
-                $name = 'MAAC Ratings';
-            } else {
-                $name = 'Uncategorized';
-                if (!empty($item->categoryid) && isset($allcategories[$item->categoryid])) {
-                    $category = $allcategories[$item->categoryid];
-                    while ($category->depth > 2 && !empty($category->parent) && isset($allcategories[$category->parent])) {
-                        $category = $allcategories[$category->parent];
-                    }
-                    if ($category->depth == 2) {
-                        $name = $category->fullname;
-                    }
-                }
-            }
-            if (trim($name) === '' || $name === '?' || $name === 'Uncategorized') {
-                continue;
-            }
-            if (!isset($categories[$name])) {
-                $categories[$name] = [
-                    'name' => $name,
-                    'isattendance' => stripos($name, 'attend') !== false,
-                    'items' => [],
-                ];
-            }
-            $categories[$name]['items'][] = [
-                'itemid' => (int)$item->itemid,
-                'grademin' => (float)$item->grademin,
-                'grademax' => (float)$item->grademax,
+        foreach (array_keys($configured_categories) as $cname) {
+            $categories[$cname] = [
+                'name' => $cname,
+                'ismaac' => false,
+                'isattendance' => false,
+                'items' => [],
             ];
         }
-        if (empty($categories)) {
+
+        $maac_category = null;
+
+        foreach ($gradeitems as $item) {
+            if ($item->itemtype === 'course') {
+                if ($maac_category === null) {
+                    $maac_category = [
+                        'name' => 'MAAC Ratings',
+                        'ismaac' => true,
+                        'isattendance' => false,
+                        'items' => [],
+                    ];
+                }
+                $maac_category['items'][] = [
+                    'itemid' => (int)$item->itemid,
+                    'grademin' => (float)$item->grademin,
+                    'grademax' => (float)$item->grademax,
+                ];
+                continue;
+            }
+
+            // Group activity grade items using the configured tracker categories
+            $matched = $act_service->resolve_grade_item_category($item, $allcategories);
+            if ($matched !== null && isset($categories[$matched])) {
+                $categories[$matched]['items'][] = [
+                    'itemid' => (int)$item->itemid,
+                    'grademin' => (float)$item->grademin,
+                    'grademax' => (float)$item->grademax,
+                ];
+            }
+        }
+
+        // Only keep categories that have items in this course (skip empty categories)
+        $active_categories = array_filter($categories, static function(array $cat): bool {
+            return !empty($cat['items']);
+        });
+
+        // Append MAAC Ratings at the end of the activity categories
+        if ($maac_category !== null && !empty($maac_category['items'])) {
+            $active_categories['MAAC Ratings'] = $maac_category;
+        }
+
+        if (empty($active_categories)) {
             return [];
         }
+
+        $categories = $active_categories;
 
         list($usersql, $params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'performanceuser');
         $params['courseid'] = $courseid;

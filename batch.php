@@ -66,7 +66,6 @@ $has_bm_student = $dbman->table_exists('local_bm_student');
 
 $section = null;
 $batch = null;
-$is_sample_data = false;
 
 if ($has_bm_section && $id > 0) {
     $section = $DB->get_record('local_bm_classsection', ['id' => $id]);
@@ -95,14 +94,15 @@ $batch_id = $section ? (int)$section->id : ($id > 0 ? (int)$id : 1);
 // Extract & normalize batch header fields
 if ($section) {
     $batchid_label  = $section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id);
-    $coursename     = ($batch && !empty($batch->coursename)) ? $batch->coursename : 'Embedded Systems & IoT';
-    $deliverymode   = ($batch && !empty($batch->deliverymode)) ? $batch->deliverymode : 'Offline';
-    $submode        = ($batch && !empty($batch->submode)) ? $batch->submode : 'Regular';
-    $startdate_ts   = ($batch && !empty($batch->startdate)) ? $batch->startdate : ($section->timecreated ?: time());
-    $startdate_str  = userdate($startdate_ts, '%d %b %Y');
+    $coursename     = ($batch && !empty($batch->coursename)) ? $batch->coursename : (!empty($section->coursename) ? $section->coursename : '—');
+    $deliverymode   = ($batch && !empty($batch->deliverymode)) ? $batch->deliverymode : (!empty($section->deliverymode) ? $section->deliverymode : 'Offline');
+    $submode        = ($batch && !empty($batch->submode)) ? $batch->submode : (!empty($section->submode) ? $section->submode : 'Regular');
+    $startdate_ts   = ($batch && !empty($batch->startdate)) ? $batch->startdate : ($section->timecreated ?: 0);
+    $startdate_str  = $startdate_ts > 0 ? userdate($startdate_ts, '%d %b %Y') : '—';
 
     // Program Manager resolution: prioritize resolving by userid
     $pmuser = null;
+    $pmname = '';
     if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
         $pmprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
         if (!empty($pmprofile['user'])) {
@@ -111,11 +111,12 @@ if ($section) {
         }
     }
     if (empty($pmname)) {
-        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : 'Ravi Kumar';
+        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : '—';
     }
 
     // MAAC Executive (SSE) resolution: prioritize resolving by userid
     $sseuser = null;
+    $ssename = '';
     if (!empty($section->maacexecutive) && is_numeric($section->maacexecutive) && (int)$section->maacexecutive > 0) {
         $sseprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
         if (!empty($sseprofile['user'])) {
@@ -124,7 +125,7 @@ if ($section) {
         }
     }
     if (empty($ssename)) {
-        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : 'Anitha S';
+        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : '—';
     }
 
     $mode_param = optional_param('mode', '', PARAM_TEXT);
@@ -143,20 +144,17 @@ if ($section) {
         }
     }
 } else {
-    // Graceful fallback sample data conforming to prototype
-    $is_sample_data = true;
-    $batchid_label  = '26011B';
-    $coursename     = 'Embedded Systems & IoT';
-    $mode_param     = optional_param('mode', '', PARAM_TEXT);
-    $deliverymode   = !empty($mode_param) ? $mode_param : 'Offline';
-    $submode        = 'Regular';
-    $startdate_str  = '28 Jul 2026';
-    $pmname         = 'Ravi Kumar';
+    $batchid_label  = $id > 0 ? ('Batch ' . $id) : 'Batch';
+    $coursename     = '—';
+    $deliverymode   = 'Offline';
+    $submode        = '—';
+    $startdate_str  = '—';
+    $pmname         = '—';
     $pmuser         = null;
-    $ssename        = 'Anitha S';
+    $ssename        = '—';
     $sseuser        = null;
     $raw_modules    = [];
-    $is_online      = \local_batchanalytics\util::is_online_mode($deliverymode);
+    $is_online      = false;
 }
 
 // -------------------------------------------------------------------------
@@ -272,54 +270,7 @@ if (!empty($raw_modules)) {
         ];
     }
 } else {
-    // Canonical default sequence from curriculum
-    $schedule_rows = [
-        [
-            'name' => 'Linux Systems', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
-            'p_start' => '28 Jul 2026', 'p_end' => '03 Aug 2026', 'a_start' => '28 Jul 2026', 'a_end' => '03 Aug 2026',
-            'delay' => 0, 'courseid' => 0, 'days' => 5
-        ],
-        [
-            'name' => 'Advanced C', 'class_mentor' => 'Suresh P', 'lab_mentor' => 'Kiran R',
-            'p_start' => '04 Aug 2026', 'p_end' => '28 Oct 2026', 'a_start' => '04 Aug 2026', 'a_end' => '01 Nov 2026',
-            'delay' => 4, 'courseid' => 2, 'days' => 77
-        ],
-        [
-            'name' => 'C++ Programming', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
-            'p_start' => '02 Nov 2026', 'p_end' => '15 Nov 2026', 'a_start' => '02 Nov 2026', 'a_end' => '16 Nov 2026',
-            'delay' => 1, 'courseid' => 0, 'days' => 13
-        ],
-        [
-            'name' => 'Data Structures', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
-            'p_start' => '17 Nov 2026', 'p_end' => '16 Dec 2026', 'a_start' => '17 Nov 2026', 'a_end' => '19 Dec 2026',
-            'delay' => 3, 'courseid' => 3, 'days' => 29
-        ],
-        [
-            'name' => 'Microcontrollers', 'class_mentor' => 'Suresh P', 'lab_mentor' => 'Kiran R',
-            'p_start' => '20 Dec 2026', 'p_end' => '26 Jan 2027', 'a_start' => '20 Dec 2026', 'a_end' => '31 Jan 2027',
-            'delay' => 5, 'courseid' => 10, 'days' => 37
-        ],
-        [
-            'name' => 'Linux Internals', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
-            'p_start' => '01 Feb 2027', 'p_end' => '06 Mar 2027', 'a_start' => '01 Feb 2027', 'a_end' => '12 Mar 2027',
-            'delay' => 6, 'courseid' => 8, 'days' => 33
-        ],
-        [
-            'name' => 'ELARM', 'class_mentor' => 'Suresh P', 'lab_mentor' => '—',
-            'p_start' => '13 Mar 2027', 'p_end' => '23 Mar 2027', 'a_start' => '13 Mar 2027', 'a_end' => '21 Mar 2027',
-            'delay' => -2, 'courseid' => 0, 'days' => 10
-        ],
-        [
-            'name' => 'Qt / QML', 'class_mentor' => 'Meera R', 'lab_mentor' => '—',
-            'p_start' => '22 Mar 2027', 'p_end' => '01 Apr 2027', 'a_start' => '22 Mar 2027', 'a_end' => '—',
-            'delay' => 'prog', 'courseid' => 0, 'days' => 10
-        ]
-    ];
-    if ($is_online) {
-        $schedule_rows = array_values(array_filter($schedule_rows, function($r) {
-            return !\local_batchanalytics\util::is_qt_module($r['name'] ?? '');
-        }));
-    }
+    $schedule_rows = [];
 }
 
 // Determine active module and tentative end date
@@ -339,10 +290,10 @@ if ($cur_module === '' && !empty($schedule_rows)) {
     }
 }
 if ($cur_module === '') {
-    $cur_module = !empty($schedule_rows[0]['name']) ? $schedule_rows[0]['name'] : 'Advanced C';
+    $cur_module = !empty($schedule_rows[0]['name']) ? $schedule_rows[0]['name'] : '—';
 }
 
-$tentative_end = '12 Apr 2027';
+$tentative_end = '—';
 if (!empty($schedule_rows)) {
     $last_sr = end($schedule_rows);
     if (!empty($last_sr['p_end']) && $last_sr['p_end'] !== '—') {
@@ -411,39 +362,6 @@ foreach ($enrolledstudents as $studentrecord) {
         'merit_text' => implode(', ', $merit_labels),
     ];
 }
-// If no DB students found, supply rich sample dataset matching prototype
-$allow_sample_students = false;
-if ($allow_sample_students && empty($students_data)) {
-    $b_names = ["Abhay D", "Abijith P", "Ajith M", "Akshay M", "Anitha S", "Anushka K", "Arjun R", "Badulla J", "Chaitra K", "Dipashree B", "Gowtham N", "Harish V"];
-    $b_ids   = ["26011_017", "26011_038", "26001_137", "25050_017", "26011_101", "26011_049", "26011_072", "26011_066", "26011_205", "26011_111", "26011_090", "26011_058"];
-    $b_grade = [82, 58, 36, 44, 74, 61, 32, 39, 88, 91, 66, 71];
-    $b_merit = [[1, 'sel'], [0, 'nom'], [0, 0], [0, 0], [1, 0], [1, 'nom'], [0, 0], [0, 0], [1, 'sel'], [1, 'sel'], [0, 'nom'], [1, 0]];
-
-    for ($i = 0; $i < count($b_names); $i++) {
-        $m = $b_merit[$i];
-        $merit_labels = [];
-        if ($m[0]) $merit_labels[] = '★ Spot';
-        if ($m[1] === 'nom') $merit_labels[] = 'PT-Nom';
-        if ($m[1] === 'sel') $merit_labels[] = 'PT-Sel';
-
-        $students_data[] = [
-            'userid'          => 0,
-            'name'            => $b_names[$i],
-            'profileimageurl' => '',
-            'initials'        => strtoupper(substr($b_names[$i], 0, 1)),
-            'id'              => $b_ids[$i],
-            'grade'           => $b_grade[$i],
-            'attendance'      => (70 + ($i % 25)) . '%',
-            'assignments'     => (60 + ($i % 35)) . '%',
-            'projects'        => ($i % 3) ? ((55 + ($i % 40)) . '%') : '—',
-            'tests'           => (62 + ($i % 30)) . '%',
-            'spot'            => !empty($m[0]),
-            'pt'              => $m[1] ?: '',
-            'merit_text'      => implode(', ', $merit_labels),
-        ];
-    }
-}
-
 // Reuse the Course-tab Advanced Filter Gradebook dataset across linked modules.
 $performance_courseids = array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')));
 $performance_data = (new \local_batchanalytics\student_performance_service())->build(
@@ -458,40 +376,18 @@ $performance_custom_groups = $performance_data['customgroups'] ?? [];
 // -------------------------------------------------------------------------
 // 5. Review Notes
 // -------------------------------------------------------------------------
-$initial_notes = [
-    [
-        'date' => '12 Sep 2026, 4:30 PM',
-        'who'  => 'Ravi Kumar',
-        'body' => 'Advanced C running to plan. Flagged 4 middle-band students for extra MAAC touchpoints; SSE to follow up on 2 red cases.'
-    ],
-    [
-        'date' => '05 Sep 2026, 5:10 PM',
-        'who'  => 'Ravi Kumar',
-        'body' => 'Assignment evaluation slipped by 2 days last week — mentor notified, now caught up. Power Track nominations to be finalised by module end.'
-    ],
-    [
-        'date' => '29 Aug 2026, 4:45 PM',
-        'who'  => 'Ravi Kumar',
-        'body' => 'Batch healthy overall. Attendance at 82%. Placement induction scheduled for D35.'
-    ]
-];
-
 // Check review notes permissions
 $can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context);
 $can_edit_notes = has_capability('local/batchanalytics:editreviewnotes', $context);
 
+$display_notes = [];
+$has_real_notes = false;
 if ($can_view_notes) {
     $db_notes = \local_batchanalytics\batch_notes_service::get_notes($batch_id);
     if (!empty($db_notes)) {
         $display_notes = $db_notes;
         $has_real_notes = true;
-    } else {
-        $display_notes = $initial_notes;
-        $has_real_notes = false;
     }
-} else {
-    $display_notes = [];
-    $has_real_notes = false;
 }
 
 // Determine logged-in user's identity and role for posting review notes
@@ -598,11 +494,6 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </span>
   </div>
 
-  <?php if ($is_sample_data): ?>
-    <div class="ba-notice-banner" style="background:#fff3cd; color:#856404; padding:10px 16px; border-radius:8px; margin:10px 0 16px; border:1px solid #ffeeba; font-size:13px;">
-      ℹ️ Displaying demo data for <b>Batch <?= s($batchid_label) ?></b> (Class Section record #<?= (int)$id ?> was not found in <code>mdl_local_bm_classsection</code>).
-    </div>
-  <?php endif; ?>
 
   <div class="shell">
 
@@ -680,56 +571,60 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($schedule_rows as $idx => $r): ?>
-                  <?php $has_link = ($r['delay'] !== null); ?>
-                  <tr>
-                    <td><span class="val"><?= s($r['name']) ?></span></td>
-                    <td>
-                      <?php if (!empty($r['class_mentors'])): ?>
-                        <div class="ba-mentors-col">
-                          <?php foreach ($r['class_mentors'] as $cm): ?>
-                            <div class="ba-table-mentor">
-                              <span><?= s($cm['name']) ?></span>
-                            </div>
-                          <?php endforeach; ?>
-                        </div>
-                      <?php else: ?>
-                        <?= format_cell_muted($r['class_mentor']) ?>
-                      <?php endif; ?>
-                    </td>
-                    <td>
-                      <?php if (!empty($r['lab_mentors'])): ?>
-                        <div class="ba-mentors-col">
-                          <?php foreach ($r['lab_mentors'] as $lm): ?>
-                            <div class="ba-table-mentor">
-                              <span><?= s($lm['name']) ?></span>
-                            </div>
-                          <?php endforeach; ?>
-                        </div>
-                      <?php else: ?>
-                        <?= format_cell_muted($r['lab_mentor']) ?>
-                      <?php endif; ?>
-                    </td>
-                    <td class="date"><?= s($r['p_start']) ?></td>
-                    <td class="date"><?= s($r['p_end']) ?></td>
-                    <td class="date"><?= format_cell_muted($r['a_start']) ?></td>
-                    <td class="date"><?= format_cell_muted($r['a_end']) ?></td>
-                    <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
-                    <td class="actioncell">
-                      <?php
-                        $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);
-                        if ($course_linked) {
-                            $course_linked = $DB->record_exists('course', ['id' => (int)$r['courseid']]);
-                        }
-                      ?>
-                      <?php if ($course_linked): ?>
-                        <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
-                      <?php else: ?>
-                        <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
-                      <?php endif; ?>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
+                <?php if (empty($schedule_rows)): ?>
+                  <tr><td colspan="9" class="muted" style="text-align:center; padding:24px;">No modules configured for this batch.</td></tr>
+                <?php else: ?>
+                  <?php foreach ($schedule_rows as $idx => $r): ?>
+                    <?php $has_link = ($r['delay'] !== null); ?>
+                    <tr>
+                      <td><span class="val"><?= s($r['name']) ?></span></td>
+                      <td>
+                        <?php if (!empty($r['class_mentors'])): ?>
+                          <div class="ba-mentors-col">
+                            <?php foreach ($r['class_mentors'] as $cm): ?>
+                              <div class="ba-table-mentor">
+                                <span><?= s($cm['name']) ?></span>
+                              </div>
+                            <?php endforeach; ?>
+                          </div>
+                        <?php else: ?>
+                          <?= format_cell_muted($r['class_mentor']) ?>
+                        <?php endif; ?>
+                      </td>
+                      <td>
+                        <?php if (!empty($r['lab_mentors'])): ?>
+                          <div class="ba-mentors-col">
+                            <?php foreach ($r['lab_mentors'] as $lm): ?>
+                              <div class="ba-table-mentor">
+                                <span><?= s($lm['name']) ?></span>
+                              </div>
+                            <?php endforeach; ?>
+                          </div>
+                        <?php else: ?>
+                          <?= format_cell_muted($r['lab_mentor']) ?>
+                        <?php endif; ?>
+                      </td>
+                      <td class="date"><?= s($r['p_start']) ?></td>
+                      <td class="date"><?= s($r['p_end']) ?></td>
+                      <td class="date"><?= format_cell_muted($r['a_start']) ?></td>
+                      <td class="date"><?= format_cell_muted($r['a_end']) ?></td>
+                      <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
+                      <td class="actioncell">
+                        <?php
+                          $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);
+                          if ($course_linked) {
+                              $course_linked = $DB->record_exists('course', ['id' => (int)$r['courseid']]);
+                          }
+                        ?>
+                        <?php if ($course_linked): ?>
+                          <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                        <?php else: ?>
+                          <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
+                        <?php endif; ?>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                <?php endif; ?>
               </tbody>
             </table>
           </div>
