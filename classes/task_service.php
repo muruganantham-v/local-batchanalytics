@@ -226,8 +226,22 @@ class task_service {
 
         // Resolve active viewing role
         $active_role = $requested_role;
-        if (!isset($available_roles[$active_role])) {
-            $active_role = array_key_first($available_roles);
+        if ($active_role !== '' && isset($available_roles[$active_role])) {
+            // Keep requested role if valid
+        } else if ($personas['is_class_mentor']) {
+            $active_role = 'class';
+        } else if ($personas['is_lab_mentor']) {
+            $active_role = 'lab';
+        } else if ($personas['is_sse']) {
+            $active_role = 'sse';
+        } else if ($personas['is_pm']) {
+            $active_role = 'pm';
+        } else if ($personas['is_asst']) {
+            $active_role = 'asst';
+        } else if (isset($available_roles['all'])) {
+            $active_role = 'all';
+        } else {
+            $active_role = array_key_first($available_roles) ?: 'class';
         }
 
         // Fetch batches and class sections

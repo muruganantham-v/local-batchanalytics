@@ -1,6 +1,7 @@
 /**
  * Frontend script for Batch Analytics Operational Dashboard Block
  * Supports Mentor, SS Executive, Program Manager, and Assistant Manager personas.
+ * Handles client-side pagination, filters, and activity completion.
  */
 (function() {
   'use strict';
@@ -8,10 +9,13 @@
   var container = null;
   var apiUrl = '';
   var sesskey = '';
-  var currentRole = '';
   var currentFilter = 'all';
   var allTodos = [];
   var pendingTask = null;
+
+  // Pagination state
+  var pageSize = 5;
+  var currentPage = 1;
 
   function init() {
     container = document.getElementById('ba-task-dash-container');
@@ -20,19 +24,11 @@
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
 
-    var roleSel = document.getElementById('ba-role-selector');
-    if (roleSel) {
-      currentRole = roleSel.value;
-      roleSel.addEventListener('change', function() {
-        currentRole = this.value;
-        loadDashboardData(currentRole);
-      });
-    }
-
     var filterSel = document.getElementById('ba-todo-filter');
     if (filterSel) {
       filterSel.addEventListener('change', function() {
         currentFilter = this.value;
+        currentPage = 1;
         renderTodoList();
       });
     }
@@ -54,15 +50,14 @@
       });
     }
 
-    loadDashboardData(currentRole);
+    loadDashboardData();
   }
 
-  function loadDashboardData(role) {
+  function loadDashboardData() {
     if (!apiUrl) return;
 
     var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') +
       'action=get_dashboard_tasks' +
-      '&role=' + encodeURIComponent(role || '') +
       '&sesskey=' + encodeURIComponent(sesskey);
 
     fetch(url, { credentials: 'same-origin' })
@@ -87,13 +82,6 @@
     var elSub = document.getElementById('ba-dash-rolesub');
     if (elSub && d.role_subtitle) elSub.textContent = d.role_subtitle;
 
-    // Role switcher sync
-    var roleSel = document.getElementById('ba-role-selector');
-    if (roleSel && d.active_role) {
-      roleSel.value = d.active_role;
-      currentRole = d.active_role;
-    }
-
     // Glance cards
     var elGlance = document.getElementById('ba-dash-glance');
     if (elGlance && Array.isArray(d.glance)) {
@@ -108,6 +96,7 @@
 
     // Todos
     allTodos = Array.isArray(d.todo) ? d.todo : [];
+    currentPage = 1;
     renderTodoList();
 
     // Forthcoming
@@ -130,6 +119,7 @@
   function renderTodoList() {
     var elList = document.getElementById('ba-dash-todo-list');
     var elCount = document.getElementById('ba-dash-todo-count');
+    var elPagination = document.getElementById('ba-dash-todo-pagination');
     if (!elList) return;
 
     var filtered = allTodos.filter(function(t) {
@@ -140,17 +130,28 @@
       return true;
     });
 
+    var totalPending = allTodos.filter(function(t) { return !t.is_done; }).length;
     if (elCount) {
-      var remaining = allTodos.filter(function(t) { return !t.is_done; }).length;
-      elCount.textContent = remaining + ' pending';
+      elCount.textContent = totalPending + ' pending';
     }
 
     if (!filtered.length) {
       elList.innerHTML = '<div class="empty-box">✓ No pending tasks matching this filter</div>';
+      if (elPagination) elPagination.innerHTML = '';
       return;
     }
 
-    elList.innerHTML = filtered.map(function(t) {
+    // Calculate pagination
+    var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    var startIdx = (currentPage - 1) * pageSize;
+    var endIdx = Math.min(startIdx + pageSize, filtered.length);
+    var pageItems = filtered.slice(startIdx, endIdx);
+
+    // Render list items
+    elList.innerHTML = pageItems.map(function(t) {
       var destLabel = (t.dest_type === 'batch') ? 'Go to batch →' : 'Go to module →';
       return '<div class="todo" id="todo-row-' + escapeHtml(t.id) + '">' +
         '<div class="body">' +
@@ -171,6 +172,85 @@
       btn.addEventListener('click', function() {
         var tid = this.getAttribute('data-task-id');
         openCompleteModal(tid);
+      });
+    });
+
+    // Render pagination controls
+    if (elPagination) {
+      renderPagination(elPagination, startIdx + 1, endIdx, filtered.length, totalPages);
+    }
+  }
+
+  function renderPagination(container, start, end, total, totalPages) {
+    if (total <= pageSize) {
+      container.innerHTML = '<span class="ba-page-summary">Showing all ' + total + ' tasks</span>';
+      return;
+    }
+
+    var html = '<span class="ba-page-summary">Showing ' + start + '–' + end + ' of ' + total + ' tasks</span>';
+    html += '<div class="ba-page-btns">';
+
+    // Prev button
+    html += '<button type="button" class="ba-pbtn" id="ba-pbtn-prev"' + (currentPage <= 1 ? ' disabled' : '') + '>‹ Prev</button>';
+
+    // Page number buttons
+    var maxButtons = 5;
+    var startPage = Math.max(1, currentPage - 2);
+    var endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage < maxButtons - 1) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    if (startPage > 1) {
+      html += '<button type="button" class="ba-pbtn ba-pnum" data-page="1">1</button>';
+      if (startPage > 2) html += '<span style="color:#94a3b8; padding:0 3px;">…</span>';
+    }
+
+    for (var p = startPage; p <= endPage; p++) {
+      var activeCls = (p === currentPage) ? ' active' : '';
+      html += '<button type="button" class="ba-pbtn ba-pnum' + activeCls + '" data-page="' + p + '">' + p + '</button>';
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += '<span style="color:#94a3b8; padding:0 3px;">…</span>';
+      html += '<button type="button" class="ba-pbtn ba-pnum" data-page="' + totalPages + '">' + totalPages + '</button>';
+    }
+
+    // Next button
+    html += '<button type="button" class="ba-pbtn" id="ba-pbtn-next"' + (currentPage >= totalPages ? ' disabled' : '') + '>Next ›</button>';
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Attach pagination events
+    var btnPrev = container.querySelector('#ba-pbtn-prev');
+    if (btnPrev && !btnPrev.disabled) {
+      btnPrev.addEventListener('click', function() {
+        if (currentPage > 1) {
+          currentPage--;
+          renderTodoList();
+        }
+      });
+    }
+
+    var btnNext = container.querySelector('#ba-pbtn-next');
+    if (btnNext && !btnNext.disabled) {
+      btnNext.addEventListener('click', function() {
+        if (currentPage < totalPages) {
+          currentPage++;
+          renderTodoList();
+        }
+      });
+    }
+
+    var numBtns = container.querySelectorAll('.ba-pnum');
+    numBtns.forEach(function(nb) {
+      nb.addEventListener('click', function() {
+        var page = parseInt(this.getAttribute('data-page'), 10);
+        if (page && page !== currentPage) {
+          currentPage = page;
+          renderTodoList();
+        }
       });
     });
   }
@@ -219,23 +299,9 @@
       .then(function(resp) {
         if (btnConfirm) btnConfirm.disabled = false;
         if (resp && resp.success) {
-          // Mark task done in memory
           pendingTask.is_done = true;
-          var row = document.getElementById('todo-row-' + pendingTask.id);
-          if (row) {
-            row.classList.add('done');
-            var actions = row.querySelector('.actions');
-            if (actions) {
-              actions.innerHTML = '<span class="done-tag">✓ Completed</span>';
-            }
-          }
           closeModal();
-          // Update count badge
-          var elCount = document.getElementById('ba-dash-todo-count');
-          if (elCount) {
-            var remaining = allTodos.filter(function(t) { return !t.is_done; }).length;
-            elCount.textContent = remaining + ' pending';
-          }
+          renderTodoList();
         } else {
           alert('Failed to save completion: ' + ((resp && resp.message) || 'Unknown error'));
         }

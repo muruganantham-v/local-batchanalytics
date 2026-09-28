@@ -1,23 +1,36 @@
-/* Scoped styling for Batch Analytics Dashboard To-Do Block */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+/* Remove default Moodle block header title "Batch Analytics" */
+.block_batchanalytics .card-title,
+.block_batchanalytics .header,
+.block_batchanalytics h5.card-title,
+.block_batchanalytics .card-header {
+  display: none !important;
+}
+
+.block_batchanalytics .card-body {
+  padding: 16px !important;
+}
+
+/* Scoped styling for Batch Analytics Dashboard To-Do Block matching index/batch/module */
 .ba-task-dash-wrap {
-  --blue: #1b6ec2;
-  --blue-hover: #15589c;
-  --brand: #6b359a;
-  --brand-d: #4a2169;
+  --primary: #0f172a;
+  --brand: #6366f1;
+  --blue: #0284c7;
+  --blue-hover: #0369a1;
   --line: #e2e8f0;
   --mute: #64748b;
   --green: #16a34a;
   --green-bg: #dcfce7;
   --amber: #b45309;
   --amber-bg: #fef3c7;
-  --red: #b91c1c;
-  --red-bg: #fee2e2;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-  color: #1e293b;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  color: #0f172a;
   line-height: 1.5;
-  background: #f8fafc;
-  padding: 18px;
-  border-radius: 12px;
+  background: transparent;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -32,65 +45,19 @@
   align-items: flex-start;
   margin-bottom: 22px;
   gap: 16px;
-  flex-wrap: wrap;
 }
 .ba-task-dash-wrap .greet h1 {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: #0f172a;
   margin: 0 0 4px 0;
+  letter-spacing: -0.02em;
   line-height: 1.25;
 }
 .ba-task-dash-wrap .greet .sub {
   font-size: 13.5px;
   color: #64748b;
   font-weight: 500;
-}
-.ba-task-dash-wrap .header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.ba-task-dash-wrap .roleswitch {
-  text-align: right;
-}
-.ba-task-dash-wrap .roleswitch .lbl {
-  font-size: 10.5px;
-  letter-spacing: .6px;
-  text-transform: uppercase;
-  color: #64748b;
-  margin-bottom: 4px;
-  font-weight: 700;
-}
-.ba-task-dash-wrap .roleswitch select {
-  padding: 8px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 13px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-  font-weight: 600;
-  outline: none;
-}
-.ba-task-dash-wrap .btn-cockpit {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: #1e293b;
-  color: #ffffff !important;
-  font-size: 12.5px;
-  font-weight: 700;
-  text-decoration: none !important;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-.ba-task-dash-wrap .btn-cockpit:hover {
-  background: #334155;
-  color: #ffffff !important;
 }
 
 /* Glance Stat Cards */
@@ -106,23 +73,31 @@
   }
 }
 .ba-task-dash-wrap .gt {
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px 18px;
-  background: #fff;
+  border-radius: 14px;
+  padding: 16px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ba-task-dash-wrap .gt:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 .ba-task-dash-wrap .gt .v {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 .ba-task-dash-wrap .gt .k {
-  font-size: 12px;
+  font-size: 11.5px;
   color: #64748b;
-  margin-top: 7px;
+  margin-top: 8px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .ba-task-dash-wrap .gt.alert {
   border-color: #fca5a5;
@@ -131,11 +106,14 @@
 .ba-task-dash-wrap .gt.alert .v {
   color: #dc2626;
 }
+.ba-task-dash-wrap .gt.alert .k {
+  color: #b91c1c;
+}
 
 /* Columns (To-Do & Forthcoming) */
 .ba-task-dash-wrap .cols {
   display: grid;
-  grid-template-columns: 1.7fr 1fr;
+  grid-template-columns: 1.65fr 1fr;
   gap: 18px;
 }
 @media (max-width: 960px) {
@@ -144,11 +122,13 @@
   }
 }
 .ba-task-dash-wrap .dpanel {
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
+  border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .ba-task-dash-wrap .dpanel .ph {
   padding: 14px 18px;
@@ -159,37 +139,41 @@
   background: #f8fafc;
 }
 .ba-task-dash-wrap .dpanel .ph h2 {
-  font-size: 14.5px;
+  font-size: 15px;
   color: #0f172a;
-  font-weight: 800;
+  font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   margin: 0;
 }
 .ba-task-dash-wrap .dpanel .ph h2::before {
   content: "";
   width: 4px;
-  height: 15px;
-  background: var(--brand);
+  height: 16px;
+  background: #6366f1;
   border-radius: 2px;
 }
-.ba-task-dash-wrap .dpanel .ph select.filter-select {
-  padding: 5px 10px;
+.ba-task-dash-wrap .filter-select {
+  padding: 6px 10px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 11.5px;
-  background: #fff;
-  color: #475569;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #ffffff;
+  color: #334155;
   cursor: pointer;
   outline: none;
-  font-weight: 600;
+  font-family: inherit;
+}
+.ba-task-dash-wrap .filter-select:focus {
+  border-color: #6366f1;
 }
 .ba-task-dash-wrap .badge {
-  font-size: 10.5px;
+  font-size: 11px;
   border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 2px 9px;
+  border-radius: 9999px;
+  padding: 2px 10px;
   color: #475569;
   font-weight: 600;
   background: #f1f5f9;
@@ -199,10 +183,10 @@
 .ba-task-dash-wrap .todo {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 18px;
   border-bottom: 1px solid #f1f5f9;
-  transition: background 0.15s;
+  transition: background 0.15s ease;
 }
 .ba-task-dash-wrap .todo:last-child {
   border-bottom: none;
@@ -211,7 +195,7 @@
   background: #f8fafc;
 }
 .ba-task-dash-wrap .todo.done {
-  opacity: .6;
+  opacity: 0.6;
   background: #f8fafc;
 }
 .ba-task-dash-wrap .todo .body {
@@ -219,101 +203,151 @@
 }
 .ba-task-dash-wrap .todo .t {
   font-size: 13.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: #1e293b;
+  line-height: 1.35;
 }
 .ba-task-dash-wrap .todo.done .t {
   text-decoration: line-through;
   color: #94a3b8;
 }
 .ba-task-dash-wrap .todo .m {
-  font-size: 11.5px;
+  font-size: 12px;
   color: #64748b;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 .ba-task-dash-wrap .todo .go {
-  font-size: 11px;
-  color: var(--blue);
+  font-size: 12px;
+  color: #0284c7;
   font-weight: 600;
-  margin-top: 5px;
+  margin-top: 6px;
   display: inline-block;
   cursor: pointer;
   text-decoration: none !important;
 }
 .ba-task-dash-wrap .todo .go:hover {
   text-decoration: underline !important;
+  color: #0369a1;
 }
 .ba-task-dash-wrap .todo .actions {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 9px;
+  gap: 8px;
 }
 .ba-task-dash-wrap .due {
   font-size: 11px;
   font-weight: 700;
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: 9999px;
   white-space: nowrap;
 }
 .ba-task-dash-wrap .due.soon {
   background: #f1f5f9;
   color: #475569;
+  border: 1px solid #e2e8f0;
 }
 .ba-task-dash-wrap .due.today {
   background: #fef3c7;
   color: #b45309;
+  border: 1px solid #fde68a;
 }
 .ba-task-dash-wrap .due.over {
   background: #fee2e2;
   color: #b91c1c;
-}
-.ba-task-dash-wrap .due.esc {
-  background: #fee2e2;
-  color: #b91c1c;
-  border: 1px solid #fca5a5;
+  border: 1px solid #fecaca;
 }
 .ba-task-dash-wrap .mc-btn2 {
   font-size: 11.5px;
-  font-weight: 700;
-  padding: 6px 12px;
-  border: 1px solid var(--blue);
-  background: #fff;
-  color: var(--blue);
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid #bae6fd;
+  background: #ffffff;
+  color: #0284c7;
   border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
+  font-family: inherit;
 }
 .ba-task-dash-wrap .mc-btn2:hover {
-  background: var(--blue);
-  color: #fff;
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
 }
 .ba-task-dash-wrap .done-tag {
   font-size: 11px;
   font-weight: 700;
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: 9999px;
   color: #15803d;
   background: #dcfce7;
+  border: 1px solid #bbf7d0;
   white-space: nowrap;
+}
+
+/* Pagination */
+.ba-task-dash-wrap .ba-pagination-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: auto;
+}
+.ba-task-dash-wrap .ba-page-summary {
+  font-weight: 500;
+}
+.ba-task-dash-wrap .ba-page-btns {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.ba-task-dash-wrap .ba-pbtn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.ba-task-dash-wrap .ba-pbtn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.ba-task-dash-wrap .ba-pbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ba-task-dash-wrap .ba-pbtn.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
 }
 
 /* Forthcoming Items */
 .ba-task-dash-wrap .fc {
-  padding: 13px 18px;
+  padding: 14px 18px;
   border-bottom: 1px solid #f1f5f9;
 }
 .ba-task-dash-wrap .fc:last-child {
   border-bottom: none;
 }
 .ba-task-dash-wrap .fc .t {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   color: #334155;
 }
 .ba-task-dash-wrap .fc .m {
-  font-size: 11.5px;
+  font-size: 12px;
   color: #64748b;
   margin-top: 3px;
 }
@@ -339,7 +373,7 @@
   display: flex;
 }
 .ba-task-dash-wrap .modal {
-  background: #fff;
+  background: #ffffff;
   border-radius: 14px;
   width: 440px;
   max-width: 92%;
@@ -361,7 +395,7 @@
 }
 .ba-task-dash-wrap .modal .act-name {
   font-size: 13.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: #1e293b;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -377,23 +411,25 @@
 .ba-task-dash-wrap .modal .cancel {
   padding: 9px 18px;
   border: 1px solid #cbd5e1;
-  background: #fff;
+  background: #ffffff;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: #475569;
   cursor: pointer;
+  font-family: inherit;
 }
 .ba-task-dash-wrap .modal .confirm {
   padding: 9px 20px;
   border: none;
   background: #16a34a;
-  color: #fff;
+  color: #ffffff;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
+  font-family: inherit;
 }
 .ba-task-dash-wrap .modal .confirm:hover {
   background: #15803d;

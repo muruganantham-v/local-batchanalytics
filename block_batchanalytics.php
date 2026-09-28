@@ -32,7 +32,16 @@ class block_batchanalytics extends block_base {
      * Initialise the block.
      */
     public function init() {
-        $this->title = get_string('pluginname', 'block_batchanalytics');
+        $this->title = '';
+    }
+
+    /**
+     * Hide block header to remove default "Batch Analytics" card title.
+     *
+     * @return bool
+     */
+    public function hide_header() {
+        return true;
     }
 
     /**
@@ -103,8 +112,8 @@ class block_batchanalytics extends block_base {
             $moduleurl = new moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $courseid]);
             $coursename = format_string($PAGE->course->fullname);
 
-            $html = '<div class="ba-block-widget" style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#1e293b; font-size:13px; line-height:1.5;">';
-            $html .= '<div style="margin-bottom:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">';
+            $html = '<div class="ba-block-widget" style="font-family:\'Poppins\',-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#0f172a; font-size:13px; line-height:1.5;">';
+            $html .= '<div style="margin-bottom:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px;">';
             $html .= '  <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.5px;">Current Course</div>';
             $html .= '  <div style="font-weight:600; color:#0f172a; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' . s($coursename) . '">' . s($coursename) . '</div>';
             $html .= '</div>';
@@ -127,73 +136,48 @@ class block_batchanalytics extends block_base {
                     }
                 }
 
-                $html .= '<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:14px; text-align:center;">';
-                $html .= '  <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 4px;">';
-                $html .= '    <div style="font-size:16px; font-weight:700; color:#166534;">' . $completed . '</div>';
-                $html .= '    <div style="font-size:10px; color:#15803d; font-weight:600;">Done</div>';
+                $html .= '<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:14px; text-align:center;">';
+                $html .= '  <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:8px 4px;">';
+                $html .= '    <div style="font-size:18px; font-weight:800; color:#166534;">' . $completed . '</div>';
+                $html .= '    <div style="font-size:11px; color:#15803d; font-weight:600;">Done</div>';
                 $html .= '  </div>';
-                $html .= '  <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:6px 4px;">';
-                $html .= '    <div style="font-size:16px; font-weight:700; color:#b45309;">' . $pending . '</div>';
-                $html .= '    <div style="font-size:10px; color:#b45309; font-weight:600;">Pending</div>';
+                $html .= '  <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:8px 4px;">';
+                $html .= '    <div style="font-size:18px; font-weight:800; color:#b45309;">' . $pending . '</div>';
+                $html .= '    <div style="font-size:11px; color:#b45309; font-weight:600;">Pending</div>';
                 $html .= '  </div>';
-                $html .= '  <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:6px 4px;">';
-                $html .= '    <div style="font-size:16px; font-weight:700; color:#b91c1c;">' . $overdue . '</div>';
-                $html .= '    <div style="font-size:10px; color:#b91c1c; font-weight:600;">Overdue</div>';
+                $html .= '  <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:8px 4px;">';
+                $html .= '    <div style="font-size:18px; font-weight:800; color:#b91c1c;">' . $overdue . '</div>';
+                $html .= '    <div style="font-size:11px; color:#b91c1c; font-weight:600;">Overdue</div>';
                 $html .= '  </div>';
                 $html .= '</div>';
             } catch (\Throwable $e) {
                 // Ignore gracefully if tables not populated yet.
             }
 
-            $html .= '<a href="' . s($moduleurl->out(false)) . '" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#1e293b; color:#ffffff; font-weight:600; font-size:12px; padding:8px 12px; border-radius:6px; text-decoration:none; transition:background 0.2s;" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'#1e293b\'">';
+            $html .= '<a href="' . s($moduleurl->out(false)) . '" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#0f172a; color:#ffffff; font-weight:600; font-size:12.5px; padding:9px 14px; border-radius:8px; text-decoration:none; transition:background 0.2s;" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'#0f172a\'">';
             $html .= '  <span>View Module Analytics</span>';
             $html .= '  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>';
             $html .= '</a>';
             $html .= '</div>';
 
         } else {
-            // Dashboard (/my/) & Frontpage context: Render To-Do task dashboard
+            // Dashboard (/my/) & Frontpage context: Render To-Do task dashboard matching index/batch/module design
             $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/block_task_dashboard.css', ['v' => filemtime(__DIR__ . '/block_task_dashboard.css')]));
             $PAGE->requires->js(new moodle_url('/blocks/batchanalytics/block_task_dashboard.js', ['v' => filemtime(__DIR__ . '/block_task_dashboard.js')]));
 
-            $fullcockpiturl = new moodle_url('/blocks/batchanalytics/index.php');
             $apiurl = (new moodle_url('/blocks/batchanalytics/index.php'))->out(false);
-
             $dashdata = \block_batchanalytics\task_service::get_dashboard_data((int)$USER->id);
-
-            $role_options_html = '';
-            foreach ($dashdata['available_roles'] as $rcode => $rname) {
-                $sel = ($dashdata['active_role'] === $rcode) ? ' selected' : '';
-                $role_options_html .= '<option value="' . s($rcode) . '"' . $sel . '>' . s($rname) . '</option>';
-            }
 
             $html = '
 <div class="block-batchanalytics-wrap ba-task-dash-wrap" id="ba-task-dash-container"
      data-sesskey="' . s(sesskey()) . '"
      data-api-url="' . s($apiurl) . '">
 
-  <!-- Header Section with Greeting, Role Subtitle, Role Switcher & Cockpit link -->
+  <!-- Header Section with Greeting and Auto-detected Role Subtitle -->
   <div class="greet">
     <div>
       <h1 id="ba-dash-greeting">' . s($dashdata['greeting']) . '</h1>
       <div class="sub" id="ba-dash-rolesub">' . s($dashdata['role_subtitle']) . '</div>
-    </div>
-    <div class="header-right">';
-
-            if ($dashdata['can_switch_roles']) {
-                $html .= '
-      <div class="roleswitch">
-        <div class="lbl">Viewing as</div>
-        <select id="ba-role-selector">' . $role_options_html . '</select>
-      </div>';
-            }
-
-            $html .= '
-      <div>
-        <a href="' . s($fullcockpiturl->out(false)) . '" class="btn-cockpit" title="Open full Batch Analytics cockpit">
-          <span>Full Cockpit ↗</span>
-        </a>
-      </div>
     </div>
   </div>
 
@@ -221,28 +205,11 @@ class block_batchanalytics extends block_base {
           <option value="soon">Due next 7 days</option>
         </select>
       </div>
-      <div id="ba-dash-todo-list">';
-
-            if (empty($dashdata['todo'])) {
-                $html .= '<div class="empty-box">✓ No pending tasks</div>';
-            } else {
-                foreach ($dashdata['todo'] as $t) {
-                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : 'Go to module →';
-                    $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
-                    $html .= '  <div class="body">';
-                    $html .= '    <div class="t">' . s($t['title']) . '</div>';
-                    $html .= '    <div class="m">' . s($t['meta']) . '</div>';
-                    $html .= '    <a href="' . s($t['dest_url']) . '" class="go">' . s($dest_label) . '</a>';
-                    $html .= '  </div>';
-                    $html .= '  <div class="actions">';
-                    $html .= '    <span class="due ' . s($t['status_class']) . '">' . s($t['status_label']) . '</span>';
-                    $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
-                    $html .= '  </div>';
-                    $html .= '</div>';
-                }
-            }
-
-            $html .= '
+      <div id="ba-dash-todo-list">
+        <!-- Populated and paginated dynamically via block_task_dashboard.js -->
+      </div>
+      <div id="ba-dash-todo-pagination" class="ba-pagination-wrap">
+        <!-- Pagination controls dynamically rendered -->
       </div>
     </div>
 
