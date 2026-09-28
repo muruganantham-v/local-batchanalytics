@@ -1009,14 +1009,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <?php else: ?>
       <?php foreach ($module_kpis as $kpi): ?>
         <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>"
-             data-grade="<?= s($kpi['avgGradeFormatted']) ?>%"
-             data-percentile="<?= s($kpi['medianGradeFormatted']) ?>%"
-             data-sub-grade="Avg Grade · Comp <?= s($kpi['avgCompFormatted']) ?>%"
-             data-sub-pct="50th %ile (Median) · Comp <?= s($kpi['avgCompFormatted']) ?>%"
+             data-grade="<?= s($kpi['avgFinalGradeFormatted']) ?>%"
+             data-percentile="<?= s($kpi['avgCompFormatted']) ?>%"
              role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-          <div class="kv"><?= s($kpi['avgGradeFormatted']) ?>%</div>
+          <div class="kv"><?= s($kpi['avgFinalGradeFormatted']) ?>%</div>
           <div class="kl"><?= s($kpi['label']) ?></div>
-          <div class="ksub" style="font-size:11px; color:#64748b; margin-top:2px;">Avg Grade · <?= s($kpi['avgCompFormatted']) ?>% comp</div>
         </div>
       <?php endforeach; ?>
     <?php endif; ?>
@@ -1148,28 +1145,30 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
       <div class="bandrow" id="ba-mod-bandrow"></div>
 
       <!-- Performance Data Table -->
-      <div class="tablecard">
-        <table>
-          <thead>
-            <tr>
-              <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
-              <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
-              <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
-              <?php foreach ($performance_columns as $column): ?>
-                <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
-              <?php endforeach; ?>
-              <?php foreach ($performance_custom_groups as $group): ?>
-                <?php foreach ($group['columns'] as $column): ?>
-                  <th class="ba-performance-custom-col ba-performance-group-<?= s($group['key']) ?>" data-custom-key="<?= s($column['key']) ?>"><?= s($column['label']) ?></th>
+      <div class="tablecard ba-performance-tablecard">
+        <div class="ba-performance-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
+                <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
+                <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
+                <?php foreach ($performance_columns as $column): ?>
+                  <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
                 <?php endforeach; ?>
-              <?php endforeach; ?>
-              <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
-            </tr>
-          </thead>
-          <tbody id="ba-mod-stu-body">
-            <!-- Populated via module.js -->
-          </tbody>
-        </table>
+                <?php foreach ($performance_custom_groups as $group): ?>
+                  <?php foreach ($group['columns'] as $column): ?>
+                    <th class="ba-performance-custom-col ba-performance-group-<?= s($group['key']) ?>" data-custom-key="<?= s($column['key']) ?>"><?= s($column['label']) ?></th>
+                  <?php endforeach; ?>
+                <?php endforeach; ?>
+                <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
+              </tr>
+            </thead>
+            <tbody id="ba-mod-stu-body">
+              <!-- Populated via module.js -->
+            </tbody>
+          </table>
+        </div>
 
         <!-- Student Performance Pagination Controls -->
         <div class="ba-pagination-bar" id="ba-mod-pagination-bar">

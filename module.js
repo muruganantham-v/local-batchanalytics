@@ -1702,14 +1702,11 @@
             var cards = kpiRow.querySelectorAll('.kpi[data-category-modal]');
             cards.forEach(function(card) {
                 var kv = card.querySelector('.kv');
-                var ksub = card.querySelector('.ksub');
                 if (!kv) return;
                 if (kpiSectionMode === 'percentile') {
                     kv.textContent = card.getAttribute('data-percentile') || '0.00%';
-                    if (ksub) ksub.textContent = card.getAttribute('data-sub-pct') || '50th %ile (Median)';
                 } else {
                     kv.textContent = card.getAttribute('data-grade') || '0.00%';
-                    if (ksub) ksub.textContent = card.getAttribute('data-sub-grade') || 'Avg Grade';
                 }
             });
         }
@@ -1749,14 +1746,11 @@
 
             var isMaac = (cname === 'MAAC Ratings' || (cat && cat.isMaac));
             var isAtt = (cname.toLowerCase().indexOf('attendance') !== -1 || (cat && cat.isAttendance));
-            var hideComp = isMaac || isAtt;
 
             var avgG = (cat && cat.avgGrade !== undefined) ? parseFloat(cat.avgGrade).toFixed(2) : '0.00';
-            var medianG = (cat && cat.medianGradeFormatted) ? cat.medianGradeFormatted : ((cat && cat.medianGrade !== undefined) ? parseFloat(cat.medianGrade).toFixed(2) : '0.00');
             var avgC = (cat && cat.avgCompletion !== undefined) ? parseFloat(cat.avgCompletion).toFixed(2) : '0.00';
             var totalStudents = studentGrades.length;
 
-            var modalMode = kpiSectionMode; // Inherit active mode from KPI section
             var safeId = 'kpi-cat-' + cname.replace(/[^a-zA-Z0-9]/g, '') + '-data';
 
             // Modal overlay
@@ -1829,51 +1823,27 @@
             var leftStats = document.createElement('div');
             leftStats.className = 'ba-mt-stats';
 
-            function updateStatsHtml() {
-                var scorePillLabel = modalMode === 'percentile'
-                    ? '50th %ile (Median)'
-                    : (hideComp ? 'Avg Grade' : 'Avg Progress Grade');
-                var scorePillVal = modalMode === 'percentile'
-                    ? (medianG + '%')
-                    : (isMaac ? avgG : avgG + '%');
-
-                var statsHtml = '<div class="ba-kpi-pill-group">' +
-                    '<div class="ba-kpi-pill">' +
-                        '<span class="ba-kpi-pill-label">Total Enrolled</span>' +
-                        '<span class="ba-kpi-pill-val"><strong id="modal-stu-count">' + totalStudents + '</strong> <small>Students</small></span>' +
-                    '</div>' +
-                    '<div class="ba-kpi-pill">' +
-                        '<span class="ba-kpi-pill-label" id="ba-modal-pill-score-lbl">' + scorePillLabel + '</span>' +
-                        '<span class="ba-kpi-pill-val ba-val-progress" id="ba-modal-pill-score-val">' + scorePillVal + '</span>' +
-                    '</div>';
-
-                if (!hideComp) {
-                    statsHtml += '<div class="ba-kpi-pill">' +
-                        '<span class="ba-kpi-pill-label">Avg Completion</span>' +
-                        '<span class="ba-kpi-pill-val ba-val-comp">' + avgC + '%</span>' +
-                    '</div>' +
-                    '<div class="ba-kpi-pill">' +
-                        '<span class="ba-kpi-pill-label">Avg Final Grade</span>' +
-                        '<span class="ba-kpi-pill-val ba-val-final">' + avgFinalG + '%</span>' +
-                    '</div>';
-                }
-                statsHtml += '</div>';
-                leftStats.innerHTML = statsHtml;
-            }
-            updateStatsHtml();
+            var statsHtml = '<div class="ba-kpi-pill-group">' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Enrolled</span>' +
+                    '<span class="ba-kpi-pill-val"><strong id="modal-stu-count">' + totalStudents + '</strong> Students</span>' +
+                '</div>' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Completion</span>' +
+                    '<span class="ba-kpi-pill-val ba-val-comp">' + avgC + '%</span>' +
+                '</div>' +
+                '<div class="ba-kpi-pill">' +
+                    '<span class="ba-kpi-pill-label">Final Grade</span>' +
+                    '<span class="ba-kpi-pill-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</span>' +
+                '</div>' +
+            '</div>';
+            leftStats.innerHTML = statsHtml;
 
             var rightActions = document.createElement('div');
             rightActions.className = 'ba-mt-actions';
             rightActions.style.display = 'flex';
             rightActions.style.alignItems = 'center';
             rightActions.style.gap = '10px';
-
-            var modalToggle = document.createElement('div');
-            modalToggle.className = 'toggle ba-modal-toggle';
-            modalToggle.id = 'ba-cat-modal-toggle';
-            modalToggle.style.margin = '0';
-            modalToggle.innerHTML = '<span class="' + (modalMode === 'grade' ? 'on' : '') + '" id="ba-cat-m-tg-grade" role="button" tabindex="0">Grade</span>' +
-                '<span class="' + (modalMode === 'percentile' ? 'on' : '') + '" id="ba-cat-m-tg-pct" role="button" tabindex="0">Percentile</span>';
 
             var searchWrapper = document.createElement('div');
             searchWrapper.className = 'ba-modal-search-wrapper';
@@ -1891,7 +1861,6 @@
                 downloadBtn.disabled = true;
             }
 
-            rightActions.appendChild(modalToggle);
             rightActions.appendChild(searchWrapper);
             rightActions.appendChild(downloadBtn);
 
@@ -1902,56 +1871,33 @@
             var body = document.createElement('div');
             body.className = 'ba-modal-body';
 
-            var finalGradeHeaderTitle = 'Final Grade';
-            if (catTotalItems > 0) {
-                finalGradeHeaderTitle = 'Final Grade (After ' + catTotalItems + ' Mandatory Test' + (catTotalItems > 1 ? 's' : '') + ')';
-            }
-
-            function getMetricHeader() {
-                if (modalMode === 'percentile') {
-                    return 'Percentile';
-                }
-                return isMaac ? 'Rating' : (isAtt ? 'Attendance' : 'Progress Grade (Current LMS)');
-            }
-
-            function getStudentMetricVal(s) {
-                if (modalMode === 'percentile') {
-                    return (s.percentile !== undefined ? s.percentile : 0) + '%';
-                }
-                return (s.percentage === null || s.percentage === undefined)
-                    ? '—'
-                    : (isMaac ? parseFloat(s.percentage).toFixed(1) : parseFloat(s.percentage).toFixed(2) + '%');
-            }
-
-            function getTotalFooterVal() {
-                if (modalMode === 'percentile') {
-                    return medianG + '%';
-                }
-                return isMaac ? avgG : avgG + '%';
-            }
-
             function renderTableContent() {
                 if (!hasStudentData) {
                     body.innerHTML = '<div class="ba-modal-empty-state" style="padding:40px; text-align:center; color:#64748b;">There is no data available here.</div>';
                     return;
                 }
 
-                var thHtml = '<th class="sortable" data-col="0" data-type="text">Username</th>' +
-                    '<th class="sortable" data-col="1" data-type="text">Student</th>' +
-                    '<th class="sortable" data-col="2" data-type="num" id="ba-modal-th-metric">' + getMetricHeader() + '</th>';
-                if (!hideComp) {
-                    thHtml += '<th class="sortable" data-col="3" data-type="num">Completion</th>' +
-                        '<th class="sortable" data-col="4" data-type="num">' + escapeHtml(finalGradeHeaderTitle) + '</th>';
-                }
+                var colGroupHtml = '<colgroup>' +
+                    '<col style="width: 28.57%;">' +
+                    '<col style="width: 28.57%;">' +
+                    '<col style="width: 14.28%;">' +
+                    '<col style="width: 14.28%;">' +
+                    '<col style="width: 14.30%;">' +
+                    '</colgroup>';
 
-                var tfLabel = modalMode === 'percentile' ? '50TH %ILE (MEDIAN):' : 'TOTAL AVERAGE:';
-                var tfHtml = '<tr><td colspan="2"><div class="ba-tfoot-total-label" id="ba-modal-tf-label">' + tfLabel + '</div></td>' +
-                    '<td><strong class="ba-tfoot-val ba-val-progress" id="ba-modal-tf-val">' + getTotalFooterVal() + '</strong></td>';
-                if (!hideComp) {
-                    tfHtml += '<td><strong class="ba-tfoot-val ba-val-comp">' + avgC + '%</strong></td>' +
-                        '<td><strong class="ba-tfoot-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</strong></td>';
-                }
-                tfHtml += '</tr>';
+                var metricHeaderTitle = isMaac ? 'Rating' : (isAtt ? 'Attendance' : 'Progress Grade');
+
+                var thHtml = '<th class="sortable" data-col="0" data-type="text" style="width:28.57%;">Username</th>' +
+                    '<th class="sortable" data-col="1" data-type="text" style="width:28.57%;">Student</th>' +
+                    '<th class="sortable" data-col="2" data-type="num" style="width:14.28%; text-align:center;" id="ba-modal-th-metric">' + metricHeaderTitle + '</th>' +
+                    '<th class="sortable" data-col="3" data-type="num" style="width:14.28%; text-align:center;">Completion</th>' +
+                    '<th class="sortable" data-col="4" data-type="num" style="width:14.30%; text-align:center;">Final Grade</th>';
+
+                var tfHtml = '<tr><td colspan="2" style="width:57.14%;"><div class="ba-tfoot-total-label" id="ba-modal-tf-label">TOTAL AVERAGE:</div></td>' +
+                    '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-progress" id="ba-modal-tf-val">' + (isMaac ? avgG : avgG + '%') + '</strong></td>' +
+                    '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-comp">' + avgC + '%</strong></td>' +
+                    '<td style="width:14.30%; text-align:center;"><strong class="ba-tfoot-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</strong></td>' +
+                    '</tr>';
 
                 var rowsHtml = '';
                 studentGrades.forEach(function(s) {
@@ -1960,7 +1906,9 @@
                     var totItems = (s.totalItems !== undefined && s.totalItems > 0) ? s.totalItems : catTotalItems;
                     var itemsComp = s.itemsCompleted !== undefined ? s.itemsCompleted : 0;
 
-                    var displayMetric = getStudentMetricVal(s);
+                    var displayMetric = (s.percentage === null || s.percentage === undefined)
+                        ? '—'
+                        : (isMaac ? parseFloat(s.percentage).toFixed(1) : parseFloat(s.percentage).toFixed(2) + '%');
 
                     var compText = compFormatted + '%';
                     var compRatio = '';
@@ -1983,18 +1931,17 @@
                         : (isMaac ? parseFloat(fgVal).toFixed(1) : parseFloat(fgVal).toFixed(2) + '%');
 
                     rowsHtml += '<tr>' +
-                        '<td><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
-                        '<td><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
-                        '<td><span class="ba-grade-text">' + escapeHtml(displayMetric) + '</span></td>';
-                    if (!hideComp) {
-                        rowsHtml += '<td><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
-                            '<td><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>';
-                    }
-                    rowsHtml += '</tr>';
+                        '<td style="width:28.57%;"><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
+                        '<td style="width:28.57%;"><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
+                        '<td style="width:14.28%; text-align:center;"><span class="ba-grade-text">' + escapeHtml(displayMetric) + '</span></td>' +
+                        '<td style="width:14.28%; text-align:center;"><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
+                        '<td style="width:14.30%; text-align:center;"><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>' +
+                        '</tr>';
                 });
 
                 body.innerHTML = '<div class="table-scroll">' +
                     '<table class="ba-table" id="' + safeId + '">' +
+                    colGroupHtml +
                     '<thead><tr>' + thHtml + '</tr></thead>' +
                     '<tbody id="' + safeId + '-tbody">' + rowsHtml + '</tbody>' +
                     '<tfoot>' + tfHtml + '</tfoot>' +
@@ -2005,28 +1952,6 @@
             }
 
             renderTableContent();
-
-            // Toggle events inside modal
-            var tgGradeBtn = modalToggle.querySelector('#ba-cat-m-tg-grade');
-            var tgPctBtn = modalToggle.querySelector('#ba-cat-m-tg-pct');
-            if (tgGradeBtn && tgPctBtn) {
-                tgGradeBtn.addEventListener('click', function() {
-                    if (modalMode === 'grade') return;
-                    modalMode = 'grade';
-                    tgGradeBtn.classList.add('on');
-                    tgPctBtn.classList.remove('on');
-                    updateStatsHtml();
-                    renderTableContent();
-                });
-                tgPctBtn.addEventListener('click', function() {
-                    if (modalMode === 'percentile') return;
-                    modalMode = 'percentile';
-                    tgPctBtn.classList.add('on');
-                    tgGradeBtn.classList.remove('on');
-                    updateStatsHtml();
-                    renderTableContent();
-                });
-            }
 
             modalContainer.appendChild(header);
             modalContainer.appendChild(toolbar);
@@ -2145,7 +2070,7 @@
                         var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
                         var link = document.createElement('a');
                         link.href = URL.createObjectURL(blob);
-                        link.setAttribute('download', cname.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + modalMode + '_grades.csv');
+                        link.setAttribute('download', cname.replace(/[^a-zA-Z0-9_-]/g, '_') + '_grades.csv');
                         link.style.visibility = 'hidden';
                         document.body.appendChild(link);
                         link.click();

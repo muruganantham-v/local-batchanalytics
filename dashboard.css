@@ -2313,18 +2313,20 @@ body#page-local-batchanalytics-module #page-header h1,
 }
 
 /* Keep Student Performance pagination outside the horizontally scrolling table. */
-.ba-batch-page #panel-students .ba-performance-tablecard {
+.ba-batch-page #panel-students .ba-performance-tablecard,
+.ba-module-page #panel-mstudents .ba-performance-tablecard {
   overflow: hidden !important;
 }
 
-.ba-batch-page #panel-students .ba-performance-table-scroll {
+.ba-batch-page #panel-students .ba-performance-table-scroll,
+.ba-module-page #panel-mstudents .ba-performance-table-scroll {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
 .ba-batch-page #panel-students .ba-performance-table-scroll>table,
-.ba-module-page #panel-mstudents .tablecard>table {
+.ba-module-page #panel-mstudents .ba-performance-table-scroll>table {
   min-width: 980px;
 }
 
@@ -3737,8 +3739,37 @@ body#page-local-batchanalytics-module #page-header h1,
 
   .ba-category-modal-dialog .ba-table {
     width: 100% !important;
+    table-layout: fixed !important;
     border-collapse: collapse !important;
     border-spacing: 0 !important;
+  }
+
+  .ba-category-modal-dialog .ba-table th:nth-child(1),
+  .ba-category-modal-dialog .ba-table td:nth-child(1) {
+    width: 28.57% !important;
+  }
+
+  .ba-category-modal-dialog .ba-table th:nth-child(2),
+  .ba-category-modal-dialog .ba-table td:nth-child(2) {
+    width: 28.57% !important;
+  }
+
+  .ba-category-modal-dialog .ba-table th:nth-child(3),
+  .ba-category-modal-dialog .ba-table td:nth-child(3) {
+    width: 14.28% !important;
+    text-align: center !important;
+  }
+
+  .ba-category-modal-dialog .ba-table th:nth-child(4),
+  .ba-category-modal-dialog .ba-table td:nth-child(4) {
+    width: 14.28% !important;
+    text-align: center !important;
+  }
+
+  .ba-category-modal-dialog .ba-table th:nth-child(5),
+  .ba-category-modal-dialog .ba-table td:nth-child(5) {
+    width: 14.30% !important;
+    text-align: center !important;
   }
 
   .ba-category-modal-dialog .ba-table th {
