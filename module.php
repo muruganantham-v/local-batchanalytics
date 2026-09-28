@@ -36,7 +36,7 @@ global $DB, $PAGE, $OUTPUT, $USER;
 $batchid     = optional_param('batchid', 0, PARAM_INT);
 $module_idx  = optional_param('module', 1, PARAM_INT);
 $courseid    = optional_param('courseid', 0, PARAM_INT);
-$action      = optional_param('action', '', PARAM_ALPHA);
+$action      = optional_param('action', '', PARAM_ALPHANUMEXT);
 
 // -------------------------------------------------------------------------
 // 1. AJAX Action: Save Activity Status (for embedded Activity Tracker)
@@ -70,7 +70,7 @@ if ($action === 'saveactivity') {
     die();
 }
 
-if ($action === 'save_mentor_activity') {
+if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
     while (ob_get_level()) {
         ob_end_clean();
     }
@@ -78,7 +78,10 @@ if ($action === 'save_mentor_activity') {
 
     try {
         require_sesskey();
-        $cid = required_param('courseid', PARAM_INT);
+        $cid = optional_param('courseid', 0, PARAM_INT);
+        if ($cid <= 0 && $courseid > 0) {
+            $cid = $courseid;
+        }
         $actname = optional_param('activityname', '', PARAM_RAW_TRIMMED);
         $actkey = optional_param('activitykey', '', PARAM_RAW_TRIMMED);
         $target_name = !empty($actname) ? $actname : $actkey;

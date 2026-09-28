@@ -94,7 +94,20 @@
                 method: 'POST',
                 body: formData
             })
-            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                return res.text().then(function(text) {
+                    var data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        throw new Error('Server returned invalid response (Status ' + res.status + ')');
+                    }
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || ('HTTP Error ' + res.status));
+                    }
+                    return data;
+                });
+            })
             .then(function(data) {
                 if (mentorStatusMsg) {
                     mentorStatusMsg.textContent = '✓ Activity updated successfully';
@@ -110,11 +123,11 @@
             .catch(function(err) {
                 console.warn('Mentor activity save error:', err);
                 if (mentorStatusMsg) {
-                    mentorStatusMsg.textContent = '✗ Error saving activity';
+                    mentorStatusMsg.textContent = '✗ ' + (err.message || 'Error saving activity');
                     mentorStatusMsg.style.color = '#d93025';
                     setTimeout(function() {
                         mentorStatusMsg.textContent = '';
-                    }, 3500);
+                    }, 4000);
                 }
             });
         }
