@@ -514,6 +514,13 @@ class mentor_activity_service {
 
             $completed = !empty($saved['completed']);
             $completiondate = !empty($saved['completiondate']) ? (string)$saved['completiondate'] : '';
+            $completiondate_formatted = '—';
+            if ($completed && !empty($completiondate) && $completiondate !== '—') {
+                $comp_ts = is_numeric($completiondate) ? (int)$completiondate : strtotime($completiondate);
+                if ($comp_ts > 0) {
+                    $completiondate_formatted = userdate($comp_ts, '%d %b %Y');
+                }
+            }
             $modifiedby = !empty($saved['modifiedby']) ? (int)$saved['modifiedby'] : 0;
             $timemodified = !empty($saved['timemodified']) ? (int)$saved['timemodified'] : 0;
             $modifiedbyname = $users_map[$modifiedby] ?? '';
@@ -521,23 +528,24 @@ class mentor_activity_service {
             $action_info = self::compute_action_status($completed, $planned_ts);
 
             $activities[] = [
-                'key'                    => $act_key,
-                'name'                   => $act_name,
-                'duedays'                => $duedays,
-                'planned_date'           => $planned_date,
-                'planned_date_formatted' => $planned_date_formatted,
-                'planned_ts'             => $planned_ts,
-                'is_overdue'             => ($action_info['status'] === 'overdue'),
-                'overdue_days'           => $action_info['overdue_days'],
-                'action_status'          => $action_info['status'],
-                'action_label'           => $action_info['label'],
-                'action_class'           => $action_info['class'],
-                'completed'              => $completed,
-                'completiondate'         => $completiondate,
-                'modifiedby'             => $modifiedby,
-                'modifiedbyname'         => $modifiedbyname,
-                'timemodified'           => $timemodified,
-                'sectionid'              => $sectionid,
+                'key'                      => $act_key,
+                'name'                     => $act_name,
+                'duedays'                  => $duedays,
+                'planned_date'             => $planned_date,
+                'planned_date_formatted'   => $planned_date_formatted,
+                'planned_ts'               => $planned_ts,
+                'is_overdue'               => ($action_info['status'] === 'overdue'),
+                'overdue_days'             => $action_info['overdue_days'],
+                'action_status'            => $action_info['status'],
+                'action_label'             => $action_info['label'],
+                'action_class'             => $action_info['class'],
+                'completed'                => $completed,
+                'completiondate'           => $completiondate,
+                'completiondate_formatted' => $completiondate_formatted,
+                'modifiedby'               => $modifiedby,
+                'modifiedbyname'           => $modifiedbyname,
+                'timemodified'             => $timemodified,
+                'sectionid'                => $sectionid,
             ];
         }
 

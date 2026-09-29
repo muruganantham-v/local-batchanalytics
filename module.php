@@ -1159,7 +1159,6 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 <th style="width:160px;">Planned Due Date</th>
                 <th style="width:170px;">Completion Date</th>
                 <th style="width:145px;">Action</th>
-                <th style="width:140px;">Status</th>
                 <th style="width:170px;">Last Updated By</th>
               </tr>
             </thead>
@@ -1180,19 +1179,16 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                     <?php endif; ?>
                   </td>
                   <td>
-                    <input type="date" class="ba-tracker-date ba-mentor-date" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>"
-                           value="<?= s($act['completiondate'] ?? '') ?>" <?= !empty($act['completed']) ? '' : 'disabled' ?>>
+                    <?php if (!empty($act['completiondate_formatted']) && $act['completiondate_formatted'] !== '—'): ?>
+                      <span class="val" style="font-weight:600; font-size:13px; color:#374151;"><?= s($act['completiondate_formatted']) ?></span>
+                    <?php else: ?>
+                      <span class="muted">—</span>
+                    <?php endif; ?>
                   </td>
                   <td>
                     <span class="ba-mentor-action-badge st <?= s($act['action_class']) ?>" data-actname="<?= s($act['name']) ?>">
                       <?= s($act['action_label']) ?>
                     </span>
-                  </td>
-                  <td>
-                    <label class="ba-tracker-check">
-                      <input type="checkbox" class="ba-mentor-check" data-actname="<?= s($act['name']) ?>" data-actkey="<?= s($act['key'] ?? '') ?>" data-planned-ts="<?= (int)$act['planned_ts'] ?>" <?= !empty($act['completed']) ? 'checked' : '' ?>>
-                      <span>Completed</span>
-                    </label>
                   </td>
                   <td>
                     <span class="ba-mentor-updatedby" data-actname="<?= s($act['name']) ?>" style="font-size:12px; color:#4b5563;">
