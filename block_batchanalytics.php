@@ -228,7 +228,7 @@ class block_batchanalytics extends block_base {
                         $btn_lbl = !empty($t['btn_label']) ? $t['btn_label'] : 'Update →';
                         $act_url = !empty($t['action_url']) ? $t['action_url'] : $t['dest_url'];
                         $html .= '    <a href="' . s($act_url) . '" class="mc-btn2 mc-btn-link">' . s($btn_lbl) . '</a>';
-                    } else {
+                    } else if (($dashdata['active_role'] ?? '') !== 'admin') {
                         $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
                     }
                     $html .= '  </div>';
@@ -265,8 +265,10 @@ class block_batchanalytics extends block_base {
             $html .= '
       </div>
     </div>
-  </div>
+  </div>';
 
+            if (($dashdata['active_role'] ?? '') !== 'admin') {
+                $html .= '
   <!-- Mark Complete Confirmation Modal -->
   <div class="ba-task-modal-overlay" id="ba-task-modal-overlay">
     <div class="ba-task-modal-box">
@@ -278,8 +280,10 @@ class block_batchanalytics extends block_base {
         <button type="button" class="confirm" id="ba-modal-btn-confirm">Confirm Complete</button>
       </div>
     </div>
-  </div>
+  </div>';
+            }
 
+            $html .= '
 </div>
 ';
         }

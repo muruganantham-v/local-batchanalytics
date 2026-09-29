@@ -47,7 +47,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
     }
 
     public function get_defaultsetting() {
-        return json_encode(mentor_activity_service::DEFAULT_GROUPING_RULES);
+        return '';
     }
 
     public function write_setting($data) {
@@ -178,8 +178,8 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         $name = $this->get_full_name();
 
         $rules = $this->normalise_rules($data);
-        if ($rules === null || empty($rules)) {
-            $rules = mentor_activity_service::DEFAULT_GROUPING_RULES;
+        if ($rules === null) {
+            $rules = [];
         }
 
         $master_activities = mentor_activity_service::get_master_activities();

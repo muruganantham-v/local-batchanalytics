@@ -38,6 +38,10 @@ if (!has_capability('block/batchanalytics:view', $context)) {
 global $DB, $PAGE, $OUTPUT, $USER;
 
 $batchid     = optional_param('batchid', 0, PARAM_INT);
+$sectionid   = optional_param('sectionid', 0, PARAM_INT);
+if ($sectionid > 0 && $batchid <= 0) {
+    $batchid = $sectionid;
+}
 $module_idx  = optional_param('module', 1, PARAM_INT);
 $courseid    = optional_param('courseid', 0, PARAM_INT);
 $action      = optional_param('action', '', PARAM_ALPHANUMEXT);
@@ -93,13 +97,19 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         $completiondate = optional_param('completiondate', '', PARAM_RAW_TRIMMED);
         $planned_ts = optional_param('plannedts', 0, PARAM_INT);
 
+        $sec_id = optional_param('sectionid', 0, PARAM_INT);
+        if ($sec_id <= 0 && $batchid > 0) {
+            $sec_id = $batchid;
+        }
+
         if ($cid > 0 && !empty($target_name)) {
             $saved = \block_batchanalytics\mentor_activity_service::save_activity_status(
                 $cid,
                 $target_name,
                 (bool)$completed,
                 $completiondate,
-                $USER->id
+                $USER->id,
+                $sec_id
             );
             $action_info = \block_batchanalytics\mentor_activity_service::compute_action_status((bool)$completed, $planned_ts);
             $username = fullname($USER);
@@ -133,8 +143,27 @@ $has_bm_student = $dbman->table_exists('local_bm_student');
 $section = null;
 $batch = null;
 
-if ($courseid > 0 && $has_bm_section) {
-    // If courseid is provided, search all class sections to find the matching section and module index
+if ($has_bm_section && $batchid > 0) {
+    $section = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+    if (!$section) {
+        $section = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
+        if ($section) {
+            $batchid = (int)$section->id;
+        }
+    }
+    if ($section && !empty($section->moduledata)) {
+        $mdata_list = \block_batchanalytics\util::decode_module_data($section->moduledata, false);
+        foreach ($mdata_list as $m_info) {
+            if ($courseid > 0 && isset($m_info['moodlecourseid']) && (int)$m_info['moodlecourseid'] === $courseid) {
+                $module_idx = (int)($m_info['module'] ?? $module_idx);
+                break;
+            }
+        }
+    }
+}
+
+if (!$section && $courseid > 0 && $has_bm_section) {
+    // If courseid is provided without specific section, search all class sections to find the matching section and module index
     $all_sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
     foreach ($all_sections as $sec) {
         if (!empty($sec->moduledata)) {
@@ -147,16 +176,6 @@ if ($courseid > 0 && $has_bm_section) {
                     break 2;
                 }
             }
-        }
-    }
-}
-
-if (!$section && $has_bm_section && $batchid > 0) {
-    $section = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
-    if (!$section) {
-        $section = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
-        if ($section) {
-            $batchid = (int)$section->id;
         }
     }
 }
@@ -804,7 +823,12 @@ $mentor_activity_data = [
 ];
 
 if ($courseid > 0) {
-    $mentor_activity_data = \block_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts);
+    $mentor_activity_data = \block_batchanalytics\mentor_activity_service::get_course_mentor_activities(
+        $courseid,
+        $mod_name,
+        $mod_p_start_ts,
+        $section ? (int)$section->id : 0
+    );
 }
 
 // -------------------------------------------------------------------------
@@ -814,9 +838,10 @@ $ss_module_activities = [];
 
 if ($section && !empty($section->softskillsdata)) {
     $all_ss_activities = \block_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
-    if ($mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
+    if ($mod_p_start_ts > 0) {
+        $effective_end = $mod_p_end_ts > 0 ? $mod_p_end_ts : ($planned_days > 0 ? \block_batchanalytics\mentor_activity_service::add_working_days($mod_p_start_ts, $planned_days) : $mod_p_start_ts + (14 * 86400));
         $range_start = strtotime('today midnight', $mod_p_start_ts);
-        $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
+        $range_end = strtotime('today midnight', $effective_end) + 86399;
 
         foreach ($all_ss_activities as $act) {
             // Filter: activity planned date falls between module planned start and end date
@@ -824,6 +849,8 @@ if ($section && !empty($section->softskillsdata)) {
                 $ss_module_activities[] = $act;
             }
         }
+    } else {
+        $ss_module_activities = $all_ss_activities;
     }
 }
 
@@ -831,14 +858,19 @@ if ($section && !empty($section->softskillsdata)) {
 // 7. Page Setup & HTML Output
 // -------------------------------------------------------------------------
 $PAGE->set_context($context);
+$page_params = [];
 if ($courseid > 0) {
-    $PAGE->set_url(new moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $courseid]));
-} else {
-    $PAGE->set_url(new moodle_url('/blocks/batchanalytics/module.php', [
-        'batchid' => $batchid,
-        'module'  => $module_idx,
-    ]));
+    $page_params['courseid'] = $courseid;
 }
+if ($section) {
+    $page_params['sectionid'] = (int)$section->id;
+} else if ($batchid > 0) {
+    $page_params['batchid'] = $batchid;
+}
+if ($module_idx > 1) {
+    $page_params['module'] = $module_idx;
+}
+$PAGE->set_url(new moodle_url('/blocks/batchanalytics/module.php', $page_params));
 $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 

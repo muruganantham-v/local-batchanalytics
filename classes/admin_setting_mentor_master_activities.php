@@ -47,7 +47,7 @@ class admin_setting_mentor_master_activities extends \admin_setting {
     }
 
     public function get_defaultsetting() {
-        return json_encode(mentor_activity_service::DEFAULT_MASTER_ACTIVITIES);
+        return '';
     }
 
     public function write_setting($data) {
@@ -114,8 +114,8 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         $name = $this->get_full_name();
 
         $activities = $this->normalise_activities($data);
-        if ($activities === null || empty($activities)) {
-            $activities = mentor_activity_service::DEFAULT_MASTER_ACTIVITIES;
+        if ($activities === null) {
+            $activities = [];
         }
 
         $form = '<input type="hidden" id="' . $id . '" name="' . $name . '" value="'

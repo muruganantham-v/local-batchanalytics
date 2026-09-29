@@ -450,7 +450,7 @@ class task_service {
                     $mod_p_start = (int)($sm['plannedstart'] ?? 0);
 
                     try {
-                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start);
+                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start, (int)$sec->id);
                         $activities = $mdata['activities'] ?? [];
 
                         foreach ($activities as $act) {
@@ -474,7 +474,7 @@ class task_service {
                             if ($p_ts < $today_midnight) {
                                 $days = max(1, (int)floor(($today_midnight - $p_ts) / 86400));
                                 $todo_list[] = [
-                                    'id'            => 'mentor_' . $courseid . '_' . $act['key'],
+                                    'id'            => 'mentor_' . $sec->id . '_' . $courseid . '_' . $act['key'],
                                     'title'         => $act_name . ' — ' . $mod_name,
                                     'meta'          => 'Batch ' . $batch_name . ' · ' . $act['planned_date_formatted'],
                                     'batch_name'    => $batch_name,
@@ -492,7 +492,7 @@ class task_service {
                                 ];
                             } else if ($p_ts >= $today_midnight && $p_ts < $today_end) {
                                 $todo_list[] = [
-                                    'id'            => 'mentor_' . $courseid . '_' . $act['key'],
+                                    'id'            => 'mentor_' . $sec->id . '_' . $courseid . '_' . $act['key'],
                                     'title'         => $act_name . ' — ' . $mod_name,
                                     'meta'          => 'Batch ' . $batch_name . ' · due today',
                                     'batch_name'    => $batch_name,
@@ -511,7 +511,7 @@ class task_service {
                             } else if ($p_ts >= $today_end && $p_ts <= $next_week_end) {
                                 $days = max(1, (int)floor(($p_ts - $today_midnight) / 86400));
                                 $todo_list[] = [
-                                    'id'            => 'mentor_' . $courseid . '_' . $act['key'],
+                                    'id'            => 'mentor_' . $sec->id . '_' . $courseid . '_' . $act['key'],
                                     'title'         => $act_name . ' — ' . $mod_name,
                                     'meta'          => 'Batch ' . $batch_name . ' · in ' . $days . ' days',
                                     'batch_name'    => $batch_name,
@@ -1055,10 +1055,11 @@ class task_service {
         if ($action_type === 'mentor') {
             $courseid = (int)($params['courseid'] ?? 0);
             $act_name = trim((string)($params['act_name'] ?? ''));
+            $batchid  = (int)($params['batchid'] ?? 0);
             if ($courseid <= 0 || $act_name === '') {
                 throw new \moodle_exception('invalidparams', 'block_batchanalytics');
             }
-            $updated = mentor_activity_service::save_activity_status($courseid, $act_name, true, date('Y-m-d'), $userid);
+            $updated = mentor_activity_service::save_activity_status($courseid, $act_name, true, date('Y-m-d'), $userid, $batchid);
             return [
                 'success' => true,
                 'type'    => 'mentor',

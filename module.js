@@ -126,6 +126,9 @@
             formData.append('completed', isCompleted);
             formData.append('completiondate', compDate);
             formData.append('plannedts', plannedTs);
+            var batchId = container.getAttribute('data-batchid') || '0';
+            formData.append('batchid', batchId);
+            formData.append('sectionid', batchId);
 
             fetch(window.location.href, {
                 method: 'POST',

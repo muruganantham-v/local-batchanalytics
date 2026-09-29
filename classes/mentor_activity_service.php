@@ -208,7 +208,7 @@ class mentor_activity_service {
     public static function get_master_activities(): array {
         $raw = util::get_config_val('mentor_master_activities');
         if ($raw === false || trim((string)$raw) === '') {
-            return self::DEFAULT_MASTER_ACTIVITIES;
+            return [];
         }
 
         $decoded = json_decode((string)$raw, true);
@@ -257,7 +257,7 @@ class mentor_activity_service {
             }
         }
 
-        return !empty($activities) ? $activities : self::DEFAULT_MASTER_ACTIVITIES;
+        return $activities;
     }
 
     /**
@@ -269,10 +269,9 @@ class mentor_activity_service {
     public static function get_grouping_rules(): array {
         $raw = util::get_config_val('mentor_activity_grouping');
         if ($raw === false || trim((string)$raw) === '') {
-            $decoded = self::DEFAULT_GROUPING_RULES;
-        } else {
-            $decoded = json_decode((string)$raw, true);
+            return [];
         }
+        $decoded = json_decode((string)$raw, true);
 
         if (is_array($decoded)) {
             $rules = [];
@@ -330,18 +329,7 @@ class mentor_activity_service {
             }
         }
 
-        // Fallback for legacy text string format
-        $rules = [];
-        $default_master = self::get_master_activities();
-        $rules['Default'] = array_map(static function($a) {
-            return [
-                'key'     => $a['key'],
-                'name'    => $a['name'],
-                'duedays' => 5,
-            ];
-        }, $default_master);
-
-        return $rules;
+        return [];
     }
 
     /**
@@ -461,7 +449,12 @@ class mentor_activity_service {
      * @param int $mod_p_start_ts Module planned start timestamp.
      * @return array
      */
-    public static function get_course_mentor_activities(int $courseid, string $coursename = '', int $mod_p_start_ts = 0): array {
+    public static function get_course_mentor_activities(
+        int $courseid,
+        string $coursename = '',
+        int $mod_p_start_ts = 0,
+        int $sectionid = 0
+    ): array {
         global $DB;
 
         $resolved = self::resolve_group_for_course($courseid, $coursename);
@@ -471,13 +464,26 @@ class mentor_activity_service {
         $expected_activities = $rules[$groupname] ?? ($rules['Default'] ?? []);
         if (empty($expected_activities)) {
             $master = self::get_master_activities();
-            $expected_activities = array_map(static function($a) {
-                return [
-                    'key'     => $a['key'],
-                    'name'    => $a['name'],
-                    'duedays' => 5,
-                ];
-            }, $master);
+            if (!empty($master)) {
+                $expected_activities = array_map(static function($a) {
+                    return [
+                        'key'     => $a['key'],
+                        'name'    => $a['name'],
+                        'duedays' => 5,
+                    ];
+                }, $master);
+            }
+        }
+
+        if (empty($expected_activities)) {
+            return [
+                'courseid'        => $courseid,
+                'group'           => $groupname,
+                'is_manual'       => $resolved['is_manual'],
+                'mod_p_start_ts'  => $mod_p_start_ts,
+                'sectionid'       => $sectionid,
+                'activities'      => [],
+            ];
         }
 
         $saved_map = [];
@@ -489,11 +495,23 @@ class mentor_activity_service {
                 $raw_list = json_decode($rec->activitiesdata, true);
                 if (is_array($raw_list)) {
                     foreach ($raw_list as $item) {
-                        if (!empty($item['key'])) {
-                            $saved_map[mb_strtolower(trim($item['key']))] = $item;
-                        }
-                        if (!empty($item['name'])) {
-                            $saved_map[mb_strtolower(trim($item['name']))] = $item;
+                        $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                        if ($sectionid > 0) {
+                            if ($item_sec === $sectionid || ($item_sec === 0 && !isset($saved_map[mb_strtolower(trim($item['key'] ?? ''))]))) {
+                                if (!empty($item['key'])) {
+                                    $saved_map[mb_strtolower(trim($item['key']))] = $item;
+                                }
+                                if (!empty($item['name'])) {
+                                    $saved_map[mb_strtolower(trim($item['name']))] = $item;
+                                }
+                            }
+                        } else {
+                            if (!empty($item['key'])) {
+                                $saved_map[mb_strtolower(trim($item['key']))] = $item;
+                            }
+                            if (!empty($item['name'])) {
+                                $saved_map[mb_strtolower(trim($item['name']))] = $item;
+                            }
                         }
                         if (!empty($item['modifiedby'])) {
                             $modifier_ids[] = (int)$item['modifiedby'];
@@ -508,7 +526,7 @@ class mentor_activity_service {
         if (!empty($modifier_ids)) {
             $modifier_ids = array_unique($modifier_ids);
             [$in_sql, $in_params] = $DB->get_in_or_equal($modifier_ids);
-            $users = $DB->get_records_select('user', "id $in_sql", $in_params, '', 'id, firstname, lastname');
+            $users = $DB->get_records_select('user', "id $in_sql", $in_params, '', '*');
             foreach ($users as $u) {
                 $users_map[$u->id] = fullname($u);
             }
@@ -560,6 +578,7 @@ class mentor_activity_service {
                 'modifiedby'             => $modifiedby,
                 'modifiedbyname'         => $modifiedbyname,
                 'timemodified'           => $timemodified,
+                'sectionid'              => $sectionid,
             ];
         }
 
@@ -568,6 +587,7 @@ class mentor_activity_service {
             'group'           => $groupname,
             'is_manual'       => $resolved['is_manual'],
             'mod_p_start_ts'  => $mod_p_start_ts,
+            'sectionid'       => $sectionid,
             'activities'      => $activities,
         ];
     }
@@ -580,6 +600,7 @@ class mentor_activity_service {
      * @param bool $completed
      * @param string $completiondate
      * @param int $userid
+     * @param int $sectionid Optional class section id for section-specific tracking.
      * @return array
      * @throws \moodle_exception
      */
@@ -588,7 +609,8 @@ class mentor_activity_service {
         string $activityname,
         bool $completed,
         string $completiondate,
-        int $userid
+        int $userid,
+        int $sectionid = 0
     ): array {
         global $DB;
 
@@ -622,12 +644,18 @@ class mentor_activity_service {
         foreach ($activities_list as &$item) {
             $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
             $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+            $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
 
-            if ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name) {
+            $sec_match = ($sectionid <= 0) || ($item_sec === $sectionid) || ($item_sec === 0);
+
+            if (($item_key === $target_key || $item_name === $target_name || $item_key === $target_name) && $sec_match) {
                 $item['completed'] = $completed ? 1 : 0;
                 $item['completiondate'] = $date_val;
                 $item['modifiedby'] = $userid;
                 $item['timemodified'] = $now;
+                if ($sectionid > 0) {
+                    $item['sectionid'] = $sectionid;
+                }
                 $updated_item = $item;
                 $found = true;
                 break;
@@ -643,6 +671,7 @@ class mentor_activity_service {
                 'completiondate' => $date_val,
                 'modifiedby'     => $userid,
                 'timemodified'   => $now,
+                'sectionid'      => $sectionid,
             ];
             $activities_list[] = $updated_item;
         }

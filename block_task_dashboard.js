@@ -11,6 +11,7 @@
   var sesskey = '';
   var currentFilter = 'all';
   var allTodos = [];
+  var activeRole = 'admin';
   var pendingTask = null;
 
   // Pagination state
@@ -103,6 +104,10 @@
     var elSub = document.getElementById('ba-dash-rolesub');
     if (elSub && d.role_subtitle) elSub.textContent = d.role_subtitle;
 
+    if (d && d.active_role) {
+      activeRole = d.active_role;
+    }
+
     // Glance cards
     var elGlance = document.getElementById('ba-dash-glance');
     if (elGlance && Array.isArray(d.glance)) {
@@ -179,7 +184,7 @@
         var btnLbl = t.btn_label || 'Update →';
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
-      } else {
+      } else if (activeRole !== 'admin') {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       }
 
