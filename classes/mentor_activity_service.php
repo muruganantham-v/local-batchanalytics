@@ -338,7 +338,7 @@ class mentor_activity_service {
      * @return array<string, string>
      */
     public static function get_available_group_options(): array {
-        $options = ['' => get_string('mentor_activity_autodetect', 'block_batchanalytics')];
+        $options = ['' => get_string('mentor_activity_none', 'block_batchanalytics')];
         $rules = self::get_grouping_rules();
         foreach (array_keys($rules) as $grp) {
             $options[$grp] = $grp;
@@ -395,50 +395,21 @@ class mentor_activity_service {
 
     /**
      * Resolve the group for a given course.
-     * First checks if a manual group was chosen in course settings.
-     * Otherwise matches course fullname/shortname against defined group names.
+     * Only returns a group if explicitly selected in course settings.
      *
      * @param int $courseid
      * @param string $coursename
      * @return array{group: string, is_manual: bool}
      */
     public static function resolve_group_for_course(int $courseid, string $coursename = ''): array {
-        global $DB;
-
         if ($courseid > 0) {
             $selected = self::get_course_selected_group($courseid);
-            if ($selected !== '') {
+            if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) {
                 return ['group' => $selected, 'is_manual' => true];
             }
-
-            if ($coursename === '') {
-                $course = $DB->get_record('course', ['id' => $courseid], 'fullname, shortname', IGNORE_MISSING);
-                if ($course) {
-                    $coursename = $course->fullname . ' ' . $course->shortname;
-                }
-            }
         }
 
-        $rules = self::get_grouping_rules();
-        $haystack = mb_strtolower($coursename);
-
-        // Pattern match against group names (except Default)
-        foreach (array_keys($rules) as $grp) {
-            if (strcasecmp($grp, 'Default') === 0) {
-                continue;
-            }
-            if (mb_stripos($haystack, mb_strtolower($grp)) !== false) {
-                return ['group' => $grp, 'is_manual' => false];
-            }
-        }
-
-        // Fallback to Default group
-        if (isset($rules['Default'])) {
-            return ['group' => 'Default', 'is_manual' => false];
-        }
-
-        $first = array_key_first($rules);
-        return ['group' => $first ?: 'Default', 'is_manual' => false];
+        return ['group' => '', 'is_manual' => false];
     }
 
     /**
@@ -461,30 +432,18 @@ class mentor_activity_service {
         $groupname = $resolved['group'];
         $rules = self::get_grouping_rules();
 
-        $expected_activities = $rules[$groupname] ?? ($rules['Default'] ?? []);
-        if (empty($expected_activities)) {
-            $master = self::get_master_activities();
-            if (!empty($master)) {
-                $expected_activities = array_map(static function($a) {
-                    return [
-                        'key'     => $a['key'],
-                        'name'    => $a['name'],
-                        'duedays' => 5,
-                    ];
-                }, $master);
-            }
-        }
-
-        if (empty($expected_activities)) {
+        if ($groupname === '' || empty($rules[$groupname])) {
             return [
                 'courseid'        => $courseid,
-                'group'           => $groupname,
-                'is_manual'       => $resolved['is_manual'],
+                'group'           => '',
+                'is_manual'       => false,
                 'mod_p_start_ts'  => $mod_p_start_ts,
                 'sectionid'       => $sectionid,
                 'activities'      => [],
             ];
         }
+
+        $expected_activities = $rules[$groupname];
 
         $saved_map = [];
         $modifier_ids = [];

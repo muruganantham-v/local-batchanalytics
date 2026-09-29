@@ -81,9 +81,10 @@ $string['mentor_activity_grouping'] = 'Course Grouping Rules';
 $string['mentor_activity_grouping_desc'] = 'Define activities grouped by course pattern or subject (format: Group Name: Activity 1, Activity 2, ...). If no manual group is chosen in Course Settings, the course title is matched against these group names.';
 $string['mentor_activity_grouping_hdr'] = 'Mentor Activities';
 $string['mentor_activity_group_select'] = 'Mentor Activity Group';
-$string['mentor_activity_group_select_desc'] = 'Select which group of mentor activities applies to this course, or choose Auto-detect.';
-$string['mentor_activity_autodetect'] = 'Auto-detect from Course Name';
-$string['mentor_activities_empty'] = 'No mentor activities found for this module.';
+$string['mentor_activity_group_select_desc'] = 'Select which group of mentor activities applies to this course, or choose None.';
+$string['mentor_activity_none'] = 'None (No Mentor Activity)';
+$string['mentor_activity_autodetect'] = 'None (No Mentor Activity)';
+$string['mentor_activities_empty'] = 'For this module there is no mentor activity.';
 $string['mentor_activities_saved'] = 'Mentor activity saved successfully.';
 $string['mentor_activities_group_badge'] = 'Activity Group';
 
