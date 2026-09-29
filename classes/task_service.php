@@ -272,9 +272,10 @@ class task_service {
             $normalized_role = 'admin';
         }
 
-        // Define the 4 operational types
+        // Define the 4 operational types: admin, mentors, sspm, am
+        $is_siteadmin = is_siteadmin($userid);
         $available_roles = [];
-        if ($is_manager) {
+        if ($is_siteadmin) {
             $available_roles = [
                 'admin'   => 'Admin',
                 'mentors' => 'Mentors',
@@ -283,23 +284,34 @@ class task_service {
             ];
             $default_role = 'admin';
         } else {
+            if ($personas['is_asst']) {
+                $available_roles['am'] = 'Assistant Manager';
+            }
+            if ($personas['is_sse'] || $personas['is_pm'] || $personas['assigned_sse'] || $personas['assigned_pm']) {
+                $available_roles['sspm'] = 'SS / PM';
+            }
             if ($personas['is_mentor']) {
                 $available_roles['mentors'] = 'Mentors';
             }
-            if ($personas['is_sse'] || $personas['is_pm']) {
-                $available_roles['sspm'] = 'SS / PM';
-            }
-            if ($personas['is_asst']) {
-                $available_roles['am'] = 'Assistant Manager';
+
+            // Fallback for managers with no explicit persona mapped
+            if (empty($available_roles) && $is_manager) {
+                $available_roles = [
+                    'am'      => 'Assistant Manager',
+                    'sspm'    => 'SS / PM',
+                    'mentors' => 'Mentors',
+                ];
             }
 
             if (empty($available_roles)) {
                 $available_roles['mentors'] = 'Mentors';
                 $default_role = 'mentors';
-            } else if (isset($available_roles['am']) && $personas['is_asst'] && !$personas['is_mentor'] && !$personas['is_sse']) {
+            } else if ($personas['is_asst']) {
                 $default_role = 'am';
-            } else if (isset($available_roles['sspm']) && ($personas['assigned_sse'] || $personas['assigned_pm'] || $personas['is_sse'] || $personas['is_pm']) && !$personas['is_mentor']) {
+            } else if ($personas['assigned_sse'] || $personas['assigned_pm'] || $personas['is_sse'] || $personas['is_pm']) {
                 $default_role = 'sspm';
+            } else if ($personas['is_mentor']) {
+                $default_role = 'mentors';
             } else {
                 $default_role = array_key_first($available_roles);
             }
@@ -629,7 +641,7 @@ class task_service {
 
         // ---------------------------------------------------------------------
         // 3. ASSISTANT MANAGER (AM) MODULE ACTIVITIES (for AM or Admin)
-        // Enter actual start date, mark module completion by end date, update mentors
+        // Includes: Update closer date, update mentor name, update schedule, enter start date
         // ---------------------------------------------------------------------
         if ($active_role === 'am' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
@@ -638,11 +650,20 @@ class task_service {
                 }
 
                 $modules = util::decode_module_data($sec->moduledata, true);
-                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
-                $dest_batch_url = (new \moodle_url('/blocks/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
+                if (empty($modules)) {
+                    continue;
+                }
 
-                foreach ($modules as $mod_key => $m) {
-                    $mod_name = $m['name'] ?? ('Module ' . $mod_key);
+                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $edit_tracker_url = (new \moodle_url('/local/batchmanagement/edit_moduletracker.php', ['id' => $sec->id]))->out(false);
+
+                $module_keys = array_keys($modules);
+                $num_modules = count($module_keys);
+
+                for ($i = 0; $i < $num_modules; $i++) {
+                    $mod_key = $module_keys[$i];
+                    $m = $modules[$mod_key];
+                    $mod_name = $m['name'] ?? ('Module ' . ($i + 1));
                     $cid = (int)($m['moodlecourseid'] ?? 0);
                     $p_start = (int)($m['plannedstart'] ?? 0);
                     $p_end = (int)($m['plannedend'] ?? 0);
@@ -650,58 +671,9 @@ class task_service {
                     $a_end = (int)($m['actualend'] ?? 0);
                     $primary_mentor = trim((string)($m['primarymentor'] ?? ''));
 
-                    $dest_mod_url = ($cid > 0)
-                        ? (new \moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $cid, 'sectionid' => $sec->id]))->out(false)
-                        : $dest_batch_url;
-
-                    // 1. Enter actual start date of the module
-                    if ($p_start > 0 && empty($a_start) && $p_start <= $next_week_end) {
-                        if ($p_start < $today_midnight) {
-                            $days = max(1, (int)floor(($today_midnight - $p_start) / 86400));
-                            $urgency = 1;
-                            $status_class = 'over';
-                            $status_label = 'Overdue ' . $days . 'd';
-                        } else if ($p_start < $today_end) {
-                            $urgency = 2;
-                            $status_class = 'today';
-                            $status_label = 'Due today';
-                        } else {
-                            $days = max(1, (int)floor(($p_start - $today_midnight) / 86400));
-                            $urgency = 3;
-                            $status_class = 'soon';
-                            $status_label = 'Due in ' . $days . 'd';
-                        }
-
-                        $todo_list[] = [
-                            'id'            => 'am_start_' . $sec->id . '_' . $mod_key,
-                            'title'         => 'Enter actual start date — ' . $mod_name,
-                            'meta'          => 'Batch ' . $batch_name . ' · Planned start ' . userdate($p_start, '%d %b %Y'),
-                            'batch_name'    => $batch_name,
-                            'urgency_order' => $urgency,
-                            'status_class'  => $status_class,
-                            'status_label'  => $status_label,
-                            'dest_type'     => ($cid > 0 ? 'module' : 'batch'),
-                            'dest_url'      => $dest_mod_url,
-                            'action_type'   => 'am_start',
-                            'batchid'       => (int)$sec->id,
-                            'courseid'      => $cid,
-                            'act_key'       => (string)$mod_key,
-                            'act_name'      => 'Enter actual start date — ' . $mod_name,
-                            'planned_ts'    => $p_start,
-                        ];
-
-                        if ($p_start >= $today_midnight && $p_start <= $next_week_end) {
-                            $days = (int)floor(($p_start - $today_midnight) / 86400);
-                            $forthcoming_list[] = [
-                                'title' => 'Enter actual start date — ' . $mod_name,
-                                'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
-                                'ts'    => $p_start,
-                            ];
-                        }
-                    }
-
-                    // 2. Mark module completion by end date
-                    if ($p_end > 0 && empty($a_end) && $p_end <= $next_week_end) {
+                    // Example 1: Update closer date — {Module Name}
+                    // If the module planned end date is over/due but actual end date is empty
+                    if ($p_end > 0 && empty($a_end)) {
                         if ($p_end < $today_midnight) {
                             $days = max(1, (int)floor(($today_midnight - $p_end) / 86400));
                             $urgency = 1;
@@ -711,79 +683,240 @@ class task_service {
                             $urgency = 2;
                             $status_class = 'today';
                             $status_label = 'Due today';
-                        } else {
+                        } else if ($p_end <= $next_week_end) {
                             $days = max(1, (int)floor(($p_end - $today_midnight) / 86400));
                             $urgency = 3;
                             $status_class = 'soon';
                             $status_label = 'Due in ' . $days . 'd';
+                        } else {
+                            $urgency = 0;
                         }
 
-                        $todo_list[] = [
-                            'id'            => 'am_end_' . $sec->id . '_' . $mod_key,
-                            'title'         => 'Mark module completion — ' . $mod_name,
-                            'meta'          => 'Batch ' . $batch_name . ' · Planned end ' . userdate($p_end, '%d %b %Y'),
-                            'batch_name'    => $batch_name,
-                            'urgency_order' => $urgency,
-                            'status_class'  => $status_class,
-                            'status_label'  => $status_label,
-                            'dest_type'     => ($cid > 0 ? 'module' : 'batch'),
-                            'dest_url'      => $dest_mod_url,
-                            'action_type'   => 'am_end',
-                            'batchid'       => (int)$sec->id,
-                            'courseid'      => $cid,
-                            'act_key'       => (string)$mod_key,
-                            'act_name'      => 'Mark module completion — ' . $mod_name,
-                            'planned_ts'    => $p_end,
-                        ];
-
-                        if ($p_end >= $today_midnight && $p_end <= $next_week_end) {
-                            $days = (int)floor(($p_end - $today_midnight) / 86400);
-                            $forthcoming_list[] = [
-                                'title' => 'Mark module completion — ' . $mod_name,
-                                'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
-                                'ts'    => $p_end,
+                        if ($urgency > 0) {
+                            $closer_url = $edit_tracker_url . '#id_module_' . $mod_key . '_actualend';
+                            $todo_list[] = [
+                                'id'            => 'am_closer_' . $sec->id . '_' . $mod_key,
+                                'title'         => 'Update closer date — ' . $mod_name,
+                                'meta'          => 'Batch ' . $batch_name . ' · Planned end ' . userdate($p_end, '%d %b %Y'),
+                                'batch_name'    => $batch_name,
+                                'urgency_order' => $urgency,
+                                'status_class'  => $status_class,
+                                'status_label'  => $status_label,
+                                'dest_type'     => 'section',
+                                'dest_url'      => $closer_url,
+                                'action_type'   => 'am_closer',
+                                'action_mode'   => 'redirect',
+                                'action_url'    => $closer_url,
+                                'btn_label'     => 'Update closer date →',
+                                'batchid'       => (int)$sec->id,
+                                'courseid'      => $cid,
+                                'act_key'       => (string)$mod_key,
+                                'act_name'      => 'Update closer date — ' . $mod_name,
+                                'planned_ts'    => $p_end,
                             ];
+
+                            if ($p_end >= $today_midnight && $p_end <= $next_week_end) {
+                                $days = (int)floor(($p_end - $today_midnight) / 86400);
+                                $forthcoming_list[] = [
+                                    'title' => 'Update closer date — ' . $mod_name,
+                                    'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                    'ts'    => $p_end,
+                                ];
+                            }
                         }
                     }
 
-                    // 3. Update mentors for this current module
-                    if ($p_start <= $next_week_end && empty($a_end) && $primary_mentor === '') {
+                    // Example 2: Update mentor name — {Module Name}
+                    // If planned start date is over/due but primary mentor is not yet assigned
+                    if (empty($a_end) && ($primary_mentor === '' || $primary_mentor === '0' || strtolower($primary_mentor) === 'none')) {
+                        if ($p_start > 0) {
+                            if ($p_start < $today_midnight) {
+                                $days = max(1, (int)floor(($today_midnight - $p_start) / 86400));
+                                $urgency = 1;
+                                $status_class = 'over';
+                                $status_label = 'Mentor missing';
+                            } else if ($p_start < $today_end) {
+                                $urgency = 2;
+                                $status_class = 'today';
+                                $status_label = 'Due today';
+                            } else if ($p_start <= $next_week_end) {
+                                $days = max(1, (int)floor(($p_start - $today_midnight) / 86400));
+                                $urgency = 3;
+                                $status_class = 'soon';
+                                $status_label = 'Due in ' . $days . 'd';
+                            } else {
+                                $urgency = 0;
+                            }
+
+                            if ($urgency > 0) {
+                                $mentor_url = $edit_tracker_url . '#id_module_' . $mod_key . '_primarymentor';
+                                $todo_list[] = [
+                                    'id'            => 'am_mentor_' . $sec->id . '_' . $mod_key,
+                                    'title'         => 'Update mentor name — ' . $mod_name,
+                                    'meta'          => 'Batch ' . $batch_name . ' · Primary mentor unassigned',
+                                    'batch_name'    => $batch_name,
+                                    'urgency_order' => $urgency,
+                                    'status_class'  => $status_class,
+                                    'status_label'  => $status_label,
+                                    'dest_type'     => 'section',
+                                    'dest_url'      => $mentor_url,
+                                    'action_type'   => 'am_mentor',
+                                    'action_mode'   => 'redirect',
+                                    'action_url'    => $mentor_url,
+                                    'btn_label'     => 'Update mentor name →',
+                                    'batchid'       => (int)$sec->id,
+                                    'courseid'      => $cid,
+                                    'act_key'       => (string)$mod_key,
+                                    'act_name'      => 'Update mentor name — ' . $mod_name,
+                                    'planned_ts'    => $p_start,
+                                ];
+
+                                if ($p_start >= $today_midnight && $p_start <= $next_week_end) {
+                                    $days = (int)floor(($p_start - $today_midnight) / 86400);
+                                    $forthcoming_list[] = [
+                                        'title' => 'Update mentor name — ' . $mod_name,
+                                        'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                        'ts'    => $p_start,
+                                    ];
+                                }
+                            }
+                        }
+                    }
+
+                    // Class section update: Enter actual start date
+                    if ($p_start > 0 && empty($a_start) && empty($a_end)) {
                         if ($p_start < $today_midnight) {
+                            $days = max(1, (int)floor(($today_midnight - $p_start) / 86400));
                             $urgency = 1;
                             $status_class = 'over';
-                            $status_label = 'Mentor missing';
+                            $status_label = 'Overdue ' . $days . 'd';
                         } else if ($p_start < $today_end) {
                             $urgency = 2;
                             $status_class = 'today';
                             $status_label = 'Due today';
-                        } else {
+                        } else if ($p_start <= $next_week_end) {
                             $days = max(1, (int)floor(($p_start - $today_midnight) / 86400));
                             $urgency = 3;
                             $status_class = 'soon';
                             $status_label = 'Due in ' . $days . 'd';
+                        } else {
+                            $urgency = 0;
                         }
 
-                        $todo_list[] = [
-                            'id'            => 'am_mentor_' . $sec->id . '_' . $mod_key,
-                            'title'         => 'Update mentors for current module — ' . $mod_name,
-                            'meta'          => 'Batch ' . $batch_name . ' · Primary mentor unassigned',
-                            'batch_name'    => $batch_name,
-                            'urgency_order' => $urgency,
-                            'status_class'  => $status_class,
-                            'status_label'  => $status_label,
-                            'dest_type'     => 'batch',
-                            'dest_url'      => $dest_batch_url,
-                            'action_type'   => 'am_mentor',
-                            'batchid'       => (int)$sec->id,
-                            'courseid'      => $cid,
-                            'act_key'       => (string)$mod_key,
-                            'act_name'      => 'Update mentors for current module — ' . $mod_name,
-                            'planned_ts'    => $p_start,
-                        ];
+                        if ($urgency > 0) {
+                            $start_url = $edit_tracker_url . '#id_module_' . $mod_key . '_actualstart';
+                            $todo_list[] = [
+                                'id'            => 'am_start_' . $sec->id . '_' . $mod_key,
+                                'title'         => 'Enter actual start date — ' . $mod_name,
+                                'meta'          => 'Batch ' . $batch_name . ' · Planned start ' . userdate($p_start, '%d %b %Y'),
+                                'batch_name'    => $batch_name,
+                                'urgency_order' => $urgency,
+                                'status_class'  => $status_class,
+                                'status_label'  => $status_label,
+                                'dest_type'     => 'section',
+                                'dest_url'      => $start_url,
+                                'action_type'   => 'am_start',
+                                'action_mode'   => 'redirect',
+                                'action_url'    => $start_url,
+                                'btn_label'     => 'Enter start date →',
+                                'batchid'       => (int)$sec->id,
+                                'courseid'      => $cid,
+                                'act_key'       => (string)$mod_key,
+                                'act_name'      => 'Enter actual start date — ' . $mod_name,
+                                'planned_ts'    => $p_start,
+                            ];
+                        }
+                    }
+
+                    // Example 3: Update schedule — {Next Module Name}
+                    // If a module is completed and another module is pending
+                    if ($a_end > 0 && ($i + 1) < $num_modules) {
+                        $next_mod_key = $module_keys[$i + 1];
+                        $next_m = $modules[$next_mod_key];
+                        $next_a_end = (int)($next_m['actualend'] ?? 0);
+
+                        // If the next module is pending completion
+                        if (empty($next_a_end)) {
+                            $next_mod_name = $next_m['name'] ?? ('Module ' . ($i + 2));
+                            $next_cid = (int)($next_m['moodlecourseid'] ?? 0);
+                            $next_p_start = (int)($next_m['plannedstart'] ?? 0);
+
+                            if ($next_p_start <= 0) {
+                                $urgency = 1;
+                                $status_class = 'over';
+                                $status_label = 'Schedule required';
+                                $sched_ts = $a_end;
+                            } else if ($next_p_start < $today_midnight) {
+                                $days = max(1, (int)floor(($today_midnight - $next_p_start) / 86400));
+                                $urgency = 1;
+                                $status_class = 'over';
+                                $status_label = 'Overdue ' . $days . 'd';
+                                $sched_ts = $next_p_start;
+                            } else if ($next_p_start < $today_end) {
+                                $urgency = 2;
+                                $status_class = 'today';
+                                $status_label = 'Due today';
+                                $sched_ts = $next_p_start;
+                            } else if ($next_p_start <= $next_week_end) {
+                                $days = max(1, (int)floor(($next_p_start - $today_midnight) / 86400));
+                                $urgency = 3;
+                                $status_class = 'soon';
+                                $status_label = 'Due in ' . $days . 'd';
+                                $sched_ts = $next_p_start;
+                            } else {
+                                $urgency = 3;
+                                $status_class = 'soon';
+                                $days = max(1, (int)floor(($next_p_start - $today_midnight) / 86400));
+                                $status_label = 'In ' . $days . 'd';
+                                $sched_ts = $next_p_start;
+                            }
+
+                            $sched_url = $edit_tracker_url . '#id_module_' . $next_mod_key . '_plannedstart';
+                            $todo_list[] = [
+                                'id'            => 'am_sched_' . $sec->id . '_' . $next_mod_key,
+                                'title'         => 'Update schedule — ' . $next_mod_name,
+                                'meta'          => 'Batch ' . $batch_name . ' · ' . $mod_name . ' completed, next module pending',
+                                'batch_name'    => $batch_name,
+                                'urgency_order' => $urgency,
+                                'status_class'  => $status_class,
+                                'status_label'  => $status_label,
+                                'dest_type'     => 'section',
+                                'dest_url'      => $sched_url,
+                                'action_type'   => 'am_sched',
+                                'action_mode'   => 'redirect',
+                                'action_url'    => $sched_url,
+                                'btn_label'     => 'Update schedule →',
+                                'batchid'       => (int)$sec->id,
+                                'courseid'      => $next_cid,
+                                'act_key'       => (string)$next_mod_key,
+                                'act_name'      => 'Update schedule — ' . $next_mod_name,
+                                'planned_ts'    => $sched_ts,
+                            ];
+
+                            if ($sched_ts >= $today_midnight && $sched_ts <= $next_week_end) {
+                                $days = (int)floor(($sched_ts - $today_midnight) / 86400);
+                                $forthcoming_list[] = [
+                                    'title' => 'Update schedule — ' . $next_mod_name,
+                                    'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                    'ts'    => $sched_ts,
+                                ];
+                            }
+                        }
                     }
                 }
             }
         }
+
+        // Deduplicate tasks by ID
+        $dedup = [];
+        $unique_todos = [];
+        foreach ($todo_list as $t) {
+            if (!isset($dedup[$t['id']])) {
+                $dedup[$t['id']] = true;
+                $unique_todos[] = $t;
+            }
+        }
+        $todo_list = $unique_todos;
 
         // Sort To-Do list: Overdue first (1), Due today (2), Due soon (3), then by planned timestamp
         usort($todo_list, static function($a, $b) {
@@ -944,7 +1077,7 @@ class task_service {
             }
         }
 
-        if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_mentor') {
+        if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_closer' || $action_type === 'am_mentor' || $action_type === 'am_sched') {
             $batchid = (int)($params['batchid'] ?? 0);
             $mod_key = trim((string)($params['act_key'] ?? ''));
             if ($batchid <= 0 || $mod_key === '') {
@@ -964,7 +1097,7 @@ class task_service {
             $now = time();
             if ($action_type === 'am_start') {
                 $modules[$mod_key]['actualstart'] = $now;
-            } else if ($action_type === 'am_end') {
+            } else if ($action_type === 'am_end' || $action_type === 'am_closer') {
                 $modules[$mod_key]['actualend'] = $now;
                 if (empty($modules[$mod_key]['actualstart'])) {
                     $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $now);
@@ -972,6 +1105,10 @@ class task_service {
             } else if ($action_type === 'am_mentor') {
                 if (empty($modules[$mod_key]['primarymentor'])) {
                     $modules[$mod_key]['primarymentor'] = (string)$userid;
+                }
+            } else if ($action_type === 'am_sched') {
+                if (empty($modules[$mod_key]['plannedstart'])) {
+                    $modules[$mod_key]['plannedstart'] = $now;
                 }
             }
 

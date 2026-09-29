@@ -215,7 +215,7 @@ class block_batchanalytics extends block_base {
             } else {
                 $initial_todos = array_slice($dashdata['todo'], 0, 5);
                 foreach ($initial_todos as $t) {
-                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : 'Go to module →';
+                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : (($t['dest_type'] === 'section') ? 'Go to class section →' : 'Go to module →');
                     $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
                     $html .= '  <div class="body">';
                     $html .= '    <div class="t">' . s($t['title']) . '</div>';
@@ -224,7 +224,13 @@ class block_batchanalytics extends block_base {
                     $html .= '  </div>';
                     $html .= '  <div class="actions">';
                     $html .= '    <span class="due ' . s($t['status_class']) . '">' . s($t['status_label']) . '</span>';
-                    $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
+                    if (!empty($t['action_mode']) && $t['action_mode'] === 'redirect') {
+                        $btn_lbl = !empty($t['btn_label']) ? $t['btn_label'] : 'Update →';
+                        $act_url = !empty($t['action_url']) ? $t['action_url'] : $t['dest_url'];
+                        $html .= '    <a href="' . s($act_url) . '" class="mc-btn2 mc-btn-link">' . s($btn_lbl) . '</a>';
+                    } else {
+                        $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
+                    }
                     $html .= '  </div>';
                     $html .= '</div>';
                 }

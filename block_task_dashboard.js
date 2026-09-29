@@ -35,7 +35,7 @@
 
     // Delegated click listener for Mark Complete buttons
     container.addEventListener('click', function(e) {
-      var btn = e.target.closest('.mc-btn2');
+      var btn = e.target.closest('button.mc-btn2[data-task-id]');
       if (btn) {
         e.preventDefault();
         var tid = btn.getAttribute('data-task-id');
@@ -173,7 +173,16 @@
 
     // Render list items
     elList.innerHTML = pageItems.map(function(t) {
-      var destLabel = (t.dest_type === 'batch') ? 'Go to batch →' : 'Go to module →';
+      var destLabel = (t.dest_type === 'batch') ? 'Go to batch →' : ((t.dest_type === 'section') ? 'Go to class section →' : 'Go to module →');
+      var actionBtnHtml = '';
+      if (t.action_mode === 'redirect') {
+        var btnLbl = t.btn_label || 'Update →';
+        var actUrl = t.action_url || t.dest_url;
+        actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
+      } else {
+        actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
+      }
+
       return '<div class="todo" id="todo-row-' + escapeHtml(t.id) + '">' +
         '<div class="body">' +
           '<div class="t">' + escapeHtml(t.title) + '</div>' +
@@ -182,19 +191,10 @@
         '</div>' +
         '<div class="actions">' +
           '<span class="due ' + escapeHtml(t.status_class) + '">' + escapeHtml(t.status_label) + '</span>' +
-          '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>' +
+          actionBtnHtml +
         '</div>' +
       '</div>';
     }).join('');
-
-    // Attach click events to Mark Complete buttons
-    var btns = elList.querySelectorAll('.mc-btn2');
-    btns.forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var tid = this.getAttribute('data-task-id');
-        openCompleteModal(tid);
-      });
-    });
 
     // Render pagination controls
     if (elPagination) {
