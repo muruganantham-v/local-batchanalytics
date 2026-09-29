@@ -582,10 +582,46 @@ class mentor_activity_service {
      * @return array{group: string, is_manual: bool}
      */
     public static function resolve_group_for_course(int $courseid, string $coursename = ''): array {
+        global $DB;
+
+        $rules = self::get_grouping_rules();
+
         if ($courseid > 0) {
             $selected = self::get_course_selected_group($courseid);
             if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) {
-                return ['group' => $selected, 'is_manual' => true];
+                if (isset($rules[$selected])) {
+                    return ['group' => $selected, 'is_manual' => true];
+                }
+            }
+
+            // 1. If class section module name or course name is passed, match against mentor activity groups
+            if ($coursename !== '' && !empty($rules)) {
+                foreach (array_keys($rules) as $grp) {
+                    if (self::match_group_to_module_name($grp, $coursename)) {
+                        self::save_course_selected_group($courseid, $grp);
+                        return ['group' => $grp, 'is_manual' => true];
+                    }
+                }
+            }
+
+            // 2. Check class section module names mapped to this course in local_bm_classsection
+            $matched = self::sync_group_from_class_sections_for_course($courseid);
+            if ($matched !== '' && isset($rules[$matched])) {
+                return ['group' => $matched, 'is_manual' => true];
+            }
+
+            // 3. Check course fullname / shortname in Moodle
+            $course = $DB->get_record('course', ['id' => $courseid], 'fullname, shortname', IGNORE_MISSING);
+            if ($course && !empty($rules)) {
+                $candidates = array_filter([$course->fullname, $course->shortname]);
+                foreach ($candidates as $cand) {
+                    foreach (array_keys($rules) as $grp) {
+                        if (self::match_group_to_module_name($grp, $cand)) {
+                            self::save_course_selected_group($courseid, $grp);
+                            return ['group' => $grp, 'is_manual' => true];
+                        }
+                    }
+                }
             }
         }
 
