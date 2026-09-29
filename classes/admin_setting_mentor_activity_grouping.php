@@ -57,6 +57,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         }
 
         $this->config_write($this->name, json_encode($rules));
+        mentor_activity_service::sync_all_courses_from_class_sections();
         return '';
     }
 

@@ -18,6 +18,8 @@ namespace block_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once(__DIR__ . '/util.php');
+
 /**
  * Service for managing mentor operational activities, course grouping, due days, and single-record JSON storage.
  *
@@ -347,7 +349,171 @@ class mentor_activity_service {
     }
 
     /**
-     * Get the manually selected group for a course, if configured.
+     * Match a group name against a class section module name.
+     * Supports exact match, case-insensitive substring match, and normalized keyword match.
+     *
+     * @param string $group Group name configured in Site Admin.
+     * @param string $modname Module name from class section moduledata.
+     * @return bool
+     */
+    public static function match_group_to_module_name(string $group, string $modname): bool {
+        $g = mb_strtolower(trim($group));
+        $m = mb_strtolower(trim($modname));
+
+        if ($g === '' || $m === '') {
+            return false;
+        }
+
+        if ($g === $m) {
+            return true;
+        }
+
+        // Substring match
+        if (mb_stripos($m, $g) !== false || mb_stripos($g, $m) !== false) {
+            return true;
+        }
+
+        // Normalized token match:
+        // Strip common fillers/suffixes: Programming, Systems, Internals, Algorithms, (DSA), etc.
+        // Normalize "Advance" vs "Advanced", strip trailing 's' for plural/singular.
+        $normalize = static function(string $str): string {
+            $str = mb_strtolower($str);
+            $str = preg_replace('/programming|systems|internals|algorithms|\(dsa\)|and|\&/i', '', $str);
+            $str = preg_replace('/advanced/i', 'advance', $str);
+            $str = rtrim(trim($str), 's');
+            $str = preg_replace('/[^a-z0-9\+]/', '', $str);
+            return $str;
+        };
+
+        $ng = $normalize($g);
+        $nm = $normalize($m);
+
+        if ($ng !== '' && $nm !== '') {
+            if ($ng === $nm || mb_stripos($nm, $ng) !== false || mb_stripos($ng, $nm) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Try to detect and auto-save a matching group for a course based on class section module names.
+     * Directly updates the course setting page mentor activity in database table block_batchanalytics_mentor_act.
+     *
+     * @param int $courseid
+     * @return string Matched group name if found and saved, empty string otherwise.
+     */
+    public static function sync_group_from_class_sections_for_course(int $courseid): string {
+        global $DB;
+
+        if ($courseid <= 0 || !self::is_table_available()) {
+            return '';
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return '';
+        }
+
+        $rules = self::get_grouping_rules();
+        if (empty($rules)) {
+            return '';
+        }
+
+        $sections = $DB->get_records_sql(
+            "SELECT id, moduledata FROM {local_bm_classsection} WHERE moduledata LIKE :pattern",
+            ['pattern' => '%' . $courseid . '%']
+        );
+
+        if (empty($sections)) {
+            $sections = $DB->get_records('local_bm_classsection', null, 'id DESC');
+        }
+
+        foreach ($sections as $sec) {
+            $modules = util::decode_module_data($sec->moduledata, false);
+            foreach ($modules as $mod) {
+                $cid = (int)($mod['moodlecourseid'] ?? 0);
+                if ($cid === $courseid) {
+                    $mod_name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                    if ($mod_name !== '') {
+                        foreach (array_keys($rules) as $grp) {
+                            if (self::match_group_to_module_name($grp, $mod_name)) {
+                                // Match found! Directly update course setting page mentor activity.
+                                self::save_course_selected_group($courseid, $grp);
+                                return $grp;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Sync and update all courses mapped in class sections whose module names match configured mentor groups.
+     * Directly updates the course setting page mentor activity in database.
+     *
+     * @return int Count of courses updated.
+     */
+    public static function sync_all_courses_from_class_sections(): int {
+        global $DB;
+
+        if (!self::is_table_available()) {
+            return 0;
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return 0;
+        }
+
+        $rules = self::get_grouping_rules();
+        if (empty($rules)) {
+            return 0;
+        }
+
+        $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
+        $updated_count = 0;
+
+        foreach ($sections as $sec) {
+            $modules = util::decode_module_data($sec->moduledata, false);
+            foreach ($modules as $mod) {
+                $cid = (int)($mod['moodlecourseid'] ?? 0);
+                if ($cid <= 0) {
+                    continue;
+                }
+
+                $rec = $DB->get_record(self::get_table_name(), ['courseid' => $cid], 'selectedgroup', IGNORE_MISSING);
+                $existing = $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+                if ($existing !== '' && $existing !== '0' && strcasecmp($existing, 'none') !== 0) {
+                    continue; // Already has a valid configured group
+                }
+
+                $mod_name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                if ($mod_name === '') {
+                    continue;
+                }
+
+                foreach (array_keys($rules) as $grp) {
+                    if (self::match_group_to_module_name($grp, $mod_name)) {
+                        self::save_course_selected_group($cid, $grp);
+                        $updated_count++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $updated_count;
+    }
+
+    /**
+     * Get the selected group for a course.
+     * If not explicitly selected or empty, checks if the course matches a class section module name.
+     * If a match is found, directly updates the course setting page mentor activity in the database.
      *
      * @param int $courseid
      * @return string
@@ -359,7 +525,21 @@ class mentor_activity_service {
         }
 
         $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
-        return $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+        $selected = $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+        if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) {
+            return $selected;
+        }
+
+        // If not selected or empty, check if class section module name matches a group.
+        // If matched, directly update the course setting page mentor activity.
+        if ($selected === '') {
+            $matched = self::sync_group_from_class_sections_for_course($courseid);
+            if ($matched !== '') {
+                return $matched;
+            }
+        }
+
+        return $selected;
     }
 
     /**
