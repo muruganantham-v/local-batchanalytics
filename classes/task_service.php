@@ -723,12 +723,63 @@ class task_service {
                                     'ts'    => $p_end,
                                 ];
                             }
+
+                            // Also: If module is ending / upcoming closer date, add "Assign mentor for next module" if not assigned
+                            if (($i + 1) < $num_modules) {
+                                $next_mod_key = $module_keys[$i + 1];
+                                $next_m = $modules[$next_mod_key];
+                                $next_primary_mentor = trim((string)($next_m['primarymentor'] ?? ''));
+                                $next_a_end = (int)($next_m['actualend'] ?? 0);
+
+                                if (empty($next_a_end) && ($next_primary_mentor === '' || $next_primary_mentor === '0' || strtolower($next_primary_mentor) === 'none')) {
+                                    $next_mod_name = $next_m['name'] ?? ('Module ' . ($i + 2));
+                                    $next_cid = (int)($next_m['moodlecourseid'] ?? 0);
+                                    $next_mentor_url = $edit_tracker_url . '#id_module_' . $next_mod_key . '_primarymentor';
+
+                                    $todo_list[] = [
+                                        'id'            => 'am_next_mentor_' . $sec->id . '_' . $next_mod_key,
+                                        'title'         => 'Assign mentor for next module — ' . $next_mod_name,
+                                        'meta'          => 'Batch ' . $batch_name . ' · ' . $mod_name . ' ending, next module mentor unassigned',
+                                        'batch_name'    => $batch_name,
+                                        'urgency_order' => $urgency,
+                                        'status_class'  => $status_class,
+                                        'status_label'  => ($urgency === 1 ? 'Mentor missing' : $status_label),
+                                        'dest_type'     => 'section',
+                                        'dest_url'      => $next_mentor_url,
+                                        'action_type'   => 'am_mentor',
+                                        'action_mode'   => 'redirect',
+                                        'action_url'    => $next_mentor_url,
+                                        'btn_label'     => 'Assign mentor →',
+                                        'batchid'       => (int)$sec->id,
+                                        'courseid'      => $next_cid,
+                                        'act_key'       => (string)$next_mod_key,
+                                        'act_name'      => 'Assign mentor for next module — ' . $next_mod_name,
+                                        'planned_ts'    => $p_end,
+                                    ];
+
+                                    if ($p_end >= $today_midnight && $p_end <= $next_week_end) {
+                                        $forthcoming_list[] = [
+                                            'title' => 'Assign mentor for next module — ' . $next_mod_name,
+                                            'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                            'ts'    => $p_end,
+                                        ];
+                                    }
+                                }
+                            }
                         }
                     }
 
                     // Example 2: Update mentor name — {Module Name}
-                    // If planned start date is over/due but primary mentor is not yet assigned
-                    if (empty($a_end) && ($primary_mentor === '' || $primary_mentor === '0' || strtolower($primary_mentor) === 'none')) {
+                    // Check if already queued via previous module's "Assign mentor for next module"
+                    $already_has_next_mentor = false;
+                    foreach ($todo_list as $existing_t) {
+                        if ($existing_t['id'] === 'am_next_mentor_' . $sec->id . '_' . $mod_key) {
+                            $already_has_next_mentor = true;
+                            break;
+                        }
+                    }
+
+                    if (!$already_has_next_mentor && empty($a_end) && ($primary_mentor === '' || $primary_mentor === '0' || strtolower($primary_mentor) === 'none')) {
                         if ($p_start > 0) {
                             if ($p_start < $today_midnight) {
                                 $days = max(1, (int)floor(($today_midnight - $p_start) / 86400));
