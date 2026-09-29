@@ -18,8 +18,53 @@ require_login();
 $context = context_system::instance();
 $userid = $USER->id;
 
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
+
+// Dashboard block AJAX endpoints (available to any authenticated user with a dashboard block)
+if ($action === 'get_dashboard_tasks') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+        $data = \local_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        echo json_encode(['success' => true, 'data' => $data]);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'complete_task') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $type = required_param('type', PARAM_ALPHANUMEXT);
+        $params = [
+            'courseid' => optional_param('courseid', 0, PARAM_INT),
+            'batchid'  => optional_param('batchid', 0, PARAM_INT),
+            'act_name' => optional_param('act_name', '', PARAM_RAW),
+            'act_key'  => optional_param('act_key', '', PARAM_RAW),
+        ];
+        $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
+        echo json_encode($res);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
 // Capability-based permission check. Assign 'local/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
-require_capability('local/batchanalytics:view', $context);
+if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
+    if (!\local_batchanalytics\task_service::can_view_dashboard($userid)) {
+        require_capability('local/batchanalytics:view', $context);
+    }
+}
 
 $can_manage = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context);
 $can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);

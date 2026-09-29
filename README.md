@@ -2,7 +2,7 @@
 
 `local_batchanalytics` is a high-performance Moodle local plugin for batch and module analytics, curriculum progress tracking, student performance grading, batch review notes, and Zoho CRM integration.
 
-Current release: `2.1.0` | Plugin version: `2026092700`
+Current release: `2.2.0` | Plugin version: `2026092900`
 
 ## Contents
 
@@ -27,19 +27,20 @@ Current release: `2.1.0` | Plugin version: `2026092700`
 
 ## Installation and Upgrade
 
-1. Copy the plugin directory to `moodle/local/batchanalytics`.
-2. Sign in as a site administrator.
-3. Open **Site administration > Notifications** to run the plugin installation or upgrade.
-4. Purge caches if Moodle does not immediately load new navigation, strings, JavaScript, or styles.
-5. Open **Site administration > Plugins > Local plugins > Batch Analytics** to configure settings.
+1. Copy the local plugin to `moodle/local/batchanalytics`.
+2. (Optional) Copy the companion block plugin from `blocks/batchanalytics` to `moodle/blocks/batchanalytics` to enable the user dashboard To-Do block widget.
+3. Sign in as a site administrator.
+4. Open **Site administration > Notifications** to run the plugin installation or upgrade.
+5. Purge caches if Moodle does not immediately load new navigation, strings, JavaScript, or styles.
+6. Open **Site administration > Plugins > Local plugins > Batch Analytics** to configure settings and operational role assignments.
 
 ## File & Architecture Structure
 
-The plugin is structured symmetrically around three core views:
+The solution contains the core local plugin and a companion block widget:
 
 ```text
 local/batchanalytics/
-├── index.php             # Main Batch Analytics dashboard
+├── index.php             # Main Batch Analytics dashboard & AJAX API
 ├── index.js              # Client-side filtering, stats, & table rendering
 ├── batch.php             # Cohort batch detail view (Schedule, SS, Performance, CRM, Notes)
 ├── batch.js              # Batch view tabs, student performance, & note submission
@@ -48,19 +49,31 @@ local/batchanalytics/
 ├── styles.css            # Base stylesheet (automatically loaded by Moodle)
 ├── dashboard.css         # Modern UI components, stat cards, badges, and layout
 ├── lib.php               # Moodle navigation extension
-├── settings.php          # Admin settings configuration
+├── settings.php          # Admin settings & operational role mapping configuration
 ├── version.php           # Plugin version specification
 ├── classes/              # PSR-4 autoloaded services
 │   ├── activity_tracker_service.php
 │   ├── admin_setting_crm_fields.php
+│   ├── admin_setting_mentor_activity_grouping.php
+│   ├── admin_setting_mentor_master_activities.php
 │   ├── admin_setting_module_tracker_categories.php
 │   ├── batch_notes_service.php
 │   ├── crmapi.php
 │   ├── crm_fields_helper.php
 │   ├── hook_callbacks.php
+│   ├── mentor_activity_service.php
 │   ├── moodledata.php
 │   ├── student_performance_service.php
+│   ├── task_service.php
 │   └── util.php
+├── blocks/               # Companion Block Plugin
+│   └── batchanalytics/   # Block widget for Moodle Dashboard (/my/) & Course views
+│       ├── block_batchanalytics.php
+│       ├── block_task_dashboard.css
+│       ├── block_task_dashboard.js
+│       ├── version.php
+│       ├── db/access.php
+│       └── lang/en/block_batchanalytics.php
 ├── db/                   # Database schemas, capabilities, & upgrade scripts
 │   ├── access.php
 │   ├── caches.php

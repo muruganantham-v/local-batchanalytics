@@ -110,5 +110,51 @@ if ($hassiteconfig) {
         get_string('mentor_activity_grouping_desc', 'local_batchanalytics')
     ));
 
+    // Role selection dropdown settings for operational task assignments
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/role_configuration',
+        get_string('role_configuration', 'local_batchanalytics'),
+        get_string('role_configuration_desc', 'local_batchanalytics')
+    ));
+
+    $role_choices = ['0' => get_string('none')];
+    $all_roles = $DB->get_records('role', null, 'sortorder ASC', 'id, name, shortname');
+    foreach ($all_roles as $r) {
+        $rname = !empty($r->name) ? format_string($r->name) : $r->shortname;
+        $role_choices[(string)$r->id] = $rname . ' (' . $r->shortname . ')';
+    }
+
+    $settings->add(new admin_setting_configselect(
+        'local_batchanalytics/mentor_roles',
+        get_string('mentor_roles', 'local_batchanalytics'),
+        get_string('mentor_roles_desc', 'local_batchanalytics'),
+        '0',
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_batchanalytics/ssexecutive_roles',
+        get_string('ssexecutive_roles', 'local_batchanalytics'),
+        get_string('ssexecutive_roles_desc', 'local_batchanalytics'),
+        '0',
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_batchanalytics/program_manager_roles',
+        get_string('program_manager_roles', 'local_batchanalytics'),
+        get_string('program_manager_roles_desc', 'local_batchanalytics'),
+        '0',
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_batchanalytics/assistant_manager_roles',
+        get_string('assistant_manager_roles', 'local_batchanalytics'),
+        get_string('assistant_manager_roles_desc', 'local_batchanalytics'),
+        '0',
+        $role_choices
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }
