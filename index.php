@@ -3,9 +3,9 @@
 // ... (License Header) ...
 
 /**
- * Main page for local_batchanalytics
+ * Main page for block_batchanalytics
  *
- * @package    local_batchanalytics
+ * @package    block_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */

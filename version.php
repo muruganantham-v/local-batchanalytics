@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_batchanalytics
+ * Version information for block_batchanalytics
  *
  * @package    block_batchanalytics
  * @copyright  2026
