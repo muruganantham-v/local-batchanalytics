@@ -282,12 +282,25 @@ class block_batchanalytics extends block_base {
   <!-- Mark Complete Confirmation Modal -->
   <div class="ba-task-modal-overlay" id="ba-task-modal-overlay">
     <div class="ba-task-modal-box">
-      <h3>Mark Activity Complete</h3>
-      <p>Confirm completion of this milestone activity:</p>
+      <div class="ba-modal-header">
+        <h3 id="ba-modal-title">Mark Activity Complete</h3>
+        <button type="button" class="ba-modal-close-btn" id="ba-modal-btn-close" aria-label="Close modal">&times;</button>
+      </div>
+      <p class="ba-modal-sub">Check submissions and confirm completion of this activity:</p>
       <div class="act-name" id="ba-modal-task-name">-</div>
-      <div class="mbtns">
+
+      <!-- Dynamic validation container -->
+      <div class="ba-modal-validation-body" id="ba-modal-validation-body">
+        <div class="ba-modal-loading">
+          <div class="ba-spinner"></div>
+          <span>Checking pending submissions and evaluations...</span>
+        </div>
+      </div>
+
+      <div class="mbtns" id="ba-modal-actions">
         <button type="button" class="cancel" id="ba-modal-btn-cancel">Cancel</button>
-        <button type="button" class="confirm" id="ba-modal-btn-confirm">Confirm Complete</button>
+        <a href="#" target="_blank" class="mc-btn-goto-act" id="ba-modal-btn-goto" style="display:none;">Go to Activity ↗</a>
+        <button type="button" class="confirm" id="ba-modal-btn-confirm" disabled>Confirm Complete</button>
       </div>
     </div>
   </div>';
