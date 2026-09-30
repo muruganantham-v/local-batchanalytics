@@ -121,6 +121,7 @@
             formData.append('action', 'save_mentor_activity');
             formData.append('sesskey', sesskey);
             formData.append('courseid', courseId);
+            formData.append('sectionid', batchId);
             formData.append('activityname', actName);
             formData.append('activitykey', actKey);
             formData.append('completed', isCompleted);
@@ -168,8 +169,19 @@
                     mentorStatusMsg.style.color = '#d93025';
                     setTimeout(function() {
                         mentorStatusMsg.textContent = '';
-                    }, 4000);
+                    }, 5000);
                 }
+                // Revert checkbox and input states on validation error
+                if (chk) {
+                    chk.checked = !isCompleted;
+                }
+                if (dateInput) {
+                    dateInput.disabled = !chk.checked;
+                    if (!chk.checked) {
+                        dateInput.value = '';
+                    }
+                }
+                updateMentorActionBadge(actName, chk ? chk.checked : false, plannedTs);
             });
         }
 

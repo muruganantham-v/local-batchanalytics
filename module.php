@@ -55,6 +55,19 @@ if ($action === 'saveactivity') {
         $cid = required_param('courseid', PARAM_INT);
 
         if ($cid > 0) {
+            if ($completed) {
+                $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, $cmid);
+                if ($pending_check['has_pending']) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status'  => 'error',
+                        'error'   => $pending_check['message'],
+                        'details' => $pending_check['details']
+                    ]);
+                    die();
+                }
+            }
+
             $service = new \local_batchanalytics\activity_tracker_service();
             if ($service->is_table_available()) {
                 $saved = $service->save_activity_status($cid, $USER->id, $cmid, (bool)$completed, $completiondate);
@@ -88,14 +101,32 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         $completed = optional_param('completed', 0, PARAM_BOOL);
         $completiondate = optional_param('completiondate', '', PARAM_RAW_TRIMMED);
         $planned_ts = optional_param('plannedts', 0, PARAM_INT);
+        $sectionid = optional_param('sectionid', 0, PARAM_INT);
+        if ($sectionid <= 0 && $batchid > 0) {
+            $sectionid = $batchid;
+        }
 
         if ($cid > 0 && !empty($target_name)) {
+            if ($completed) {
+                $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, 0, $target_name, $sectionid);
+                if ($pending_check['has_pending']) {
+                    http_response_code(400);
+                    echo json_encode([
+                        'status'  => 'error',
+                        'error'   => $pending_check['message'],
+                        'details' => $pending_check['details']
+                    ]);
+                    die();
+                }
+            }
+
             $saved = \local_batchanalytics\mentor_activity_service::save_activity_status(
                 $cid,
                 $target_name,
                 (bool)$completed,
                 $completiondate,
-                $USER->id
+                $USER->id,
+                $sectionid
             );
             $action_info = \local_batchanalytics\mentor_activity_service::compute_action_status((bool)$completed, $planned_ts);
             $username = fullname($USER);

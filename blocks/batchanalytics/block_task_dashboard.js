@@ -329,7 +329,13 @@
           closeModal();
           renderTodoList();
         } else {
-          alert('Failed to save completion: ' + ((resp && resp.message) || 'Unknown error'));
+          var errMsg = (resp && (resp.error || resp.message)) || 'Unknown error';
+          var nameEl = document.getElementById('ba-modal-task-name');
+          if (nameEl) {
+            nameEl.innerHTML = '<div style="color:#b91c1c; font-weight:600; font-size:12.5px; line-height:1.4; padding:8px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; margin-top:8px;">⚠️ ' + escapeHtml(errMsg) + '</div>';
+          } else {
+            alert(errMsg);
+          }
         }
       })
       .catch(function(err) {

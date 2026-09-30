@@ -20,6 +20,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/util.php');
 require_once(__DIR__ . '/mentor_activity_service.php');
+require_once(__DIR__ . '/activity_tracker_service.php');
 
 /**
  * Service for operational role resolution, To-Do task generation,
@@ -1062,6 +1063,19 @@ class task_service {
             if ($courseid <= 0 || $act_name === '') {
                 throw new \moodle_exception('invalidparams', 'local_batchanalytics');
             }
+
+            // Check if there are pending / ungraded submissions before completing
+            $pending_check = activity_tracker_service::check_pending_submissions($courseid, 0, $act_name, $batchid);
+            if ($pending_check['has_pending']) {
+                return [
+                    'success'       => false,
+                    'error'         => $pending_check['message'],
+                    'message'       => $pending_check['message'],
+                    'pending_count' => $pending_check['count'],
+                    'details'       => $pending_check['details'],
+                ];
+            }
+
             $updated = mentor_activity_service::save_activity_status($courseid, $act_name, true, date('Y-m-d'), $userid, $batchid);
             return [
                 'success' => true,

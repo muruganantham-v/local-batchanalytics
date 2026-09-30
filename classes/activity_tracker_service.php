@@ -421,4 +421,346 @@ class activity_tracker_service {
             throw new \moodle_exception('activity_tracker_upgrade_required', 'local_batchanalytics');
         }
     }
+
+    /**
+     * Check if an activity or activities in a course have pending / ungraded submissions.
+     *
+     * @param int $courseid
+     * @param int $cmid Specific course module ID (if checking single module in activity tracker)
+     * @param string $activity_name Activity name or operational key (if checking mentor activity checklist)
+     * @param int $sectionid Optional class section ID to isolate enrolled students
+     * @return array{has_pending: bool, count: int, message: string, details: array}
+     */
+    public static function check_pending_submissions(
+        int $courseid,
+        int $cmid = 0,
+        string $activity_name = '',
+        int $sectionid = 0
+    ): array {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+        }
+
+        // 1. Resolve student IDs if scoped to a class section
+        $student_filter_sql = '';
+        $student_params = [];
+        if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
+            $uids = $DB->get_fieldset_select('local_bm_student', 'studentid', 'classsectionid = :secid', ['secid' => $sectionid]);
+            if (!empty($uids)) {
+                [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
+                $student_filter_sql = " AND s.userid $in_sql";
+                $student_params = $in_params;
+            }
+        }
+
+        $pending_details = [];
+        $total_pending = 0;
+
+        // 2. If a specific course module $cmid is given, inspect that module
+        if ($cmid > 0) {
+            try {
+                $modinfo = get_fast_modinfo($courseid);
+                $cm = $modinfo->get_cm($cmid);
+                if ($cm) {
+                    $res = self::check_cm_pending_submissions($cm, $student_filter_sql, $student_params);
+                    if ($res['has_pending']) {
+                        return $res;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // If course/cm cannot be loaded, continue gracefully.
+            }
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+        }
+
+        // 3. If $activity_name is given (e.g. mentor activity like "Assignment evaluation" or specific activity name)
+        $norm = mb_strtolower(trim($activity_name));
+        if ($norm === '') {
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+        }
+
+        // Ignore non-submission operational activities (e.g. spot awards, nominations)
+        if (str_contains($norm, 'nomination') || str_contains($norm, 'spot award') || str_contains($norm, 'power track')) {
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+        }
+
+        // Check if $activity_name matches an exact activity in the course
+        try {
+            $modinfo = get_fast_modinfo($courseid);
+            foreach ($modinfo->cms as $cm) {
+                if (mb_strtolower(trim($cm->name)) === $norm) {
+                    $res = self::check_cm_pending_submissions($cm, $student_filter_sql, $student_params);
+                    if ($res['has_pending']) {
+                        return $res;
+                    }
+                    return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignore
+        }
+
+        // 4. Category-level checks for mentor master activities:
+        // A) Assignments & VPLs
+        $check_assign = str_contains($norm, 'assign') || str_contains($norm, 'evaluation') || $norm === 'assignment_evaluation';
+        $check_project = str_contains($norm, 'project');
+        $check_quiz = str_contains($norm, 'quiz');
+
+        if ($check_assign || $check_project) {
+            // Check Moodle Assignments (mod_assign)
+            if ($DB->get_manager()->table_exists('assign') && $DB->get_manager()->table_exists('assign_submission')) {
+                $proj_sql = "";
+                $assign_params = array_merge(['courseid' => $courseid], $student_params);
+                if ($check_project && !$check_assign) {
+                    $proj_sql = " AND " . $DB->sql_like('a.name', ':projname', false, false);
+                    $assign_params['projname'] = '%project%';
+                }
+
+                $sql = "
+                    SELECT a.id, a.name, COUNT(DISTINCT s.id) as pendingcount
+                    FROM {assign} a
+                    JOIN {assign_submission} s ON s.assignment = a.id
+                    LEFT JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                    WHERE a.course = :courseid
+                      AND s.status = 'submitted'
+                      AND s.latest = 1
+                      AND (g.grade IS NULL OR g.grade < 0 OR s.timemodified > g.timemodified)
+                      $proj_sql
+                      $student_filter_sql
+                    GROUP BY a.id, a.name
+                ";
+
+                $assign_rows = $DB->get_records_sql($sql, $assign_params);
+                foreach ($assign_rows as $row) {
+                    $cnt = (int)$row->pendingcount;
+                    if ($cnt > 0) {
+                        $total_pending += $cnt;
+                        $pending_details[] = $row->name . ' (' . $cnt . ' ungraded ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
+                    }
+                }
+            }
+
+            // Check VPLs (mod_vpl)
+            if ($DB->get_manager()->table_exists('vpl') && $DB->get_manager()->table_exists('vpl_submissions')) {
+                $vpl_params = array_merge(['courseid' => $courseid], $student_params);
+                $proj_sql = "";
+                if ($check_project && !$check_assign) {
+                    $proj_sql = " AND " . $DB->sql_like('v.name', ':projname', false, false);
+                    $vpl_params['projname'] = '%project%';
+                }
+
+                $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
+
+                $sql = "
+                    SELECT v.id, v.name, COUNT(DISTINCT s.id) as pendingcount
+                    FROM {vpl} v
+                    JOIN {vpl_submissions} s ON s.vpl = v.id
+                    JOIN (
+                        SELECT vpl, userid, MAX(id) as maxid
+                        FROM {vpl_submissions}
+                        GROUP BY vpl, userid
+                    ) latest ON latest.maxid = s.id
+                    WHERE v.course = :courseid
+                      AND (s.dategraded = 0 OR s.dategraded IS NULL OR s.grade IS NULL)
+                      $proj_sql
+                      $vpl_stu_sql
+                    GROUP BY v.id, v.name
+                ";
+
+                $vpl_rows = $DB->get_records_sql($sql, $vpl_params);
+                foreach ($vpl_rows as $row) {
+                    $cnt = (int)$row->pendingcount;
+                    if ($cnt > 0) {
+                        $total_pending += $cnt;
+                        $pending_details[] = $row->name . ' (' . $cnt . ' un-evaluated ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
+                    }
+                }
+            }
+        }
+
+        // B) Quizzes (mod_quiz)
+        if ($check_quiz) {
+            if ($DB->get_manager()->table_exists('quiz') && $DB->get_manager()->table_exists('quiz_attempts')) {
+                $quiz_params = array_merge(['courseid' => $courseid], $student_params);
+                $quiz_stu_sql = str_replace('s.userid', 'qa.userid', $student_filter_sql);
+
+                // In-progress or overdue attempts
+                $sql_prog = "
+                    SELECT q.id, q.name, COUNT(DISTINCT qa.id) as pendingcount
+                    FROM {quiz} q
+                    JOIN {quiz_attempts} qa ON qa.quiz = q.id
+                    WHERE q.course = :courseid
+                      AND qa.preview = 0
+                      AND qa.state IN ('inprogress', 'overdue')
+                      $quiz_stu_sql
+                    GROUP BY q.id, q.name
+                ";
+                $quiz_prog_rows = $DB->get_records_sql($sql_prog, $quiz_params);
+                foreach ($quiz_prog_rows as $row) {
+                    $cnt = (int)$row->pendingcount;
+                    if ($cnt > 0) {
+                        $total_pending += $cnt;
+                        $pending_details[] = $row->name . ' (' . $cnt . ' in-progress ' . ($cnt === 1 ? 'attempt' : 'attempts') . ')';
+                    }
+                }
+
+                // Attempts needing manual grading (e.g. essay questions)
+                if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
+                    $sql_manual = "
+                        SELECT q.id, q.name, COUNT(DISTINCT qa.id) as pendingcount
+                        FROM {quiz} q
+                        JOIN {quiz_attempts} qa ON qa.quiz = q.id
+                        JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
+                        JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                        WHERE q.course = :courseid
+                          AND qa.preview = 0
+                          AND qa.state = 'finished'
+                          AND qas.state = 'needsgrading'
+                          $quiz_stu_sql
+                        GROUP BY q.id, q.name
+                    ";
+                    $quiz_man_rows = $DB->get_records_sql($sql_manual, $quiz_params);
+                    foreach ($quiz_man_rows as $row) {
+                        $cnt = (int)$row->pendingcount;
+                        if ($cnt > 0) {
+                            $total_pending += $cnt;
+                            $pending_details[] = $row->name . ' (' . $cnt . ' manual grading ' . ($cnt === 1 ? 'question' : 'questions') . ' pending)';
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($total_pending > 0) {
+            $msg = 'Cannot mark complete: ' . $total_pending . ' pending/ungraded ' .
+                   ($total_pending === 1 ? 'submission' : 'submissions') . ' in: ' . implode(', ', array_slice($pending_details, 0, 3));
+            if (count($pending_details) > 3) {
+                $msg .= ' and ' . (count($pending_details) - 3) . ' more.';
+            }
+
+            return [
+                'has_pending' => true,
+                'count'       => $total_pending,
+                'message'     => $msg,
+                'details'     => $pending_details,
+            ];
+        }
+
+        return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+    }
+
+    /**
+     * Check pending submissions for a specific course module.
+     *
+     * @param \cm_info $cm
+     * @param string $student_filter_sql
+     * @param array $student_params
+     * @return array
+     */
+    private static function check_cm_pending_submissions(\cm_info $cm, string $student_filter_sql, array $student_params): array {
+        global $DB;
+
+        $modname = $cm->modname;
+        $instance = (int)$cm->instance;
+        $name = format_string($cm->name);
+
+        if ($modname === 'assign' && $DB->get_manager()->table_exists('assign_submission')) {
+            $params = array_merge(['instance' => $instance], $student_params);
+            $sql = "
+                SELECT COUNT(DISTINCT s.id)
+                FROM {assign_submission} s
+                LEFT JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                WHERE s.assignment = :instance
+                  AND s.status = 'submitted'
+                  AND s.latest = 1
+                  AND (g.grade IS NULL OR g.grade < 0 OR s.timemodified > g.timemodified)
+                  $student_filter_sql
+            ";
+            $cnt = (int)$DB->count_records_sql($sql, $params);
+            if ($cnt > 0) {
+                return [
+                    'has_pending' => true,
+                    'count'       => $cnt,
+                    'message'     => "Cannot mark complete: $cnt ungraded submission(s) in $name.",
+                    'details'     => ["$name ($cnt ungraded submissions)"],
+                ];
+            }
+        }
+
+        if ($modname === 'vpl' && $DB->get_manager()->table_exists('vpl_submissions')) {
+            $params = array_merge(['instance' => $instance], $student_params);
+            $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
+            $sql = "
+                SELECT COUNT(DISTINCT s.id)
+                FROM {vpl_submissions} s
+                JOIN (
+                    SELECT vpl, userid, MAX(id) as maxid
+                    FROM {vpl_submissions}
+                    GROUP BY vpl, userid
+                ) latest ON latest.maxid = s.id
+                WHERE s.vpl = :instance
+                  AND (s.dategraded = 0 OR s.dategraded IS NULL OR s.grade IS NULL)
+                  $vpl_stu_sql
+            ";
+            $cnt = (int)$DB->count_records_sql($sql, $params);
+            if ($cnt > 0) {
+                return [
+                    'has_pending' => true,
+                    'count'       => $cnt,
+                    'message'     => "Cannot mark complete: $cnt un-evaluated submission(s) in $name.",
+                    'details'     => ["$name ($cnt un-evaluated submissions)"],
+                ];
+            }
+        }
+
+        if ($modname === 'quiz' && $DB->get_manager()->table_exists('quiz_attempts')) {
+            $quiz_stu_sql = str_replace('s.userid', 'qa.userid', $student_filter_sql);
+            $params = array_merge(['instance' => $instance], $student_params);
+
+            // In-progress or overdue attempts
+            $sql_prog = "
+                SELECT COUNT(DISTINCT qa.id)
+                FROM {quiz_attempts} qa
+                WHERE qa.quiz = :instance
+                  AND qa.preview = 0
+                  AND qa.state IN ('inprogress', 'overdue')
+                  $quiz_stu_sql
+            ";
+            $prog_cnt = (int)$DB->count_records_sql($sql_prog, $params);
+
+            // Needs manual grading
+            $man_cnt = 0;
+            if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
+                $sql_man = "
+                    SELECT COUNT(DISTINCT qa.id)
+                    FROM {quiz_attempts} qa
+                    JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
+                    JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                    WHERE qa.quiz = :instance
+                      AND qa.preview = 0
+                      AND qa.state = 'finished'
+                      AND qas.state = 'needsgrading'
+                      $quiz_stu_sql
+                ";
+                $man_cnt = (int)$DB->count_records_sql($sql_man, $params);
+            }
+
+            $total_quiz = $prog_cnt + $man_cnt;
+            if ($total_quiz > 0) {
+                $reasons = [];
+                if ($prog_cnt > 0) $reasons[] = "$prog_cnt in-progress attempt(s)";
+                if ($man_cnt > 0) $reasons[] = "$man_cnt attempt(s) needing manual grading";
+                return [
+                    'has_pending' => true,
+                    'count'       => $total_quiz,
+                    'message'     => "Cannot mark complete: " . implode(' and ', $reasons) . " in $name.",
+                    'details'     => ["$name (" . implode(', ', $reasons) . ")"],
+                ];
+            }
+        }
+
+        return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+    }
 }
