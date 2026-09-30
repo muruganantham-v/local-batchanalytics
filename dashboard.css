@@ -4086,3 +4086,12 @@ body#page-local-batchanalytics-module #page-header h1,
     font-weight: 500;
     padding: 4px 0;
 }
+
+.ba-category-modal-dialog .ba-table thead,
+.ba-category-modal-dialog .ba-table th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background-color: #f8fafc !important;
+}
+

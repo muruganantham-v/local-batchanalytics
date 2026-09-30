@@ -329,5 +329,22 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026092801, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026092901) {
+        require_once(__DIR__ . '/../classes/activity_tracker_service.php');
+        require_once(__DIR__ . '/../classes/mentor_activity_service.php');
+
+        if (get_config('local_batchanalytics', 'module_tracker_categories') === false) {
+            set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
+        }
+        if (get_config('local_batchanalytics', 'mentor_master_activities') === false) {
+            set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+        }
+        if (get_config('local_batchanalytics', 'mentor_activity_grouping') === false) {
+            set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        }
+
+        upgrade_plugin_savepoint(true, 2026092901, 'local', 'batchanalytics');
+    }
+
     return true;
 }

@@ -15,9 +15,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Post-installation code for block_batchanalytics.
+ * Post-installation code for local_batchanalytics.
  *
- * @package    block_batchanalytics
+ * @package    local_batchanalytics
  * @copyright  2026
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -27,13 +27,14 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Post install function to set up default settings.
  */
-function xmldb_block_batchanalytics_install() {
+function xmldb_local_batchanalytics_install() {
     global $CFG;
 
-    require_once($CFG->dirroot . '/blocks/batchanalytics/classes/activity_tracker_service.php');
-    require_once($CFG->dirroot . '/blocks/batchanalytics/classes/mentor_activity_service.php');
+    require_once(__DIR__ . '/../classes/activity_tracker_service.php');
+    require_once(__DIR__ . '/../classes/mentor_activity_service.php');
 
-    set_config('module_tracker_categories', json_encode(\block_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'block_batchanalytics');
-    set_config('mentor_master_activities', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'block_batchanalytics');
-    set_config('mentor_activity_grouping', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'block_batchanalytics');
+    set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
+    set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+    set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
 }
+

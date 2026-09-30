@@ -393,11 +393,14 @@ class activity_tracker_service {
      */
     public static function get_default_tracker_categories(): array {
         return [
-            ['name' => 'Assignment', 'aliases' => 'assignment, assignments, lab assignment, lab assignments'],
-            ['name' => 'Classwork',  'aliases' => 'classwork, classworks, class work, class works, cw'],
-            ['name' => 'Template',   'aliases' => 'template, templates, template program, template programs'],
-            ['name' => 'Project',    'aliases' => 'project, projects, mini project, major project'],
-            ['name' => 'Tests',      'aliases' => 'test, tests, quiz, quizzes, assessment, assessments, exam, exams, module test'],
+            ['name' => 'Template',         'aliases' => 'template programs'],
+            ['name' => 'Classwork',        'aliases' => 'classworks'],
+            ['name' => 'Assignment',       'aliases' => 'assignments'],
+            ['name' => 'Module Test',      'aliases' => 'module test, cpp module tests, ds tests'],
+            ['name' => 'Programming Test', 'aliases' => 'programming tests'],
+            ['name' => 'Objective Test',   'aliases' => 'objective tests'],
+            ['name' => 'Quiz',             'aliases' => 'quiz'],
+            ['name' => 'Project',          'aliases' => 'projects, ds projects'],
         ];
     }
 

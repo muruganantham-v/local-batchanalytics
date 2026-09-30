@@ -2790,6 +2790,13 @@ input:checked+.ba-slider:before {
   border-color: var(--brand, #1b6ec2);
   box-shadow: 0 0 0 2px rgba(27, 110, 194, 0.18);
 }
+.ba-category-modal-dialog .ba-table thead,
+.ba-category-modal-dialog .ba-table th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20 !important;
+  background-color: #f8fafc !important;
+}
 .ba-table th.sortable {
   cursor: pointer;
   user-select: none;

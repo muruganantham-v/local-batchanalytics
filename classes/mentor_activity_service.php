@@ -42,7 +42,7 @@ class mentor_activity_service {
             return $tbl;
         }
         $dbman = $DB->get_manager();
-        if ($dbman->table_exists('block_batchanalytics_mentor_act')) {
+        if ($dbman->table_exists('local_batchanalytics_mentor_act')) {
             $tbl = 'local_batchanalytics_mentor_act';
         } else if ($dbman->table_exists('block_batchanalytics_mentor_act')) {
             $tbl = 'block_batchanalytics_mentor_act';
@@ -54,14 +54,13 @@ class mentor_activity_service {
 
     /** @var array Default pool of master mentor activities with field API keys */
     public const DEFAULT_MASTER_ACTIVITIES = [
-        ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation'],
-        ['key' => 'project_evaluation',    'name' => 'Project evaluation'],
-        ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation'],
-        ['key' => 'test_evaluation',       'name' => 'Test evaluation'],
-        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c'],
-        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C'],
-        ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination'],
-        ['key' => 'power_track_nomination', 'name' => 'Power track nomination'],
+        ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'desc' => 'MCQ question discussion session', 'category' => 'Discussion'],
+        ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'desc' => 'Weekly or module lab evaluation', 'category' => 'Evaluation'],
+        ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'desc' => 'Extra session with slow learners', 'category' => 'Support'],
+        ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'desc' => 'One-on-one technical mock interview', 'category' => 'Mock'],
+        ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'desc' => 'Daily / module attendance verification', 'category' => 'Admin'],
+        ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'desc' => 'Module test paper / assignment evaluation', 'category' => 'Evaluation'],
+        ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'desc' => 'General feedback given by mentor for students', 'category' => 'Feedback'],
     ];
 
     /** @var array Default grouping rules with due days */
@@ -69,32 +68,61 @@ class mentor_activity_service {
         [
             'group' => 'Advanced C',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation',       'duedays' => 7],
-                ['key' => 'project_evaluation',    'name' => 'Project evaluation',    'duedays' => 15],
-                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 10],
-                ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
+                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
+                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
+                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
+                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
             ],
         ],
         [
             'group' => 'Data Structure',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation',       'duedays' => 7],
-                ['key' => 'project_evaluation',    'name' => 'Project evaluation',    'duedays' => 15],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
+                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
+                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
+                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
+                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
             ],
         ],
         [
-            'group' => 'Default',
+            'group' => 'MicroController',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation',       'duedays' => 7],
-                ['key' => 'project_evaluation',    'name' => 'Project evaluation',    'duedays' => 15],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
+                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
+                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
+                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
+                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+            ],
+        ],
+        [
+            'group' => 'C++',
+            'activities' => [
+                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
+                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
+                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
+                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
+                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+            ],
+        ],
+        [
+            'group' => 'Linux Internals',
+            'activities' => [
+                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
+                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
+                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
+                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
+                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
             ],
         ],
     ];
@@ -347,19 +375,10 @@ class mentor_activity_service {
 
         if (empty($rules)) {
             foreach (self::DEFAULT_GROUPING_RULES as $def_grp) {
-                $rules[$def_grp['group']] = $def_grp['activities'];
+                if (isset($def_grp['group']) && isset($def_grp['activities'])) {
+                    $rules[$def_grp['group']] = $def_grp['activities'];
+                }
             }
-        }
-
-        // Ensure Default group exists
-        if (!isset($rules['Default'])) {
-            $rules['Default'] = [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation',       'duedays' => 7],
-                ['key' => 'project_evaluation',    'name' => 'Project evaluation',    'duedays' => 15],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
-            ];
         }
 
         return $rules;
@@ -371,7 +390,7 @@ class mentor_activity_service {
      * @return array<string, string>
      */
     public static function get_available_group_options(): array {
-        $options = ['' => get_string('mentor_activity_autodetect', 'local_batchanalytics')];
+        $options = ['' => get_string('mentor_activity_none', 'local_batchanalytics')];
         $rules = self::get_grouping_rules();
         foreach (array_keys($rules) as $grp) {
             $options[$grp] = $grp;
@@ -380,7 +399,201 @@ class mentor_activity_service {
     }
 
     /**
-     * Get the manually selected group for a course, if configured.
+     * Match a group name against a class section module name.
+     * Supports exact match, case-insensitive substring match, and normalized keyword match.
+     *
+     * @param string $group Group name configured in Site Admin.
+     * @param string $modname Module name from class section moduledata.
+     * @return bool
+     */
+    public static function match_group_to_module_name(string $group, string $modname): bool {
+        $g = trim($group);
+        $m = trim($modname);
+
+        if ($g === '' || $m === '') {
+            return false;
+        }
+
+        if (strcasecmp($g, $m) === 0) {
+            return true;
+        }
+
+        // Exact word match using regex with word boundaries
+        $pattern = '/\b' . preg_quote($g, '/') . '\b/i';
+        if (@preg_match($pattern, $m)) {
+            return true;
+        }
+
+        // Substring match if group name is at least 3 characters
+        if (mb_strlen($g) >= 3 && (mb_stripos($m, $g) !== false || mb_stripos($g, $m) !== false)) {
+            return true;
+        }
+
+        // Word-stem match (e.g. "Advance C" vs "Advanced C", "Data Structures" vs "Data Structure")
+        $stem = static function(string $str): array {
+            $words = preg_split('/[^a-zA-Z0-9]+/', mb_strtolower($str), -1, PREG_SPLIT_NO_EMPTY);
+            $stemmed = array_map(static function($w) {
+                return preg_replace('/(ed|ing|s)$/', '', $w);
+            }, $words);
+            return array_values(array_filter($stemmed));
+        };
+
+        $stem_g = $stem($g);
+        $stem_m = $stem($m);
+
+        if (!empty($stem_g) && !empty($stem_m)) {
+            $all_found = true;
+            foreach ($stem_g as $w) {
+                if (mb_strlen($w) <= 1) {
+                    $found_word = false;
+                    foreach ($stem_m as $mw) {
+                        if ($mw === $w) {
+                            $found_word = true;
+                            break;
+                        }
+                    }
+                    if (!$found_word) {
+                        $all_found = false;
+                        break;
+                    }
+                } else {
+                    $found_sub = false;
+                    foreach ($stem_m as $mw) {
+                        if (mb_stripos($mw, $w) !== false || mb_stripos($w, $mw) !== false) {
+                            $found_sub = true;
+                            break;
+                        }
+                    }
+                    if (!$found_sub) {
+                        $all_found = false;
+                        break;
+                    }
+                }
+            }
+            if ($all_found) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check class section module names mapped to this course and update course setting if matched.
+     *
+     * @param int $courseid
+     * @return string Matched group name or empty string.
+     */
+    public static function sync_group_from_class_sections_for_course(int $courseid): string {
+        global $DB;
+
+        if ($courseid <= 0 || !self::is_table_available()) {
+            return '';
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return '';
+        }
+
+        $rules = self::get_grouping_rules();
+        if (empty($rules)) {
+            return '';
+        }
+
+        $sections = $DB->get_records_sql(
+            "SELECT id, moduledata FROM {local_bm_classsection} WHERE moduledata LIKE :pattern",
+            ['pattern' => '%' . $courseid . '%']
+        );
+
+        if (empty($sections)) {
+            $sections = $DB->get_records('local_bm_classsection', null, 'id DESC');
+        }
+
+        foreach ($sections as $sec) {
+            $modules = util::decode_module_data($sec->moduledata, false);
+            foreach ($modules as $mod) {
+                $cid = (int)($mod['moodlecourseid'] ?? 0);
+                if ($cid === $courseid) {
+                    $mod_name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                    if ($mod_name !== '') {
+                        foreach (array_keys($rules) as $grp) {
+                            if (self::match_group_to_module_name($grp, $mod_name)) {
+                                // Match found! Directly update course setting page mentor activity.
+                                self::save_course_selected_group($courseid, $grp);
+                                return $grp;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Sync and update all courses mapped in class sections whose module names match configured mentor groups.
+     * Directly updates the course setting page mentor activity in database.
+     *
+     * @return int Count of courses updated.
+     */
+    public static function sync_all_courses_from_class_sections(): int {
+        global $DB;
+
+        if (!self::is_table_available()) {
+            return 0;
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return 0;
+        }
+
+        $rules = self::get_grouping_rules();
+        if (empty($rules)) {
+            return 0;
+        }
+
+        $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
+        $updated_count = 0;
+
+        foreach ($sections as $sec) {
+            $modules = util::decode_module_data($sec->moduledata, false);
+            foreach ($modules as $mod) {
+                $cid = (int)($mod['moodlecourseid'] ?? 0);
+                if ($cid <= 0) {
+                    continue;
+                }
+
+                $rec = $DB->get_record(self::get_table_name(), ['courseid' => $cid], 'selectedgroup', IGNORE_MISSING);
+                $existing = $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+                if ($existing !== '' && $existing !== '0' && strcasecmp($existing, 'none') !== 0) {
+                    continue; // Already has a valid configured group
+                }
+
+                $mod_name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                if ($mod_name === '') {
+                    continue;
+                }
+
+                foreach (array_keys($rules) as $grp) {
+                    if (self::match_group_to_module_name($grp, $mod_name)) {
+                        self::save_course_selected_group($cid, $grp);
+                        $updated_count++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $updated_count;
+    }
+
+    /**
+     * Get the selected group for a course.
+     * If not explicitly selected or empty, checks if the course matches a class section module name.
+     * If a match is found, directly updates the course setting page mentor activity in the database.
      *
      * @param int $courseid
      * @return string
@@ -392,7 +605,21 @@ class mentor_activity_service {
         }
 
         $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
-        return $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+        $selected = $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
+        if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) {
+            return $selected;
+        }
+
+        // If not selected or empty, check if class section module name matches a group.
+        // If matched, directly update the course setting page mentor activity.
+        if ($selected === '') {
+            $matched = self::sync_group_from_class_sections_for_course($courseid);
+            if ($matched !== '') {
+                return $matched;
+            }
+        }
+
+        return $selected;
     }
 
     /**
@@ -428,8 +655,8 @@ class mentor_activity_service {
 
     /**
      * Resolve the group for a given course.
-     * First checks if a manual group was chosen in course settings.
-     * Otherwise matches course fullname/shortname against defined group names.
+     * If the mentor activity group is explicitly configured or matches the module name, it is used.
+     * Otherwise returns empty string indicating no mentor activities apply to this module.
      *
      * @param int $courseid
      * @param string $coursename
@@ -438,40 +665,48 @@ class mentor_activity_service {
     public static function resolve_group_for_course(int $courseid, string $coursename = ''): array {
         global $DB;
 
+        $rules = self::get_grouping_rules();
+
         if ($courseid > 0) {
             $selected = self::get_course_selected_group($courseid);
-            if ($selected !== '') {
-                return ['group' => $selected, 'is_manual' => true];
+            if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) {
+                if (isset($rules[$selected])) {
+                    return ['group' => $selected, 'is_manual' => true];
+                }
             }
 
-            if ($coursename === '') {
-                $course = $DB->get_record('course', ['id' => $courseid], 'fullname, shortname', IGNORE_MISSING);
-                if ($course) {
-                    $coursename = $course->fullname . ' ' . $course->shortname;
+            // 1. If class section module name or course name is passed, match against mentor activity groups
+            if ($coursename !== '' && !empty($rules)) {
+                foreach (array_keys($rules) as $grp) {
+                    if (self::match_group_to_module_name($grp, $coursename)) {
+                        self::save_course_selected_group($courseid, $grp);
+                        return ['group' => $grp, 'is_manual' => true];
+                    }
+                }
+            }
+
+            // 2. Check class section module names mapped to this course in local_bm_classsection
+            $matched = self::sync_group_from_class_sections_for_course($courseid);
+            if ($matched !== '' && isset($rules[$matched])) {
+                return ['group' => $matched, 'is_manual' => true];
+            }
+
+            // 3. Check course fullname / shortname in Moodle
+            $course = $DB->get_record('course', ['id' => $courseid], 'fullname, shortname', IGNORE_MISSING);
+            if ($course && !empty($rules)) {
+                $candidates = array_filter([$course->fullname, $course->shortname]);
+                foreach ($candidates as $cand) {
+                    foreach (array_keys($rules) as $grp) {
+                        if (self::match_group_to_module_name($grp, $cand)) {
+                            self::save_course_selected_group($courseid, $grp);
+                            return ['group' => $grp, 'is_manual' => true];
+                        }
+                    }
                 }
             }
         }
 
-        $rules = self::get_grouping_rules();
-        $haystack = mb_strtolower($coursename);
-
-        // Pattern match against group names (except Default)
-        foreach (array_keys($rules) as $grp) {
-            if (strcasecmp($grp, 'Default') === 0) {
-                continue;
-            }
-            if (mb_stripos($haystack, mb_strtolower($grp)) !== false) {
-                return ['group' => $grp, 'is_manual' => false];
-            }
-        }
-
-        // Fallback to Default group
-        if (isset($rules['Default'])) {
-            return ['group' => 'Default', 'is_manual' => false];
-        }
-
-        $first = array_key_first($rules);
-        return ['group' => $first ?: 'Default', 'is_manual' => false];
+        return ['group' => '', 'is_manual' => false];
     }
 
     /**
@@ -480,6 +715,7 @@ class mentor_activity_service {
      * @param int $courseid
      * @param string $coursename
      * @param int $mod_p_start_ts Module planned start timestamp.
+     * @param int $sectionid Optional class section ID for isolating section-specific activities.
      * @return array
      */
     public static function get_course_mentor_activities(
@@ -494,30 +730,18 @@ class mentor_activity_service {
         $groupname = $resolved['group'];
         $rules = self::get_grouping_rules();
 
-        $expected_activities = $rules[$groupname] ?? ($rules['Default'] ?? []);
-        if (empty($expected_activities)) {
-            $master = self::get_master_activities();
-            if (!empty($master)) {
-                $expected_activities = array_map(static function($a) {
-                    return [
-                        'key'     => $a['key'],
-                        'name'    => $a['name'],
-                        'duedays' => 5,
-                    ];
-                }, $master);
-            }
-        }
-
-        if (empty($expected_activities)) {
+        if ($groupname === '' || empty($rules[$groupname])) {
             return [
                 'courseid'        => $courseid,
-                'group'           => $groupname,
-                'is_manual'       => $resolved['is_manual'],
+                'group'           => '',
+                'is_manual'       => false,
                 'mod_p_start_ts'  => $mod_p_start_ts,
                 'sectionid'       => $sectionid,
                 'activities'      => [],
             ];
         }
+
+        $expected_activities = $rules[$groupname];
 
         $saved_map = [];
         $modifier_ids = [];
@@ -596,6 +820,13 @@ class mentor_activity_service {
 
             $completed = !empty($saved['completed']);
             $completiondate = !empty($saved['completiondate']) ? (string)$saved['completiondate'] : '';
+            $completiondate_formatted = '—';
+            if ($completed && !empty($completiondate) && $completiondate !== '—') {
+                $comp_ts = is_numeric($completiondate) ? (int)$completiondate : strtotime($completiondate);
+                if ($comp_ts > 0) {
+                    $completiondate_formatted = userdate($comp_ts, '%d %b %Y');
+                }
+            }
             $modifiedby = !empty($saved['modifiedby']) ? (int)$saved['modifiedby'] : 0;
             $timemodified = !empty($saved['timemodified']) ? (int)$saved['timemodified'] : 0;
             $modifiedbyname = $users_map[$modifiedby] ?? '';
@@ -603,23 +834,24 @@ class mentor_activity_service {
             $action_info = self::compute_action_status($completed, $planned_ts);
 
             $activities[] = [
-                'key'                    => $act_key,
-                'name'                   => $act_name,
-                'duedays'                => $duedays,
-                'planned_date'           => $planned_date,
-                'planned_date_formatted' => $planned_date_formatted,
-                'planned_ts'             => $planned_ts,
-                'is_overdue'             => ($action_info['status'] === 'overdue'),
-                'overdue_days'           => $action_info['overdue_days'],
-                'action_status'          => $action_info['status'],
-                'action_label'           => $action_info['label'],
-                'action_class'           => $action_info['class'],
-                'completed'              => $completed,
-                'completiondate'         => $completiondate,
-                'modifiedby'             => $modifiedby,
-                'modifiedbyname'         => $modifiedbyname,
-                'timemodified'           => $timemodified,
-                'sectionid'              => $sectionid,
+                'key'                      => $act_key,
+                'name'                     => $act_name,
+                'duedays'                  => $duedays,
+                'planned_date'             => $planned_date,
+                'planned_date_formatted'   => $planned_date_formatted,
+                'planned_ts'               => $planned_ts,
+                'is_overdue'               => ($action_info['status'] === 'overdue'),
+                'overdue_days'             => $action_info['overdue_days'],
+                'action_status'            => $action_info['status'],
+                'action_label'             => $action_info['label'],
+                'action_class'             => $action_info['class'],
+                'completed'                => $completed,
+                'completiondate'           => $completiondate,
+                'completiondate_formatted' => $completiondate_formatted,
+                'modifiedby'               => $modifiedby,
+                'modifiedbyname'           => $modifiedbyname,
+                'timemodified'             => $timemodified,
+                'sectionid'                => $sectionid,
             ];
         }
 

@@ -1992,12 +1992,19 @@
                         ? '—'
                         : (isMaac ? parseFloat(fgVal).toFixed(1) : parseFloat(fgVal).toFixed(2) + '%');
 
+                    var sortMetric = (s.percentage === null || s.percentage === undefined || isNaN(parseFloat(s.percentage)))
+                        ? -1
+                        : parseFloat(s.percentage);
+                    var sortFinal = (fgVal === null || fgVal === undefined || isNaN(parseFloat(fgVal)))
+                        ? -1
+                        : parseFloat(fgVal);
+
                     rowsHtml += '<tr>' +
-                        '<td style="width:28.57%;"><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
-                        '<td style="width:28.57%;"><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
-                        '<td style="width:14.28%; text-align:center;"><span class="ba-grade-text">' + escapeHtml(displayMetric) + '</span></td>' +
-                        '<td style="width:14.28%; text-align:center;"><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
-                        '<td style="width:14.30%; text-align:center;"><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>' +
+                        '<td style="width:28.57%;" data-sort-value="' + escapeHtml(s.username || '') + '"><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
+                        '<td style="width:28.57%;" data-sort-value="' + escapeHtml(s.fullname || '') + '"><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
+                        '<td style="width:14.28%; text-align:center;" data-sort-value="' + sortMetric + '"><span class="ba-grade-text">' + escapeHtml(displayMetric) + '</span></td>' +
+                        '<td style="width:14.28%; text-align:center;" data-sort-value="' + compNum + '"><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
+                        '<td style="width:14.30%; text-align:center;" data-sort-value="' + sortFinal + '"><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>' +
                         '</tr>';
                 });
 
@@ -2009,8 +2016,6 @@
                     '<tfoot>' + tfHtml + '</tfoot>' +
                     '</table>' +
                     '</div>';
-
-                attachTableEvents();
             }
 
             renderTableContent();
@@ -2043,9 +2048,9 @@
 
             function attachTableEvents() {
                 if (!hasStudentData) return;
-                var tbody = document.getElementById(safeId + '-tbody');
-                var stuCountBadge = document.getElementById('modal-stu-count');
-                var table = document.getElementById(safeId);
+                var table = modalContainer.querySelector('table');
+                var tbody = modalContainer.querySelector('tbody');
+                var stuCountBadge = modalContainer.querySelector('#modal-stu-count');
                 if (!table || !tbody) return;
 
                 if (searchInput) {
@@ -2080,7 +2085,14 @@
                     th.addEventListener('click', function() {
                         var col = parseInt(this.getAttribute('data-col'), 10);
                         var isNum = this.getAttribute('data-type') === 'num';
-                        var isAsc = (currentSortCol === col) ? !currentSortAsc : true;
+                        // For numbers, initial click sorts descending (highest first).
+                        // For text, initial click sorts ascending (A-Z).
+                        var isAsc;
+                        if (currentSortCol === col) {
+                            isAsc = !currentSortAsc;
+                        } else {
+                            isAsc = !isNum;
+                        }
                         currentSortCol = col;
                         currentSortAsc = isAsc;
 
@@ -2091,17 +2103,40 @@
 
                         var trs = Array.from(tbody.querySelectorAll('tr'));
                         trs.sort(function(a, b) {
-                            var cellA = a.cells[col] ? a.cells[col].innerText.trim() : '';
-                            var cellB = b.cells[col] ? b.cells[col].innerText.trim() : '';
+                            var cellA = a.cells[col];
+                            var cellB = b.cells[col];
+                            if (!cellA || !cellB) return 0;
 
                             if (isNum) {
-                                var matchA = cellA.match(/[-+]?[0-9]*\.?[0-9]+/);
-                                var matchB = cellB.match(/[-+]?[0-9]*\.?[0-9]+/);
-                                var valA = matchA ? parseFloat(matchA[0]) : 0;
-                                var valB = matchB ? parseFloat(matchB[0]) : 0;
-                                return (valA - valB) * (isAsc ? 1 : -1);
+                                var rawA = cellA.getAttribute('data-sort-value');
+                                var rawB = cellB.getAttribute('data-sort-value');
+                                var valA = (rawA !== null && rawA !== '') ? parseFloat(rawA) : NaN;
+                                var valB = (rawB !== null && rawB !== '') ? parseFloat(rawB) : NaN;
+
+                                if (isNaN(valA)) {
+                                    var matchA = cellA.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
+                                    valA = matchA ? parseFloat(matchA[0]) : -1;
+                                }
+                                if (isNaN(valB)) {
+                                    var matchB = cellB.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
+                                    valB = matchB ? parseFloat(matchB[0]) : -1;
+                                }
+
+                                // Always keep missing (-1) values at the bottom
+                                if (valA === -1 && valB !== -1) return 1;
+                                if (valB === -1 && valA !== -1) return -1;
+
+                                if (valA !== valB) {
+                                    return (valA - valB) * (isAsc ? 1 : -1);
+                                }
+                                // Tie breaker by student name
+                                var nameA = (a.cells[1] ? a.cells[1].innerText : '').trim();
+                                var nameB = (b.cells[1] ? b.cells[1].innerText : '').trim();
+                                return nameA.localeCompare(nameB);
                             } else {
-                                return cellA.localeCompare(cellB) * (isAsc ? 1 : -1);
+                                var strA = (cellA.getAttribute('data-sort-value') || cellA.innerText).trim();
+                                var strB = (cellB.getAttribute('data-sort-value') || cellB.innerText).trim();
+                                return strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' }) * (isAsc ? 1 : -1);
                             }
                         });
 
@@ -2140,6 +2175,8 @@
                     };
                 }
             }
+
+            attachTableEvents();
         }
 
         // Initialize table
