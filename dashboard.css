@@ -3818,7 +3818,16 @@ body#page-local-batchanalytics-module #page-header h1,
     text-align: center !important;
   }
 
+  .ba-category-modal-dialog .ba-table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+  }
+
   .ba-category-modal-dialog .ba-table th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
     background-color: #f8fafc !important;
     color: #475569 !important;
     font-size: 11.5px !important;

@@ -101,5 +101,9 @@ function xmldb_block_batchanalytics_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026092814, 'batchanalytics');
     }
 
+    if ($oldversion < 2026092815) {
+        upgrade_block_savepoint(true, 2026092815, 'batchanalytics');
+    }
+
     return true;
 }
