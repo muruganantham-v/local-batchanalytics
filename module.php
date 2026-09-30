@@ -38,9 +38,17 @@ if (!has_capability('local/batchanalytics:view', $context) && !has_capability('b
 global $DB, $PAGE, $OUTPUT, $USER;
 
 $batchid     = optional_param('batchid', 0, PARAM_INT);
-$module_idx  = optional_param('module', 1, PARAM_INT);
+$sectionid   = optional_param('sectionid', 0, PARAM_INT);
+$module_idx  = optional_param('module', 0, PARAM_INT);
 $courseid    = optional_param('courseid', 0, PARAM_INT);
 $action      = optional_param('action', '', PARAM_ALPHANUMEXT);
+
+if ($batchid <= 0 && $sectionid > 0) {
+    $batchid = $sectionid;
+} else if ($sectionid <= 0 && $batchid > 0) {
+    $sectionid = $batchid;
+}
+$requested_batchid = $batchid > 0 ? $batchid : $sectionid;
 
 // -------------------------------------------------------------------------
 // 1. AJAX Action: Save Activity Status (for embedded Activity Tracker)
@@ -164,17 +172,49 @@ $has_bm_student = $dbman->table_exists('local_bm_student');
 $section = null;
 $batch = null;
 
-if ($courseid > 0 && $has_bm_section) {
-    // If courseid is provided, search all class sections to find the matching section and module index
+// Priority 1: If requested section / batch ID was provided (e.g. from batch.php or previous module links),
+// strictly preserve the parent batch/section the user came from.
+if ($has_bm_section && $requested_batchid > 0) {
+    $section = $DB->get_record('local_bm_classsection', ['id' => $requested_batchid]);
+    if (!$section) {
+        $section = $DB->get_record('local_bm_classsection', ['batchid' => $requested_batchid]);
+    }
+    if ($section) {
+        $batchid = (int)$section->id;
+    }
+}
+
+// If section is found from the requested parent batch:
+// Determine the appropriate module index within this section.
+if ($section && !empty($section->moduledata)) {
+    $sec_raw_modules = \local_batchanalytics\util::decode_module_data($section->moduledata, false);
+
+    // If caller specified an explicit module index ($module_idx > 0), respect it.
+    // Otherwise, if a courseid was provided, find the module within this parent batch matching that courseid.
+    if ($module_idx <= 0 && $courseid > 0) {
+        foreach ($sec_raw_modules as $sidx => $minfo) {
+            if (isset($minfo['moodlecourseid']) && (int)$minfo['moodlecourseid'] === $courseid) {
+                $module_idx = (int)($minfo['module'] ?? ($sidx + 1));
+                break;
+            }
+        }
+    }
+}
+
+// Priority 2: If no section was found via requested batch/section id, but a courseid is provided,
+// search across class sections to find the section and module mapping.
+if (!$section && $courseid > 0 && $has_bm_section) {
     $all_sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
     foreach ($all_sections as $sec) {
         if (!empty($sec->moduledata)) {
             $mdata_list = \local_batchanalytics\util::decode_module_data($sec->moduledata, false);
-            foreach ($mdata_list as $m_info) {
+            foreach ($mdata_list as $sidx => $m_info) {
                 if (isset($m_info['moodlecourseid']) && (int)$m_info['moodlecourseid'] === $courseid) {
                     $section = $sec;
                     $batchid = (int)$sec->id;
-                    $module_idx = (int)($m_info['module'] ?? 1);
+                    if ($module_idx <= 0) {
+                        $module_idx = (int)($m_info['module'] ?? ($sidx + 1));
+                    }
                     break 2;
                 }
             }
@@ -182,22 +222,17 @@ if ($courseid > 0 && $has_bm_section) {
     }
 }
 
-if (!$section && $has_bm_section && $batchid > 0) {
-    $section = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
-    if (!$section) {
-        $section = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
-        if ($section) {
-            $batchid = (int)$section->id;
-        }
-    }
-}
-
+// Priority 3: Fallback if still no section is identified: pick the first available classsection record
 if (!$section && $has_bm_section) {
     $sections = $DB->get_records('local_bm_classsection', null, 'id ASC', '*', 0, 1);
     if (!empty($sections)) {
         $section = reset($sections);
         $batchid = (int)$section->id;
     }
+}
+
+if ($module_idx <= 0) {
+    $module_idx = 1;
 }
 
 if ($section && $has_bm_batch && !empty($section->batchid)) {
@@ -297,7 +332,7 @@ if ($total_modules === 0) {
     $planned_days = !empty($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($mod_name, $canonical_days[$module_idx] ?? 10);
 }
 
-if ($courseid <= 0 && !empty($cur_mod['moodlecourseid'])) {
+if (!empty($cur_mod['moodlecourseid'])) {
     $courseid = (int)$cur_mod['moodlecourseid'];
 }
 if ($courseid > 0 && !$DB->record_exists('course', ['id' => $courseid])) {
@@ -863,14 +898,21 @@ if ($section && !empty($section->softskillsdata)) {
 // 7. Page Setup & HTML Output
 // -------------------------------------------------------------------------
 $PAGE->set_context($context);
-if ($courseid > 0) {
-    $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', ['courseid' => $courseid]));
-} else {
-    $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', [
-        'batchid' => $batchid,
-        'module'  => $module_idx,
-    ]));
+$page_params = [];
+if ($batchid > 0) {
+    $page_params['batchid'] = $batchid;
+    $page_params['sectionid'] = $batchid;
 }
+if ($module_idx > 0) {
+    $page_params['module'] = $module_idx;
+}
+if ($courseid > 0) {
+    $page_params['courseid'] = $courseid;
+}
+if (!empty($deliverymode)) {
+    $page_params['mode'] = $deliverymode;
+}
+$PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', $page_params));
 $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 
@@ -892,6 +934,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 <div class="local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"
      data-courseid="<?= (int)$courseid ?>"
      data-batchid="<?= (int)$batchid ?>"
+     data-sectionid="<?= (int)$batchid ?>"
+     data-module="<?= (int)$module_idx ?>"
      data-sesskey="<?= sesskey() ?>"
      data-students="<?= s(json_encode($students_data)) ?>"
      data-performance-columns="<?= s(json_encode($performance_columns)) ?>"
@@ -903,7 +947,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <span class="crumb">
       <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
-      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'batchid' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
       <span style="color:#cbd5e1; margin:0 6px;">›</span>
       <?php if ($courseid > 0): ?>
         <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" target="_blank" rel="noopener noreferrer" title="Open course" style="font-weight:700; color:inherit; text-decoration:none;"><b><?= s($mod_name) ?></b></a>
@@ -938,14 +982,17 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <?php
               $prev_cid = !empty($raw_modules[$prev_idx - 1]['moodlecourseid']) ? (int)$raw_modules[$prev_idx - 1]['moodlecourseid'] : 0;
               $prev_linked = $prev_cid > 0 && $DB->record_exists('course', ['id' => $prev_cid]);
+              $prev_url = (new moodle_url('/local/batchanalytics/module.php', array_filter([
+                  'batchid'   => $batchid > 0 ? $batchid : null,
+                  'sectionid' => $batchid > 0 ? $batchid : null,
+                  'module'    => $prev_idx,
+                  'courseid'  => $prev_cid > 0 ? $prev_cid : null,
+                  'mode'      => $deliverymode,
+              ])))->out(false);
             ?>
-            <?php if ($prev_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $prev_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
-                ‹ <?= s($prev_name) ?>
-              </a>
-            <?php else: ?>
-              <button type="button" disabled title="Course is not linked in Batch Management">‹ <?= s($prev_name) ?></button>
-            <?php endif; ?>
+            <a href="<?= s($prev_url) ?>">
+              ‹ <?= s($prev_name) ?>
+            </a>
           <?php else: ?>
             <button type="button" disabled>‹ —</button>
           <?php endif; ?>
@@ -954,14 +1001,17 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <?php
               $next_cid = !empty($raw_modules[$next_idx - 1]['moodlecourseid']) ? (int)$raw_modules[$next_idx - 1]['moodlecourseid'] : 0;
               $next_linked = $next_cid > 0 && $DB->record_exists('course', ['id' => $next_cid]);
+              $next_url = (new moodle_url('/local/batchanalytics/module.php', array_filter([
+                  'batchid'   => $batchid > 0 ? $batchid : null,
+                  'sectionid' => $batchid > 0 ? $batchid : null,
+                  'module'    => $next_idx,
+                  'courseid'  => $next_cid > 0 ? $next_cid : null,
+                  'mode'      => $deliverymode,
+              ])))->out(false);
             ?>
-            <?php if ($next_linked): ?>
-              <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => $next_cid, 'batchid' => $batchid > 0 ? $batchid : null, 'mode' => $deliverymode])))->out(false)) ?>">
-                <?= s($next_name) ?> ›
-              </a>
-            <?php else: ?>
-              <button type="button" disabled title="Course is not linked in Batch Management"><?= s($next_name) ?> ›</button>
-            <?php endif; ?>
+            <a href="<?= s($next_url) ?>">
+              <?= s($next_name) ?> ›
+            </a>
           <?php else: ?>
             <button type="button" disabled>— ›</button>
           <?php endif; ?>

@@ -260,6 +260,7 @@ if (!empty($raw_modules)) {
 
         $schedule_rows[] = [
             'name'          => $m_name,
+            'mod_idx'       => $mod_idx,
             'class_mentor'  => $class_mentor,
             'class_mentors' => $class_mentors,
             'lab_mentor'    => $lab_mentor,
@@ -579,9 +580,26 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                   <tr><td colspan="9" class="muted" style="text-align:center; padding:24px;">No modules configured for this batch.</td></tr>
                 <?php else: ?>
                   <?php foreach ($schedule_rows as $idx => $r): ?>
-                    <?php $has_link = ($r['delay'] !== null); ?>
+                    <?php
+                      $has_link = ($r['delay'] !== null);
+                      $mod_num = !empty($r['mod_idx']) ? (int)$r['mod_idx'] : ($idx + 1);
+                      $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);
+                      if ($course_linked) {
+                          $course_linked = $DB->record_exists('course', ['id' => (int)$r['courseid']]);
+                      }
+                      $module_tracker_params = array_filter([
+                          'courseid'  => $course_linked ? (int)$r['courseid'] : null,
+                          'batchid'   => (int)$batch_id,
+                          'sectionid' => (int)($section ? $section->id : $batch_id),
+                          'module'    => $mod_num,
+                          'mode'      => $deliverymode,
+                      ]);
+                      $module_tracker_url = (new moodle_url('/local/batchanalytics/module.php', $module_tracker_params))->out(false);
+                    ?>
                     <tr>
-                      <td><span class="val"><?= s($r['name']) ?></span></td>
+                      <td>
+                        <a href="<?= s($module_tracker_url) ?>" class="val" style="color:var(--text-main); font-weight:600; text-decoration:none;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'"><?= s($r['name']) ?></a>
+                      </td>
                       <td>
                         <?php if (!empty($r['class_mentors'])): ?>
                           <div class="ba-mentors-col">
@@ -614,16 +632,10 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                       <td class="date"><?= format_cell_muted($r['a_end']) ?></td>
                       <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
                       <td class="actioncell">
-                        <?php
-                          $course_linked = (!empty($r['courseid']) && (int)$r['courseid'] > 0);
-                          if ($course_linked) {
-                              $course_linked = $DB->record_exists('course', ['id' => (int)$r['courseid']]);
-                          }
-                        ?>
                         <?php if ($course_linked): ?>
-                          <a href="<?= s((new moodle_url('/local/batchanalytics/module.php', array_filter(['courseid' => (int)$r['courseid'], 'batchid' => (int)$batch_id, 'mode' => $deliverymode])))->out(false)) ?>" class="viewbtn">View Module Tracker</a>
+                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn">View Module Tracker</a>
                         <?php else: ?>
-                          <button type="button" class="viewbtn disabled" disabled title="Course is not linked in Batch Management">View Module Tracker</button>
+                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn" title="View Module details from Batch Management">View Module Tracker</a>
                         <?php endif; ?>
                       </td>
                     </tr>

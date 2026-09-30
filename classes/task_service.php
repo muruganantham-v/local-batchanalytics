@@ -473,6 +473,8 @@ class task_service {
                             $dest_url = (new \moodle_url('/local/batchanalytics/module.php', [
                                 'courseid'  => $courseid,
                                 'sectionid' => $sec->id,
+                                'batchid'   => $sec->id,
+                                'module'    => (int)($sm['module'] ?? 1),
                             ]))->out(false);
 
                             if ($p_ts < $today_midnight) {
