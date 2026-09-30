@@ -42,6 +42,7 @@ body.editing .block_batchanalytics .card-header {
   background: transparent;
   padding: 0;
   box-sizing: border-box;
+  container-type: inline-size;
 }
 
 .ba-task-dash-wrap * {
@@ -130,6 +131,38 @@ body.editing .block_batchanalytics .card-header {
   .ba-task-dash-wrap .cols {
     grid-template-columns: 1fr;
   }
+}
+@container (max-width: 650px) {
+  .ba-task-dash-wrap .cols {
+    grid-template-columns: 1fr !important;
+  }
+  .ba-task-dash-wrap .glance {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .ba-task-dash-wrap .gt {
+    padding: 10px 12px !important;
+  }
+  .ba-task-dash-wrap .gt .v {
+    font-size: 22px !important;
+  }
+}
+.drawer .ba-task-dash-wrap .cols,
+[data-region="blocks-column"] .ba-task-dash-wrap .cols {
+  grid-template-columns: 1fr !important;
+}
+.drawer .ba-task-dash-wrap .glance,
+[data-region="blocks-column"] .ba-task-dash-wrap .glance {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 8px !important;
+}
+.drawer .ba-task-dash-wrap .gt,
+[data-region="blocks-column"] .ba-task-dash-wrap .gt {
+  padding: 10px 12px !important;
+}
+.drawer .ba-task-dash-wrap .gt .v,
+[data-region="blocks-column"] .ba-task-dash-wrap .gt .v {
+  font-size: 22px !important;
 }
 .ba-task-dash-wrap .dpanel {
   background: #ffffff;

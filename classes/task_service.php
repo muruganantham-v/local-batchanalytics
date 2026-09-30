@@ -179,7 +179,7 @@ class task_service {
                         $cid = (int)($m['moodlecourseid'] ?? 0);
                         if ($cid > 0) {
                             $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
-                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                            if ($c_ctx && is_enrolled($c_ctx, $userid)) {
                                 $assigned_class_mentor = true;
                             }
                         }
@@ -373,7 +373,7 @@ class task_service {
                         $cid = (int)($sm['moodlecourseid'] ?? 0);
                         if ($cid > 0) {
                             $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
-                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                            if ($c_ctx && is_enrolled($c_ctx, $userid)) {
                                 $is_mentor_in_mod = true;
                             }
                         }
