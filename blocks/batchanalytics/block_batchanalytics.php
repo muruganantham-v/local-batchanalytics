@@ -202,12 +202,21 @@ class block_batchanalytics extends block_base {
     <div class="dpanel">
       <div class="ph">
         <h2>My To-Do <span class="badge" id="ba-dash-todo-count">' . count($dashdata['todo']) . ' pending</span></h2>
-        <select class="filter-select" id="ba-todo-filter">
-          <option value="all">All tasks</option>
-          <option value="overdue">Overdue only</option>
-          <option value="today">Due today</option>
-          <option value="soon">Due next 7 days</option>
-        </select>
+        <div class="ph-filters">
+          <select class="filter-select" id="ba-batch-filter" title="Filter by Batch" aria-label="Filter by Batch">
+            <option value="all">All batches</option>';
+            foreach (($dashdata['batches'] ?? []) as $b) {
+                $html .= '<option value="' . s($b['id']) . '">' . s($b['name']) . '</option>';
+            }
+            $html .= '
+          </select>
+          <select class="filter-select" id="ba-todo-filter" title="Filter by Task Status" aria-label="Filter by Task Status">
+            <option value="all">All tasks</option>
+            <option value="overdue">Overdue only</option>
+            <option value="today">Due today</option>
+            <option value="soon">Due next 7 days</option>
+          </select>
+        </div>
       </div>
       <div id="ba-dash-todo-list">';
 

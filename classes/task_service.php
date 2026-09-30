@@ -1031,6 +1031,32 @@ class task_service {
             ],
         ];
 
+        // Collect distinct batches for filtering
+        $batch_options = [];
+        foreach ($todo_list as $t) {
+            $bid = (string)($t['batchid'] ?? '');
+            $bname = trim((string)($t['batch_name'] ?? ''));
+            if ($bid !== '' && $bname !== '' && !isset($batch_options[$bid])) {
+                $batch_options[$bid] = [
+                    'id'   => $t['batchid'],
+                    'name' => $bname,
+                ];
+            }
+        }
+        foreach ($filtered_sections as $sec) {
+            $bid = (string)$sec->id;
+            $bname = trim((string)($sec->name ?: ('Batch ' . $sec->id)));
+            if (!isset($batch_options[$bid])) {
+                $batch_options[$bid] = [
+                    'id'   => (int)$sec->id,
+                    'name' => $bname,
+                ];
+            }
+        }
+        usort($batch_options, static function($a, $b) {
+            return strnatcasecmp($a['name'], $b['name']);
+        });
+
         return [
             'greeting'         => $greeting,
             'role_subtitle'    => $role_subtitle,
@@ -1038,6 +1064,7 @@ class task_service {
             'can_switch_roles' => ($is_manager || count($available_roles) > 1),
             'available_roles'  => $available_roles,
             'glance'           => $glance,
+            'batches'          => array_values($batch_options),
             'todo'             => $todo_list,
             'forthcoming'      => array_slice($forthcoming_list, 0, 10),
             'total_pending'    => count($todo_list),

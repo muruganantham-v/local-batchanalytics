@@ -10,6 +10,7 @@
   var apiUrl = '';
   var sesskey = '';
   var currentFilter = 'all';
+  var currentBatch = 'all';
   var allTodos = [];
   var activeRole = 'admin';
   var pendingTask = null;
@@ -24,6 +25,15 @@
 
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
+
+    var batchSel = document.getElementById('ba-batch-filter');
+    if (batchSel) {
+      batchSel.addEventListener('change', function() {
+        currentBatch = this.value;
+        currentPage = 1;
+        renderTodoList();
+      });
+    }
 
     var filterSel = document.getElementById('ba-todo-filter');
     if (filterSel) {
@@ -120,6 +130,36 @@
       }).join('');
     }
 
+    // Batches filter options refresh
+    var batchSel = document.getElementById('ba-batch-filter');
+    if (batchSel) {
+      var batches = Array.isArray(d.batches) ? d.batches : [];
+      if (!batches.length && Array.isArray(d.todo)) {
+        var map = {};
+        d.todo.forEach(function(t) {
+          var bid = (t.batchid != null && t.batchid !== '') ? String(t.batchid) : '';
+          var bname = t.batch_name ? String(t.batch_name).trim() : '';
+          if (bid && bname && !map[bid]) {
+            map[bid] = true;
+            batches.push({ id: t.batchid, name: bname });
+          }
+        });
+        batches.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      }
+
+      var cur = currentBatch;
+      var bHtml = '<option value="all">All batches</option>';
+      batches.forEach(function(b) {
+        var isSel = (String(b.id) === String(cur)) ? ' selected' : '';
+        bHtml += '<option value="' + escapeHtml(b.id) + '"' + isSel + '>' + escapeHtml(b.name) + '</option>';
+      });
+      batchSel.innerHTML = bHtml;
+      if (cur !== 'all' && !batches.some(function(b) { return String(b.id) === String(cur); })) {
+        currentBatch = 'all';
+        batchSel.value = 'all';
+      }
+    }
+
     // Todos
     allTodos = Array.isArray(d.todo) ? d.todo : [];
     currentPage = 1;
@@ -150,13 +190,24 @@
 
     var filtered = allTodos.filter(function(t) {
       if (t.is_done) return false;
+      if (currentBatch !== 'all') {
+        if (String(t.batchid) !== String(currentBatch)) {
+          return false;
+        }
+      }
       if (currentFilter === 'overdue') return t.status_class === 'over';
       if (currentFilter === 'today') return t.status_class === 'today';
       if (currentFilter === 'soon') return t.status_class === 'soon';
       return true;
     });
 
-    var totalPending = allTodos.filter(function(t) { return !t.is_done; }).length;
+    var totalPending = allTodos.filter(function(t) {
+      if (t.is_done) return false;
+      if (currentBatch !== 'all' && String(t.batchid) !== String(currentBatch)) {
+        return false;
+      }
+      return true;
+    }).length;
     if (elCount) {
       elCount.textContent = totalPending + ' pending';
     }
