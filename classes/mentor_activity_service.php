@@ -54,13 +54,13 @@ class mentor_activity_service {
 
     /** @var array Default pool of master mentor activities with field API keys */
     public const DEFAULT_MASTER_ACTIVITIES = [
-        ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'desc' => 'MCQ question discussion session', 'category' => 'Discussion'],
-        ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'desc' => 'Weekly or module lab evaluation', 'category' => 'Evaluation'],
-        ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'desc' => 'Extra session with slow learners', 'category' => 'Support'],
-        ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'desc' => 'One-on-one technical mock interview', 'category' => 'Mock'],
-        ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'desc' => 'Daily / module attendance verification', 'category' => 'Admin'],
-        ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'desc' => 'Module test paper / assignment evaluation', 'category' => 'Evaluation'],
-        ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'desc' => 'General feedback given by mentor for students', 'category' => 'Feedback'],
+        ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'desc' => 'Assignment evaluation', 'category' => 'Evaluation'],
+        ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'desc' => 'Project evaluation', 'category' => 'Evaluation'],
+        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'desc' => 'Spot award nomination - mid c', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
+        ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
+        ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'desc' => 'Module Test Eveluation', 'category' => 'Evaluation'],
     ];
 
     /** @var array Default grouping rules with due days */
@@ -68,61 +68,42 @@ class mentor_activity_service {
         [
             'group' => 'Advanced C',
             'activities' => [
-                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
-                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
-                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
-                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
-                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
-                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 15],
+                ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 25],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 30],
             ],
         ],
         [
             'group' => 'Data Structure',
             'activities' => [
-                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
-                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
-                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
-                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
-                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
-                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
             ],
         ],
         [
             'group' => 'MicroController',
             'activities' => [
-                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
-                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
-                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
-                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
-                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
-                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
             ],
         ],
         [
             'group' => 'C++',
             'activities' => [
-                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
-                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
-                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
-                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
-                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
                 ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
-                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
             ],
         ],
         [
-            'group' => 'Linux Internals',
+            'group' => 'Linux Internals and TCP/IP Networking',
             'activities' => [
-                ['key' => 'mcq_question_discussion', 'name' => 'MCQ Question Discussion', 'duedays' => 5],
-                ['key' => 'lab_evaluation', 'name' => 'Lab Evaluation', 'duedays' => 5],
-                ['key' => 'slow_learner_discussion', 'name' => 'Slow Learner Discussion', 'duedays' => 5],
-                ['key' => 'mentor_mock', 'name' => 'Mentor Mock', 'duedays' => 5],
-                ['key' => 'attendance_tracking', 'name' => 'Attendance Tracking', 'duedays' => 5],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
-                ['key' => 'mentors_feedback', 'name' => 'Mentors Feedback', 'duedays' => 5],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 15],
             ],
         ],
     ];

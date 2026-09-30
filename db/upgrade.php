@@ -346,5 +346,14 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026092901, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026093001) {
+        require_once(__DIR__ . '/../classes/mentor_activity_service.php');
+
+        set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+        set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+
+        upgrade_plugin_savepoint(true, 2026093001, 'local', 'batchanalytics');
+    }
+
     return true;
 }
