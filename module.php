@@ -29,7 +29,11 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
-require_capability('local/batchanalytics:view', $context);
+if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
+    if (!\local_batchanalytics\task_service::can_view_dashboard($USER->id)) {
+        require_capability('local/batchanalytics:view', $context);
+    }
+}
 
 global $DB, $PAGE, $OUTPUT, $USER;
 

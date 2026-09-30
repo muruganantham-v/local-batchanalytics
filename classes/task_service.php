@@ -440,7 +440,7 @@ class task_service {
 
                         if (!$is_assigned && $personas['has_mentor_role']) {
                             $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
-                            if ($c_ctx && (is_enrolled($c_ctx, $userid) || has_capability('moodle/course:update', $c_ctx, $userid))) {
+                            if ($c_ctx && is_enrolled($c_ctx, $userid)) {
                                 $is_assigned = true;
                             }
                         }
