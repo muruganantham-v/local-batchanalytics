@@ -447,7 +447,7 @@ class activity_tracker_service {
         $student_filter_sql = '';
         $student_params = [];
         if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
-            $uids = $DB->get_fieldset_select('local_bm_student', 'studentid', 'classsectionid = :secid', ['secid' => $sectionid]);
+            $uids = $DB->get_fieldset_select('local_bm_student', 'userid', 'classsectionid = :secid', ['secid' => $sectionid]);
             if (!empty($uids)) {
                 [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
                 $student_filter_sql = " AND s.userid $in_sql";

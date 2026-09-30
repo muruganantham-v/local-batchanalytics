@@ -130,7 +130,7 @@ class task_service {
 
         $context = \context_system::instance();
         $is_manager = is_siteadmin($userid)
-            || (has_capability('local/batchanalytics:manage', $context, $userid) || has_capability('block/batchanalytics:manage', $context, $userid));
+            || has_capability('local/batchanalytics:manage', $context, $userid);
 
         // Role config matches
         $has_mentor_role = self::user_has_configured_role($userid, 'mentor_roles');

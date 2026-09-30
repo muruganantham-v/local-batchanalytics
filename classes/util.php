@@ -52,6 +52,24 @@ class util {
     ];
 
     /**
+     * Get a plugin configuration value, checking local_batchanalytics first then block_batchanalytics.
+     *
+     * @param string $name Configuration setting name
+     * @param mixed $default Fallback value if setting is not set
+     * @return mixed
+     */
+    public static function get_config_val(string $name, $default = false) {
+        $val = get_config('local_batchanalytics', $name);
+        if ($val === false || $val === null || trim((string)$val) === '') {
+            $val = get_config('block_batchanalytics', $name);
+        }
+        if ($val === false || $val === null || trim((string)$val) === '') {
+            return $default;
+        }
+        return $val;
+    }
+
+    /**
      * Check if the delivery mode represents an online batch.
      *
      * @param string|null $mode
