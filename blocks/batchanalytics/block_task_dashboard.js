@@ -424,6 +424,40 @@
       return;
     }
 
+    var normName = (pendingTask && pendingTask.act_name ? pendingTask.act_name : (resp.activity_name || '')).toLowerCase();
+    var normKey  = (pendingTask && pendingTask.act_key ? pendingTask.act_key : '').toLowerCase();
+    var isMilestone = !!resp.is_milestone ||
+                      normName.indexOf('nomination') !== -1 ||
+                      normName.indexOf('spot award') !== -1 ||
+                      normName.indexOf('power track') !== -1 ||
+                      normKey.indexOf('nomination') !== -1 ||
+                      normKey.indexOf('spot_award') !== -1 ||
+                      normKey.indexOf('power_track') !== -1;
+
+    if (isMilestone) {
+      var mHtml = '';
+      mHtml += '<div class="ba-modal-alert success">';
+      mHtml += '  <div class="alert-icon">✓</div>';
+      mHtml += '  <div class="alert-content">';
+      mHtml += '    <div class="alert-title">Operational Milestone Task</div>';
+      mHtml += '    <div class="alert-desc">' + escapeHtml(resp.message || 'Operational milestone activity (no student submissions required). Click Confirm Complete to finish.') + '</div>';
+      mHtml += '  </div>';
+      mHtml += '</div>';
+
+      validBody.innerHTML = mHtml;
+
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+      }
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
+      }
+      return;
+    }
+
     var hasPending = !!resp.has_pending;
     var pendingCnt = parseInt(resp.pending_count, 10) || 0;
     var completedCnt = parseInt(resp.completed_count, 10) || 0;
