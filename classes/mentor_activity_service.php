@@ -60,6 +60,7 @@ class mentor_activity_service {
         ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C'],
         ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination'],
         ['key' => 'power_track_nomination', 'name' => 'Power track nomination'],
+        ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation'],
     ];
 
     /** @var array Default grouping rules with due days */
@@ -68,10 +69,11 @@ class mentor_activity_service {
             'group' => 'Advanced C',
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
-                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 10],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 15],
                 ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 25],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 30],
             ],
         ],
         [
@@ -79,17 +81,30 @@ class mentor_activity_service {
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
                 ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
             ],
         ],
         [
-            'group' => 'Default',
+            'group' => 'MicroController',
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 10],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 15],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
+            ],
+        ],
+        [
+            'group' => 'C++',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+            ],
+        ],
+        [
+            'group' => 'Linux Internals and TCP/IP Networking',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
+                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 15],
             ],
         ],
     ];
@@ -210,7 +225,7 @@ class mentor_activity_service {
     public static function get_master_activities(): array {
         $raw = util::get_config_val('mentor_master_activities');
         if ($raw === false || trim((string)$raw) === '') {
-            return [];
+            return self::DEFAULT_MASTER_ACTIVITIES;
         }
 
         $decoded = json_decode((string)$raw, true);
@@ -259,7 +274,7 @@ class mentor_activity_service {
             }
         }
 
-        return $activities;
+        return !empty($activities) ? $activities : self::DEFAULT_MASTER_ACTIVITIES;
     }
 
     /**
@@ -271,7 +286,7 @@ class mentor_activity_service {
     public static function get_grouping_rules(): array {
         $raw = util::get_config_val('mentor_activity_grouping');
         if ($raw === false || trim((string)$raw) === '') {
-            return [];
+            $raw = json_encode(self::DEFAULT_GROUPING_RULES);
         }
         $decoded = json_decode((string)$raw, true);
 
@@ -331,7 +346,11 @@ class mentor_activity_service {
             }
         }
 
-        return [];
+        $default_rules = [];
+        foreach (self::DEFAULT_GROUPING_RULES as $item) {
+            $default_rules[$item['group']] = $item['activities'];
+        }
+        return $default_rules;
     }
 
     /**

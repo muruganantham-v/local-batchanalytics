@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for block_batchanalytics
+ * Post-installation code for block_batchanalytics.
  *
  * @package    block_batchanalytics
  * @copyright  2026
@@ -24,8 +24,16 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026092814;
-$plugin->requires  = 2024042200;
-$plugin->component = 'block_batchanalytics';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '2.1.12';
+/**
+ * Post install function to set up default settings.
+ */
+function xmldb_block_batchanalytics_install() {
+    global $CFG;
+
+    require_once($CFG->dirroot . '/blocks/batchanalytics/classes/activity_tracker_service.php');
+    require_once($CFG->dirroot . '/blocks/batchanalytics/classes/mentor_activity_service.php');
+
+    set_config('module_tracker_categories', json_encode(\block_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'block_batchanalytics');
+    set_config('mentor_master_activities', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'block_batchanalytics');
+    set_config('mentor_activity_grouping', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'block_batchanalytics');
+}

@@ -83,5 +83,23 @@ function xmldb_block_batchanalytics_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026092806, 'batchanalytics');
     }
 
+    if ($oldversion < 2026092814) {
+        global $CFG;
+        require_once($CFG->dirroot . '/blocks/batchanalytics/classes/activity_tracker_service.php');
+        require_once($CFG->dirroot . '/blocks/batchanalytics/classes/mentor_activity_service.php');
+
+        set_config('module_tracker_categories', json_encode(\block_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'block_batchanalytics');
+        set_config('mentor_master_activities', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'block_batchanalytics');
+        set_config('mentor_activity_grouping', json_encode(\block_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'block_batchanalytics');
+
+        unset_config('module_tracker_categories', 'local_batchanalytics');
+        unset_config('mentor_master_activities', 'local_batchanalytics');
+        unset_config('mentor_activity_grouping', 'local_batchanalytics');
+
+        \block_batchanalytics\mentor_activity_service::sync_all_courses_from_class_sections();
+
+        upgrade_block_savepoint(true, 2026092814, 'batchanalytics');
+    }
+
     return true;
 }

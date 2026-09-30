@@ -46,7 +46,7 @@ class admin_setting_module_tracker_categories extends \admin_setting {
         $name = $this->get_full_name();
         $categories = $this->normalise_categories(json_decode((string)$data, true));
         if ($categories === null || empty($categories)) {
-            $categories = activity_tracker_service::get_legacy_tracker_categories();
+            $categories = activity_tracker_service::get_default_tracker_categories();
         }
 
         $form = '<input type="hidden" id="' . $id . '" name="' . $name . '" value="'
