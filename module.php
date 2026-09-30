@@ -831,7 +831,8 @@ $mentor_activity_data = [
 ];
 
 if ($courseid > 0) {
-    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts);
+    $sec_id = ($section && !empty($section->id)) ? (int)$section->id : ($batchid > 0 ? $batchid : 0);
+    $mentor_activity_data = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start_ts, $sec_id);
 }
 
 // -------------------------------------------------------------------------

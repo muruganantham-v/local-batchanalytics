@@ -23,19 +23,35 @@ class activity_tracker_service {
 
     /**
      * @param int $courseid
+     * @param int $sectionid Optional class section ID
      * @return array
      */
-    public function get_course_data(int $courseid): array {
+    public function get_course_data(int $courseid, int $sectionid = 0): array {
         global $DB;
 
         $this->require_table();
+        $this->sync_course_module_activities($courseid, $sectionid);
         $course = get_course($courseid);
         $activities = $this->get_course_activities($course);
         $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
-            'id, cmid, completed, completiondate, timemodified');
+            'id, cmid, completed, completiondate, modifiedby, timemodified');
         $savedbycmid = [];
+        $modifier_ids = [];
         foreach ($saved as $record) {
             $savedbycmid[(int)$record->cmid] = $record;
+            if (!empty($record->modifiedby)) {
+                $modifier_ids[] = (int)$record->modifiedby;
+            }
+        }
+
+        $users_map = [];
+        if (!empty($modifier_ids)) {
+            $modifier_ids = array_unique($modifier_ids);
+            [$in_sql, $in_params] = $DB->get_in_or_equal($modifier_ids);
+            $users = $DB->get_records_select('user', "id $in_sql", $in_params, '', '*');
+            foreach ($users as $u) {
+                $users_map[$u->id] = fullname($u);
+            }
         }
 
         $categoryorder = $this->get_tracker_category_aliases();
@@ -65,12 +81,15 @@ class activity_tracker_service {
 
             $record = $savedbycmid[(int)$activity['cmid']] ?? null;
             $completed = !empty($record->completed);
+            $modby = $record ? (int)$record->modifiedby : 0;
             $categories[$categorykey]['activities'][] = [
                 'cmid' => (int)$activity['cmid'],
                 'name' => $activity['name'],
                 'completed' => $completed,
                 'completiondate' => $record ? (string)$record->completiondate : '',
                 'timemodified' => $record ? (int)$record->timemodified : 0,
+                'modifiedby' => $modby,
+                'modifiedbyname' => $users_map[$modby] ?? '',
             ];
             if ($completed) {
                 $categories[$categorykey]['completed']++;
@@ -229,7 +248,13 @@ class activity_tracker_service {
         if ($activitycategory !== null) {
             return $activitycategory;
         }
-        if ($module === 'assign') {
+        if (stripos($activityname, 'project') !== false || preg_match('/\bp\d+\b/i', $activityname)) {
+            $proj = $this->get_tracker_category('project');
+            if ($proj !== null) {
+                return $proj;
+            }
+        }
+        if ($module === 'assign' || $module === 'vpl') {
             return $this->get_tracker_category('assignment');
         }
         if ($module === 'quiz') {
@@ -423,6 +448,518 @@ class activity_tracker_service {
     }
 
     /**
+     * Get evaluation metrics (pending, evaluated, latest grader, timestamp) for a course
+     * categorized strictly according to Gradebook setup (Assignments vs Projects).
+     *
+     * @param int $courseid
+     * @param string $target_type 'Assignment' or 'Project'
+     * @param int $sectionid Optional section ID to filter enrolled students
+     * @return array{target_type: string, matching_count: int, total_pending: int, total_evaluated: int, latest_grader: int, latest_graded_time: int, pending_details: array}
+     */
+    public static function get_evaluation_metrics(int $courseid, string $target_type, int $sectionid = 0): array {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return [
+                'target_type'        => $target_type,
+                'matching_count'     => 0,
+                'total_pending'      => 0,
+                'total_evaluated'    => 0,
+                'latest_grader'      => 0,
+                'latest_graded_time' => 0,
+                'pending_details'    => [],
+            ];
+        }
+
+        $act_service = new self();
+        $cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+        $items = $DB->get_records_select('grade_items', "courseid = :cid AND itemtype = 'mod' AND hidden != 1", ['cid' => $courseid]);
+
+        $student_filter_sql = '';
+        $student_params = [];
+        if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
+            $uids = $DB->get_fieldset_select('local_bm_student', 'userid', 'classsectionid = :secid', ['secid' => $sectionid]);
+            if (!empty($uids)) {
+                [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
+                $student_filter_sql = " AND s.userid $in_sql";
+                $student_params = $in_params;
+            }
+        }
+
+        $matching_instances = ['assign' => [], 'vpl' => []];
+        $instance_names = [];
+        foreach ($items as $gi) {
+            $cat = $act_service->resolve_grade_item_category($gi, $cats);
+            if ($cat === $target_type) {
+                $matching_instances[$gi->itemmodule][] = (int)$gi->iteminstance;
+                $instance_names[$gi->itemmodule . ':' . $gi->iteminstance] = $gi->itemname;
+            }
+        }
+
+        // Smart fallback if no activities were explicitly categorized in the gradebook
+        if (empty($matching_instances['assign']) && empty($matching_instances['vpl'])) {
+            foreach ($items as $gi) {
+                if (!in_array($gi->itemmodule, ['assign', 'vpl'], true)) {
+                    continue;
+                }
+                $iname = (string)$gi->itemname;
+                $is_proj = (stripos($iname, 'project') !== false || preg_match('/\bp\d+\b/i', $iname));
+                if ($target_type === 'Project' && $is_proj) {
+                    $matching_instances[$gi->itemmodule][] = (int)$gi->iteminstance;
+                    $instance_names[$gi->itemmodule . ':' . $gi->iteminstance] = $gi->itemname;
+                } else if ($target_type === 'Assignment' && !$is_proj) {
+                    $matching_instances[$gi->itemmodule][] = (int)$gi->iteminstance;
+                    $instance_names[$gi->itemmodule . ':' . $gi->iteminstance] = $gi->itemname;
+                }
+            }
+        }
+
+        $total_pending = 0;
+        $total_evaluated = 0;
+        $latest_grader = 0;
+        $latest_graded_time = 0;
+        $pending_details = [];
+
+        // 1. Check Assignments (mod_assign)
+        if (!empty($matching_instances['assign']) && $DB->get_manager()->table_exists('assign') && $DB->get_manager()->table_exists('assign_submission')) {
+            [$in_sql, $in_params] = $DB->get_in_or_equal($matching_instances['assign'], SQL_PARAMS_NAMED, 'asg');
+            $params = array_merge($in_params, $student_params);
+
+            // Pending: submitted but not graded, or resubmitted after grading
+            $sql_pend = "
+                SELECT s.assignment, COUNT(DISTINCT s.id) as pendingcnt
+                FROM {assign_submission} s
+                LEFT JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                WHERE s.assignment $in_sql
+                  AND s.status = 'submitted'
+                  AND s.latest = 1
+                  AND (g.grade IS NULL OR g.grade < 0 OR s.timemodified > g.timemodified)
+                  $student_filter_sql
+                GROUP BY s.assignment
+            ";
+            $pend_rows = $DB->get_records_sql($sql_pend, $params);
+            foreach ($pend_rows as $row) {
+                $cnt = (int)$row->pendingcnt;
+                if ($cnt > 0) {
+                    $total_pending += $cnt;
+                    $name = $instance_names['assign:' . $row->assignment] ?? ('Assignment ' . $row->assignment);
+                    $pending_details[] = $name . ' (' . $cnt . ' ungraded ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
+                }
+            }
+
+            // Evaluated: submitted and graded without pending resubmissions
+            $sql_eval = "
+                SELECT g.id, g.grader, g.timemodified
+                FROM {assign_submission} s
+                JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                WHERE s.assignment $in_sql
+                  AND s.status = 'submitted'
+                  AND s.latest = 1
+                  AND g.grade IS NOT NULL
+                  AND g.grade >= 0
+                  AND s.timemodified <= g.timemodified
+                  $student_filter_sql
+                ORDER BY g.timemodified DESC
+            ";
+            $eval_records = $DB->get_records_sql($sql_eval, $params);
+            $total_evaluated += count($eval_records);
+            if (!empty($eval_records)) {
+                $first = reset($eval_records);
+                if ((int)$first->timemodified > $latest_graded_time) {
+                    $latest_graded_time = (int)$first->timemodified;
+                    if (!empty($first->grader)) {
+                        $latest_grader = (int)$first->grader;
+                    }
+                }
+            }
+        }
+
+        // 2. Check Virtual Programming Lab (mod_vpl)
+        if (!empty($matching_instances['vpl']) && $DB->get_manager()->table_exists('vpl') && $DB->get_manager()->table_exists('vpl_submissions')) {
+            [$in_sql, $in_params] = $DB->get_in_or_equal($matching_instances['vpl'], SQL_PARAMS_NAMED, 'vpl');
+            $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
+            $params = array_merge($in_params, $student_params);
+
+            $sql_vpl_pend = "
+                SELECT s.vpl, COUNT(DISTINCT s.id) as pendingcnt
+                FROM {vpl_submissions} s
+                JOIN (
+                    SELECT vpl, userid, MAX(id) as maxid
+                    FROM {vpl_submissions}
+                    GROUP BY vpl, userid
+                ) latest ON latest.maxid = s.id
+                WHERE s.vpl $in_sql
+                  AND (s.dategraded = 0 OR s.dategraded IS NULL OR s.grade IS NULL)
+                  $vpl_stu_sql
+                GROUP BY s.vpl
+            ";
+            $vpl_pend_rows = $DB->get_records_sql($sql_vpl_pend, $params);
+            foreach ($vpl_pend_rows as $row) {
+                $cnt = (int)$row->pendingcnt;
+                if ($cnt > 0) {
+                    $total_pending += $cnt;
+                    $name = $instance_names['vpl:' . $row->vpl] ?? ('VPL ' . $row->vpl);
+                    $pending_details[] = $name . ' (' . $cnt . ' un-evaluated ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
+                }
+            }
+
+            $sql_vpl_eval = "
+                SELECT s.id, s.dategraded
+                FROM {vpl_submissions} s
+                JOIN (
+                    SELECT vpl, userid, MAX(id) as maxid
+                    FROM {vpl_submissions}
+                    GROUP BY vpl, userid
+                ) latest ON latest.maxid = s.id
+                WHERE s.vpl $in_sql
+                  AND s.dategraded > 0
+                  AND s.grade IS NOT NULL
+                  $vpl_stu_sql
+                ORDER BY s.dategraded DESC
+            ";
+            $vpl_eval_rows = $DB->get_records_sql($sql_vpl_eval, $params);
+            $total_evaluated += count($vpl_eval_rows);
+            if (!empty($vpl_eval_rows)) {
+                $first = reset($vpl_eval_rows);
+                if ((int)$first->dategraded > $latest_graded_time) {
+                    $latest_graded_time = (int)$first->dategraded;
+                }
+            }
+        }
+
+        return [
+            'target_type'        => $target_type,
+            'matching_count'     => count($matching_instances['assign']) + count($matching_instances['vpl']),
+            'total_pending'      => $total_pending,
+            'total_evaluated'    => $total_evaluated,
+            'latest_grader'      => $latest_grader,
+            'latest_graded_time' => $latest_graded_time,
+            'pending_details'    => $pending_details,
+        ];
+    }
+
+    /**
+     * Automatically synchronize mentor evaluation activities completion state.
+     * - If all assignments or projects are evaluated, marks activity completed with grader ID and date.
+     * - If new/resubmitted student submissions arrive after completion, automatically reverts to not completed.
+     *
+     * @param int $courseid
+     * @param int $sectionid
+     * @return array
+     */
+    public static function sync_mentor_evaluation_status(int $courseid, int $sectionid = 0): array {
+        global $DB;
+
+        if ($courseid <= 0 || !class_exists('\local_batchanalytics\mentor_activity_service')) {
+            return [];
+        }
+
+        if (!\local_batchanalytics\mentor_activity_service::is_table_available()) {
+            return [];
+        }
+
+        $results = [];
+        $eval_types = [
+            'Assignment' => ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation'],
+            'Project'    => ['key' => 'project_evaluation',    'name' => 'Project evaluation'],
+        ];
+
+        // Fetch current saved record for this course
+        $rec = $DB->get_record(\local_batchanalytics\mentor_activity_service::get_table_name(), ['courseid' => $courseid]);
+        $saved_list = [];
+        if ($rec && !empty($rec->activitiesdata)) {
+            $saved_list = json_decode($rec->activitiesdata, true) ?: [];
+        }
+
+        $saved_by_key = [];
+        foreach ($saved_list as $item) {
+            $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+            if ($sectionid <= 0 || $item_sec === $sectionid || $item_sec === 0) {
+                $k = mb_strtolower(trim($item['key'] ?? ''));
+                if ($k !== '') {
+                    $saved_by_key[$k] = $item;
+                }
+            }
+        }
+
+        foreach ($eval_types as $type => $info) {
+            $metrics = self::get_evaluation_metrics($courseid, $type, $sectionid);
+            if ($metrics['matching_count'] <= 0) {
+                continue;
+            }
+
+            $act_key = $info['key'];
+            $act_name = $info['name'];
+            $current_saved = $saved_by_key[$act_key] ?? null;
+            $is_currently_complete = !empty($current_saved['completed']);
+
+            // Case A: Submissions pending evaluation -> must NOT be completed
+            if ($metrics['total_pending'] > 0) {
+                if ($is_currently_complete) {
+                    // Revert to incomplete because new/resubmitted submissions exist
+                    \local_batchanalytics\mentor_activity_service::save_activity_status(
+                        $courseid,
+                        $act_name,
+                        false,
+                        '',
+                        0,
+                        $sectionid
+                    );
+                    $results[$act_key] = 'reverted_to_incomplete';
+                }
+            }
+            // Case B: All submissions evaluated -> automatically mark completed
+            else if ($metrics['total_pending'] === 0 && $metrics['total_evaluated'] > 0) {
+                if (!$is_currently_complete || empty($current_saved['modifiedby'])) {
+                    $eval_time = $metrics['latest_graded_time'] > 0 ? $metrics['latest_graded_time'] : time();
+                    $eval_date = date('Y-m-d', $eval_time);
+                    $grader_id = $metrics['latest_grader'] > 0 ? $metrics['latest_grader'] : 2;
+
+                    \local_batchanalytics\mentor_activity_service::save_activity_status(
+                        $courseid,
+                        $act_name,
+                        true,
+                        $eval_date,
+                        $grader_id,
+                        $sectionid
+                    );
+                    $results[$act_key] = 'auto_completed';
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Automatically synchronize individual course module activities completion status.
+     * - Auto-completes if all submissions are evaluated (0 pending, >= 1 evaluated) with latest grader and date.
+     * - Auto-reverts to incomplete (completed = 0) if student resubmits or un-evaluated submissions exist.
+     *
+     * @param int $courseid
+     * @param int $sectionid Optional class section ID
+     * @return array
+     */
+    public function sync_course_module_activities(int $courseid, int $sectionid = 0): array {
+        global $DB;
+
+        if ($courseid <= 0 || !$this->is_table_available()) {
+            return [];
+        }
+
+        try {
+            $course = get_course($courseid);
+            $modinfo = get_fast_modinfo($course);
+            $activities = $this->get_course_activities($course);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $student_filter_sql = '';
+        $student_params = [];
+        if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
+            $uids = $DB->get_fieldset_select('local_bm_student', 'userid', 'classsectionid = :secid', ['secid' => $sectionid]);
+            if (!empty($uids)) {
+                [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
+                $student_filter_sql = " AND s.userid $in_sql";
+                $student_params = $in_params;
+            }
+        }
+
+        $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid]);
+        $savedbycmid = [];
+        foreach ($saved as $record) {
+            $savedbycmid[(int)$record->cmid] = $record;
+        }
+
+        $results = [];
+
+        foreach ($activities as $act) {
+            $cmid = (int)$act['cmid'];
+            $cm = $modinfo->get_cm($cmid);
+            if (!$cm) {
+                continue;
+            }
+
+            $modname = $cm->modname;
+            $instance = (int)$cm->instance;
+            $existing_rec = $savedbycmid[$cmid] ?? null;
+            $is_completed = !empty($existing_rec->completed);
+
+            $pending_count = 0;
+            $evaluated_count = 0;
+            $latest_grader = 0;
+            $latest_graded_time = 0;
+
+            if ($modname === 'assign' && $DB->get_manager()->table_exists('assign_submission')) {
+                $params = array_merge(['instance' => $instance], $student_params);
+
+                // Pending count (including resubmissions where s.timemodified > g.timemodified)
+                $sql_pend = "
+                    SELECT COUNT(DISTINCT s.id)
+                    FROM {assign_submission} s
+                    LEFT JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                    WHERE s.assignment = :instance
+                      AND s.status = 'submitted'
+                      AND s.latest = 1
+                      AND (g.grade IS NULL OR g.grade < 0 OR s.timemodified > g.timemodified)
+                      $student_filter_sql
+                ";
+                $pending_count = (int)$DB->count_records_sql($sql_pend, $params);
+
+                // Evaluated count and latest grader
+                $sql_eval = "
+                    SELECT g.id, g.grader, g.timemodified
+                    FROM {assign_submission} s
+                    JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
+                    WHERE s.assignment = :instance
+                      AND s.status = 'submitted'
+                      AND s.latest = 1
+                      AND g.grade IS NOT NULL
+                      AND g.grade >= 0
+                      AND s.timemodified <= g.timemodified
+                      $student_filter_sql
+                    ORDER BY g.timemodified DESC
+                ";
+                $eval_records = $DB->get_records_sql($sql_eval, $params);
+                $evaluated_count = count($eval_records);
+                if (!empty($eval_records)) {
+                    $first = reset($eval_records);
+                    $latest_graded_time = (int)$first->timemodified;
+                    $latest_grader = (int)$first->grader;
+                }
+            } else if ($modname === 'vpl' && $DB->get_manager()->table_exists('vpl_submissions')) {
+                $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
+                $params = array_merge(['instance' => $instance], $student_params);
+
+                $sql_vpl_pend = "
+                    SELECT COUNT(DISTINCT s.id)
+                    FROM {vpl_submissions} s
+                    JOIN (
+                        SELECT vpl, userid, MAX(id) as maxid
+                        FROM {vpl_submissions}
+                        GROUP BY vpl, userid
+                    ) latest ON latest.maxid = s.id
+                    WHERE s.vpl = :instance
+                      AND (s.dategraded = 0 OR s.dategraded IS NULL OR s.grade IS NULL)
+                      $vpl_stu_sql
+                ";
+                $pending_count = (int)$DB->count_records_sql($sql_vpl_pend, $params);
+
+                $sql_vpl_eval = "
+                    SELECT s.id, s.dategraded
+                    FROM {vpl_submissions} s
+                    JOIN (
+                        SELECT vpl, userid, MAX(id) as maxid
+                        FROM {vpl_submissions}
+                        GROUP BY vpl, userid
+                    ) latest ON latest.maxid = s.id
+                    WHERE s.vpl = :instance
+                      AND s.dategraded > 0
+                      AND s.grade IS NOT NULL
+                      $vpl_stu_sql
+                    ORDER BY s.dategraded DESC
+                ";
+                $eval_records = $DB->get_records_sql($sql_vpl_eval, $params);
+                $evaluated_count = count($eval_records);
+                if (!empty($eval_records)) {
+                    $first = reset($eval_records);
+                    $latest_graded_time = (int)$first->dategraded;
+                }
+            } else if ($modname === 'quiz' && $DB->get_manager()->table_exists('quiz_attempts')) {
+                $quiz_stu_sql = str_replace('s.userid', 'qa.userid', $student_filter_sql);
+                $params = array_merge(['instance' => $instance], $student_params);
+
+                $sql_prog = "
+                    SELECT COUNT(DISTINCT qa.id)
+                    FROM {quiz_attempts} qa
+                    WHERE qa.quiz = :instance
+                      AND qa.preview = 0
+                      AND qa.state IN ('inprogress', 'overdue')
+                      $quiz_stu_sql
+                ";
+                $prog_cnt = (int)$DB->count_records_sql($sql_prog, $params);
+
+                $man_cnt = 0;
+                if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
+                    $sql_man = "
+                        SELECT COUNT(DISTINCT qa.id)
+                        FROM {quiz_attempts} qa
+                        JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
+                        JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                        WHERE qa.quiz = :instance
+                          AND qa.preview = 0
+                          AND qa.state = 'finished'
+                          AND qas.state = 'needsgrading'
+                          $quiz_stu_sql
+                    ";
+                    $man_cnt = (int)$DB->count_records_sql($sql_man, $params);
+                }
+                $pending_count = $prog_cnt + $man_cnt;
+
+                $sql_eval = "
+                    SELECT qa.id, qa.timefinish
+                    FROM {quiz_attempts} qa
+                    WHERE qa.quiz = :instance
+                      AND qa.preview = 0
+                      AND qa.state = 'finished'
+                      AND qa.sumgrades IS NOT NULL
+                      $quiz_stu_sql
+                    ORDER BY qa.timefinish DESC
+                ";
+                $eval_records = $DB->get_records_sql($sql_eval, $params);
+                $evaluated_count = count($eval_records);
+                if (!empty($eval_records)) {
+                    $first = reset($eval_records);
+                    $latest_graded_time = (int)$first->timefinish;
+                }
+            } else {
+                continue;
+            }
+
+            // Case A: Pending submissions exist -> if marked completed, revert to incomplete!
+            if ($pending_count > 0) {
+                if ($is_completed && $existing_rec) {
+                    $existing_rec->completed = 0;
+                    $existing_rec->completiondate = '';
+                    $existing_rec->modifiedby = 0;
+                    $existing_rec->timemodified = time();
+                    $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
+                    $results[$cmid] = 'reverted_to_incomplete';
+                }
+            }
+            // Case B: 0 pending submissions and at least 1 evaluated -> auto-mark complete!
+            else if ($pending_count === 0 && $evaluated_count > 0) {
+                $eval_date = date('Y-m-d', $latest_graded_time > 0 ? $latest_graded_time : time());
+                $grader_id = $latest_grader > 0 ? $latest_grader : 2;
+
+                if (!$is_completed || empty($existing_rec->modifiedby) || empty($existing_rec->completiondate)) {
+                    if ($existing_rec) {
+                        $existing_rec->completed = 1;
+                        $existing_rec->completiondate = $eval_date;
+                        $existing_rec->modifiedby = $grader_id;
+                        $existing_rec->timemodified = time();
+                        $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
+                    } else {
+                        $newrec = (object)[
+                            'courseid'       => $courseid,
+                            'cmid'           => $cmid,
+                            'completed'      => 1,
+                            'completiondate' => $eval_date,
+                            'modifiedby'     => $grader_id,
+                            'timemodified'   => time(),
+                        ];
+                        $DB->insert_record('local_batchanalytics_activity_tracker', $newrec);
+                    }
+                    $results[$cmid] = 'auto_completed';
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
      * Check if an activity or activities in a course have pending / ungraded submissions.
      *
      * @param int $courseid
@@ -455,9 +992,6 @@ class activity_tracker_service {
             }
         }
 
-        $pending_details = [];
-        $total_pending = 0;
-
         // 2. If a specific course module $cmid is given, inspect that module
         if ($cmid > 0) {
             try {
@@ -475,7 +1009,7 @@ class activity_tracker_service {
             return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
         }
 
-        // 3. If $activity_name is given (e.g. mentor activity like "Assignment evaluation" or specific activity name)
+        // 3. If $activity_name is given
         $norm = mb_strtolower(trim($activity_name));
         if ($norm === '') {
             return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
@@ -502,89 +1036,59 @@ class activity_tracker_service {
             // Ignore
         }
 
-        // 4. Category-level checks for mentor master activities:
-        // A) Assignments & VPLs
-        $check_assign = str_contains($norm, 'assign') || str_contains($norm, 'evaluation') || $norm === 'assignment_evaluation';
-        $check_project = str_contains($norm, 'project');
-        $check_quiz = str_contains($norm, 'quiz');
+        // 4. Gradebook setup-based checks for mentor evaluation activities:
+        $is_project = str_contains($norm, 'project') || $norm === 'project_evaluation';
+        $is_assign  = (str_contains($norm, 'assign') || $norm === 'assignment_evaluation') && !$is_project;
+        $is_quiz    = str_contains($norm, 'quiz') || $norm === 'quiz_evaluation';
 
-        if ($check_assign || $check_project) {
-            // Check Moodle Assignments (mod_assign)
-            if ($DB->get_manager()->table_exists('assign') && $DB->get_manager()->table_exists('assign_submission')) {
-                $proj_sql = "";
-                $assign_params = array_merge(['courseid' => $courseid], $student_params);
-                if ($check_project && !$check_assign) {
-                    $proj_sql = " AND " . $DB->sql_like('a.name', ':projname', false, false);
-                    $assign_params['projname'] = '%project%';
+        // A) Projects (resolved via Gradebook categories)
+        if ($is_project) {
+            $metrics = self::get_evaluation_metrics($courseid, 'Project', $sectionid);
+            if ($metrics['total_pending'] > 0) {
+                $cnt = $metrics['total_pending'];
+                $msg = 'Cannot mark complete: ' . $cnt . ' pending/ungraded ' .
+                       ($cnt === 1 ? 'submission' : 'submissions') . ' in: ' . implode(', ', array_slice($metrics['pending_details'], 0, 3));
+                if (count($metrics['pending_details']) > 3) {
+                    $msg .= ' and ' . (count($metrics['pending_details']) - 3) . ' more.';
                 }
-
-                $sql = "
-                    SELECT a.id, a.name, COUNT(DISTINCT s.id) as pendingcount
-                    FROM {assign} a
-                    JOIN {assign_submission} s ON s.assignment = a.id
-                    LEFT JOIN {assign_grades} g ON (g.assignment = s.assignment AND g.userid = s.userid AND g.attemptnumber = s.attemptnumber)
-                    WHERE a.course = :courseid
-                      AND s.status = 'submitted'
-                      AND s.latest = 1
-                      AND (g.grade IS NULL OR g.grade < 0 OR s.timemodified > g.timemodified)
-                      $proj_sql
-                      $student_filter_sql
-                    GROUP BY a.id, a.name
-                ";
-
-                $assign_rows = $DB->get_records_sql($sql, $assign_params);
-                foreach ($assign_rows as $row) {
-                    $cnt = (int)$row->pendingcount;
-                    if ($cnt > 0) {
-                        $total_pending += $cnt;
-                        $pending_details[] = $row->name . ' (' . $cnt . ' ungraded ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
-                    }
-                }
+                return [
+                    'has_pending' => true,
+                    'count'       => $cnt,
+                    'message'     => $msg,
+                    'details'     => $metrics['pending_details'],
+                ];
             }
-
-            // Check VPLs (mod_vpl)
-            if ($DB->get_manager()->table_exists('vpl') && $DB->get_manager()->table_exists('vpl_submissions')) {
-                $vpl_params = array_merge(['courseid' => $courseid], $student_params);
-                $proj_sql = "";
-                if ($check_project && !$check_assign) {
-                    $proj_sql = " AND " . $DB->sql_like('v.name', ':projname', false, false);
-                    $vpl_params['projname'] = '%project%';
-                }
-
-                $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
-
-                $sql = "
-                    SELECT v.id, v.name, COUNT(DISTINCT s.id) as pendingcount
-                    FROM {vpl} v
-                    JOIN {vpl_submissions} s ON s.vpl = v.id
-                    JOIN (
-                        SELECT vpl, userid, MAX(id) as maxid
-                        FROM {vpl_submissions}
-                        GROUP BY vpl, userid
-                    ) latest ON latest.maxid = s.id
-                    WHERE v.course = :courseid
-                      AND (s.dategraded = 0 OR s.dategraded IS NULL OR s.grade IS NULL)
-                      $proj_sql
-                      $vpl_stu_sql
-                    GROUP BY v.id, v.name
-                ";
-
-                $vpl_rows = $DB->get_records_sql($sql, $vpl_params);
-                foreach ($vpl_rows as $row) {
-                    $cnt = (int)$row->pendingcount;
-                    if ($cnt > 0) {
-                        $total_pending += $cnt;
-                        $pending_details[] = $row->name . ' (' . $cnt . ' un-evaluated ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
-                    }
-                }
-            }
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
         }
 
-        // B) Quizzes (mod_quiz)
-        if ($check_quiz) {
+        // B) Assignments (resolved via Gradebook categories)
+        if ($is_assign) {
+            $metrics = self::get_evaluation_metrics($courseid, 'Assignment', $sectionid);
+            if ($metrics['total_pending'] > 0) {
+                $cnt = $metrics['total_pending'];
+                $msg = 'Cannot mark complete: ' . $cnt . ' pending/ungraded ' .
+                       ($cnt === 1 ? 'submission' : 'submissions') . ' in: ' . implode(', ', array_slice($metrics['pending_details'], 0, 3));
+                if (count($metrics['pending_details']) > 3) {
+                    $msg .= ' and ' . (count($metrics['pending_details']) - 3) . ' more.';
+                }
+                return [
+                    'has_pending' => true,
+                    'count'       => $cnt,
+                    'message'     => $msg,
+                    'details'     => $metrics['pending_details'],
+                ];
+            }
+            return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];
+        }
+
+        // C) Quizzes (mod_quiz)
+        if ($is_quiz) {
             if ($DB->get_manager()->table_exists('quiz') && $DB->get_manager()->table_exists('quiz_attempts')) {
                 $quiz_params = array_merge(['courseid' => $courseid], $student_params);
                 $quiz_stu_sql = str_replace('s.userid', 'qa.userid', $student_filter_sql);
+
+                $pending_details = [];
+                $total_pending = 0;
 
                 // In-progress or overdue attempts
                 $sql_prog = "
@@ -630,22 +1134,18 @@ class activity_tracker_service {
                         }
                     }
                 }
-            }
-        }
 
-        if ($total_pending > 0) {
-            $msg = 'Cannot mark complete: ' . $total_pending . ' pending/ungraded ' .
-                   ($total_pending === 1 ? 'submission' : 'submissions') . ' in: ' . implode(', ', array_slice($pending_details, 0, 3));
-            if (count($pending_details) > 3) {
-                $msg .= ' and ' . (count($pending_details) - 3) . ' more.';
+                if ($total_pending > 0) {
+                    $msg = 'Cannot mark complete: ' . $total_pending . ' pending ' .
+                           ($total_pending === 1 ? 'quiz attempt' : 'quiz attempts') . ' in: ' . implode(', ', array_slice($pending_details, 0, 3));
+                    return [
+                        'has_pending' => true,
+                        'count'       => $total_pending,
+                        'message'     => $msg,
+                        'details'     => $pending_details,
+                    ];
+                }
             }
-
-            return [
-                'has_pending' => true,
-                'count'       => $total_pending,
-                'message'     => $msg,
-                'details'     => $pending_details,
-            ];
         }
 
         return ['has_pending' => false, 'count' => 0, 'message' => '', 'details' => []];

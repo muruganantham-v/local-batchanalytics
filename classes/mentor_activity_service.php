@@ -492,6 +492,14 @@ class mentor_activity_service {
         $modifier_ids = [];
 
         if ($courseid > 0 && self::is_table_available()) {
+            // Automatically synchronize evaluation completion & reversion based on gradebook setup and submissions.
+            try {
+                require_once(__DIR__ . '/activity_tracker_service.php');
+                activity_tracker_service::sync_mentor_evaluation_status($courseid, $sectionid);
+            } catch (\Throwable $e) {
+                // Graceful fallback if sync fails.
+            }
+
             $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'activitiesdata', IGNORE_MISSING);
             if ($rec && !empty($rec->activitiesdata)) {
                 $raw_list = json_decode($rec->activitiesdata, true);
@@ -631,7 +639,7 @@ class mentor_activity_service {
             $date_val = !empty($completiondate) ? trim($completiondate) : date('Y-m-d', $now);
         }
 
-        $rec = $DB->get_record(self::TABLE_NAME, ['courseid' => $courseid]);
+        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
         $activities_list = [];
 
         if ($rec && !empty($rec->activitiesdata)) {
