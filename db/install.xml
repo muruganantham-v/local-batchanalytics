@@ -55,48 +55,5 @@
         <INDEX NAME="courseid_uix" UNIQUE="true" FIELDS="courseid"/>
       </INDEXES>
     </TABLE>
-    <TABLE NAME="local_batchanalytics_cliq_rules" COMMENT="Workflow trigger rules for Zoho Cliq notification templates">
-      <FIELDS>
-        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="template_id" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false"/>
-        <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
-        <FIELD NAME="trigger_type" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="schedule" SEQUENCE="false"/>
-        <FIELD NAME="condition_metric" TYPE="char" LENGTH="50" NOTNULL="true" DEFAULT="days_before_due" SEQUENCE="false"/>
-        <FIELD NAME="condition_value" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="recipient_type" TYPE="char" LENGTH="50" NOTNULL="true" DEFAULT="CM" SEQUENCE="false"/>
-        <FIELD NAME="escalate_to" TYPE="char" LENGTH="50" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="escalate_days" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="2" SEQUENCE="false"/>
-        <FIELD NAME="quiet_hours_enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
-        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-      </FIELDS>
-      <KEYS>
-        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-      </KEYS>
-      <INDEXES>
-        <INDEX NAME="template_id_uix" UNIQUE="true" FIELDS="template_id"/>
-      </INDEXES>
-    </TABLE>
-    <TABLE NAME="local_batchanalytics_cliq_log" COMMENT="Audit log and deduplication history for sent Zoho Cliq notifications">
-      <FIELDS>
-        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="template_id" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false"/>
-        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="batchid" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
-        <FIELD NAME="activity_key" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
-        <FIELD NAME="recipient_email" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
-        <FIELD NAME="timesent" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="http_code" TYPE="int" LENGTH="5" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="response_payload" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="date_sent" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
-      </FIELDS>
-      <KEYS>
-        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-      </KEYS>
-      <INDEXES>
-        <INDEX NAME="dedup_ix" UNIQUE="false" FIELDS="template_id, batchid, activity_key, date_sent"/>
-        <INDEX NAME="timesent_ix" UNIQUE="false" FIELDS="timesent"/>
-      </INDEXES>
-    </TABLE>
   </TABLES>
 </XMLDB>
-

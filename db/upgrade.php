@@ -365,52 +365,5 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026100101, 'local', 'batchanalytics');
     }
 
-    if ($oldversion < 2026100102) {
-        // Table: local_batchanalytics_cliq_rules
-        $table = new xmldb_table('local_batchanalytics_cliq_rules');
-        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        $table->add_field('template_id', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, null);
-        $table->add_field('enabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1');
-        $table->add_field('trigger_type', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, 'schedule');
-        $table->add_field('condition_metric', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, 'days_before_due');
-        $table->add_field('condition_value', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $table->add_field('recipient_type', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, 'CM');
-        $table->add_field('escalate_to', XMLDB_TYPE_CHAR, '50', null, null, null, null);
-        $table->add_field('escalate_days', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '2');
-        $table->add_field('quiet_hours_enabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1');
-        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-
-        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
-        $table->add_index('template_id_uix', XMLDB_INDEX_UNIQUE, ['template_id']);
-
-        if (!$dbman->table_exists($table)) {
-            $dbman->create_table($table);
-        }
-
-        // Table: local_batchanalytics_cliq_log
-        $logtable = new xmldb_table('local_batchanalytics_cliq_log');
-        $logtable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        $logtable->add_field('template_id', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, null);
-        $logtable->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $logtable->add_field('batchid', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
-        $logtable->add_field('activity_key', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
-        $logtable->add_field('recipient_email', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
-        $logtable->add_field('timesent', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $logtable->add_field('http_code', XMLDB_TYPE_INTEGER, '5', null, XMLDB_NOTNULL, null, '0');
-        $logtable->add_field('response_payload', XMLDB_TYPE_TEXT, null, null, null, null, null);
-        $logtable->add_field('date_sent', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, '');
-
-        $logtable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
-        $logtable->add_index('dedup_ix', XMLDB_INDEX_NOTUNIQUE, ['template_id', 'batchid', 'activity_key', 'date_sent']);
-        $logtable->add_index('timesent_ix', XMLDB_INDEX_NOTUNIQUE, ['timesent']);
-
-        if (!$dbman->table_exists($logtable)) {
-            $dbman->create_table($logtable);
-        }
-
-        upgrade_plugin_savepoint(true, 2026100102, 'local', 'batchanalytics');
-    }
-
     return true;
 }
-
