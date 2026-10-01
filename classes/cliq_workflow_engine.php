@@ -335,18 +335,20 @@ class cliq_workflow_engine {
                     continue;
                 }
 
-                // Fetch mentor activities for this course
-                $activities_payload = mentor_activity_service::get_mentor_activities($courseid);
-                $groups = $activities_payload['groups'] ?? [];
+                $mod_name = $mod['modulename'] ?? ($mod['name'] ?? '');
+                $start_ts = !empty($mod['startdate']) ? strtotime((string)$mod['startdate']) : 0;
+                $sec_id = (int)($sec->id ?? 0);
 
-                foreach ($groups as $grp) {
-                    $acts = $grp['activities'] ?? [];
-                    foreach ($acts as $act) {
-                        $is_completed = !empty($act['completed']);
-                        $due_ts = (int)($act['due_date'] ?? 0);
-                        if ($due_ts <= 0) {
-                            continue;
-                        }
+                // Fetch mentor activities for this course
+                $activities_payload = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $start_ts, $sec_id);
+                $acts = $activities_payload['activities'] ?? [];
+
+                foreach ($acts as $act) {
+                    $is_completed = !empty($act['completed']);
+                    $due_ts = (int)($act['planned_ts'] ?? ($act['due_date'] ?? 0));
+                    if ($due_ts <= 0) {
+                        continue;
+                    }
 
                         $due_midnight = strtotime('today midnight', $due_ts);
                         $days_diff = (int)round(($due_midnight - $today_midnight) / 86400);
@@ -462,7 +464,6 @@ class cliq_workflow_engine {
                     }
                 }
             }
-        }
 
         return $results;
     }

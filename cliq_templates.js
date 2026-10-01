@@ -180,23 +180,46 @@
             });
         });
 
-        // Save All Templates
+        // Save All Templates & Workflow Rules
         var saveBtn = document.getElementById('ba-cliq-save-all');
         if (saveBtn) {
             saveBtn.addEventListener('click', function() {
-                var payload = [];
+                var templatesPayload = [];
+                var rulesPayload = [];
+
                 cards.forEach(function(c) {
                     var tid = c.getAttribute('data-id');
                     var ta = c.querySelector('.ba-cliq-textarea');
                     var threshInput = c.querySelector('.ba-cliq-threshold-input');
-                    var enabledChk = c.querySelector('.ba-cliq-enabled-chk');
+
+                    var ruleEnabled = c.querySelector('.ba-cliq-rule-enabled');
+                    var ruleMetric = c.querySelector('.ba-cliq-rule-metric');
+                    var ruleCval = c.querySelector('.ba-cliq-rule-cval');
+                    var ruleRecip = c.querySelector('.ba-cliq-rule-recipient');
+                    var ruleEscTo = c.querySelector('.ba-cliq-rule-escalateto');
+                    var ruleEscDays = c.querySelector('.ba-cliq-rule-escalatedays');
 
                     if (tid && ta) {
-                        payload.push({
+                        templatesPayload.push({
                             id: tid,
                             template: ta.value,
-                            threshold_days: threshInput ? parseInt(threshInput.value, 10) || 0 : 0,
-                            enabled: enabledChk ? enabledChk.checked : true
+                            threshold_days: threshInput ? (parseInt(threshInput.value, 10) || 0) : (ruleCval ? (parseInt(ruleCval.value, 10) || 0) : 0),
+                        });
+                    }
+
+                    if (tid && ruleMetric) {
+                        var metricVal = ruleMetric.value;
+                        var isEvent = (metricVal.indexOf('_created') !== -1 || metricVal.indexOf('_completed') !== -1 || metricVal.indexOf('_raised') !== -1);
+                        rulesPayload.push({
+                            template_id: tid,
+                            enabled: ruleEnabled ? (ruleEnabled.checked ? 1 : 0) : 1,
+                            trigger_type: isEvent ? 'event' : 'schedule',
+                            condition_metric: metricVal,
+                            condition_value: ruleCval ? (parseInt(ruleCval.value, 10) || 0) : 0,
+                            recipient_type: ruleRecip ? ruleRecip.value : 'CM',
+                            escalate_to: ruleEscTo ? ruleEscTo.value : '',
+                            escalate_days: ruleEscDays ? (parseInt(ruleEscDays.value, 10) || 2) : 2,
+                            quiet_hours_enabled: 1
                         });
                     }
                 });
@@ -207,7 +230,8 @@
                 var formData = new FormData();
                 formData.append('action', 'savetemplates');
                 formData.append('sesskey', sesskey);
-                formData.append('templates', JSON.stringify(payload));
+                formData.append('templates', JSON.stringify(templatesPayload));
+                formData.append('rules', JSON.stringify(rulesPayload));
 
                 fetch(window.location.href, {
                     method: 'POST',
@@ -218,7 +242,7 @@
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save All Changes';
                     if (data && data.success) {
-                        showToast('All 42 templates saved successfully!');
+                        showToast('Templates and workflow automation rules saved successfully!');
                     } else {
                         showToast(data.message || 'Error saving templates', true);
                     }
@@ -412,6 +436,112 @@
                 });
             });
         }
+
+        // Dry-Run Simulation Modal Logic
+        var dryrunModal = document.getElementById('ba-cliq-dryrun-modal');
+        var dryrunOpenBtn = document.getElementById('ba-cliq-open-dryrun-modal');
+        var dryrunCloseBtn = document.getElementById('ba-cliq-dryrun-close-btn');
+        var dryrunCancelBtn = document.getElementById('ba-cliq-dryrun-cancel-btn');
+        var dryrunRefreshBtn = document.getElementById('ba-cliq-dryrun-refresh-btn');
+        var dryrunSummaryEl = document.getElementById('ba-cliq-dryrun-summary');
+        var dryrunResultsEl = document.getElementById('ba-cliq-dryrun-results');
+
+        function openDryRunModal() {
+            if (!dryrunModal) return;
+            dryrunModal.classList.add('open');
+            runDryRunScan();
+        }
+
+        function closeDryRunModal() {
+            if (!dryrunModal) return;
+            dryrunModal.classList.remove('open');
+        }
+
+        if (dryrunCloseBtn) dryrunCloseBtn.addEventListener('click', closeDryRunModal);
+        if (dryrunCancelBtn) dryrunCancelBtn.addEventListener('click', closeDryRunModal);
+        if (dryrunModal) {
+            dryrunModal.addEventListener('click', function(e) {
+                if (e.target === dryrunModal) closeDryRunModal();
+            });
+        }
+        if (dryrunOpenBtn) dryrunOpenBtn.addEventListener('click', openDryRunModal);
+        if (dryrunRefreshBtn) dryrunRefreshBtn.addEventListener('click', runDryRunScan);
+
+        function runDryRunScan() {
+            if (!dryrunSummaryEl || !dryrunResultsEl) return;
+
+            dryrunSummaryEl.innerHTML = '<span style="color:#64748b; font-size:12px;">Scanning active batches and mentor activities…</span>';
+            dryrunResultsEl.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning in progress…</div>';
+
+            var formData = new FormData();
+            formData.append('action', 'dryrun');
+            formData.append('sesskey', sesskey);
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data || !data.success) {
+                    dryrunSummaryEl.innerHTML = '<span style="color:#dc2626; font-size:12px;">Scan failed: ' + (data.message || 'Unknown error') + '</span>';
+                    dryrunResultsEl.innerHTML = '';
+                    return;
+                }
+
+                dryrunSummaryEl.innerHTML = 
+                    '<div style="background:#f1f5f9; padding:8px 14px; border-radius:6px; font-size:12px; font-weight:600; color:#334155;">Batches Checked: ' + (data.total_batches_checked || 0) + '</div>' +
+                    '<div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:8px 14px; border-radius:6px; font-size:12px; font-weight:600; color:#065f46;">Trigger Conditions Met: ' + (data.matches_found || 0) + '</div>';
+
+                var notifications = data.notifications || [];
+                if (notifications.length === 0) {
+                    dryrunResultsEl.innerHTML = 
+                        '<div style="text-align:center; padding:40px 20px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; color:#64748b;">' +
+                        '<strong>No matching activity deadlines triggered right now.</strong><br>' +
+                        '<span style="font-size:12px;">All active batches are currently up-to-date, or activities have not reached their configured reminder/overdue thresholds.</span>' +
+                        '</div>';
+                    return;
+                }
+
+                var html = '';
+                notifications.forEach(function(item) {
+                    var badgeClass = 'ba-cliq-sim-badge due';
+                    var statusTitle = 'Due in ' + item.days_diff + ' day(s)';
+                    if (item.days_diff === 0) {
+                        badgeClass = 'ba-cliq-sim-badge today';
+                        statusTitle = 'Due Today';
+                    } else if (item.days_diff < 0) {
+                        badgeClass = 'ba-cliq-sim-badge overdue';
+                        statusTitle = 'Overdue by ' + item.overdue_days + ' day(s)';
+                    }
+
+                    html += '<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">';
+                    html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
+                    html += '    <div style="display:flex; align-items:center; gap:8px;">';
+                    html += '      <span style="background:#0f172a; color:#fff; font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px;">' + (item.template_id || '') + '</span>';
+                    html += '      <span style="font-weight:600; font-size:13px; color:#0f172a;">' + (item.batch_code || '') + ' &middot; ' + (item.module || '') + '</span>';
+                    html += '    </div>';
+                    html += '    <span class="' + badgeClass + '">' + statusTitle + '</span>';
+                    html += '  </div>';
+                    html += '  <div style="font-size:12px; color:#475569; margin-bottom:6px;">';
+                    html += '    <strong>Activity:</strong> ' + (item.activity || '') + ' &middot; <strong>Due:</strong> ' + (item.due_date || '') + '<br>';
+                    html += '    <strong>To Whom:</strong> <span style="font-family:monospace; color:#1e40af;">' + (item.recipients || []).join(', ') + '</span>';
+                    if (item.escalated) {
+                        html += ' <span style="color:#dc2626; font-weight:600;">(⚠️ Escalated to Manager)</span>';
+                    }
+                    html += '  </div>';
+                    html += '  <div style="background:#f8fafc; border-left:3px solid #3b82f6; padding:8px 12px; font-size:11px; white-space:pre-wrap; border-radius:0 4px 4px 0; color:#334155;">' + (item.rendered_text || '') + '</div>';
+                    html += '</div>';
+                });
+
+                dryrunResultsEl.innerHTML = html;
+            })
+            .catch(function(err) {
+                dryrunSummaryEl.innerHTML = '<span style="color:#dc2626; font-size:12px;">Scan error: ' + err.message + '</span>';
+                dryrunResultsEl.innerHTML = '';
+            });
+        }
     });
 })();
+
 
