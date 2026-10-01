@@ -10,16 +10,23 @@
 ## Contents
 
 1. [Overview](#1-overview)
-2. [Lifecycle Pattern](#2-lifecycle-pattern)
-3. [Conventions](#3-conventions)
-4. [Templates by Recipient](#4-templates-by-recipient)
-   - [4.1 Program Manager (PM)](#41-program-manager-pm)
-   - [4.2 Student Success Executive (SSE)](#42-student-success-executive-sse)
-   - [4.3 Class Mentor](#43-class-mentor)
-   - [4.4 Lab Mentor](#44-lab-mentor)
-5. [Escalation Matrix](#5-escalation-matrix)
-6. [Placeholder Dictionary](#6-placeholder-dictionary)
-7. [Open Items for Review](#7-open-items-for-review)
+2. [Workflow Architecture & Operational Mechanism](#2-workflow-architecture--operational-mechanism)
+   - [2.1 End-to-End Workflow Architecture](#21-end-to-end-workflow-architecture)
+   - [2.2 Dual Trigger Mechanisms (Real-Time Hooks vs Scheduled Engine)](#22-dual-trigger-mechanisms-real-time-hooks-vs-scheduled-engine)
+   - [2.3 Dynamic Recipient Resolution Matrix](#23-dynamic-recipient-resolution-matrix)
+   - [2.4 Condition, Offset & Escalation Evaluation Rules](#24-condition-offset--escalation-evaluation-rules)
+   - [2.5 Delivery Controls & Safeguards (Quiet Hours & Deduplication)](#25-delivery-controls--safeguards-quiet-hours--deduplication)
+   - [2.6 Interactive Dry-Run Simulation & Testing](#26-interactive-dry-run-simulation--testing)
+3. [Lifecycle Pattern](#3-lifecycle-pattern)
+4. [Conventions](#4-conventions)
+5. [Templates by Recipient](#5-templates-by-recipient)
+   - [5.1 Program Manager (PM)](#51-program-manager-pm)
+   - [5.2 Student Success Executive (SSE)](#52-student-success-executive-sse)
+   - [5.3 Class Mentor](#53-class-mentor)
+   - [5.4 Lab Mentor](#54-lab-mentor)
+6. [Escalation Matrix](#6-escalation-matrix)
+7. [Placeholder Dictionary](#7-placeholder-dictionary)
+8. [Open Items for Review](#8-open-items-for-review)
 
 ---
 
@@ -29,15 +36,142 @@ Every trackable activity in the LMS has a lifecycle. Whenever a mentor, Program 
 
 Each activity type declares:
 
-- an **owner** (the role responsible),
+- an **owner** (the role responsible: Class Mentor, Lab Mentor, or SSE),
 - a **due rule** (often a module-relative anchor, e.g. "2 days before module end"),
-- an **escalation threshold** (how many days of delay before the PM is notified).
+- an **escalation threshold** (how many days of delay before the Program Manager is notified).
 
-This document groups every message by **who receives it**, so each role can see exactly what they will get from the bot.
+This document details both the **workflow architecture** (how the engine evaluates and triggers alerts) and the complete **catalogue of message templates** grouped by recipient.
 
 ---
 
-## 2. Lifecycle Pattern
+## 2. Workflow Architecture & Operational Mechanism
+
+### 2.1 End-to-End Workflow Architecture
+
+The notification engine operates as an automated state-machine bridging Moodle LMS batch data with Zoho Cliq:
+
+```mermaid
+flowchart TD
+    subgraph LMS_SOURCE["1. LMS Event & Activity Sources"]
+        A1["Real-time User Action<br>(Mark Complete, Nominate, Stage Advance)"]
+        A2["Batch Schedule & Activities<br>(Planned Due Dates, Start/End Anchors)"]
+        A3["Attendance Sessions<br>(Classroom & Lab Attendance Records)"]
+    end
+
+    subgraph ENGINE["2. Evaluation & Workflow Engine"]
+        B1["Event Observers<br>(Immediate Trigger)"]
+        B2["Scheduled Task Cron<br>(\local_batchanalytics\task\send_cliq_notifications)<br>(Every 15 mins, 09:00 - 19:00)"]
+        C["cliq_workflow_engine::evaluate_all_rules()"]
+        C --> D{"Trigger Criteria Met?<br>(days_before_due, on_due_date,<br>days_overdue, attendance_missing)"}
+    end
+
+    subgraph SAFEGUARDS["3. Safety & Delivery Controls"]
+        D -->|Yes| E{"Quiet Hours Enforced?<br>(09:00 AM - 07:00 PM)"}
+        E -->|Within Hours| F{"Deduplication Check<br>(local_batchanalytics_cliq_log)"}
+        E -->|Off Hours| Suppress["Queued / Suppressed until next morning"]
+        F -->|Already Sent Today| Skipped["Skip to prevent alert fatigue"]
+        F -->|Not Yet Sent| G["cliq_recipient_resolver<br>(Resolves PM, SSE, Class Mentor, Lab Mentor emails)"]
+    end
+
+    subgraph DISPATCH["4. Bot API & Cliq Delivery"]
+        G --> H["Render Placeholders<br>({batch_id}, {module}, {activity}, {owner}, {due_date}, etc.)"]
+        H --> I["POST to Zoho Cliq Bot API<br>https://cliq.zoho.com/api/v2/bots/batchinformer/message"]
+        I --> J["Delivered via Kajal Bot<br>To Targeted Users / Channels"]
+        J --> K["Audit Log Inserted<br>(local_batchanalytics_cliq_log)"]
+    end
+
+    A1 --> B1 --> C
+    A2 --> B2 --> C
+    A3 --> B2
+```
+
+---
+
+### 2.2 Dual Trigger Mechanisms (Real-Time Hooks vs Scheduled Engine)
+
+The workflow system operates through two distinct evaluation layers:
+
+1. **Real-Time Event Observers (Instant Dispatch):**
+   - **Trigger:** Immediate user action in the Moodle web interface.
+   - **Examples:**
+     - A Class Mentor clicks *"Nominate"* for Spot Award &rarr; `PM-06` fires instantly to the Program Manager.
+     - A Mentor marks a trackable activity complete &rarr; `PM-04` fires instantly to confirm completion to PM and Owner.
+     - A Program Manager advances the batch to the next module &rarr; `PM-05` and `SSE-02` fire immediately to transition roles and re-anchor upcoming soft-skills activities.
+2. **Automated Scheduled Workflow Engine (Periodic Background Polling):**
+   - **Trigger:** Moodle Scheduled Task `\local_batchanalytics\task\send_cliq_notifications` registered in `db/tasks.php`.
+   - **Frequency:** Runs every **15 minutes** during active business hours (default: `09:00 – 19:00`).
+   - **Mechanism:** Iterates over all active batches (`local_bm_classsection` where `status = 'Active'`), fetches all planned course mentor activities (`mentor_activity_service::get_course_mentor_activities`), and computes day variance (`$days_diff = round((due_timestamp - today_midnight) / 86400)`).
+
+---
+
+### 2.3 Dynamic Recipient Resolution Matrix
+
+The bot resolves target emails dynamically at runtime by inspecting LMS batch records and role definitions:
+
+| Recipient Role Key | Target Description | Resolution Source in LMS |
+|---|---|---|
+| `pm` | **Program Manager** | Reads `local_bm_classsection.pmmanager` email or users assigned the Program Manager role configured in `admin/settings.php`. |
+| `sse` | **Student Success Executive** | Reads `local_bm_classsection.maacexecutive` email or users assigned the Student Success Executive role in `admin/settings.php`. |
+| `class_mentor` | **Class Mentor** | Reads `primarymentor` and `secondarymentor` from `local_bm_classsection.moduledata` for the active module, falling back to course editing teacher enrollments. |
+| `lab_mentor` | **Lab Mentor** | Reads `labmentor` from `local_bm_classsection.moduledata` for the active module. |
+| `assistant_manager` | **Assistant Manager** | Reads users assigned the Assistant Manager role in plugin settings; acts as the second-tier escalation authority. |
+
+---
+
+### 2.4 Condition, Offset & Escalation Evaluation Rules
+
+Every template rule in `local_batchanalytics_cliq_rules` defines a condition metric and days offset `{n}`:
+
+1. **`days_before_due` (Upcoming Deadline Reminder):**
+   - *Formula:* `$days_diff == $rule->days_offset` (e.g., `{n} = 1` triggers 1 day before due date).
+   - *Target:* Activity Owner (`CM-02`, `LM-02`, `SSE-03`).
+2. **`on_due_date` (Due Today Alert):**
+   - *Formula:* `$days_diff == 0` (due today midnight).
+   - *Target:* Activity Owner (`CM-02`, `LM-02`).
+3. **`days_overdue` (Overdue Warning):**
+   - *Formula:* `$days_diff < 0` and activity `completed == 0`. Overdue days: `$delay_days = abs($days_diff)`.
+   - *Target:* Activity Owner (`CM-03`, `LM-03`, `SSE-04`).
+4. **`escalation` (Manager Escalation Threshold):**
+   - *Formula:* `$delay_days >= $rule->escalate_days` (default: 2 days overdue).
+   - *Target:* **Program Manager** (`PM-02`) and optional **Assistant Manager**.
+   - *Action:* Kajal Bot notifies the PM that the mentor was reminded but has failed to submit.
+5. **`attendance_missing` (Attendance Compliance):**
+   - *Formula:* No finalized attendance record found for today's session by 12:00 PM / 05:00 PM.
+   - *Target:* Class Mentor (`CM-05`); escalates to Program Manager (`CM-06`) if missing $\ge 2$ consecutive days.
+
+---
+
+### 2.5 Delivery Controls & Safeguards (Quiet Hours & Deduplication)
+
+To protect staff from alert fatigue and avoid off-hours disturbances:
+
+1. **Quiet Hours Policy:**
+   - Default active dispatch window: **09:00 AM to 07:00 PM** (`09:00 - 19:00`).
+   - Any scheduled background cron firing outside this window will safely suppress execution until the next business morning.
+2. **Intelligent Deduplication:**
+   - Every dispatch is recorded in `local_batchanalytics_cliq_log` indexed by `(template_id, batch_id, activity_name, date_sent)`.
+   - Before firing an alert, the engine verifies if the exact same template and activity has already been dispatched for that batch today. If yes, it is automatically skipped.
+3. **Bot API Payload Compliance:**
+   - Follows Zoho Cliq Bot Message API specification (`POST https://cliq.zoho.com/api/v2/bots/{bot_name}/message?zapikey=...`).
+   - Formats `userids` as a clean comma-separated string (`"user1@company.com,user2@company.com"` or ZUID string `"889517703"`), or omits `userids` when broadcasting to the bot channel/subscribers.
+
+---
+
+### 2.6 Interactive Dry-Run Simulation & Testing
+
+Before enabling automated dispatches on live batches, administrators and Program Managers can verify the workflow:
+
+1. Navigate to **Site Administration &rarr; Batch Analytics &rarr; Zoho Cliq Templates** (`cliq_templates.php`).
+2. Click **⚡ Dry-Run Workflow**:
+   - The engine scans all active batches and live mentor activities in memory.
+   - Computes planned deadline offsets, checks completed status, and tests escalation thresholds.
+   - Displays a full simulation report showing which batches match, the exact recipients resolved, and the rendered message copy without sending any actual messages to Zoho Cliq.
+3. Click **🧪 Test Bot Message**:
+   - Sends an instant test payload with custom text to your own Cliq ID or the bot subscriber channel to verify API connectivity.
+
+---
+
+## 3. Lifecycle Pattern
 
 ```
 Due → Notify owner → (Reminder if not done) → Escalate to PM → Owner marks done → Confirmation
@@ -54,7 +188,7 @@ Due → Notify owner → (Reminder if not done) → Escalate to PM → Owner mar
 
 ---
 
-## 3. Conventions
+## 4. Conventions
 
 | Item | Convention |
 |---|---|
@@ -68,7 +202,7 @@ Due → Notify owner → (Reminder if not done) → Escalate to PM → Owner mar
 
 ---
 
-## 4. Templates by Recipient
+## 5. Templates by Recipient
 
 ### 4.1 Program Manager (PM)
 
@@ -148,7 +282,7 @@ The Lab Mentor receives messages for lab sessions, practicals, and lab-related a
 
 ---
 
-## 5. Escalation Matrix
+## 6. Escalation Matrix
 
 Suggested defaults, to be confirmed with Balwant Sir. All values are configurable per activity type.
 
@@ -166,7 +300,7 @@ Suggested defaults, to be confirmed with Balwant Sir. All values are configurabl
 
 ---
 
-## 6. Placeholder Dictionary
+## 7. Placeholder Dictionary
 
 | Placeholder | Meaning | Example |
 |---|---|---|
@@ -211,7 +345,7 @@ Suggested defaults, to be confirmed with Balwant Sir. All values are configurabl
 
 ---
 
-## 7. Open Items for Review
+## 8. Open Items for Review
 
 To be discussed with **Balwant Sir**:
 
