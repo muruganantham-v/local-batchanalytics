@@ -125,4 +125,33 @@ $string['zoho_cliq_default_channel'] = 'Default Fallback Channel (Optional)';
 $string['zoho_cliq_default_channel_desc'] = 'Optional Zoho Cliq channel unique name to receive alerts if direct user messaging is unavailable.';
 $string['task_evaluate_activity_due'] = 'Evaluate Mentor and SS activity due dates for Zoho Cliq notifications';
 
+// Mentor Activity Message Templates
+$string['zoho_cliq_mentor_heading'] = 'Mentor Activity Notification Templates (Module-Based)';
+$string['zoho_cliq_mentor_heading_desc'] = 'Customize the Zoho Cliq messages sent for module-level mentor activities. Placeholders available: {batch_name}, {module_name}, {task_name}, {due_date}, {mentor_name}, {pm_name}, {overdue_days}, {completed_by}, {completion_date}, {link}.';
+$string['cliq_tpl_mentor_t_minus_3'] = 'Mentor Activity: 3 Days Before Due Template';
+$string['cliq_tpl_mentor_t_minus_3_desc'] = 'Message sent to the assigned mentor 3 days before the module activity due date.';
+$string['cliq_tpl_mentor_due_today'] = 'Mentor Activity: Due Today Template';
+$string['cliq_tpl_mentor_due_today_desc'] = 'Message sent to the assigned mentor on the due date.';
+$string['cliq_tpl_mentor_t_plus_3'] = 'Mentor Activity: 3 Days Overdue Template';
+$string['cliq_tpl_mentor_t_plus_3_desc'] = 'Warning message sent to the assigned mentor when the activity is 3 days overdue.';
+$string['cliq_tpl_mentor_t_plus_5'] = 'Mentor Activity: 5th Day PM Escalation Template';
+$string['cliq_tpl_mentor_t_plus_5_desc'] = 'Escalation message sent to the Program Manager when the mentor activity is 5+ days overdue.';
+$string['cliq_tpl_mentor_completed'] = 'Mentor Activity: Completion Confirmation Template';
+$string['cliq_tpl_mentor_completed_desc'] = 'Instant confirmation message sent to the PM and Mentor when the activity is marked complete.';
+
+// SS Activity Message Templates
+$string['zoho_cliq_ss_heading'] = 'SS Activity Notification Templates (Batch-Based)';
+$string['zoho_cliq_ss_heading_desc'] = 'Customize the Zoho Cliq messages sent for batch-level SS / Soft Skills milestones. Placeholders available: {batch_name}, {activity_name}, {due_date}, {sse_name}, {pm_name}, {overdue_days}, {completed_by}, {completion_date}, {link}.';
+$string['cliq_tpl_ss_t_minus_3'] = 'SS Activity: 3 Days Before Due Template';
+$string['cliq_tpl_ss_t_minus_3_desc'] = 'Message sent to the SSE / MAAC Executive 3 days before the activity due date.';
+$string['cliq_tpl_ss_due_today'] = 'SS Activity: Due Today Template';
+$string['cliq_tpl_ss_due_today_desc'] = 'Message sent to the SSE / MAAC Executive on the due date.';
+$string['cliq_tpl_ss_t_plus_3'] = 'SS Activity: 3 Days Overdue Template';
+$string['cliq_tpl_ss_t_plus_3_desc'] = 'Warning message sent to the SSE / MAAC Executive when the activity is 3 days overdue.';
+$string['cliq_tpl_ss_t_plus_5'] = 'SS Activity: 5th Day PM Escalation Template';
+$string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the Program Manager when the SS activity is 5+ days overdue.';
+$string['cliq_tpl_ss_completed'] = 'SS Activity: Completion Confirmation Template';
+$string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the PM and SSE when the SS activity is marked complete.';
+
+
 
