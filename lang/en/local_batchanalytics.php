@@ -112,3 +112,17 @@ $string['role_sspm'] = 'SS / PM';
 $string['role_am'] = 'Assistant Manager';
 $string['role_admin'] = 'Admin';
 
+// Zoho Cliq Notification Strings
+$string['zoho_cliq_notification_heading'] = 'Zoho Cliq Notification';
+$string['zoho_cliq_notification_heading_desc'] = 'Configure Zoho Cliq Kajal Bot webhook integration and message templates for batch lifecycle events and escalations.';
+$string['zoho_cliq_enabled'] = 'Enable Zoho Cliq Notifications';
+$string['zoho_cliq_enabled_desc'] = 'When enabled, automated batch lifecycle notifications and escalations will be sent to Zoho Cliq.';
+$string['zoho_cliq_webhook_url'] = 'Zoho Cliq Webhook URL';
+$string['zoho_cliq_webhook_url_desc'] = 'Incoming webhook URL for the Kajal Bot or target Cliq channel.';
+$string['zoho_cliq_bot_name'] = 'Bot Display Name';
+$string['zoho_cliq_bot_name_desc'] = 'Display name for the bot (default: Kajal Bot).';
+$string['view_cliq_templates'] = 'Zoho Cliq Templates';
+$string['view_cliq_templates_desc'] = 'View and customize message templates for Project Manager, SSE, Class Mentor, and Lab Mentor roles.';
+$string['cliq_templates_title'] = 'Zoho Cliq Notification Templates';
+$string['cliq_templates_desc'] = 'Configure message templates for batch lifecycle events, operational checklist due dates, attendance nudges, and escalations.';
+
