@@ -365,5 +365,29 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026100101, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026100104) {
+        $table = new xmldb_table('local_batchanalytics_cliq_log');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('activity_type', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('activity_key', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('stage', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('recipient_email', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('timesent', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('date_sent', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'sent');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('dedup_ix', XMLDB_INDEX_NOTUNIQUE, ['batchid', 'activity_key', 'stage', 'date_sent']);
+        $table->add_index('timesent_ix', XMLDB_INDEX_NOTUNIQUE, ['timesent']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026100104, 'local', 'batchanalytics');
+    }
+
     return true;
 }

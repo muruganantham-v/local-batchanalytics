@@ -951,6 +951,15 @@ class mentor_activity_service {
             $DB->insert_record(self::get_table_name(), $newrec);
         }
 
+        if ($completed) {
+            try {
+                require_once(__DIR__ . '/cliq_activity_notifier.php');
+                cliq_activity_notifier::send_completion_alert('mentor', $sectionid, $courseid, $activityname, $userid);
+            } catch (\Throwable $e) {
+                // Silently avoid interrupting the save response
+            }
+        }
+
         return $updated_item;
     }
 }

@@ -156,5 +156,42 @@ if ($hassiteconfig) {
         $role_choices
     ));
 
+    // Zoho Cliq Notifications Section
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/zoho_cliq_heading',
+        get_string('zoho_cliq_heading', 'local_batchanalytics'),
+        get_string('zoho_cliq_heading_desc', 'local_batchanalytics')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_batchanalytics/zoho_cliq_enabled',
+        get_string('zoho_cliq_enabled', 'local_batchanalytics'),
+        get_string('zoho_cliq_enabled_desc', 'local_batchanalytics'),
+        '0'
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_cliq_bot_url',
+        get_string('zoho_cliq_bot_url', 'local_batchanalytics'),
+        get_string('zoho_cliq_bot_url_desc', 'local_batchanalytics'),
+        'https://cliq.zoho.com/api/v2/bots/batchinformer/message',
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_batchanalytics/zoho_cliq_zapikey',
+        get_string('zoho_cliq_zapikey', 'local_batchanalytics'),
+        get_string('zoho_cliq_zapikey_desc', 'local_batchanalytics'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_cliq_default_channel',
+        get_string('zoho_cliq_default_channel', 'local_batchanalytics'),
+        get_string('zoho_cliq_default_channel_desc', 'local_batchanalytics'),
+        '',
+        PARAM_ALPHANUMEXT
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

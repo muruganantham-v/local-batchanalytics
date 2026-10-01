@@ -112,3 +112,17 @@ $string['role_sspm'] = 'SS / PM';
 $string['role_am'] = 'Assistant Manager';
 $string['role_admin'] = 'Admin';
 
+// Zoho Cliq Notifications
+$string['zoho_cliq_heading'] = 'Zoho Cliq Notifications';
+$string['zoho_cliq_heading_desc'] = 'Automated notifications for Mentor activities (module-based) and SS activities (batch-based) sent at T-3 days, Due date, T+3 days overdue, and T+5 days PM escalation, plus instant completion alerts.';
+$string['zoho_cliq_enabled'] = 'Enable Zoho Cliq Notifications';
+$string['zoho_cliq_enabled_desc'] = 'Enable automated activity due reminders, overdue escalations, and completion alerts to Zoho Cliq.';
+$string['zoho_cliq_bot_url'] = 'Zoho Cliq Bot Message URL';
+$string['zoho_cliq_bot_url_desc'] = 'Endpoint URL for the Zoho Cliq bot message API (e.g. https://cliq.zoho.com/api/v2/bots/batchinformer/message).';
+$string['zoho_cliq_zapikey'] = 'Bot ZAPI Key (Token)';
+$string['zoho_cliq_zapikey_desc'] = 'The zapikey token authorizing the bot message API.';
+$string['zoho_cliq_default_channel'] = 'Default Fallback Channel (Optional)';
+$string['zoho_cliq_default_channel_desc'] = 'Optional Zoho Cliq channel unique name to receive alerts if direct user messaging is unavailable.';
+$string['task_evaluate_activity_due'] = 'Evaluate Mentor and SS activity due dates for Zoho Cliq notifications';
+
+

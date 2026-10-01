@@ -1243,6 +1243,14 @@ class task_service {
                 $sec->timemodified = $now;
                 $DB->update_record('local_bm_classsection', $sec);
 
+                // Trigger real-time Zoho Cliq completion alert
+                try {
+                    require_once(__DIR__ . '/cliq_activity_notifier.php');
+                    cliq_activity_notifier::send_completion_alert('ss', $batchid, 0, $act_key, $userid);
+                } catch (\Throwable $e) {
+                    // Silently avoid interrupting the save response
+                }
+
                 return [
                     'success'   => true,
                     'type'      => 'ss',
