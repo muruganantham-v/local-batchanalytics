@@ -39,60 +39,11 @@ class cliq_workflow_engine {
     const LOG_TABLE = 'local_batchanalytics_cliq_log';
 
     /**
-     * Default rule definitions for all 42 templates.
+     * Default workflow rules are empty.
+     * All rules and escalation metrics are created dynamically by administrators and managers.
      * @var array<string, array>
      */
-    const DEFAULT_WORKFLOW_RULES = [
-        // Project Manager (PM)
-        'PM-01' => ['trigger_type' => 'event',    'condition_metric' => 'batch_created',       'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-02' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',        'condition_value' => 2, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-03' => ['trigger_type' => 'schedule', 'condition_metric' => 'attendance_missing',  'condition_value' => 1, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-04' => ['trigger_type' => 'schedule', 'condition_metric' => 'session_unmarked',    'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-05' => ['trigger_type' => 'schedule', 'condition_metric' => 'assessment_overdue',  'condition_value' => 2, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-06' => ['trigger_type' => 'event',    'condition_metric' => 'nomination_raised',   'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-07' => ['trigger_type' => 'schedule', 'condition_metric' => 'nomination_pending',  'condition_value' => 2, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-08' => ['trigger_type' => 'schedule', 'condition_metric' => 'batch_closure',       'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-09' => ['trigger_type' => 'event',    'condition_metric' => 'module_completed',    'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-10' => ['trigger_type' => 'schedule', 'condition_metric' => 'midpoint_due',        'condition_value' => 0, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-11' => ['trigger_type' => 'schedule', 'condition_metric' => 'checkpoint_due',      'condition_value' => 1, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-        'PM-12' => ['trigger_type' => 'schedule', 'condition_metric' => 'closure_meeting_due', 'condition_value' => 1, 'recipient_type' => 'PM',  'escalate_to' => null, 'escalate_days' => 0],
-
-        // Senior Support Executive (SSE)
-        'SSE-01' => ['trigger_type' => 'event',    'condition_metric' => 'batch_created',      'condition_value' => 0, 'recipient_type' => 'SSE', 'escalate_to' => null, 'escalate_days' => 0],
-        'SSE-02' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 3, 'recipient_type' => 'SSE', 'escalate_to' => null, 'escalate_days' => 0],
-        'SSE-03' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 1, 'recipient_type' => 'SSE', 'escalate_to' => null, 'escalate_days' => 0],
-        'SSE-04' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 1, 'recipient_type' => 'SSE', 'escalate_to' => 'PM', 'escalate_days' => 2],
-        'SSE-05' => ['trigger_type' => 'schedule', 'condition_metric' => 'milestone_alert',   'condition_value' => 0, 'recipient_type' => 'SSE', 'escalate_to' => null, 'escalate_days' => 0],
-        'SSE-06' => ['trigger_type' => 'schedule', 'condition_metric' => 'attendance_low',    'condition_value' => 0, 'recipient_type' => 'SSE', 'escalate_to' => 'PM', 'escalate_days' => 2],
-        'SSE-07' => ['trigger_type' => 'schedule', 'condition_metric' => 'batch_closure',      'condition_value' => 0, 'recipient_type' => 'SSE', 'escalate_to' => null, 'escalate_days' => 0],
-
-        // Class Mentor (CM)
-        'CM-01' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 1, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-02' => ['trigger_type' => 'schedule', 'condition_metric' => 'on_due_date',       'condition_value' => 0, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-03' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 1, 'recipient_type' => 'CM',  'escalate_to' => 'PM', 'escalate_days' => 2],
-        'CM-04' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 2, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-05' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 1, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-06' => ['trigger_type' => 'schedule', 'condition_metric' => 'session_starting',  'condition_value' => 0, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-07' => ['trigger_type' => 'schedule', 'condition_metric' => 'attendance_missing', 'condition_value' => 0, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-08' => ['trigger_type' => 'schedule', 'condition_metric' => 'attendance_missing', 'condition_value' => 1, 'recipient_type' => 'CM',  'escalate_to' => 'PM', 'escalate_days' => 1],
-        'CM-09' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 2, 'recipient_type' => 'CM',  'escalate_to' => 'PM', 'escalate_days' => 3],
-        'CM-10' => ['trigger_type' => 'event',    'condition_metric' => 'nomination_decision','condition_value' => 0, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-11' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 2, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-12' => ['trigger_type' => 'schedule', 'condition_metric' => 'on_due_date',       'condition_value' => 0, 'recipient_type' => 'CM',  'escalate_to' => null, 'escalate_days' => 0],
-        'CM-13' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 1, 'recipient_type' => 'CM',  'escalate_to' => 'PM', 'escalate_days' => 2],
-
-        // Lab Mentor (LM)
-        'LM-01' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 1, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-02' => ['trigger_type' => 'schedule', 'condition_metric' => 'on_due_date',       'condition_value' => 0, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-03' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 1, 'recipient_type' => 'LM',  'escalate_to' => 'PM', 'escalate_days' => 2],
-        'LM-04' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 2, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-05' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_before_due',   'condition_value' => 1, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-06' => ['trigger_type' => 'schedule', 'condition_metric' => 'session_starting',  'condition_value' => 0, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-07' => ['trigger_type' => 'schedule', 'condition_metric' => 'attendance_missing', 'condition_value' => 0, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-08' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 2, 'recipient_type' => 'LM',  'escalate_to' => 'PM', 'escalate_days' => 3],
-        'LM-09' => ['trigger_type' => 'event',    'condition_metric' => 'nomination_decision','condition_value' => 0, 'recipient_type' => 'LM',  'escalate_to' => null, 'escalate_days' => 0],
-        'LM-10' => ['trigger_type' => 'schedule', 'condition_metric' => 'days_overdue',      'condition_value' => 1, 'recipient_type' => 'LM',  'escalate_to' => 'PM', 'escalate_days' => 2],
-    ];
+    const DEFAULT_WORKFLOW_RULES = [];
 
     /**
      * Check if currently within quiet hours (default: outside 09:00 AM - 07:00 PM).
@@ -107,23 +58,14 @@ class cliq_workflow_engine {
     }
 
     /**
-     * Fetch all workflow rules (merged with defaults).
+     * Fetch all workflow rules directly from database.
      *
      * @return array<string, array> Keyed by template_id
      */
     public static function get_rules(): array {
         global $DB;
 
-        $rules = self::DEFAULT_WORKFLOW_RULES;
-
-        // Ensure each rule has enabled flag
-        foreach ($rules as $tid => &$r) {
-            $r['template_id'] = $tid;
-            $r['enabled'] = 1;
-            $r['quiet_hours_enabled'] = 1;
-        }
-        unset($r);
-
+        $rules = [];
         $dbman = $DB->get_manager();
         if ($dbman->table_exists(self::RULES_TABLE)) {
             $records = $DB->get_records(self::RULES_TABLE);
@@ -144,6 +86,35 @@ class cliq_workflow_engine {
         }
 
         return $rules;
+    }
+
+    /**
+     * Delete a workflow rule by template ID.
+     *
+     * @param string $template_id
+     * @return bool
+     */
+    public static function delete_rule(string $template_id): bool {
+        global $DB;
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists(self::RULES_TABLE)) {
+            return $DB->delete_records(self::RULES_TABLE, ['template_id' => $template_id]);
+        }
+        return true;
+    }
+
+    /**
+     * Clear all workflow rules from the database.
+     *
+     * @return bool
+     */
+    public static function clear_all_rules(): bool {
+        global $DB;
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists(self::RULES_TABLE)) {
+            return $DB->delete_records(self::RULES_TABLE);
+        }
+        return true;
     }
 
     /**
@@ -315,6 +286,11 @@ class cliq_workflow_engine {
             $templates_map[$t['id']] = $t;
         }
 
+        if (empty($rules) || empty($templates_map)) {
+            $results['message'] = 'No dynamic notification templates configured yet.';
+            return $results;
+        }
+
         // 4. Fetch batches and sections
         $dbman = $DB->get_manager();
         $sections = [];
@@ -360,7 +336,10 @@ class cliq_workflow_engine {
 
                         // Check each active scheduled rule against this activity
                         foreach ($rules as $tid => $rule) {
-                            if (empty($rule['enabled']) || ($rule['trigger_type'] ?? '') !== 'schedule') {
+                            if (empty($rule['enabled'])) {
+                                continue;
+                            }
+                            if (!isset($templates_map[$tid]) || empty($templates_map[$tid]['enabled'])) {
                                 continue;
                             }
 

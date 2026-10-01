@@ -1,5 +1,5 @@
 /**
- * Client-side script for Zoho Cliq Notification Templates Management in local_batchanalytics
+ * Client-side script for Zoho Cliq Dynamic Notification Templates & Workflow Management in local_batchanalytics
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -15,18 +15,15 @@
 
         var sesskey = container.getAttribute('data-sesskey') || '';
         var placeholdersJson = container.getAttribute('data-placeholders') || '{}';
-        var defaultTemplatesJson = container.getAttribute('data-default-templates') || '[]';
+        var rulesJson = container.getAttribute('data-rules') || '{}';
 
         var placeholders = {};
-        var defaultTemplates = {};
+        var workflowRules = {};
         try {
             placeholders = JSON.parse(placeholdersJson);
-            var dList = JSON.parse(defaultTemplatesJson);
-            dList.forEach(function(item) {
-                if (item.id) defaultTemplates[item.id] = item;
-            });
+            workflowRules = JSON.parse(rulesJson);
         } catch (e) {
-            console.error('Error parsing template metadata:', e);
+            console.error('Error parsing metadata:', e);
         }
 
         // Toast Helper
@@ -46,11 +43,10 @@
 
             var rendered = rawText;
 
-            // Replace placeholders with samples
+            // Replace placeholders with sample values
             for (var ph in placeholders) {
                 if (placeholders.hasOwnProperty(ph)) {
                     var sampleVal = placeholders[ph].sample || ph;
-                    // Global regex replace
                     rendered = rendered.split(ph).join(sampleVal);
                 }
             }
@@ -69,24 +65,28 @@
             return escaped;
         }
 
-        // Attach live preview updates to all textareas
-        var textareas = container.querySelectorAll('.ba-cliq-textarea');
-        textareas.forEach(function(ta) {
-            var card = ta.closest('.ba-cliq-card');
-            if (!card) return;
-            var previewEl = card.querySelector('.ba-cliq-rendered-text');
+        // Attach live preview updates to all card textareas
+        function initCardPreviews() {
+            var textareas = container.querySelectorAll('.ba-cliq-textarea');
+            textareas.forEach(function(ta) {
+                var card = ta.closest('.ba-cliq-card');
+                if (!card) return;
+                var previewEl = card.querySelector('.ba-cliq-rendered-text');
 
-            function update() {
-                if (previewEl) {
-                    previewEl.innerHTML = renderLivePreview(ta.value);
+                function update() {
+                    if (previewEl) {
+                        previewEl.innerHTML = renderLivePreview(ta.value);
+                    }
                 }
-            }
 
-            ta.addEventListener('input', update);
-            update(); // Initial render
-        });
+                ta.removeEventListener('input', update);
+                ta.addEventListener('input', update);
+                update();
+            });
+        }
+        initCardPreviews();
 
-        // Placeholder chip click -> insert into textarea
+        // Card placeholder chips click
         container.querySelectorAll('.ba-cliq-chip').forEach(function(chip) {
             chip.addEventListener('click', function() {
                 var ph = this.getAttribute('data-ph');
@@ -104,119 +104,332 @@
                 ta.selectionStart = ta.selectionEnd = start + ph.length;
                 ta.focus();
 
-                // Trigger input event
                 var ev = new Event('input', { bubbles: true });
                 ta.dispatchEvent(ev);
             });
         });
 
-        // Reset single template button
-        container.querySelectorAll('.ba-cliq-reset-single').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                var tid = this.getAttribute('data-id');
-                if (!tid || !defaultTemplates[tid]) return;
+        // ---------------------------------------------------------------------
+        // Modal: Add / Edit Template
+        // ---------------------------------------------------------------------
+        var tmplModal = document.getElementById('ba-cliq-template-modal');
+        var tmplModalTitle = document.getElementById('ba-cliq-tmpl-modal-title');
+        var tmplFormMode = document.getElementById('ba-cliq-tmpl-form-mode');
+        var tmplIdInput = document.getElementById('ba-cliq-tmpl-id');
+        var tmplTitleInput = document.getElementById('ba-cliq-tmpl-title');
+        var tmplRecipientSelect = document.getElementById('ba-cliq-tmpl-recipient');
+        var tmplSeveritySelect = document.getElementById('ba-cliq-tmpl-severity');
+        var tmplConditionSelect = document.getElementById('ba-cliq-tmpl-condition');
+        var tmplOffsetInput = document.getElementById('ba-cliq-tmpl-offset');
+        var tmplEscalateToSelect = document.getElementById('ba-cliq-tmpl-escalate-to');
+        var tmplEscalateDaysInput = document.getElementById('ba-cliq-tmpl-escalate-days');
+        var tmplMessageText = document.getElementById('ba-cliq-tmpl-message');
+        var tmplEnabledCheck = document.getElementById('ba-cliq-tmpl-enabled');
+        var tmplModalClose = document.getElementById('ba-cliq-tmpl-modal-close');
+        var tmplModalCancel = document.getElementById('ba-cliq-tmpl-modal-cancel');
+        var tmplModalSave = document.getElementById('ba-cliq-tmpl-modal-save');
 
+        function openAddTemplateModal() {
+            if (!tmplModal) return;
+            tmplFormMode.value = 'add';
+            tmplModalTitle.textContent = 'Add Notification Template';
+            tmplIdInput.value = '';
+            tmplIdInput.readOnly = false;
+            tmplTitleInput.value = '';
+            tmplRecipientSelect.value = 'CM';
+            tmplSeveritySelect.value = 'reminder';
+            tmplConditionSelect.value = 'days_before_due';
+            tmplOffsetInput.value = '1';
+            tmplEscalateToSelect.value = 'PM';
+            tmplEscalateDaysInput.value = '2';
+            tmplMessageText.value = '🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.\nPlease complete it in the LMS.\n{lms_link}';
+            tmplEnabledCheck.checked = true;
+            tmplModal.classList.add('open');
+            tmplIdInput.focus();
+        }
+
+        function openEditTemplateModal(card) {
+            if (!tmplModal || !card) return;
+            var tid = card.getAttribute('data-id');
+            var rawTmpl = card.getAttribute('data-template');
+            var rawRule = card.getAttribute('data-rule');
+
+            var tmpl = {};
+            var rule = {};
+            try {
+                if (rawTmpl) tmpl = JSON.parse(rawTmpl);
+                if (rawRule) rule = JSON.parse(rawRule);
+            } catch (e) {}
+
+            tmplFormMode.value = 'edit';
+            tmplModalTitle.textContent = 'Edit Template: ' + tid;
+            tmplIdInput.value = tid;
+            tmplIdInput.readOnly = true;
+            tmplTitleInput.value = tmpl.title || card.querySelector('.ba-cliq-trigger-title').textContent.trim();
+            tmplRecipientSelect.value = tmpl.recipient || card.getAttribute('data-role') || 'CM';
+            tmplSeveritySelect.value = tmpl.severity || 'info';
+
+            var metricEl = card.querySelector('.ba-cliq-rule-metric');
+            var cvalEl = card.querySelector('.ba-cliq-rule-cval');
+            var escToEl = card.querySelector('.ba-cliq-rule-escalateto');
+            var escDaysEl = card.querySelector('.ba-cliq-rule-escalatedays');
+            var enabledEl = card.querySelector('.ba-cliq-rule-enabled');
+            var textarea = card.querySelector('.ba-cliq-textarea');
+
+            tmplConditionSelect.value = metricEl ? metricEl.value : (rule.condition_metric || 'days_before_due');
+            tmplOffsetInput.value = cvalEl ? cvalEl.value : (rule.condition_value || 1);
+            tmplEscalateToSelect.value = escToEl ? escToEl.value : (rule.escalate_to || '');
+            tmplEscalateDaysInput.value = escDaysEl ? escDaysEl.value : (rule.escalate_days || 2);
+            tmplMessageText.value = textarea ? textarea.value : (tmpl.template || '');
+            tmplEnabledCheck.checked = enabledEl ? enabledEl.checked : true;
+
+            tmplModal.classList.add('open');
+            tmplTitleInput.focus();
+        }
+
+        function closeTemplateModal() {
+            if (!tmplModal) return;
+            tmplModal.classList.remove('open');
+        }
+
+        // Open Add Modal buttons
+        var openAddBtn = document.getElementById('ba-cliq-open-add-modal');
+        if (openAddBtn) openAddBtn.addEventListener('click', openAddTemplateModal);
+
+        container.querySelectorAll('.ba-cliq-open-add-modal-btn').forEach(function(btn) {
+            btn.addEventListener('click', openAddTemplateModal);
+        });
+
+        if (tmplModalClose) tmplModalClose.addEventListener('click', closeTemplateModal);
+        if (tmplModalCancel) tmplModalCancel.addEventListener('click', closeTemplateModal);
+        if (tmplModal) {
+            tmplModal.addEventListener('click', function(e) {
+                if (e.target === tmplModal) closeTemplateModal();
+            });
+        }
+
+        // Modal chips click
+        container.querySelectorAll('.ba-cliq-modal-chip').forEach(function(chip) {
+            chip.addEventListener('click', function() {
+                var ph = this.getAttribute('data-ph');
+                if (!tmplMessageText || !ph) return;
+
+                var start = tmplMessageText.selectionStart || 0;
+                var end = tmplMessageText.selectionEnd || 0;
+                var val = tmplMessageText.value;
+
+                tmplMessageText.value = val.substring(0, start) + ph + val.substring(end);
+                tmplMessageText.selectionStart = tmplMessageText.selectionEnd = start + ph.length;
+                tmplMessageText.focus();
+            });
+        });
+
+        // Save Template handler
+        if (tmplModalSave) {
+            tmplModalSave.addEventListener('click', function() {
+                var tid = tmplIdInput.value.trim().toUpperCase();
+                var title = tmplTitleInput.value.trim();
+                var recipient = tmplRecipientSelect.value;
+                var recipientTitle = tmplRecipientSelect.options[tmplRecipientSelect.selectedIndex].text;
+                var severity = tmplSeveritySelect.value;
+                var conditionMetric = tmplConditionSelect.value;
+                var offset = parseInt(tmplOffsetInput.value, 10) || 0;
+                var escalateTo = tmplEscalateToSelect.value;
+                var escalateDays = parseInt(tmplEscalateDaysInput.value, 10) || 2;
+                var message = tmplMessageText.value.trim();
+                var isEnabled = tmplEnabledCheck.checked ? 1 : 0;
+
+                if (!tid) {
+                    alert('Please specify a unique Template ID (e.g. BATCH-START or CM-DUE-01).');
+                    tmplIdInput.focus();
+                    return;
+                }
+                if (!message) {
+                    alert('Please enter the message body template.');
+                    tmplMessageText.focus();
+                    return;
+                }
+
+                tmplModalSave.disabled = true;
+                tmplModalSave.textContent = 'Saving…';
+
+                var formData = new FormData();
+                formData.append('action', 'savetemplate');
+                formData.append('sesskey', sesskey);
+                formData.append('id', tid);
+                formData.append('title', title || tid);
+                formData.append('recipient', recipient);
+                formData.append('recipient_title', recipientTitle);
+                formData.append('severity', severity);
+                formData.append('condition_metric', conditionMetric);
+                formData.append('days_offset', offset);
+                formData.append('recipient_role', recipient);
+                formData.append('escalate_to', escalateTo);
+                formData.append('escalate_days', escalateDays);
+                formData.append('template', message);
+                formData.append('enabled', isEnabled);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    tmplModalSave.disabled = false;
+                    tmplModalSave.textContent = 'Save Template';
+
+                    if (data && data.success) {
+                        showToast('Template ' + tid + ' saved successfully!');
+                        closeTemplateModal();
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 500);
+                    } else {
+                        showToast(data.message || 'Error saving template', true);
+                    }
+                })
+                .catch(function(err) {
+                    tmplModalSave.disabled = false;
+                    tmplModalSave.textContent = 'Save Template';
+                    showToast('Network error: ' + err.message, true);
+                });
+            });
+        }
+
+        // Card Edit buttons
+        container.querySelectorAll('.ba-cliq-card-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var card = this.closest('.ba-cliq-card');
+                openEditTemplateModal(card);
+            });
+        });
+
+        // Card Duplicate buttons
+        container.querySelectorAll('.ba-cliq-card-dup-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
                 var card = this.closest('.ba-cliq-card');
                 if (!card) return;
-
-                var ta = card.querySelector('.ba-cliq-textarea');
-                if (ta) {
-                    ta.value = defaultTemplates[tid].template || '';
-                    var ev = new Event('input', { bubbles: true });
-                    ta.dispatchEvent(ev);
-                    showToast('Template ' + tid + ' reset to default');
-                }
+                var tid = card.getAttribute('data-id');
+                openEditTemplateModal(card);
+                tmplFormMode.value = 'add';
+                tmplModalTitle.textContent = 'Duplicate Template';
+                tmplIdInput.value = tid + '-COPY';
+                tmplIdInput.readOnly = false;
             });
         });
 
-        // Search Input Filter
-        var searchInput = document.getElementById('ba-cliq-search');
-        var cards = container.querySelectorAll('.ba-cliq-card');
-        var currentRoleFilter = 'all';
+        // Card Delete buttons
+        container.querySelectorAll('.ba-cliq-card-del-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var card = this.closest('.ba-cliq-card');
+                if (!card) return;
+                var tid = card.getAttribute('data-id');
 
-        function applyFilters() {
-            var q = (searchInput ? searchInput.value.trim().toLowerCase() : '');
-            var isSpecialTab = (currentRoleFilter === 'matrix' || currentRoleFilter === 'placeholders');
-
-            var matrixView = document.getElementById('ba-cliq-matrix-view');
-            var placeholdersView = document.getElementById('ba-cliq-placeholders-view');
-            var listWrap = document.getElementById('ba-cliq-templates-list');
-
-            if (matrixView) matrixView.style.display = (currentRoleFilter === 'matrix') ? 'block' : 'none';
-            if (placeholdersView) placeholdersView.style.display = (currentRoleFilter === 'placeholders') ? 'block' : 'none';
-            if (listWrap) listWrap.style.display = isSpecialTab ? 'none' : 'flex';
-
-            if (isSpecialTab) return;
-
-            var visibleCount = 0;
-            cards.forEach(function(c) {
-                var role = c.getAttribute('data-role') || '';
-                var text = (c.textContent || '').toLowerCase();
-
-                var matchesRole = (currentRoleFilter === 'all' || role === currentRoleFilter);
-                var matchesSearch = (!q || text.indexOf(q) !== -1);
-
-                if (matchesRole && matchesSearch) {
-                    c.style.display = 'block';
-                    visibleCount++;
-                } else {
-                    c.style.display = 'none';
+                if (!confirm('Are you sure you want to delete template "' + tid + '"? This will remove its workflow rule as well.')) {
+                    return;
                 }
-            });
-        }
 
-        if (searchInput) {
-            searchInput.addEventListener('input', applyFilters);
-        }
+                var formData = new FormData();
+                formData.append('action', 'deletetemplate');
+                formData.append('sesskey', sesskey);
+                formData.append('id', tid);
 
-        // Tab Filtering
-        container.querySelectorAll('.ba-cliq-tab').forEach(function(tab) {
-            tab.addEventListener('click', function() {
-                container.querySelectorAll('.ba-cliq-tab').forEach(function(t) { t.classList.remove('active'); });
-                this.classList.add('active');
-                currentRoleFilter = this.getAttribute('data-tab') || 'all';
-                applyFilters();
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data && data.success) {
+                        showToast('Template ' + tid + ' deleted successfully.');
+                        card.remove();
+                        // Check if any cards left
+                        var remaining = container.querySelectorAll('.ba-cliq-card');
+                        if (remaining.length === 0) {
+                            var emptyState = document.getElementById('ba-cliq-empty-state');
+                            if (emptyState) emptyState.style.display = 'block';
+                            var listEl = document.getElementById('ba-cliq-templates-list');
+                            if (listEl) listEl.style.display = 'none';
+                        }
+                    } else {
+                        showToast(data.message || 'Error deleting template', true);
+                    }
+                })
+                .catch(function(err) {
+                    showToast('Network error: ' + err.message, true);
+                });
             });
         });
 
-        // Save All Templates & Workflow Rules
-        var saveBtn = document.getElementById('ba-cliq-save-all');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', function() {
+        // Clear All button
+        var clearAllBtn = document.getElementById('ba-cliq-clear-all');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', function() {
+                if (!confirm('Are you sure you want to clear ALL templates and workflow rules? This action cannot be undone.')) {
+                    return;
+                }
+
+                var formData = new FormData();
+                formData.append('action', 'clearall');
+                formData.append('sesskey', sesskey);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data && data.success) {
+                        showToast('All templates and rules cleared.');
+                        setTimeout(function() { window.location.reload(); }, 600);
+                    } else {
+                        showToast(data.message || 'Error clearing templates', true);
+                    }
+                })
+                .catch(function(err) {
+                    showToast('Network error: ' + err.message, true);
+                });
+            });
+        }
+
+        // Save All Changes (bulk save inline tweaks)
+        var saveAllBtn = document.getElementById('ba-cliq-save-all');
+        if (saveAllBtn) {
+            saveAllBtn.addEventListener('click', function() {
+                var cards = container.querySelectorAll('.ba-cliq-card');
                 var templatesPayload = [];
                 var rulesPayload = [];
 
-                cards.forEach(function(c) {
-                    var tid = c.getAttribute('data-id');
-                    var ta = c.querySelector('.ba-cliq-textarea');
-                    var threshInput = c.querySelector('.ba-cliq-threshold-input');
-
-                    var ruleEnabled = c.querySelector('.ba-cliq-rule-enabled');
-                    var ruleMetric = c.querySelector('.ba-cliq-rule-metric');
-                    var ruleCval = c.querySelector('.ba-cliq-rule-cval');
-                    var ruleRecip = c.querySelector('.ba-cliq-rule-recipient');
-                    var ruleEscTo = c.querySelector('.ba-cliq-rule-escalateto');
-                    var ruleEscDays = c.querySelector('.ba-cliq-rule-escalatedays');
+                cards.forEach(function(card) {
+                    var tid = card.getAttribute('data-id');
+                    var ta = card.querySelector('.ba-cliq-textarea');
+                    var titleEl = card.querySelector('.ba-cliq-trigger-title');
+                    var roleBadge = card.querySelector('.ba-cliq-role-badge');
+                    var ruleEnabled = card.querySelector('.ba-cliq-rule-enabled');
+                    var ruleMetric = card.querySelector('.ba-cliq-rule-metric');
+                    var ruleCval = card.querySelector('.ba-cliq-rule-cval');
+                    var ruleRecipient = card.querySelector('.ba-cliq-rule-recipient');
+                    var ruleEscTo = card.querySelector('.ba-cliq-rule-escalateto');
+                    var ruleEscDays = card.querySelector('.ba-cliq-rule-escalatedays');
 
                     if (tid && ta) {
                         templatesPayload.push({
                             id: tid,
+                            title: titleEl ? titleEl.textContent.trim() : tid,
+                            recipient: card.getAttribute('data-role') || 'CM',
+                            recipient_title: roleBadge ? roleBadge.textContent.trim() : 'Class Mentor',
                             template: ta.value,
-                            threshold_days: threshInput ? (parseInt(threshInput.value, 10) || 0) : (ruleCval ? (parseInt(ruleCval.value, 10) || 0) : 0),
+                            threshold_days: ruleCval ? (parseInt(ruleCval.value, 10) || 0) : 0,
+                            enabled: ruleEnabled ? (ruleEnabled.checked ? 1 : 0) : 1
                         });
-                    }
 
-                    if (tid && ruleMetric) {
-                        var metricVal = ruleMetric.value;
-                        var isEvent = (metricVal.indexOf('_created') !== -1 || metricVal.indexOf('_completed') !== -1 || metricVal.indexOf('_raised') !== -1);
                         rulesPayload.push({
                             template_id: tid,
                             enabled: ruleEnabled ? (ruleEnabled.checked ? 1 : 0) : 1,
-                            trigger_type: isEvent ? 'event' : 'schedule',
-                            condition_metric: metricVal,
+                            trigger_type: 'schedule',
+                            condition_metric: ruleMetric ? ruleMetric.value : 'days_before_due',
                             condition_value: ruleCval ? (parseInt(ruleCval.value, 10) || 0) : 0,
-                            recipient_type: ruleRecip ? ruleRecip.value : 'CM',
+                            recipient_type: ruleRecipient ? ruleRecipient.value : 'CM',
                             escalate_to: ruleEscTo ? ruleEscTo.value : '',
                             escalate_days: ruleEscDays ? (parseInt(ruleEscDays.value, 10) || 2) : 2,
                             quiet_hours_enabled: 1
@@ -224,8 +437,8 @@
                     }
                 });
 
-                saveBtn.disabled = true;
-                saveBtn.textContent = 'Saving…';
+                saveAllBtn.disabled = true;
+                saveAllBtn.textContent = 'Saving…';
 
                 var formData = new FormData();
                 formData.append('action', 'savetemplates');
@@ -239,92 +452,92 @@
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save All Changes';
+                    saveAllBtn.disabled = false;
+                    saveAllBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save All Changes';
                     if (data && data.success) {
-                        showToast('Templates and workflow automation rules saved successfully!');
+                        showToast('All templates and workflow rules saved successfully!');
                     } else {
                         showToast(data.message || 'Error saving templates', true);
                     }
                 })
                 .catch(function(err) {
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Save All Changes';
-                    showToast('Failed to save templates: ' + err.message, true);
+                    saveAllBtn.disabled = false;
+                    showToast('Network error: ' + err.message, true);
                 });
             });
         }
 
-        // Reset All to Defaults
-        var resetAllBtn = document.getElementById('ba-cliq-reset-all');
-        if (resetAllBtn) {
-            resetAllBtn.addEventListener('click', function() {
-                if (!confirm('Are you sure you want to reset all 42 message templates to their default specifications? Any custom modifications will be discarded.')) {
-                    return;
-                }
+        // ---------------------------------------------------------------------
+        // Tabs & Search Filtering
+        // ---------------------------------------------------------------------
+        var tabs = container.querySelectorAll('.ba-cliq-tab');
+        var searchInput = document.getElementById('ba-cliq-search');
+        var cardsList = container.querySelectorAll('.ba-cliq-card');
+        var placeholdersView = document.getElementById('ba-cliq-placeholders-view');
+        var templatesListEl = document.getElementById('ba-cliq-templates-list');
 
-                resetAllBtn.disabled = true;
-                resetAllBtn.textContent = 'Resetting…';
+        var currentTab = 'all';
+        var currentSearch = '';
 
-                var formData = new FormData();
-                formData.append('action', 'resettemplates');
-                formData.append('sesskey', sesskey);
+        function applyFilter() {
+            if (placeholdersView) placeholdersView.style.display = 'none';
+            if (templatesListEl) templatesListEl.style.display = 'flex';
 
-                fetch(window.location.href, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    resetAllBtn.disabled = false;
-                    resetAllBtn.textContent = 'Reset All to Defaults';
-                    if (data && data.success) {
-                        showToast('Templates reset to default specifications.');
-                        setTimeout(function() {
-                            window.location.reload();
-                        }, 700);
-                    } else {
-                        showToast(data.message || 'Error resetting templates', true);
-                    }
-                })
-                .catch(function(err) {
-                    resetAllBtn.disabled = false;
-                    resetAllBtn.textContent = 'Reset All to Defaults';
-                    showToast('Failed to reset templates: ' + err.message, true);
-                });
+            if (currentTab === 'placeholders') {
+                if (templatesListEl) templatesListEl.style.display = 'none';
+                if (placeholdersView) placeholdersView.style.display = 'block';
+                return;
+            }
+
+            var query = currentSearch.toLowerCase();
+            cardsList.forEach(function(card) {
+                var role = card.getAttribute('data-role') || '';
+                var tid = (card.getAttribute('data-id') || '').toLowerCase();
+                var text = (card.innerText || '').toLowerCase();
+
+                var matchesRole = (currentTab === 'all' || role === currentTab);
+                var matchesQuery = (!query || tid.indexOf(query) !== -1 || text.indexOf(query) !== -1);
+
+                card.style.display = (matchesRole && matchesQuery) ? 'block' : 'none';
             });
         }
 
-        // Copy Placeholder from Dictionary table
-        container.querySelectorAll('.ba-cliq-copy-ph').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var ph = this.getAttribute('data-ph');
-                if (ph && navigator.clipboard) {
-                    navigator.clipboard.writeText(ph).then(function() {
-                        showToast('Copied ' + ph + ' to clipboard!');
-                    });
-                }
+        tabs.forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                tabs.forEach(function(t) { t.classList.remove('active'); });
+                this.classList.add('active');
+                currentTab = this.getAttribute('data-tab');
+                applyFilter();
             });
         });
 
-        // Test Modal elements
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                currentSearch = this.value.trim();
+                applyFilter();
+            });
+        }
+
+        // ---------------------------------------------------------------------
+        // Modal: Test Bot Message
+        // ---------------------------------------------------------------------
         var testModal = document.getElementById('ba-cliq-test-modal');
+        var testModalOpenBtn = document.getElementById('ba-cliq-open-test-modal');
         var testModalCloseBtn = document.getElementById('ba-cliq-modal-close-btn');
         var testModalCancelBtn = document.getElementById('ba-cliq-modal-cancel-btn');
         var testModalSendBtn = document.getElementById('ba-cliq-modal-send-btn');
+        var testMessageText = document.getElementById('ba-cliq-test-message');
         var testUseridsInput = document.getElementById('ba-cliq-test-userids');
-        var testMsgInput = document.getElementById('ba-cliq-test-message');
-        var testResultBox = document.getElementById('ba-cliq-modal-result');
+        var testModalResult = document.getElementById('ba-cliq-modal-result');
 
-        function openTestModal(initialMessage) {
+        function openTestModal(defaultText) {
             if (!testModal) return;
-            if (testResultBox) {
-                testResultBox.style.display = 'none';
-                testResultBox.textContent = '';
-                testResultBox.className = 'ba-cliq-result-box';
+            if (testModalResult) {
+                testModalResult.className = 'ba-cliq-result-box';
+                testModalResult.textContent = '';
             }
-            if (testMsgInput) {
-                testMsgInput.value = initialMessage || '🚀 Test message from Batch Analytics Kajal Bot';
+            if (testMessageText) {
+                testMessageText.value = defaultText || '🔔 Test notification from Batch Analytics (Kajal Bot)';
             }
             testModal.classList.add('open');
         }
@@ -334,6 +547,29 @@
             testModal.classList.remove('open');
         }
 
+        if (testModalOpenBtn) {
+            testModalOpenBtn.addEventListener('click', function() {
+                openTestModal();
+            });
+        }
+
+        container.querySelectorAll('.ba-cliq-test-single-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var card = this.closest('.ba-cliq-card');
+                if (!card) return;
+                var ta = card.querySelector('.ba-cliq-textarea');
+                var text = ta ? ta.value : '';
+                // Resolve placeholders for preview
+                var sampleResolved = text;
+                for (var ph in placeholders) {
+                    if (placeholders.hasOwnProperty(ph)) {
+                        sampleResolved = sampleResolved.split(ph).join(placeholders[ph].sample || ph);
+                    }
+                }
+                openTestModal(sampleResolved);
+            });
+        });
+
         if (testModalCloseBtn) testModalCloseBtn.addEventListener('click', closeTestModal);
         if (testModalCancelBtn) testModalCancelBtn.addEventListener('click', closeTestModal);
         if (testModal) {
@@ -342,58 +578,23 @@
             });
         }
 
-        // Global Header Test Bot Message button
-        var openTestBtn = document.getElementById('ba-cliq-open-test-modal');
-        if (openTestBtn) {
-            openTestBtn.addEventListener('click', function() {
-                openTestModal('🚀 Test message from Batch Analytics Kajal Bot\nBatch: Sample-2026-Batch\nStatus: Bot API verification successful.');
-            });
-        }
-
-        // Individual Template Card Test Send button
-        container.querySelectorAll('.ba-cliq-test-single-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var card = this.closest('.ba-cliq-card');
-                if (!card) return;
-                var ta = card.querySelector('.ba-cliq-textarea');
-                var rawText = ta ? ta.value : '';
-
-                // Substitute placeholders with sample data so the test message looks authentic
-                var rendered = rawText;
-                for (var ph in placeholders) {
-                    if (placeholders.hasOwnProperty(ph)) {
-                        var sampleVal = placeholders[ph].sample || ph;
-                        rendered = rendered.split(ph).join(sampleVal);
-                    }
-                }
-
-                openTestModal(rendered);
-            });
-        });
-
-        // Modal Send Button action
         if (testModalSendBtn) {
             testModalSendBtn.addEventListener('click', function() {
-                var message = (testMsgInput ? testMsgInput.value.trim() : '');
+                var msg = (testMessageText ? testMessageText.value.trim() : '');
                 var userids = (testUseridsInput ? testUseridsInput.value.trim() : '');
 
-                if (!message) {
-                    alert('Please enter a message to send.');
+                if (!msg) {
+                    alert('Please enter a message to test.');
                     return;
                 }
 
                 testModalSendBtn.disabled = true;
-                testModalSendBtn.innerHTML = 'Sending to Cliq…';
-
-                if (testResultBox) {
-                    testResultBox.style.display = 'none';
-                    testResultBox.className = 'ba-cliq-result-box';
-                }
+                testModalSendBtn.textContent = 'Sending…';
 
                 var formData = new FormData();
                 formData.append('action', 'testsend');
                 formData.append('sesskey', sesskey);
-                formData.append('message', message);
+                formData.append('message', msg);
                 formData.append('userids', userids);
 
                 fetch(window.location.href, {
@@ -403,41 +604,27 @@
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     testModalSendBtn.disabled = false;
-                    testModalSendBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send to Zoho Cliq';
+                    testModalSendBtn.textContent = 'Send Test Message';
 
-                    if (testResultBox) {
-                        var isSuccess = !!(data && data.success);
-                        testResultBox.className = 'ba-cliq-result-box ' + (isSuccess ? 'success' : 'error');
-                        testResultBox.style.display = 'block';
-
-                        var statusText = (isSuccess ? '✅ SUCCESS' : '❌ FAILED');
-                        if (data.http_code) statusText += ' (HTTP ' + data.http_code + ')';
-                        var resultDetails = statusText + '\n';
-                        if (data.url_used) resultDetails += 'Target URL: ' + data.url_used + '\n';
-                        if (data.response) resultDetails += 'API Response: ' + data.response;
-                        testResultBox.textContent = resultDetails;
-                    }
-
-                    if (data && data.success) {
-                        showToast('Delivered to Zoho Cliq successfully!');
-                    } else {
-                        showToast(data.message || 'Delivery to Zoho Cliq failed', true);
+                    if (testModalResult) {
+                        testModalResult.className = 'ba-cliq-result-box ' + (data.success ? 'success' : 'error');
+                        testModalResult.textContent = data.message || 'Complete';
                     }
                 })
                 .catch(function(err) {
                     testModalSendBtn.disabled = false;
-                    testModalSendBtn.innerHTML = 'Send to Zoho Cliq';
-                    if (testResultBox) {
-                        testResultBox.className = 'ba-cliq-result-box error';
-                        testResultBox.style.display = 'block';
-                        testResultBox.textContent = 'Network or Script Error: ' + err.message;
+                    testModalSendBtn.textContent = 'Send Test Message';
+                    if (testModalResult) {
+                        testModalResult.className = 'ba-cliq-result-box error';
+                        testModalResult.textContent = 'Network or server error: ' + err.message;
                     }
-                    showToast('Failed to connect: ' + err.message, true);
                 });
             });
         }
 
-        // Dry-Run Simulation Modal Logic
+        // ---------------------------------------------------------------------
+        // Modal: Dry-Run Simulation Modal Logic
+        // ---------------------------------------------------------------------
         var dryrunModal = document.getElementById('ba-cliq-dryrun-modal');
         var dryrunOpenBtn = document.getElementById('ba-cliq-open-dryrun-modal');
         var dryrunCloseBtn = document.getElementById('ba-cliq-dryrun-close-btn');
@@ -470,7 +657,7 @@
         function runDryRunScan() {
             if (!dryrunSummaryEl || !dryrunResultsEl) return;
 
-            dryrunSummaryEl.innerHTML = '<span style="color:#64748b; font-size:12px;">Scanning active batches and mentor activities…</span>';
+            dryrunSummaryEl.innerHTML = '<span style="color:#64748b; font-size:12px;">Scanning active batches and live mentor activities…</span>';
             dryrunResultsEl.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning in progress…</div>';
 
             var formData = new FormData();
@@ -498,7 +685,7 @@
                     dryrunResultsEl.innerHTML = 
                         '<div style="text-align:center; padding:40px 20px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; color:#64748b;">' +
                         '<strong>No matching activity deadlines triggered right now.</strong><br>' +
-                        '<span style="font-size:12px;">All active batches are currently up-to-date, or activities have not reached their configured reminder/overdue thresholds.</span>' +
+                        '<span style="font-size:12px;">' + (data.message || 'All active batches are currently up-to-date, or activities have not reached their configured reminder/overdue thresholds.') + '</span>' +
                         '</div>';
                     return;
                 }
@@ -543,5 +730,3 @@
         }
     });
 })();
-
-

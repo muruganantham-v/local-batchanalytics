@@ -19,7 +19,8 @@ namespace local_batchanalytics;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Service for managing Zoho Cliq (Kajal Bot) message templates, placeholders, and notifications.
+ * Zoho Cliq Notification Service for Batch Analytics.
+ * Handles dynamic notification templates, rendering, and API dispatches to Zoho Cliq.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -30,529 +31,10 @@ class cliq_notification_service {
     const CONFIG_KEY = 'cliq_notification_templates';
 
     /**
-     * Default message templates catalogued from Kajal Bot Specification.
+     * Default message templates list is empty.
+     * All templates, workflows, and escalation metrics are created dynamically by administrators and managers.
      */
-    const DEFAULT_TEMPLATES = [
-        // =====================================================================
-        // 1. Project Manager (PM) Templates (PM-01 to PM-12)
-        // =====================================================================
-        [
-            'id' => 'PM-01',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Batch created',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'New batch created',
-            'template' => "ℹ️ **New batch created**\nBatch: {batch_id} ({mode})\nCourse: {course_name}\nStart date: {start_date} · Planned end: {planned_end}\nYou are assigned as **PM**.\nView batch: {lms_link}",
-        ],
-        [
-            'id' => 'PM-02',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Escalation',
-            'status' => 'Existing',
-            'escalation' => 'PM is the escalation target',
-            'threshold_days' => 2,
-            'severity' => 'escalation',
-            'title' => 'Activity Escalation',
-            'template' => "🚨 **ESCALATION**\nActivity: {activity}\nBatch / Module: {batch_id} / {module}\nOwner: {owner} ({owner_role})\nOverdue by: {delay_days} day(s)\nDue date was: {due_date}\nThe owner has been reminded but has not completed this. Please follow up.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-03',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Schedule slip',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 1,
-            'severity' => 'warning',
-            'title' => 'Schedule slip',
-            'template' => "⚠️ **Schedule slip**\n{batch_id} / {module} is delayed by {delay_days} day(s) vs plan.\nPlanned end: {planned_end} · Revised end: {revised_end}\nDownstream modules affected: {affected_modules}\nReview recommended.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-04',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Activity completed',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Activity completed',
-            'template' => "✅ **Activity completed**\n{activity} for {batch_id} / {module} marked done by {owner} on {date}.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-05',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Stage transition',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Stage transition',
-            'template' => "ℹ️ **Stage transition**\n{batch_id} moved from {module} to {next_module}.\nNew mentor: {next_mentor}\nSS activities have been re-anchored to the new module dates.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-06',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Nomination raised',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Nomination raised',
-            'template' => "🎉 **Nomination raised**\n{owner} nominated {count} student(s) for {award_type} in {batch_id}.\nNominees: {nominee_names}\nApproval pending. Please review and approve / reject.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-07',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Nomination pending too long',
-            'status' => 'NEW',
-            'escalation' => '→ Reminder to PM',
-            'threshold_days' => 2,
-            'severity' => 'reminder',
-            'title' => 'Nomination awaiting approval',
-            'template' => "🔔 **Nomination awaiting your approval**\n{award_type} nomination in {batch_id} (raised by {owner} on {date}) is pending for {pending_days} day(s).\nPlease approve or reject.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-08',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Batch closure',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Batch completed',
-            'template' => "🎉 **Batch completed**\n{batch_id} completed on {end_date}.\nPending closure items:\n• Closure meeting\n• Final review\nPlease schedule and complete both by {closure_due_date}.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-09',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Module completed',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Module completed',
-            'template' => "✅ **Module completed**\n{module} for {batch_id} ended on {actual_end} (planned {planned_end}).\nVariance: {delay_days} day(s).\nPending activities in this module: {pending_count}.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-10',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Mid-batch review due',
-            'status' => 'NEW',
-            'escalation' => '→ Escalate if not held',
-            'threshold_days' => 0,
-            'severity' => 'reminder',
-            'title' => 'Mid-batch review due',
-            'template' => "🔔 **Mid-batch review due**\n{batch_id} has reached its mid-point ({midpoint_date}).\nPlease schedule the mid-batch review with {reviewers}.\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-11',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Weekly batch digest',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Weekly digest',
-            'template' => "ℹ️ **Weekly digest – {batch_id}**\nWeek of {week_start}\nCurrent module: {module}\nActivities done: {done_count} · Due this week: {due_count} · Overdue: {overdue_count}\nSchedule status: {schedule_status}\n{lms_link}",
-        ],
-        [
-            'id' => 'PM-12',
-            'recipient' => 'PM',
-            'recipient_title' => 'Project Manager',
-            'trigger' => 'Repeated overdue by same owner',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 2,
-            'severity' => 'escalation',
-            'title' => 'Repeated delays',
-            'template' => "🚨 **Repeated delays**\n{owner} has {overdue_count} overdue activities in {batch_id} (oldest: {oldest_activity}, {delay_days}d).\nPlease discuss with the owner.\n{lms_link}",
-        ],
-
-        // =====================================================================
-        // 2. Senior Student Executive (SSE) Templates (SSE-01 to SSE-07)
-        // =====================================================================
-        [
-            'id' => 'SSE-01',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'Batch created',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'New batch assigned',
-            'template' => "ℹ️ **New batch assigned**\nBatch: {batch_id} ({mode})\nCourse: {course_name}\nStart date: {start_date}\nYou are assigned as **SSE**.\nView batch: {lms_link}",
-        ],
-        [
-            'id' => 'SSE-02',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'Stage transition',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Stage transition',
-            'template' => "ℹ️ **Stage transition**\n{batch_id} moved from {module} to {next_module}.\nSS activities have been re-anchored. Please review your upcoming SS activities and due dates.\n{lms_link}",
-        ],
-        [
-            'id' => 'SSE-03',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'SS activity due',
-            'status' => 'NEW',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 1,
-            'severity' => 'reminder',
-            'title' => 'SS activity reminder',
-            'template' => "🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.\nPlease complete it in the LMS.\n{lms_link}",
-        ],
-        [
-            'id' => 'SSE-04',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'SS activity overdue',
-            'status' => 'NEW',
-            'escalation' => '→ PM after {n} days',
-            'threshold_days' => 2,
-            'severity' => 'overdue',
-            'title' => 'SS activity overdue',
-            'template' => "⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue by {delay_days} day(s).\nComplete it now, otherwise it will be escalated to the PM.\n{lms_link}",
-        ],
-        [
-            'id' => 'SSE-05',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'Activity completed',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Activity completed',
-            'template' => "✅ {activity} for {batch_id} / {module} marked done by {owner} on {date}. Thank you.\n{lms_link}",
-        ],
-        [
-            'id' => 'SSE-06',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'Schedule slip',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 1,
-            'severity' => 'warning',
-            'title' => 'Schedule slip impact',
-            'template' => "⚠️ {batch_id} / {module} is delayed by {delay_days} day(s) vs plan. Your SS activities may be re-anchored.\n{lms_link}",
-        ],
-        [
-            'id' => 'SSE-07',
-            'recipient' => 'SSE',
-            'recipient_title' => 'Senior Student Executive',
-            'trigger' => 'Batch closure',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Batch completed',
-            'template' => "🎉 **Batch completed**\n{batch_id} completed on {end_date}.\nClosure meeting and final review are due by {closure_due_date}.\nPlease complete your closure inputs.\n{lms_link}",
-        ],
-
-        // =====================================================================
-        // 3. Class Mentor Templates (CM-01 to CM-13)
-        // =====================================================================
-        [
-            'id' => 'CM-01',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Module started',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Module started',
-            'template' => "ℹ️ **Module started**\n{module} started for {batch_id} on {actual_start}.\nPlanned end: {planned_end}.\nActivities due in this module: {activity_count}.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-02',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Activity due',
-            'status' => 'Existing',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 1,
-            'severity' => 'reminder',
-            'title' => 'Activity reminder',
-            'template' => "🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.\nPlease complete it in the LMS.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-03',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Activity overdue',
-            'status' => 'Existing',
-            'escalation' => '→ PM after {n} days',
-            'threshold_days' => 2,
-            'severity' => 'overdue',
-            'title' => 'Activity overdue',
-            'template' => "⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue ({delay_days}d).\nComplete it now, otherwise it will be escalated to the PM.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-04',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Activity completed',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Activity completed',
-            'template' => "✅ {activity} for {batch_id} / {module} marked done by you on {date}. Thank you.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-05',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Stage transition (next mentor)',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'You are up next',
-            'template' => "ℹ️ **You are up next**\n{batch_id} moved from {module} to {next_module}.\nYou are the mentor for {next_module}, starting {next_start_date}.\nPlease review the module plan and activities.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-06',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Module ending soon',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 2,
-            'severity' => 'reminder',
-            'title' => 'Module ending soon',
-            'template' => "🔔 {module} for {batch_id} ends on {planned_end} ({days_left} day(s) left).\nPending activities: {pending_activities}.\nPlease complete them before the module closes.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-07',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Attendance not marked',
-            'status' => 'NEW',
-            'escalation' => '→ PM after {n} days',
-            'threshold_days' => 1,
-            'severity' => 'reminder',
-            'title' => 'Attendance not marked',
-            'template' => "🔔 Attendance for {batch_id} / {module} on {session_date} has not been marked.\nPlease update it in the LMS today.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-08',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Assessment scheduled',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'reminder',
-            'title' => 'Assessment scheduled',
-            'template' => "🔔 **Assessment scheduled**\n{assessment_name} for {batch_id} / {module} is scheduled on {assessment_date}.\nPlease make sure questions / papers are ready.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-09',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Assessment evaluation pending',
-            'status' => 'NEW',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 2,
-            'severity' => 'overdue',
-            'title' => 'Evaluation pending',
-            'template' => "⏰ Evaluation of {assessment_name} for {batch_id} / {module} is pending ({delay_days}d). Please upload marks / results.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-10',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Nomination submitted (confirmation)',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Nomination submitted',
-            'template' => "✅ Your nomination of {count} student(s) for {award_type} in {batch_id} has been sent to the PM for approval.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-11',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Nomination approved',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Nomination approved',
-            'template' => "🎉 Your {award_type} nomination in {batch_id} has been **approved** by {approver}.\nApproved: {approved_names}.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-12',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Nomination rejected',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Nomination not approved',
-            'template' => "ℹ️ Your {award_type} nomination in {batch_id} was **not approved** by {approver}.\nRemarks: {remarks}.\nYou may re-submit with changes.\n{lms_link}",
-        ],
-        [
-            'id' => 'CM-13',
-            'recipient' => 'CM',
-            'recipient_title' => 'Class Mentor',
-            'trigger' => 'Batch closure',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Batch closure thanks',
-            'template' => "🎉 {batch_id} was completed on {end_date}. Thank you for your contribution.\nPlease complete any pending feedback / closure inputs by {closure_due_date}.\n{lms_link}",
-        ],
-
-        // =====================================================================
-        // 4. Lab Mentor Templates (LM-01 to LM-10)
-        // =====================================================================
-        [
-            'id' => 'LM-01',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Module started',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'Module started (Lab)',
-            'template' => "ℹ️ **Module started**\n{module} started for {batch_id} on {actual_start}.\nPlanned end: {planned_end}.\nLab activities in this module: {lab_activity_count}.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-02',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Activity due',
-            'status' => 'Existing',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 1,
-            'severity' => 'reminder',
-            'title' => 'Lab activity reminder',
-            'template' => "🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.\nPlease complete it in the LMS.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-03',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Activity overdue',
-            'status' => 'Existing',
-            'escalation' => '→ PM after {n} days',
-            'threshold_days' => 2,
-            'severity' => 'overdue',
-            'title' => 'Lab activity overdue',
-            'template' => "⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue ({delay_days}d).\nComplete it now, otherwise it will be escalated to the PM.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-04',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Activity completed',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Activity completed',
-            'template' => "✅ {activity} for {batch_id} / {module} marked done by you on {date}. Thank you.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-05',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Stage transition (next mentor)',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'info',
-            'title' => 'You are up next (Lab)',
-            'template' => "ℹ️ **You are up next**\n{batch_id} moved from {module} to {next_module}.\nYou are the lab mentor for {next_module}, starting {next_start_date}.\nPlease verify lab readiness.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-06',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Lab readiness check due',
-            'status' => 'NEW',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 2,
-            'severity' => 'reminder',
-            'title' => 'Lab readiness check due',
-            'template' => "🔔 Lab readiness for {batch_id} / {module} must be confirmed by {due_date} (systems, software, access, datasets).\nPlease update the checklist in the LMS.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-07',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Lab session attendance not marked',
-            'status' => 'NEW',
-            'escalation' => '→ PM after {n} days',
-            'threshold_days' => 1,
-            'severity' => 'reminder',
-            'title' => 'Lab attendance not marked',
-            'template' => "🔔 Lab attendance for {batch_id} / {module} on {session_date} has not been marked.\nPlease update it today.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-08',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Practical / lab assessment evaluation pending',
-            'status' => 'NEW',
-            'escalation' => '→ PM at threshold',
-            'threshold_days' => 2,
-            'severity' => 'overdue',
-            'title' => 'Lab evaluation pending',
-            'template' => "⏰ Evaluation of {assessment_name} (lab) for {batch_id} / {module} is pending ({delay_days}d).\nPlease upload marks / results.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-09',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Nomination submitted (confirmation)',
-            'status' => 'Existing',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'completed',
-            'title' => 'Nomination submitted',
-            'template' => "✅ Your nomination of {count} student(s) for {award_type} in {batch_id} has been sent to the PM for approval.\n{lms_link}",
-        ],
-        [
-            'id' => 'LM-10',
-            'recipient' => 'LM',
-            'recipient_title' => 'Lab Mentor',
-            'trigger' => 'Nomination approved / rejected',
-            'status' => 'NEW',
-            'escalation' => '—',
-            'threshold_days' => 0,
-            'severity' => 'milestone',
-            'title' => 'Nomination result',
-            'template' => "🎉 Your {award_type} nomination in {batch_id} status has been updated by {approver}.\n{remarks}\n{lms_link}",
-        ],
-    ];
+    const DEFAULT_TEMPLATES = [];
 
     /**
      * Dictionary of all available placeholders and sample data for previewing.
@@ -573,10 +55,10 @@ class cliq_notification_service {
         '{activity}'            => ['desc' => 'Activity name', 'sample' => 'Weekly assessment report'],
         '{activity_count}'      => ['desc' => 'Number of activities in module', 'sample' => '6'],
         '{lab_activity_count}'  => ['desc' => 'Number of lab activities in module', 'sample' => '4'],
-        '{pending_activities}'  => ['desc' => 'Pending activities names', 'sample' => 'Lab Test 1, Report Review'],
-        '{pending_count}'       => ['desc' => 'Pending activities count', 'sample' => '2'],
+        '{pending_activities}'  => ['desc' => 'Pending activities names', 'sample' => 'Lab Report 1, Quiz 2'],
+        '{pending_count}'       => ['desc' => 'Count of pending activities', 'sample' => '2'],
         '{owner}'               => ['desc' => 'Person responsible', 'sample' => 'Ravi Kumar'],
-        '{owner_role}'          => ['desc' => 'Role of the responsible person', 'sample' => 'Class Mentor'],
+        '{owner_role}'          => ['desc' => 'Role of the owner', 'sample' => 'Class Mentor'],
         '{next_mentor}'         => ['desc' => 'Mentor of the next module', 'sample' => 'Anita S.'],
         '{next_start_date}'     => ['desc' => 'Next module start date', 'sample' => '26 Oct 2026'],
         '{due_date}'            => ['desc' => 'Due date of activity', 'sample' => '10 Oct 2026'],
@@ -608,57 +90,49 @@ class cliq_notification_service {
     ];
 
     /**
-     * Get all active templates, merged with stored configurations.
+     * Get all active user-configured templates.
      *
      * @return array
      */
     public static function get_templates(): array {
         $raw = get_config('local_batchanalytics', self::CONFIG_KEY);
-        $customized = [];
-        if (!empty($raw)) {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
-                foreach ($decoded as $item) {
-                    if (!empty($item['id'])) {
-                        $customized[$item['id']] = $item;
-                    }
-                }
-            }
+        if (empty($raw)) {
+            return [];
         }
 
-        $templates = self::DEFAULT_TEMPLATES;
-        foreach ($templates as &$tmpl) {
-            $tid = $tmpl['id'];
-            if (isset($customized[$tid])) {
-                $c = $customized[$tid];
-                if (isset($c['template'])) {
-                    $tmpl['template'] = $c['template'];
-                }
-                if (isset($c['title'])) {
-                    $tmpl['title'] = $c['title'];
-                }
-                if (isset($c['threshold_days'])) {
-                    $tmpl['threshold_days'] = (int)$c['threshold_days'];
-                }
-                if (isset($c['severity'])) {
-                    $tmpl['severity'] = $c['severity'];
-                }
-                if (isset($c['enabled'])) {
-                    $tmpl['enabled'] = (bool)$c['enabled'];
-                }
-                $tmpl['is_customized'] = true;
-            } else {
-                $tmpl['is_customized'] = false;
-                $tmpl['enabled'] = true;
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $templates = [];
+        foreach ($decoded as $item) {
+            if (!empty($item['id'])) {
+                $templates[] = $item;
             }
         }
-        unset($tmpl);
 
         return $templates;
     }
 
     /**
-     * Save customized templates to Moodle config.
+     * Get a single template by ID.
+     *
+     * @param string $id
+     * @return array|null
+     */
+    public static function get_template(string $id): ?array {
+        $templates = self::get_templates();
+        foreach ($templates as $t) {
+            if (($t['id'] ?? '') === $id) {
+                return $t;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Save dynamic templates to Moodle config.
      *
      * @param array $templates
      * @return bool
@@ -670,12 +144,16 @@ class cliq_notification_service {
                 continue;
             }
             $clean[] = [
-                'id'             => clean_param($t['id'], PARAM_ALPHANUMEXT),
-                'title'          => clean_param($t['title'] ?? '', PARAM_TEXT),
-                'template'       => clean_param($t['template'] ?? '', PARAM_RAW_TRIMMED),
-                'threshold_days' => isset($t['threshold_days']) ? (int)$t['threshold_days'] : 0,
-                'severity'       => clean_param($t['severity'] ?? 'info', PARAM_ALPHANUMEXT),
-                'enabled'        => !empty($t['enabled']),
+                'id'              => clean_param($t['id'], PARAM_ALPHANUMEXT),
+                'title'           => clean_param($t['title'] ?? '', PARAM_TEXT),
+                'recipient'       => clean_param($t['recipient'] ?? 'CM', PARAM_ALPHANUMEXT),
+                'recipient_title' => clean_param($t['recipient_title'] ?? 'Class Mentor', PARAM_TEXT),
+                'trigger'         => clean_param($t['trigger'] ?? 'Activity due', PARAM_TEXT),
+                'severity'        => clean_param($t['severity'] ?? 'info', PARAM_ALPHANUMEXT),
+                'template'        => clean_param($t['template'] ?? ($t['body'] ?? ''), PARAM_RAW_TRIMMED),
+                'threshold_days'  => isset($t['threshold_days']) ? (int)$t['threshold_days'] : 0,
+                'escalation'      => clean_param($t['escalation'] ?? '—', PARAM_TEXT),
+                'enabled'         => !empty($t['enabled']),
             ];
         }
 
@@ -683,12 +161,65 @@ class cliq_notification_service {
     }
 
     /**
-     * Reset templates back to default specification.
+     * Add or update a single template dynamically.
+     *
+     * @param array $data
+     * @return bool
+     */
+    public static function add_or_update_template(array $data): bool {
+        $id = clean_param($data['id'] ?? '', PARAM_ALPHANUMEXT);
+        if (empty($id)) {
+            return false;
+        }
+
+        $templates = self::get_templates();
+        $found = false;
+        foreach ($templates as &$t) {
+            if (($t['id'] ?? '') === $id) {
+                $t = array_merge($t, $data);
+                $found = true;
+                break;
+            }
+        }
+        unset($t);
+
+        if (!$found) {
+            $templates[] = $data;
+        }
+
+        return self::save_templates($templates);
+    }
+
+    /**
+     * Delete a single template by ID.
+     *
+     * @param string $id
+     * @return bool
+     */
+    public static function delete_template(string $id): bool {
+        $templates = self::get_templates();
+        $filtered = array_values(array_filter($templates, function($t) use ($id) {
+            return ($t['id'] ?? '') !== $id;
+        }));
+        return self::save_templates($filtered);
+    }
+
+    /**
+     * Clear all dynamic templates from Moodle config.
+     *
+     * @return bool
+     */
+    public static function clear_all_templates(): bool {
+        return unset_config(self::CONFIG_KEY, 'local_batchanalytics');
+    }
+
+    /**
+     * Reset templates back to empty specification.
      *
      * @return bool
      */
     public static function reset_templates(): bool {
-        return unset_config(self::CONFIG_KEY, 'local_batchanalytics');
+        return self::clear_all_templates();
     }
 
     /**
@@ -759,7 +290,7 @@ class cliq_notification_service {
      * Zoho Cliq Bot endpoint format:
      * https://cliq.zoho.com/api/v2/bots/{bot_name}/message?zapikey={CLIQ_ZAPI_KEY}
      * Payload:
-     * { "text": messageText, "userids": emails }
+     * { "text": messageText, "userids": "email1,email2" }
      *
      * @param string $message The message body
      * @param array|string|null $userids Email string or array of emails / Cliq user IDs
@@ -790,7 +321,7 @@ class cliq_notification_service {
             ];
         }
 
-        // Construct Zoho Cliq Bot Payload: { "text": messageText, "userids": emails }
+        // Construct Zoho Cliq Bot Payload: { "text": messageText }
         $payload_data = [
             'text' => $message,
         ];
@@ -833,4 +364,3 @@ class cliq_notification_service {
         ];
     }
 }
-
