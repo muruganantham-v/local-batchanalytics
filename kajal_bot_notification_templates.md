@@ -13,8 +13,8 @@
 2. [Lifecycle Pattern](#2-lifecycle-pattern)
 3. [Conventions](#3-conventions)
 4. [Templates by Recipient](#4-templates-by-recipient)
-   - [4.1 Project Manager (PM)](#41-project-manager-pm)
-   - [4.2 SSE](#42-sse)
+   - [4.1 Program Manager (PM)](#41-program-manager-pm)
+   - [4.2 Student Success Executive (SSE)](#42-student-success-executive-sse)
    - [4.3 Class Mentor](#43-class-mentor)
    - [4.4 Lab Mentor](#44-lab-mentor)
 5. [Escalation Matrix](#5-escalation-matrix)
@@ -25,7 +25,7 @@
 
 ## 1. Overview
 
-Every trackable activity in the LMS has a lifecycle. Whenever a mentor, PM, SSE or lab mentor performs an activity in the LMS (or fails to do it on time), the Kajal bot sends the appropriate message on Zoho Cliq.
+Every trackable activity in the LMS has a lifecycle. Whenever a mentor, Program Manager (PM), Student Success Executive (SSE) or lab mentor performs an activity in the LMS (or fails to do it on time), the Kajal bot sends the appropriate message on Zoho Cliq.
 
 Each activity type declares:
 
@@ -70,13 +70,13 @@ Due → Notify owner → (Reminder if not done) → Escalate to PM → Owner mar
 
 ## 4. Templates by Recipient
 
-### 4.1 Project Manager (PM)
+### 4.1 Program Manager (PM)
 
-The PM receives batch-level and escalation messages. The PM is the escalation point for every owner role.
+The Program Manager receives batch-level and escalation messages. The PM is the escalation point for every owner role.
 
 | ID | Trigger event | Status | Escalation | Message template |
 |---|---|---|---|---|
-| PM-01 | Batch created | Existing | — | ℹ️ **New batch created**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date} · Planned end: {planned_end}<br>You are assigned as **PM**.<br>View batch: {lms_link} |
+| PM-01 | Batch created | Existing | — | ℹ️ **New batch created**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date} · Planned end: {planned_end}<br>You are assigned as **Program Manager**.<br>View batch: {lms_link} |
 | PM-02 | Escalation | Existing | PM is the escalation target | 🚨 **ESCALATION**<br>Activity: {activity}<br>Batch / Module: {batch_id} / {module}<br>Owner: {owner} ({owner_role})<br>Overdue by: {delay_days} day(s)<br>Due date was: {due_date}<br>The owner has been reminded but has not completed this. Please follow up.<br>{lms_link} |
 | PM-03 | Schedule slip | Existing | — | ⚠️ **Schedule slip**<br>{batch_id} / {module} is delayed by {delay_days} day(s) vs plan.<br>Planned end: {planned_end} · Revised end: {revised_end}<br>Downstream modules affected: {affected_modules}<br>Review recommended.<br>{lms_link} |
 | PM-04 | Activity completed | Existing | — | ✅ **Activity completed**<br>{activity} for {batch_id} / {module} marked done by {owner} on {date}.<br>{lms_link} |
@@ -91,13 +91,13 @@ The PM receives batch-level and escalation messages. The PM is the escalation po
 
 ---
 
-### 4.2 SSE
+### 4.2 Student Success Executive (SSE)
 
-The SSE receives batch-setup, transition, and closure messages for batches they support.
+The Student Success Executive receives batch-setup, transition, and closure messages for batches they support.
 
 | ID | Trigger event | Status | Escalation | Message template |
 |---|---|---|---|---|
-| SSE-01 | Batch created | Existing | — | ℹ️ **New batch assigned**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date}<br>You are assigned as **SSE**.<br>View batch: {lms_link} |
+| SSE-01 | Batch created | Existing | — | ℹ️ **New batch assigned**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date}<br>You are assigned as **Student Success Executive**.<br>View batch: {lms_link} |
 | SSE-02 | Stage transition | Existing | — | ℹ️ **Stage transition**<br>{batch_id} moved from {module} to {next_module}.<br>SS activities have been re-anchored. Please review your upcoming SS activities and due dates.<br>{lms_link} |
 | SSE-03 | SS activity due | NEW | → PM at threshold | 🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.<br>Please complete it in the LMS.<br>{lms_link} |
 | SSE-04 | SS activity overdue | NEW | → PM after {n} days | ⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue by {delay_days} day(s).<br>Complete it now, otherwise it will be escalated to the PM.<br>{lms_link} |
