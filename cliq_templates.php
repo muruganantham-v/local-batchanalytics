@@ -74,6 +74,38 @@ if ($action === 'resettemplates') {
     exit;
 }
 
+if ($action === 'testsend') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        require_sesskey();
+        $message = required_param('message', PARAM_RAW);
+        $userids = optional_param('userids', '', PARAM_RAW_TRIMMED);
+
+        if (trim($message) === '') {
+            throw new moodle_exception('error', '', '', null, 'Message text cannot be empty.');
+        }
+
+        $res = cliq_notification_service::send_cliq_message($message, $userids);
+        echo json_encode([
+            'success' => $res['success'],
+            'http_code' => $res['http_code'],
+            'response' => $res['response'],
+            'url_used' => $res['url_used'],
+            'message' => $res['success']
+                ? 'Message delivered to Zoho Cliq successfully!'
+                : ('Zoho Cliq delivery failed (HTTP ' . $res['http_code'] . '): ' . $res['response'])
+        ]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // -------------------------------------------------------------------------
 // 2. Data Preparation
 // -------------------------------------------------------------------------
@@ -119,7 +151,10 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 <div class="ba-cliq-page" id="ba-cliq-templates-container"
      data-sesskey="<?= sesskey() ?>"
      data-placeholders="<?= s(json_encode($placeholders)) ?>"
-     data-default-templates="<?= s(json_encode($default_templates)) ?>">
+     data-default-templates="<?= s(json_encode($default_templates)) ?>"
+     data-cliq-configured="<?= cliq_notification_service::is_configured() ? '1' : '0' ?>"
+     data-bot-url="<?= s(cliq_notification_service::get_bot_api_url()) ?>"
+     data-user-email="<?= s($USER->email ?? '') ?>">
 
   <div class="ba-cliq-shell">
 
@@ -153,6 +188,13 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             </svg>
             Back to Plugin Settings
           </a>
+
+          <button type="button" id="ba-cliq-open-test-modal" class="ba-cliq-btn" style="background:#059669; border-color:#059669; color:#fff;" title="Send a test notification message to Zoho Cliq">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            Test Bot Message
+          </button>
 
           <button type="button" id="ba-cliq-reset-all" class="ba-cliq-btn ba-cliq-btn-danger" title="Reset all 42 templates to default specifications">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -265,9 +307,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <textarea class="ba-cliq-textarea" rows="5" spellcheck="false"><?= s($t['template']) ?></textarea>
 
               <div class="ba-cliq-card-footer">
-                <button type="button" class="ba-cliq-reset-link ba-cliq-reset-single" data-id="<?= s($t['id']) ?>">
-                  Reset this template
-                </button>
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <button type="button" class="ba-cliq-reset-link ba-cliq-reset-single" data-id="<?= s($t['id']) ?>">
+                    Reset this template
+                  </button>
+                  <button type="button" class="ba-cliq-test-single-btn" data-id="<?= s($t['id']) ?>" title="Test sending this message to Zoho Cliq">
+                    ⚡ Test Send
+                  </button>
+                </div>
                 <span style="color:#94a3b8; font-size:11px;">Supports **bold** &amp; emojis</span>
               </div>
             </div>
@@ -424,6 +471,66 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
   <!-- Floating Toast Notification -->
   <div id="ba-cliq-toast" class="ba-cliq-toast"></div>
+
+  <!-- Test Bot Message Modal -->
+  <div class="ba-cliq-modal-overlay" id="ba-cliq-test-modal">
+    <div class="ba-cliq-modal">
+      <div class="ba-cliq-modal-header">
+        <h3>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          Test Zoho Cliq Bot Notification
+        </h3>
+        <button type="button" class="ba-cliq-modal-close" id="ba-cliq-modal-close-btn">&times;</button>
+      </div>
+
+      <div class="ba-cliq-modal-body">
+        <div>
+          <label class="ba-cliq-field-label">Target Bot URL &amp; Auth (GET zapikey)</label>
+          <div class="ba-cliq-endpoint-pill" id="ba-cliq-modal-bot-url">
+            <?= s(cliq_notification_service::get_bot_api_url()) ?>
+          </div>
+          <?php if (!cliq_notification_service::is_configured()): ?>
+            <div style="margin-top:6px; color:#dc2626; font-size:12px; font-weight:500;">
+              ⚠️ Zoho Cliq ZAPI Key is not configured yet. Please configure it in
+              <a href="<?= s((new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics']))->out(false)) ?>" style="color:#2563eb; text-decoration:underline;">Plugin Settings</a>.
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <div>
+          <label for="ba-cliq-test-userids" class="ba-cliq-field-label">Recipient User Email(s) / Cliq User IDs (userids)</label>
+          <input type="text" id="ba-cliq-test-userids" class="ba-cliq-input-text" value="<?= s($USER->email ?? '') ?>" placeholder="user@company.com, mentor@company.com">
+          <div class="ba-cliq-field-help">
+            Enter target email(s) or Cliq userids. Sent in payload as: <code>{ "text": messageText, "userids": [emails] }</code>
+          </div>
+        </div>
+
+        <div>
+          <label for="ba-cliq-test-message" class="ba-cliq-field-label">Message Text</label>
+          <textarea id="ba-cliq-test-message" class="ba-cliq-input-text" rows="5" style="font-family:inherit; resize:vertical;"></textarea>
+          <div class="ba-cliq-field-help">
+            Payload format sent to Cliq: <code>{ "text": messageText, "userids": emails }</code>
+          </div>
+        </div>
+
+        <!-- Result Box -->
+        <div id="ba-cliq-modal-result" class="ba-cliq-result-box"></div>
+      </div>
+
+      <div class="ba-cliq-modal-footer">
+        <button type="button" class="ba-cliq-btn ba-cliq-btn-secondary" id="ba-cliq-modal-cancel-btn">Close</button>
+        <button type="button" class="ba-cliq-btn" id="ba-cliq-modal-send-btn" style="background:#059669; border-color:#059669; color:#fff;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          Send to Zoho Cliq
+        </button>
+      </div>
+    </div>
+  </div>
 
 </div> <!-- /.ba-cliq-page -->
 

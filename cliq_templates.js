@@ -282,5 +282,136 @@
                 }
             });
         });
+
+        // Test Modal elements
+        var testModal = document.getElementById('ba-cliq-test-modal');
+        var testModalCloseBtn = document.getElementById('ba-cliq-modal-close-btn');
+        var testModalCancelBtn = document.getElementById('ba-cliq-modal-cancel-btn');
+        var testModalSendBtn = document.getElementById('ba-cliq-modal-send-btn');
+        var testUseridsInput = document.getElementById('ba-cliq-test-userids');
+        var testMsgInput = document.getElementById('ba-cliq-test-message');
+        var testResultBox = document.getElementById('ba-cliq-modal-result');
+
+        function openTestModal(initialMessage) {
+            if (!testModal) return;
+            if (testResultBox) {
+                testResultBox.style.display = 'none';
+                testResultBox.textContent = '';
+                testResultBox.className = 'ba-cliq-result-box';
+            }
+            if (testMsgInput) {
+                testMsgInput.value = initialMessage || '🚀 Test message from Batch Analytics Kajal Bot';
+            }
+            testModal.classList.add('open');
+        }
+
+        function closeTestModal() {
+            if (!testModal) return;
+            testModal.classList.remove('open');
+        }
+
+        if (testModalCloseBtn) testModalCloseBtn.addEventListener('click', closeTestModal);
+        if (testModalCancelBtn) testModalCancelBtn.addEventListener('click', closeTestModal);
+        if (testModal) {
+            testModal.addEventListener('click', function(e) {
+                if (e.target === testModal) closeTestModal();
+            });
+        }
+
+        // Global Header Test Bot Message button
+        var openTestBtn = document.getElementById('ba-cliq-open-test-modal');
+        if (openTestBtn) {
+            openTestBtn.addEventListener('click', function() {
+                openTestModal('🚀 Test message from Batch Analytics Kajal Bot\nBatch: Sample-2026-Batch\nStatus: Bot API verification successful.');
+            });
+        }
+
+        // Individual Template Card Test Send button
+        container.querySelectorAll('.ba-cliq-test-single-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var card = this.closest('.ba-cliq-card');
+                if (!card) return;
+                var ta = card.querySelector('.ba-cliq-textarea');
+                var rawText = ta ? ta.value : '';
+
+                // Substitute placeholders with sample data so the test message looks authentic
+                var rendered = rawText;
+                for (var ph in placeholders) {
+                    if (placeholders.hasOwnProperty(ph)) {
+                        var sampleVal = placeholders[ph].sample || ph;
+                        rendered = rendered.split(ph).join(sampleVal);
+                    }
+                }
+
+                openTestModal(rendered);
+            });
+        });
+
+        // Modal Send Button action
+        if (testModalSendBtn) {
+            testModalSendBtn.addEventListener('click', function() {
+                var message = (testMsgInput ? testMsgInput.value.trim() : '');
+                var userids = (testUseridsInput ? testUseridsInput.value.trim() : '');
+
+                if (!message) {
+                    alert('Please enter a message to send.');
+                    return;
+                }
+
+                testModalSendBtn.disabled = true;
+                testModalSendBtn.innerHTML = 'Sending to Cliq…';
+
+                if (testResultBox) {
+                    testResultBox.style.display = 'none';
+                    testResultBox.className = 'ba-cliq-result-box';
+                }
+
+                var formData = new FormData();
+                formData.append('action', 'testsend');
+                formData.append('sesskey', sesskey);
+                formData.append('message', message);
+                formData.append('userids', userids);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    testModalSendBtn.disabled = false;
+                    testModalSendBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send to Zoho Cliq';
+
+                    if (testResultBox) {
+                        var isSuccess = !!(data && data.success);
+                        testResultBox.className = 'ba-cliq-result-box ' + (isSuccess ? 'success' : 'error');
+                        testResultBox.style.display = 'block';
+
+                        var statusText = (isSuccess ? '✅ SUCCESS' : '❌ FAILED');
+                        if (data.http_code) statusText += ' (HTTP ' + data.http_code + ')';
+                        var resultDetails = statusText + '\n';
+                        if (data.url_used) resultDetails += 'Target URL: ' + data.url_used + '\n';
+                        if (data.response) resultDetails += 'API Response: ' + data.response;
+                        testResultBox.textContent = resultDetails;
+                    }
+
+                    if (data && data.success) {
+                        showToast('Delivered to Zoho Cliq successfully!');
+                    } else {
+                        showToast(data.message || 'Delivery to Zoho Cliq failed', true);
+                    }
+                })
+                .catch(function(err) {
+                    testModalSendBtn.disabled = false;
+                    testModalSendBtn.innerHTML = 'Send to Zoho Cliq';
+                    if (testResultBox) {
+                        testResultBox.className = 'ba-cliq-result-box error';
+                        testResultBox.style.display = 'block';
+                        testResultBox.textContent = 'Network or Script Error: ' + err.message;
+                    }
+                    showToast('Failed to connect: ' + err.message, true);
+                });
+            });
+        }
     });
 })();
+

@@ -114,13 +114,17 @@ $string['role_admin'] = 'Admin';
 
 // Zoho Cliq Notification Strings
 $string['zoho_cliq_notification_heading'] = 'Zoho Cliq Notification';
-$string['zoho_cliq_notification_heading_desc'] = 'Configure Zoho Cliq Kajal Bot webhook integration and message templates for batch lifecycle events and escalations.';
+$string['zoho_cliq_notification_heading_desc'] = 'Configure Zoho Cliq Bot integration (zapikey and bot endpoint) and message templates for batch lifecycle events and mentor activity escalations.';
 $string['zoho_cliq_enabled'] = 'Enable Zoho Cliq Notifications';
 $string['zoho_cliq_enabled_desc'] = 'When enabled, automated batch lifecycle notifications and escalations will be sent to Zoho Cliq.';
-$string['zoho_cliq_webhook_url'] = 'Zoho Cliq Webhook URL';
-$string['zoho_cliq_webhook_url_desc'] = 'Incoming webhook URL for the Kajal Bot or target Cliq channel.';
-$string['zoho_cliq_bot_name'] = 'Bot Display Name';
-$string['zoho_cliq_bot_name_desc'] = 'Display name for the bot (default: Kajal Bot).';
+$string['zoho_cliq_bot_endpoint'] = 'Zoho Cliq Bot API Endpoint';
+$string['zoho_cliq_bot_endpoint_desc'] = 'Base URL for Zoho Cliq bot message API (default: https://cliq.zoho.com/api/v2/bots/).';
+$string['zoho_cliq_bot_name'] = 'Bot Unique Name';
+$string['zoho_cliq_bot_name_desc'] = 'Unique API identifier of the Cliq bot in Zoho (e.g. batchinformer or kajalbot).';
+$string['zoho_cliq_zapikey'] = 'Cliq ZAPI Key (Bot Token)';
+$string['zoho_cliq_zapikey_desc'] = 'Zoho Cliq ZAPI token (e.g. 1000.xxxxxxx.xxxxx) passed as ?zapikey= to authorize bot messages.';
+$string['zoho_cliq_webhook_url'] = 'Custom Webhook URL Override (Optional)';
+$string['zoho_cliq_webhook_url_desc'] = 'Leave blank to automatically construct the Bot API URL from the settings above, or provide a custom direct webhook URL.';
 $string['view_cliq_templates'] = 'Zoho Cliq Templates';
 $string['view_cliq_templates_desc'] = 'View and customize message templates for Project Manager, SSE, Class Mentor, and Lab Mentor roles.';
 $string['cliq_templates_title'] = 'Zoho Cliq Notification Templates';

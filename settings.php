@@ -172,19 +172,34 @@ if ($hassiteconfig) {
     ));
 
     $settings->add(new admin_setting_configtext(
-        'local_batchanalytics/zoho_cliq_webhook_url',
-        get_string('zoho_cliq_webhook_url', 'local_batchanalytics'),
-        get_string('zoho_cliq_webhook_url_desc', 'local_batchanalytics'),
-        '',
-        PARAM_RAW_TRIMMED
+        'local_batchanalytics/zoho_cliq_bot_endpoint',
+        get_string('zoho_cliq_bot_endpoint', 'local_batchanalytics'),
+        get_string('zoho_cliq_bot_endpoint_desc', 'local_batchanalytics'),
+        'https://cliq.zoho.com/api/v2/bots/',
+        PARAM_URL
     ));
 
     $settings->add(new admin_setting_configtext(
         'local_batchanalytics/zoho_cliq_bot_name',
         get_string('zoho_cliq_bot_name', 'local_batchanalytics'),
         get_string('zoho_cliq_bot_name_desc', 'local_batchanalytics'),
-        'Kajal Bot',
-        PARAM_TEXT
+        'batchinformer',
+        PARAM_ALPHANUMEXT
+    ));
+
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_batchanalytics/zoho_cliq_zapikey',
+        get_string('zoho_cliq_zapikey', 'local_batchanalytics'),
+        get_string('zoho_cliq_zapikey_desc', 'local_batchanalytics'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_cliq_webhook_url',
+        get_string('zoho_cliq_webhook_url', 'local_batchanalytics'),
+        get_string('zoho_cliq_webhook_url_desc', 'local_batchanalytics'),
+        '',
+        PARAM_RAW_TRIMMED
     ));
 
     $settings->add(new \local_batchanalytics\admin_setting_cliq_templates_button(

@@ -570,3 +570,188 @@
 
 .ba-cliq-toast.success { background: #065f46; border: 1px solid #059669; }
 .ba-cliq-toast.error { background: #991b1b; border: 1px solid #dc2626; }
+
+/* Test Send Button in Card */
+.ba-cliq-test-single-btn {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ba-cliq-test-single-btn:hover {
+    background: #10b981;
+    color: #ffffff;
+    border-color: #10b981;
+}
+
+/* Modal Overlay & Dialog */
+.ba-cliq-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.ba-cliq-modal-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.ba-cliq-modal {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    max-width: 640px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.96);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ba-cliq-modal-overlay.open .ba-cliq-modal {
+    transform: scale(1);
+}
+
+.ba-cliq-modal-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ba-cliq-modal-header h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ba-cliq-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.15s ease;
+}
+
+.ba-cliq-modal-close:hover {
+    color: #0f172a;
+}
+
+.ba-cliq-modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    font-size: 13px;
+    color: #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ba-cliq-modal-footer {
+    padding: 14px 24px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    background: #f8fafc;
+}
+
+.ba-cliq-field-label {
+    display: block;
+    font-weight: 600;
+    font-size: 12px;
+    color: #334155;
+    margin-bottom: 6px;
+}
+
+.ba-cliq-field-help {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.ba-cliq-input-text {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #0f172a;
+    background: #ffffff;
+    box-sizing: border-box;
+}
+
+.ba-cliq-input-text:focus {
+    outline: none;
+    border-color: #1b6ec2;
+    box-shadow: 0 0 0 3px rgba(27, 110, 194, 0.15);
+}
+
+.ba-cliq-endpoint-pill {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #334155;
+    word-break: break-all;
+}
+
+.ba-cliq-result-box {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    max-height: 180px;
+    overflow-y: auto;
+    display: none;
+}
+
+.ba-cliq-result-box.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.ba-cliq-result-box.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}

@@ -714,39 +714,123 @@ class cliq_notification_service {
     }
 
     /**
-     * Send a notification message payload to Zoho Cliq.
+     * Check if Zoho Cliq Bot API is configured.
      *
-     * @param string $message
-     * @param string|null $webhook_url
-     * @return array{success: bool, response: string, http_code: int}
+     * @return bool
      */
-    public static function send_cliq_message(string $message, ?string $webhook_url = null): array {
+    public static function is_configured(): bool {
+        $zapikey = trim((string)get_config('local_batchanalytics', 'zoho_cliq_zapikey'));
+        $webhook = trim((string)get_config('local_batchanalytics', 'zoho_cliq_webhook_url'));
+        return (!empty($zapikey) || !empty($webhook));
+    }
+
+    /**
+     * Build the Zoho Cliq Bot API message URL with zapikey.
+     * Example: https://cliq.zoho.com/api/v2/bots/batchinformer/message?zapikey=1000.xxxxxxx.xxxxx
+     *
+     * @param string|null $custom_zapikey
+     * @param string|null $custom_bot_name
+     * @return string
+     */
+    public static function get_bot_api_url(?string $custom_zapikey = null, ?string $custom_bot_name = null): string {
+        $zapikey = !empty($custom_zapikey) ? trim($custom_zapikey) : trim((string)get_config('local_batchanalytics', 'zoho_cliq_zapikey'));
+        $bot_name = !empty($custom_bot_name) ? trim($custom_bot_name) : trim((string)get_config('local_batchanalytics', 'zoho_cliq_bot_name'));
+        if (empty($bot_name)) {
+            $bot_name = 'batchinformer';
+        }
+
+        $endpoint = trim((string)get_config('local_batchanalytics', 'zoho_cliq_bot_endpoint'));
+        if (empty($endpoint)) {
+            $endpoint = 'https://cliq.zoho.com/api/v2/bots/';
+        }
+
+        $base = rtrim($endpoint, '/');
+        $url = $base . '/' . rawurlencode($bot_name) . '/message';
+
+        if (!empty($zapikey)) {
+            $url .= '?zapikey=' . urlencode($zapikey);
+        }
+
+        return $url;
+    }
+
+    /**
+     * Send a notification message payload to Zoho Cliq Bot API.
+     * Zoho Cliq Bot endpoint format:
+     * https://cliq.zoho.com/api/v2/bots/{bot_name}/message?zapikey={CLIQ_ZAPI_KEY}
+     * Payload:
+     * { "text": messageText, "userids": emails }
+     *
+     * @param string $message The message body
+     * @param array|string|null $userids Email string or array of emails / Cliq user IDs
+     * @param string|null $target_url Custom URL override (if null, uses configured Bot API URL or webhook)
+     * @return array{success: bool, response: string, http_code: int, url_used: string}
+     */
+    public static function send_cliq_message(string $message, $userids = [], ?string $target_url = null): array {
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
 
-        if (empty($webhook_url)) {
-            $webhook_url = get_config('local_batchanalytics', 'zoho_cliq_webhook_url');
+        $zapikey = trim((string)get_config('local_batchanalytics', 'zoho_cliq_zapikey'));
+        $webhook_url = trim((string)get_config('local_batchanalytics', 'zoho_cliq_webhook_url'));
+
+        if (empty($target_url)) {
+            if (!empty($zapikey)) {
+                $target_url = self::get_bot_api_url();
+            } else if (!empty($webhook_url)) {
+                $target_url = $webhook_url;
+            }
         }
 
-        if (empty($webhook_url)) {
+        if (empty($target_url)) {
             return [
                 'success' => false,
-                'response' => 'Zoho Cliq Webhook URL is not configured.',
-                'http_code' => 0
+                'response' => 'Zoho Cliq API Key (zapikey) or Webhook URL is not configured.',
+                'http_code' => 0,
+                'url_used' => ''
             ];
         }
 
-        $payload = json_encode(['text' => $message]);
+        // Construct Zoho Cliq Bot Payload: { "text": messageText, "userids": emails }
+        $payload_data = [
+            'text' => $message,
+        ];
+
+        // Format userids as list of trimmed email strings
+        if (!empty($userids)) {
+            if (is_string($userids)) {
+                $emails = preg_split('/[\s,]+/', trim($userids), -1, PREG_SPLIT_NO_EMPTY);
+            } else if (is_array($userids)) {
+                $emails = array_values(array_filter(array_map('trim', $userids)));
+            } else {
+                $emails = [];
+            }
+
+            if (!empty($emails)) {
+                $payload_data['userids'] = $emails;
+            }
+        }
+
+        $payload_json = json_encode($payload_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $curl = new \curl();
-        $curl->setHeader(['Content-Type: application/json; charset=utf-8']);
-        $resp = $curl->post($webhook_url, $payload);
+        $curl->setHeader([
+            'Content-Type: application/json; charset=utf-8',
+            'Accept: application/json'
+        ]);
+
+        $resp = $curl->post($target_url, $payload_json);
         $info = $curl->get_info();
         $code = (int)($info['http_code'] ?? 0);
+
+        // Mask zapikey for safe logging and display
+        $safe_url = preg_replace('/(zapikey=)([^&]+)/i', '$1****', $target_url);
 
         return [
             'success' => ($code >= 200 && $code < 300),
             'response' => (string)$resp,
             'http_code' => $code,
+            'url_used' => $safe_url,
         ];
     }
 }
+
