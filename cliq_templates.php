@@ -387,6 +387,83 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 </div>
               </div>
             </div>
+          </div> <!-- /.ba-cliq-card-body -->
+
+          <?php
+            $r = $workflow_rules[$t['id']] ?? [
+                'enabled' => 1,
+                'trigger_type' => 'schedule',
+                'condition_metric' => !empty($t['threshold_days']) ? 'days_overdue' : 'days_before_due',
+                'condition_value' => (int)($t['threshold_days'] ?? 1),
+                'recipient_type' => $t['recipient'],
+                'escalate_to' => (!empty($t['escalation']) && strpos($t['escalation'], 'PM') !== false) ? 'PM' : '',
+                'escalate_days' => 2,
+            ];
+          ?>
+          <!-- Workflow & Trigger Rules Panel -->
+          <div class="ba-cliq-workflow-panel">
+            <div class="ba-cliq-workflow-header">
+              <span class="ba-cliq-workflow-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Workflow Automation &amp; Dynamic Triggering
+              </span>
+              <label class="ba-cliq-switch-label" title="Enable or disable automated background execution for this template">
+                <input type="checkbox" class="ba-cliq-rule-enabled" <?= !empty($r['enabled']) ? 'checked' : '' ?>>
+                <span>Automated Workflow Active</span>
+              </label>
+            </div>
+
+            <div class="ba-cliq-workflow-grid">
+              <div class="ba-cliq-workflow-field">
+                <label>Trigger Condition</label>
+                <select class="ba-cliq-select ba-cliq-rule-metric">
+                  <option value="days_before_due" <?= ($r['condition_metric'] === 'days_before_due') ? 'selected' : '' ?>>Days Before Due Date</option>
+                  <option value="on_due_date" <?= ($r['condition_metric'] === 'on_due_date') ? 'selected' : '' ?>>On Due Date (Morning)</option>
+                  <option value="days_overdue" <?= ($r['condition_metric'] === 'days_overdue') ? 'selected' : '' ?>>Days Overdue (Daily Reminder)</option>
+                  <option value="attendance_missing" <?= ($r['condition_metric'] === 'attendance_missing') ? 'selected' : '' ?>>Attendance Missing Past 7 PM</option>
+                  <option value="batch_created" <?= ($r['condition_metric'] === 'batch_created') ? 'selected' : '' ?>>Batch Created (Instant Event)</option>
+                  <option value="module_completed" <?= ($r['condition_metric'] === 'module_completed') ? 'selected' : '' ?>>Module Completed (Instant Event)</option>
+                  <option value="nomination_raised" <?= ($r['condition_metric'] === 'nomination_raised') ? 'selected' : '' ?>>Nomination Raised (Instant Event)</option>
+                  <option value="batch_closure" <?= ($r['condition_metric'] === 'batch_closure') ? 'selected' : '' ?>>Batch Closure / Completed</option>
+                </select>
+              </div>
+
+              <div class="ba-cliq-workflow-field">
+                <label>Threshold {n} Days</label>
+                <input type="number" class="ba-cliq-input-small ba-cliq-rule-cval" value="<?= (int)($r['condition_value'] ?? 0) ?>" min="0" max="30">
+              </div>
+
+              <div class="ba-cliq-workflow-field">
+                <label>To Whom (Recipient)</label>
+                <select class="ba-cliq-select ba-cliq-rule-recipient">
+                  <option value="CM" <?= ($r['recipient_type'] === 'CM') ? 'selected' : '' ?>>Class Mentor (CM)</option>
+                  <option value="LM" <?= ($r['recipient_type'] === 'LM') ? 'selected' : '' ?>>Lab Mentor (LM)</option>
+                  <option value="SSE" <?= ($r['recipient_type'] === 'SSE') ? 'selected' : '' ?>>Senior Support Exec (SSE)</option>
+                  <option value="PM" <?= ($r['recipient_type'] === 'PM') ? 'selected' : '' ?>>Program Manager (PM)</option>
+                  <option value="AM" <?= ($r['recipient_type'] === 'AM') ? 'selected' : '' ?>>Assistant Manager (AM)</option>
+                </select>
+              </div>
+
+              <div class="ba-cliq-workflow-field">
+                <label>Escalate To (If Overdue)</label>
+                <select class="ba-cliq-select ba-cliq-rule-escalateto">
+                  <option value="" <?= empty($r['escalate_to']) ? 'selected' : '' ?>>No Escalation</option>
+                  <option value="PM" <?= (($r['escalate_to'] ?? '') === 'PM') ? 'selected' : '' ?>>Escalate to PM</option>
+                  <option value="AM" <?= (($r['escalate_to'] ?? '') === 'AM') ? 'selected' : '' ?>>Escalate to AM</option>
+                </select>
+              </div>
+
+              <div class="ba-cliq-workflow-field">
+                <label>Escalate After</label>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <input type="number" class="ba-cliq-input-small ba-cliq-rule-escalatedays" value="<?= (int)($r['escalate_days'] ?? 2) ?>" min="1" max="30">
+                  <span style="font-size:11px; color:#64748b;">days</span>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -569,6 +646,37 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
           Send to Zoho Cliq
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dry-Run Workflow Simulation Modal -->
+  <div class="ba-cliq-modal-overlay" id="ba-cliq-dryrun-modal">
+    <div class="ba-cliq-modal" style="max-width: 840px;">
+      <div class="ba-cliq-modal-header">
+        <h3>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1b6ec2" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          Dry-Run Workflow Simulation (Live Batch Scan)
+        </h3>
+        <button type="button" class="ba-cliq-modal-close" id="ba-cliq-dryrun-close-btn">&times;</button>
+      </div>
+
+      <div class="ba-cliq-modal-body">
+        <div id="ba-cliq-dryrun-summary" style="display:flex; gap:12px; margin-bottom:12px;"></div>
+        <div id="ba-cliq-dryrun-results" style="max-height: 400px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+
+      <div class="ba-cliq-modal-footer">
+        <button type="button" class="ba-cliq-btn ba-cliq-btn-secondary" id="ba-cliq-dryrun-cancel-btn">Close</button>
+        <button type="button" class="ba-cliq-btn ba-cliq-btn-primary" id="ba-cliq-dryrun-refresh-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          Re-Scan Live Batches
         </button>
       </div>
     </div>
