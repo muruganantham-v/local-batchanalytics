@@ -193,119 +193,32 @@ if ($hassiteconfig) {
         PARAM_ALPHANUMEXT
     ));
 
-    // Mentor Activity Message Templates Section
+    // Zoho Cliq Message Templates Link Banner
+    $manage_templates_url = new moodle_url('/local/batchanalytics/cliq_templates.php');
+    $templates_banner_html = '<div class="alert alert-info d-flex align-items-center justify-content-between p-3" style="border-radius: 8px; margin-top: 10px;">'
+        . '<div>'
+        . '<strong style="font-size: 14px;"><i class="fa fa-envelope-open-text"></i> ' . get_string('zoho_cliq_manage_templates', 'local_batchanalytics') . '</strong><br>'
+        . '<span class="text-muted small">' . get_string('zoho_cliq_manage_templates_desc', 'local_batchanalytics') . '</span>'
+        . '</div>'
+        . '<div class="ml-3">'
+        . '<a href="' . $manage_templates_url->out() . '" class="btn btn-primary" style="white-space: nowrap; font-weight: 600;">'
+        . '<i class="fa fa-external-link"></i> ' . get_string('zoho_cliq_open_templates_page', 'local_batchanalytics')
+        . '</a>'
+        . '</div>'
+        . '</div>';
+
     $settings->add(new admin_setting_heading(
-        'local_batchanalytics/zoho_cliq_mentor_heading',
-        get_string('zoho_cliq_mentor_heading', 'local_batchanalytics'),
-        get_string('zoho_cliq_mentor_heading_desc', 'local_batchanalytics')
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_mentor_t_minus_3',
-        get_string('cliq_tpl_mentor_t_minus_3', 'local_batchanalytics'),
-        get_string('cliq_tpl_mentor_t_minus_3_desc', 'local_batchanalytics'),
-        "Hello {mentor_name},\n\nThis is a reminder that the following module mentor activity is due in 3 days:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date}\n• Mentor: {mentor_name}\n\n🔗 View Module: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_mentor_due_today',
-        get_string('cliq_tpl_mentor_due_today', 'local_batchanalytics'),
-        get_string('cliq_tpl_mentor_due_today_desc', 'local_batchanalytics'),
-        "Hello {mentor_name},\n\nThe following module mentor activity is due today:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date} (Today)\n• Mentor: {mentor_name}\n\nPlease complete the evaluations and mark the activity complete in LMS:\n🔗 View Module: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_mentor_t_plus_3',
-        get_string('cliq_tpl_mentor_t_plus_3', 'local_batchanalytics'),
-        get_string('cliq_tpl_mentor_t_plus_3_desc', 'local_batchanalytics'),
-        "Attention {mentor_name},\n\nThe following module mentor activity is 3 days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nPlease evaluate pending submissions and mark complete immediately.\n🔗 View Module: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_mentor_t_plus_5',
-        get_string('cliq_tpl_mentor_t_plus_5', 'local_batchanalytics'),
-        get_string('cliq_tpl_mentor_t_plus_5_desc', 'local_batchanalytics'),
-        "Attention {pm_name} (Program Manager),\n\nThe following module mentor activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Assigned Mentor: {mentor_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease follow up with the assigned mentor.\n🔗 View Module: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_mentor_completed',
-        get_string('cliq_tpl_mentor_completed', 'local_batchanalytics'),
-        get_string('cliq_tpl_mentor_completed_desc', 'local_batchanalytics'),
-        "Hello Team,\n\nThe following module mentor activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Module: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    // SS Activity Message Templates Section
-    $settings->add(new admin_setting_heading(
-        'local_batchanalytics/zoho_cliq_ss_heading',
-        get_string('zoho_cliq_ss_heading', 'local_batchanalytics'),
-        get_string('zoho_cliq_ss_heading_desc', 'local_batchanalytics')
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_ss_t_minus_3',
-        get_string('cliq_tpl_ss_t_minus_3', 'local_batchanalytics'),
-        get_string('cliq_tpl_ss_t_minus_3_desc', 'local_batchanalytics'),
-        "Hello {sse_name},\n\nThis is a reminder that the following batch SS activity is due in 3 days:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date}\n• Responsible: {sse_name} (SS / MAAC Executive)\n\n🔗 View Batch: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_ss_due_today',
-        get_string('cliq_tpl_ss_due_today', 'local_batchanalytics'),
-        get_string('cliq_tpl_ss_due_today_desc', 'local_batchanalytics'),
-        "Hello {sse_name},\n\nThe following batch SS activity is due today:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date} (Today)\n• Responsible: {sse_name} (SS / MAAC Executive)\n\nPlease record completion in the LMS:\n🔗 View Batch: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_ss_t_plus_3',
-        get_string('cliq_tpl_ss_t_plus_3', 'local_batchanalytics'),
-        get_string('cliq_tpl_ss_t_plus_3_desc', 'local_batchanalytics'),
-        "Attention {sse_name},\n\nThe following batch SS activity is 3 days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nKindly complete this deliverable immediately to avoid management escalation.\n🔗 View Batch: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_ss_t_plus_5',
-        get_string('cliq_tpl_ss_t_plus_5', 'local_batchanalytics'),
-        get_string('cliq_tpl_ss_t_plus_5_desc', 'local_batchanalytics'),
-        "Attention {pm_name} (Program Manager),\n\nThe following SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease intervene and review this milestone.\n🔗 View Batch: {link}",
-        PARAM_RAW,
-        60,
-        6
-    ));
-
-    $settings->add(new admin_setting_configtextarea(
-        'local_batchanalytics/cliq_tpl_ss_completed',
-        get_string('cliq_tpl_ss_completed', 'local_batchanalytics'),
-        get_string('cliq_tpl_ss_completed_desc', 'local_batchanalytics'),
-        "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}",
-        PARAM_RAW,
-        60,
-        6
+        'local_batchanalytics/zoho_cliq_templates_link',
+        '',
+        $templates_banner_html
     ));
 
     $ADMIN->add('localplugins', $settings);
+
+    // Register Dedicated Zoho Cliq Notification Templates Management Page
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_batchanalytics_cliq_templates',
+        get_string('zoho_cliq_templates_nav', 'local_batchanalytics'),
+        new moodle_url('/local/batchanalytics/cliq_templates.php')
+    ));
 }

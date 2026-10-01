@@ -153,5 +153,10 @@ $string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the Program M
 $string['cliq_tpl_ss_completed'] = 'SS Activity: Completion Confirmation Template';
 $string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the PM and SSE when the SS activity is marked complete.';
 
-
-
+// Dedicated Templates Page Strings
+$string['zoho_cliq_templates'] = 'Zoho Cliq Notification Templates';
+$string['zoho_cliq_templates_nav'] = 'Zoho Cliq Notification Templates';
+$string['zoho_cliq_manage_templates'] = 'Customize Zoho Cliq Notification Templates';
+$string['zoho_cliq_manage_templates_desc'] = 'Open the dedicated collapsible editor to customize Subjects, Message Bodies, and Dynamic Placeholders for Mentor & SS activities.';
+$string['zoho_cliq_open_templates_page'] = 'Open Templates Editor';
+$string['templates_saved_success'] = 'Zoho Cliq notification templates have been updated successfully.';

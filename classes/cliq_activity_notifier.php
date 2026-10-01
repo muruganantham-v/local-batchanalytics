@@ -64,18 +64,203 @@ class cliq_activity_notifier {
     }
 
     /**
-     * Get a configured message template or fall back to default text.
+     * Get the master definitions of all notification templates, stages, defaults, and placeholders.
+     *
+     * @return array
+     */
+    public static function get_template_definitions(): array {
+        return [
+            'mentor' => [
+                'title'       => 'Mentor Activity Message Templates',
+                'scope'       => 'module',
+                'description' => 'Notifications dispatched for course module mentor activities (evaluated against planned start date + working due days).',
+                'stages'      => [
+                    't_minus_3' => [
+                        'key'             => 'mentor_t_minus_3',
+                        'title'           => '3 Days Before Due Reminder',
+                        'timing_badge'    => 'T-3 Days',
+                        'badge_color'     => '#0d6efd',
+                        'recipient'       => 'Assigned Mentors (Primary & Lab)',
+                        'recipient_badge' => 'Mentors',
+                        'card_theme'      => 'modern-inline',
+                        'default_subject' => '⏳ Upcoming Mentor Activity Reminder: {task_name}',
+                        'default_body'    => "Hello {mentor_name},\n\nThis is a reminder that the following module mentor activity is due in 3 days:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date}\n• Mentor: {mentor_name}\n\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{link}'],
+                    ],
+                    'due_today' => [
+                        'key'             => 'mentor_due_today',
+                        'title'           => 'Due Today Alert',
+                        'timing_badge'    => 'Due Today (T-0)',
+                        'badge_color'     => '#fd7e14',
+                        'recipient'       => 'Assigned Mentors (Primary & Lab)',
+                        'recipient_badge' => 'Mentors',
+                        'card_theme'      => 'amber',
+                        'default_subject' => '🚨 Mentor Activity Due Today: {task_name}',
+                        'default_body'    => "Hello {mentor_name},\n\nThe following module mentor activity is due today:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date} (Today)\n• Mentor: {mentor_name}\n\nPlease complete the evaluations and mark the activity complete in LMS:\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{link}'],
+                    ],
+                    't_plus_3' => [
+                        'key'             => 'mentor_t_plus_3',
+                        'title'           => '3 Days Overdue Warning',
+                        'timing_badge'    => '3 Days Overdue (T+3)',
+                        'badge_color'     => '#dc3545',
+                        'recipient'       => 'Assigned Mentors (Primary & Lab)',
+                        'recipient_badge' => 'Mentors',
+                        'card_theme'      => 'red',
+                        'default_subject' => '⚠️ Overdue Warning: Mentor Activity ({task_name}) 3 Days Overdue',
+                        'default_body'    => "Attention {mentor_name},\n\nThe following module mentor activity is 3 days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nPlease evaluate pending submissions and mark complete immediately.\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{link}'],
+                    ],
+                    't_plus_5' => [
+                        'key'             => 'mentor_t_plus_5',
+                        'title'           => '5th Day PM Escalation',
+                        'timing_badge'    => '5+ Days Overdue (T+5)',
+                        'badge_color'     => '#6f42c1',
+                        'recipient'       => 'Program Manager (PM) + Assigned Mentors',
+                        'recipient_badge' => 'PM Escalation',
+                        'card_theme'      => 'red',
+                        'default_subject' => '🛑 ESCALATION: Mentor Activity {task_name} is {overdue_days} Days Overdue',
+                        'default_body'    => "Attention {pm_name} (Program Manager),\n\nThe following module mentor activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Assigned Mentor: {mentor_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease follow up with the assigned mentor.\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{pm_name}', '{overdue_days}', '{link}'],
+                    ],
+                    'completed' => [
+                        'key'             => 'mentor_completed',
+                        'title'           => 'Instant Completion Confirmation',
+                        'timing_badge'    => 'Completed',
+                        'badge_color'     => '#198754',
+                        'recipient'       => 'Program Manager (PM) + Assigned Mentors',
+                        'recipient_badge' => 'PM + Mentors',
+                        'card_theme'      => 'green',
+                        'default_subject' => '✅ Mentor Activity Completed: {task_name}',
+                        'default_body'    => "Hello Team,\n\nThe following module mentor activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{completed_by}', '{completion_date}', '{link}'],
+                    ],
+                ],
+            ],
+            'ss' => [
+                'title'       => 'Soft Skills (SS) Activity Message Templates',
+                'scope'       => 'batch',
+                'description' => 'Notifications dispatched for batch-level soft skills milestones (evaluated against planned dates).',
+                'stages'      => [
+                    't_minus_3' => [
+                        'key'             => 'ss_t_minus_3',
+                        'title'           => '3 Days Before Due Reminder',
+                        'timing_badge'    => 'T-3 Days',
+                        'badge_color'     => '#0d6efd',
+                        'recipient'       => 'Student Success Executive (SSE / MAAC Executive)',
+                        'recipient_badge' => 'SSE',
+                        'card_theme'      => 'modern-inline',
+                        'default_subject' => '⏳ Upcoming SS Activity Reminder: {activity_name}',
+                        'default_body'    => "Hello {sse_name},\n\nThis is a reminder that the following batch SS activity is due in 3 days:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date}\n• Responsible: {sse_name} (SS / MAAC Executive)\n\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                    ],
+                    'due_today' => [
+                        'key'             => 'ss_due_today',
+                        'title'           => 'Due Today Alert',
+                        'timing_badge'    => 'Due Today (T-0)',
+                        'badge_color'     => '#fd7e14',
+                        'recipient'       => 'Student Success Executive (SSE / MAAC Executive)',
+                        'recipient_badge' => 'SSE',
+                        'card_theme'      => 'amber',
+                        'default_subject' => '🚨 SS Activity Due Today: {activity_name}',
+                        'default_body'    => "Hello {sse_name},\n\nThe following batch SS activity is due today:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date} (Today)\n• Responsible: {sse_name} (SS / MAAC Executive)\n\nPlease record completion in the LMS:\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                    ],
+                    't_plus_3' => [
+                        'key'             => 'ss_t_plus_3',
+                        'title'           => '3 Days Overdue Warning',
+                        'timing_badge'    => '3 Days Overdue (T+3)',
+                        'badge_color'     => '#dc3545',
+                        'recipient'       => 'Student Success Executive (SSE / MAAC Executive)',
+                        'recipient_badge' => 'SSE',
+                        'card_theme'      => 'red',
+                        'default_subject' => '⚠️ Overdue Warning: SS Activity ({activity_name}) 3 Days Overdue',
+                        'default_body'    => "Attention {sse_name},\n\nThe following batch SS activity is 3 days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nKindly complete this deliverable immediately to avoid management escalation.\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                    ],
+                    't_plus_5' => [
+                        'key'             => 'ss_t_plus_5',
+                        'title'           => '5th Day PM Escalation',
+                        'timing_badge'    => '5+ Days Overdue (T+5)',
+                        'badge_color'     => '#6f42c1',
+                        'recipient'       => 'Program Manager (PM) + SSE',
+                        'recipient_badge' => 'PM Escalation',
+                        'card_theme'      => 'red',
+                        'default_subject' => '🛑 ESCALATION: Batch SS Activity {activity_name} is {overdue_days} Days Overdue',
+                        'default_body'    => "Attention {pm_name} (Program Manager),\n\nThe following SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease intervene and review this milestone.\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{pm_name}', '{overdue_days}', '{link}'],
+                    ],
+                    'completed' => [
+                        'key'             => 'ss_completed',
+                        'title'           => 'Instant Completion Confirmation',
+                        'timing_badge'    => 'Completed',
+                        'badge_color'     => '#198754',
+                        'recipient'       => 'Program Manager (PM) + SSE',
+                        'recipient_badge' => 'PM + SSE',
+                        'card_theme'      => 'green',
+                        'default_subject' => '✅ SS Activity Completed: {activity_name}',
+                        'default_body'    => "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{activity_name}', '{completed_by}', '{completion_date}', '{link}'],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Get a configured message subject or fall back to default subject text.
+     *
+     * @param string $key Template identifier (e.g. 'mentor_t_minus_3' or 'cliq_tpl_mentor_t_minus_3')
+     * @param string $default_subject
+     * @return string
+     */
+    public static function get_template_subject(string $key, string $default_subject): string {
+        $clean_key = str_starts_with($key, 'cliq_tpl_') ? substr($key, 9) : $key;
+        $clean_key = preg_replace('/_(subject|body)$/', '', $clean_key);
+
+        $val = get_config('local_batchanalytics', 'cliq_tpl_' . $clean_key . '_subject');
+        if ($val !== false && trim((string)$val) !== '') {
+            return (string)$val;
+        }
+        return $default_subject;
+    }
+
+    /**
+     * Get a configured message body or fall back to default body text.
+     * Checks 'cliq_tpl_{key}_body' first, then 'cliq_tpl_{key}' (legacy), then $default_body.
+     *
+     * @param string $key Template identifier (e.g. 'mentor_t_minus_3' or 'cliq_tpl_mentor_t_minus_3')
+     * @param string $default_body
+     * @return string
+     */
+    public static function get_template_body(string $key, string $default_body): string {
+        $clean_key = str_starts_with($key, 'cliq_tpl_') ? substr($key, 9) : $key;
+        $clean_key = preg_replace('/_(subject|body)$/', '', $clean_key);
+
+        // 1. Check cliq_tpl_{key}_body
+        $val = get_config('local_batchanalytics', 'cliq_tpl_' . $clean_key . '_body');
+        if ($val !== false && trim((string)$val) !== '') {
+            return (string)$val;
+        }
+
+        // 2. Fallback to legacy cliq_tpl_{key}
+        $legacy = get_config('local_batchanalytics', 'cliq_tpl_' . $clean_key);
+        if ($legacy !== false && trim((string)$legacy) !== '') {
+            return (string)$legacy;
+        }
+
+        return $default_body;
+    }
+
+    /**
+     * Get a configured message template or fall back to default text (backward compatibility).
      *
      * @param string $config_key
      * @param string $default_text
      * @return string
      */
     public static function get_template_text(string $config_key, string $default_text): string {
-        $val = get_config('local_batchanalytics', $config_key);
-        if ($val !== false && trim((string)$val) !== '') {
-            return (string)$val;
-        }
-        return $default_text;
+        return self::get_template_body($config_key, $default_text);
     }
 
     /**
@@ -367,39 +552,40 @@ class cliq_activity_notifier {
                         '{url}'           => $batch_url,
                     ];
 
+                    $defs = self::get_template_definitions();
+
                     if ($diff_days === 3) {
                         // 1. Before 3 days -> SSE
                         $stage = 't_minus_3';
                         $recipient_emails = [$sse_email];
                         $card_theme = 'modern-inline';
-                        $subject = "⏳ Upcoming SS Activity Reminder (Due in 3 days)";
-                        $default = "Hello {sse_name},\n\nThis is a reminder that the following batch SS activity is due in 3 days:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date}\n• Responsible: {sse_name} (SS / MAAC Executive)\n\n🔗 View Batch: {link}";
-                        $body = self::render_template(self::get_template_text('cliq_tpl_ss_t_minus_3', $default), $placeholders);
+                        $stg_def = $defs['ss']['stages']['t_minus_3'];
+                        $subject = self::render_template(self::get_template_subject('ss_t_minus_3', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('ss_t_minus_3', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days === 0) {
                         // 2. On Due Date -> SSE
                         $stage = 'due_today';
                         $recipient_emails = [$sse_email];
                         $card_theme = 'amber';
-                        $subject = "🚨 SS Activity Due Today";
-                        $default = "Hello {sse_name},\n\nThe following batch SS activity is due today:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Due Date: {due_date} (Today)\n• Responsible: {sse_name} (SS / MAAC Executive)\n\nPlease record completion in the LMS:\n🔗 View Batch: {link}";
-                        $body = self::render_template(self::get_template_text('cliq_tpl_ss_due_today', $default), $placeholders);
+                        $stg_def = $defs['ss']['stages']['due_today'];
+                        $subject = self::render_template(self::get_template_subject('ss_due_today', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('ss_due_today', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days === -3) {
                         // 3. After 3 days overdue -> SSE
                         $stage = 't_plus_3';
                         $recipient_emails = [$sse_email];
                         $card_theme = 'red';
-                        $subject = "⚠️ Overdue Warning: SS Activity (3 Days Overdue)";
-                        $default = "Attention {sse_name},\n\nThe following batch SS activity is 3 days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nKindly complete this deliverable immediately to avoid management escalation.\n🔗 View Batch: {link}";
-                        $body = self::render_template(self::get_template_text('cliq_tpl_ss_t_plus_3', $default), $placeholders);
+                        $stg_def = $defs['ss']['stages']['t_plus_3'];
+                        $subject = self::render_template(self::get_template_subject('ss_t_plus_3', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('ss_t_plus_3', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days <= -5) {
                         // 4. After 5th day overdue -> Program Manager Escalation
                         $stage = 't_plus_5_escalation';
-                        $overdue_count = abs($diff_days);
                         $recipient_emails = array_filter([$pm_email, $sse_email]);
                         $card_theme = 'red';
-                        $subject = "🛑 ESCALATION: Batch SS Activity {$overdue_count} Days Overdue";
-                        $default = "Attention {pm_name} (Program Manager),\n\nThe following SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease intervene and review this milestone.\n🔗 View Batch: {link}";
-                        $body = self::render_template(self::get_template_text('cliq_tpl_ss_t_plus_5', $default), $placeholders);
+                        $stg_def = $defs['ss']['stages']['t_plus_5'];
+                        $subject = self::render_template(self::get_template_subject('ss_t_plus_5', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('ss_t_plus_5', $stg_def['default_body']), $placeholders);
                     }
 
                     if ($stage !== null) {
@@ -524,34 +710,33 @@ class cliq_activity_notifier {
                                 $stage = 't_minus_3';
                                 $recipient_emails = $mentor_emails;
                                 $card_theme = 'modern-inline';
-                                $subject = "⏳ Upcoming Mentor Activity Reminder (Due in 3 days)";
-                                $default = "Hello {mentor_name},\n\nThis is a reminder that the following module mentor activity is due in 3 days:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date}\n• Mentor: {mentor_name}\n\n🔗 View Module: {link}";
-                                $body = self::render_template(self::get_template_text('cliq_tpl_mentor_t_minus_3', $default), $placeholders);
+                                $stg_def = $defs['mentor']['stages']['t_minus_3'];
+                                $subject = self::render_template(self::get_template_subject('mentor_t_minus_3', $stg_def['default_subject']), $placeholders);
+                                $body = self::render_template(self::get_template_body('mentor_t_minus_3', $stg_def['default_body']), $placeholders);
                             } else if ($diff_days === 0) {
                                 // 2. On Due Date -> Mentor
                                 $stage = 'due_today';
                                 $recipient_emails = $mentor_emails;
                                 $card_theme = 'amber';
-                                $subject = "🚨 Mentor Activity Due Today";
-                                $default = "Hello {mentor_name},\n\nThe following module mentor activity is due today:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Due Date: {due_date} (Today)\n• Mentor: {mentor_name}\n\nPlease complete the evaluations and mark the activity complete in LMS:\n🔗 View Module: {link}";
-                                $body = self::render_template(self::get_template_text('cliq_tpl_mentor_due_today', $default), $placeholders);
+                                $stg_def = $defs['mentor']['stages']['due_today'];
+                                $subject = self::render_template(self::get_template_subject('mentor_due_today', $stg_def['default_subject']), $placeholders);
+                                $body = self::render_template(self::get_template_body('mentor_due_today', $stg_def['default_body']), $placeholders);
                             } else if ($diff_days === -3) {
                                 // 3. After 3 days overdue -> Mentor
                                 $stage = 't_plus_3';
                                 $recipient_emails = $mentor_emails;
                                 $card_theme = 'red';
-                                $subject = "⚠️ Overdue Warning: Mentor Activity (3 Days Overdue)";
-                                $default = "Attention {mentor_name},\n\nThe following module mentor activity is 3 days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Original Due Date: {due_date}\n• Overdue: 3 days\n\nPlease evaluate pending submissions and mark complete immediately.\n🔗 View Module: {link}";
-                                $body = self::render_template(self::get_template_text('cliq_tpl_mentor_t_plus_3', $default), $placeholders);
+                                $stg_def = $defs['mentor']['stages']['t_plus_3'];
+                                $subject = self::render_template(self::get_template_subject('mentor_t_plus_3', $stg_def['default_subject']), $placeholders);
+                                $body = self::render_template(self::get_template_body('mentor_t_plus_3', $stg_def['default_body']), $placeholders);
                             } else if ($diff_days <= -5) {
                                 // 4. After 5th day overdue -> Program Manager Escalation
                                 $stage = 't_plus_5_escalation';
-                                $overdue_count = abs($diff_days);
                                 $recipient_emails = array_filter(array_merge([$pm_email], $mentor_emails));
                                 $card_theme = 'red';
-                                $subject = "🛑 ESCALATION: Mentor Activity {$overdue_count} Days Overdue";
-                                $default = "Attention {pm_name} (Program Manager),\n\nThe following module mentor activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Assigned Mentor: {mentor_name}\n• Original Due Date: {due_date}\n• Delay: {overdue_days} days overdue\n\nPlease follow up with the assigned mentor.\n🔗 View Module: {link}";
-                                $body = self::render_template(self::get_template_text('cliq_tpl_mentor_t_plus_5', $default), $placeholders);
+                                $stg_def = $defs['mentor']['stages']['t_plus_5'];
+                                $subject = self::render_template(self::get_template_subject('mentor_t_plus_5', $stg_def['default_subject']), $placeholders);
+                                $body = self::render_template(self::get_template_body('mentor_t_plus_5', $stg_def['default_body']), $placeholders);
                             }
 
                             if ($stage !== null) {
@@ -651,21 +836,25 @@ class cliq_activity_notifier {
         $by_name   = $by_user ? fullname($by_user) : 'User';
         $comp_date = date('d M Y');
 
+        $defs = self::get_template_definitions();
+
         if ($action_type === 'ss') {
             $act_name = ucwords(str_replace(['_', '-'], ' ', $act_name_or_key));
             $batch_url = $CFG->wwwroot . '/local/batchanalytics/batch.php?id=' . $batchid;
             $recipients = array_filter(array_unique([$pm_email, $sse_email]));
 
-            $subject = "✅ SS Activity Completed";
-            $default = "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Activity: {activity_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}";
-            $body = self::render_template(self::get_template_text('cliq_tpl_ss_completed', $default), [
+            $stg_def = $defs['ss']['stages']['completed'];
+            $placeholders = [
                 '{batch_name}'      => $batch_name,
                 '{activity_name}'   => $act_name,
                 '{completed_by}'    => $by_name,
                 '{completion_date}' => $comp_date,
                 '{link}'            => $batch_url,
                 '{url}'             => $batch_url,
-            ]);
+            ];
+
+            $subject = self::render_template(self::get_template_subject('ss_completed', $stg_def['default_subject']), $placeholders);
+            $body = self::render_template(self::get_template_body('ss_completed', $stg_def['default_body']), $placeholders);
 
             $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
             self::log_notification($batchid, 0, 'ss', $act_name_or_key, 'completed', implode(',', $recipients));
@@ -696,9 +885,8 @@ class cliq_activity_notifier {
             $module_url = $CFG->wwwroot . '/local/batchanalytics/module.php?courseid=' . $courseid . '&batchid=' . $batchid;
             $recipients = array_filter(array_unique(array_merge([$pm_email], $mentor_emails)));
 
-            $subject = "✅ Mentor Activity Completed";
-            $default = "Hello Team,\n\nThe following module mentor activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Module: {module_name}\n• Task: {task_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Module: {link}";
-            $body = self::render_template(self::get_template_text('cliq_tpl_mentor_completed', $default), [
+            $stg_def = $defs['mentor']['stages']['completed'];
+            $placeholders = [
                 '{batch_name}'      => $batch_name,
                 '{module_name}'     => $module_name,
                 '{task_name}'       => $act_name_or_key,
@@ -707,7 +895,10 @@ class cliq_activity_notifier {
                 '{completion_date}' => $comp_date,
                 '{link}'            => $module_url,
                 '{url}'             => $module_url,
-            ]);
+            ];
+
+            $subject = self::render_template(self::get_template_subject('mentor_completed', $stg_def['default_subject']), $placeholders);
+            $body = self::render_template(self::get_template_body('mentor_completed', $stg_def['default_body']), $placeholders);
 
             $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
             self::log_notification($batchid, $courseid, 'mentor', $act_name_or_key, 'completed', implode(',', $recipients));
