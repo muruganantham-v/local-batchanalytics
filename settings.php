@@ -20,6 +20,7 @@ require_once(__DIR__ . '/classes/admin_setting_crm_fields.php');
 require_once(__DIR__ . '/classes/admin_setting_module_tracker_categories.php');
 require_once(__DIR__ . '/classes/admin_setting_mentor_master_activities.php');
 require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
+require_once(__DIR__ . '/classes/admin_setting_cliq_templates_button.php');
 require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
@@ -154,6 +155,42 @@ if ($hassiteconfig) {
         get_string('assistant_manager_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
+    ));
+
+    // Zoho Cliq Notification Section
+    $settings->add(new admin_setting_heading(
+        'local_batchanalytics/zoho_cliq_notification_heading',
+        get_string('zoho_cliq_notification_heading', 'local_batchanalytics'),
+        get_string('zoho_cliq_notification_heading_desc', 'local_batchanalytics')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_batchanalytics/zoho_cliq_enabled',
+        get_string('zoho_cliq_enabled', 'local_batchanalytics'),
+        get_string('zoho_cliq_enabled_desc', 'local_batchanalytics'),
+        '0'
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_cliq_webhook_url',
+        get_string('zoho_cliq_webhook_url', 'local_batchanalytics'),
+        get_string('zoho_cliq_webhook_url_desc', 'local_batchanalytics'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/zoho_cliq_bot_name',
+        get_string('zoho_cliq_bot_name', 'local_batchanalytics'),
+        get_string('zoho_cliq_bot_name_desc', 'local_batchanalytics'),
+        'Kajal Bot',
+        PARAM_TEXT
+    ));
+
+    $settings->add(new \local_batchanalytics\admin_setting_cliq_templates_button(
+        'local_batchanalytics/zoho_cliq_templates_btn',
+        get_string('view_cliq_templates', 'local_batchanalytics'),
+        get_string('view_cliq_templates_desc', 'local_batchanalytics')
     ));
 
     $ADMIN->add('localplugins', $settings);
