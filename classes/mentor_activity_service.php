@@ -60,7 +60,7 @@ class mentor_activity_service {
         ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
         ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
         ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
-        ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'desc' => 'Module Test Eveluation', 'category' => 'Evaluation'],
+        ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'desc' => 'Quiz evaluation', 'category' => 'Evaluation'],
     ];
 
     /** @var array Default grouping rules with due days */
@@ -73,7 +73,7 @@ class mentor_activity_service {
                 ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 15],
                 ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
                 ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 25],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 30],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 30],
             ],
         ],
         [
@@ -81,7 +81,7 @@ class mentor_activity_service {
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
                 ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 12],
             ],
         ],
         [
@@ -89,13 +89,13 @@ class mentor_activity_service {
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
                 ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 12],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 12],
             ],
         ],
         [
             'group' => 'C++',
             'activities' => [
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 5],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 5],
             ],
         ],
         [
@@ -103,7 +103,7 @@ class mentor_activity_service {
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
                 ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
-                ['key' => 'module_test_eveluation', 'name' => 'Module Test Eveluation', 'duedays' => 15],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 15],
             ],
         ],
     ];
@@ -782,6 +782,12 @@ class mentor_activity_service {
         foreach ($expected_activities as $act) {
             $act_name = $act['name'];
             $act_key = $act['key'] ?? self::slugify_key($act_name);
+            $lookup_k = mb_strtolower(trim($act_key));
+            $lookup_n = mb_strtolower(trim($act_name));
+            if (in_array($lookup_k, ['test_evaluation', 'module_test_eveluation', 'module_test_evaluation'], true) ||
+                (strpos($lookup_n, 'test') !== false && strpos($lookup_n, 'eval') !== false)) {
+                continue;
+            }
             $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
 
             // Calculate planned due date excluding Saturdays & Sundays

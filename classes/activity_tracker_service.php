@@ -393,14 +393,11 @@ class activity_tracker_service {
      */
     public static function get_default_tracker_categories(): array {
         return [
-            ['name' => 'Template',         'aliases' => 'template programs'],
-            ['name' => 'Classwork',        'aliases' => 'classworks'],
-            ['name' => 'Assignment',       'aliases' => 'assignments'],
-            ['name' => 'Module Test',      'aliases' => 'module test, cpp module tests, ds tests'],
-            ['name' => 'Programming Test', 'aliases' => 'programming tests'],
-            ['name' => 'Objective Test',   'aliases' => 'objective tests'],
-            ['name' => 'Quiz',             'aliases' => 'quiz'],
-            ['name' => 'Project',          'aliases' => 'projects, ds projects'],
+            ['name' => 'Assignment', 'aliases' => 'assignment, assignments, lab assignment, lab assignments'],
+            ['name' => 'Classwork',  'aliases' => 'classwork, classworks, class work, class works, cw'],
+            ['name' => 'Template',   'aliases' => 'template, templates, template program, template programs'],
+            ['name' => 'Project',    'aliases' => 'project, projects, mini project, major project'],
+            ['name' => 'Tests',      'aliases' => 'test, tests, quiz, quizzes, assessment, assessments, exam, exams, module test'],
         ];
     }
 
@@ -678,52 +675,95 @@ class activity_tracker_service {
             }
 
             // Attempts needing manual grading (e.g. essay questions)
+            $needsgrade_attempt_ids = [];
             if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
                 $sql_needsgrade = "
-                    SELECT quiza.quiz, COUNT(DISTINCT quiza.id) as pendingcnt
+                    SELECT quiza.id, quiza.quiz
                     FROM {quiz_attempts} quiza
                     JOIN {question_attempts} qa ON qa.questionusageid = quiza.uniqueid
                     JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                        AND qas.sequencenumber = (
+                            SELECT MAX(latestqas.sequencenumber)
+                            FROM {question_attempt_steps} latestqas
+                            WHERE latestqas.questionattemptid = qa.id
+                        )
                     WHERE quiza.quiz $in_sql
                       AND quiza.preview = 0
                       AND quiza.state = 'finished'
                       AND qas.state = 'needsgrading'
                       $quiza_stu_sql
-                    GROUP BY quiza.quiz
+                    GROUP BY quiza.id, quiza.quiz
                 ";
                 $needsgrade_rows = $DB->get_records_sql($sql_needsgrade, $params);
+                $quiz_needsgrade_counts = [];
                 foreach ($needsgrade_rows as $row) {
-                    $cnt = (int)$row->pendingcnt;
+                    $q_id = (int)$row->quiz;
+                    $needsgrade_attempt_ids[(int)$row->id] = true;
+                    $quiz_needsgrade_counts[$q_id] = ($quiz_needsgrade_counts[$q_id] ?? 0) + 1;
+                    $instance_pending['quiz'][$q_id] = ($instance_pending['quiz'][$q_id] ?? 0) + 1;
+                    $total_pending++;
+                }
+                foreach ($quiz_needsgrade_counts as $q_id => $cnt) {
                     if ($cnt > 0) {
-                        $q_id = (int)$row->quiz;
-                        $instance_pending['quiz'][$q_id] = ($instance_pending['quiz'][$q_id] ?? 0) + $cnt;
-                        $total_pending += $cnt;
                         $name = $instance_names['quiz:' . $q_id] ?? ('Quiz ' . $q_id);
                         $pending_details[] = $name . ' (' . $cnt . ' ungraded ' . ($cnt === 1 ? 'submission' : 'submissions') . ')';
                     }
                 }
             }
 
-            // Evaluated finished attempts
+            // Evaluated finished attempts (excluding attempts that still need manual grading)
             $sql_eval = "
-                SELECT quiza.id, quiza.quiz, quiza.timefinish
+                SELECT quiza.id, quiza.quiz, quiza.timefinish, quiza.timemodified
                 FROM {quiz_attempts} quiza
                 WHERE quiza.quiz $in_sql
                   AND quiza.preview = 0
                   AND quiza.state = 'finished'
+                  AND quiza.sumgrades IS NOT NULL
                   $quiza_stu_sql
-                ORDER BY quiza.timefinish DESC
+                ORDER BY quiza.timemodified DESC
             ";
             $eval_rows = $DB->get_records_sql($sql_eval, $params);
-            $total_evaluated += count($eval_rows);
             foreach ($eval_rows as $row) {
+                if (isset($needsgrade_attempt_ids[(int)$row->id])) {
+                    continue;
+                }
                 $q_id = (int)$row->quiz;
                 $instance_evaluated['quiz'][$q_id] = ($instance_evaluated['quiz'][$q_id] ?? 0) + 1;
+                $total_evaluated++;
+                $eval_time = max((int)$row->timefinish, (int)$row->timemodified);
+                if ($eval_time > $latest_graded_time) {
+                    $latest_graded_time = $eval_time;
+                }
             }
-            if (!empty($eval_rows)) {
-                $first = reset($eval_rows);
-                if ((int)$first->timefinish > $latest_graded_time) {
-                    $latest_graded_time = (int)$first->timefinish;
+
+            // Find latest manual grader if manual grading occurred
+            if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
+                $sql_latest_mgr = "
+                    SELECT qas.userid, qas.timecreated
+                    FROM {quiz_attempts} quiza
+                    JOIN {question_attempts} qa ON qa.questionusageid = quiza.uniqueid
+                    JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                        AND qas.sequencenumber = (
+                            SELECT MAX(latestqas.sequencenumber)
+                            FROM {question_attempt_steps} latestqas
+                            WHERE latestqas.questionattemptid = qa.id
+                        )
+                    WHERE quiza.quiz $in_sql
+                      AND quiza.preview = 0
+                      AND quiza.state = 'finished'
+                      AND qas.userid IS NOT NULL
+                      AND qas.userid > 0
+                      AND qas.userid != quiza.userid
+                      $quiza_stu_sql
+                    ORDER BY qas.timecreated DESC
+                ";
+                $latest_mgr_records = $DB->get_records_sql($sql_latest_mgr, $params, 0, 1);
+                if (!empty($latest_mgr_records)) {
+                    $mgr = reset($latest_mgr_records);
+                    if ((int)$mgr->timecreated > $latest_graded_time) {
+                        $latest_graded_time = (int)$mgr->timecreated;
+                    }
+                    $latest_grader = (int)$mgr->userid;
                 }
             }
         }
@@ -870,14 +910,26 @@ class activity_tracker_service {
             'Assignment' => ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation'],
             'Project'    => ['key' => 'project_evaluation',    'name' => 'Project evaluation'],
             'Quiz'       => ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation'],
-            'Test'       => ['key' => 'test_evaluation',       'name' => 'Test evaluation'],
         ];
 
         // Fetch current saved record for this course
         $rec = $DB->get_record(\local_batchanalytics\mentor_activity_service::get_table_name(), ['courseid' => $courseid]);
         $saved_list = [];
         if ($rec && !empty($rec->activitiesdata)) {
-            $saved_list = json_decode($rec->activitiesdata, true) ?: [];
+            $raw_saved = json_decode($rec->activitiesdata, true) ?: [];
+            $cleaned = false;
+            foreach ($raw_saved as $item) {
+                $k = mb_strtolower(trim($item['key'] ?? ''));
+                if (in_array($k, ['test_evaluation', 'module_test_eveluation', 'module_test_evaluation'], true)) {
+                    $cleaned = true;
+                    continue;
+                }
+                $saved_list[] = $item;
+            }
+            if ($cleaned) {
+                $rec->activitiesdata = json_encode(array_values($saved_list));
+                $DB->update_record(\local_batchanalytics\mentor_activity_service::get_table_name(), $rec);
+            }
         }
 
         $saved_by_key = [];
@@ -1090,37 +1142,82 @@ class activity_tracker_service {
                 $prog_cnt = (int)$DB->count_records_sql($sql_prog, $params);
 
                 $man_cnt = 0;
+                $needsgrade_qa_ids = [];
                 if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
                     $sql_man = "
-                        SELECT COUNT(DISTINCT qa.id)
+                        SELECT qa.id
                         FROM {quiz_attempts} qa
                         JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
                         JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                            AND qas.sequencenumber = (
+                                SELECT MAX(latestqas.sequencenumber)
+                                FROM {question_attempt_steps} latestqas
+                                WHERE latestqas.questionattemptid = qatt.id
+                            )
                         WHERE qa.quiz = :instance
                           AND qa.preview = 0
                           AND qa.state = 'finished'
                           AND qas.state = 'needsgrading'
                           $quiz_stu_sql
+                        GROUP BY qa.id
                     ";
-                    $man_cnt = (int)$DB->count_records_sql($sql_man, $params);
+                    $needsgrade_qa_ids = $DB->get_records_sql($sql_man, $params);
+                    $man_cnt = count($needsgrade_qa_ids);
                 }
                 $pending_count = $prog_cnt + $man_cnt;
 
                 $sql_eval = "
-                    SELECT qa.id, qa.timefinish
+                    SELECT qa.id, qa.timefinish, qa.timemodified
                     FROM {quiz_attempts} qa
                     WHERE qa.quiz = :instance
                       AND qa.preview = 0
                       AND qa.state = 'finished'
                       AND qa.sumgrades IS NOT NULL
                       $quiz_stu_sql
-                    ORDER BY qa.timefinish DESC
+                    ORDER BY qa.timemodified DESC
                 ";
                 $eval_records = $DB->get_records_sql($sql_eval, $params);
-                $evaluated_count = count($eval_records);
-                if (!empty($eval_records)) {
-                    $first = reset($eval_records);
-                    $latest_graded_time = (int)$first->timefinish;
+                $filtered_eval = [];
+                foreach ($eval_records as $rec) {
+                    if (!isset($needsgrade_qa_ids[$rec->id])) {
+                        $filtered_eval[] = $rec;
+                    }
+                }
+                $evaluated_count = count($filtered_eval);
+                if (!empty($filtered_eval)) {
+                    $first = reset($filtered_eval);
+                    $latest_graded_time = max((int)$first->timefinish, (int)$first->timemodified);
+                }
+
+                // Check latest manual grader if manual grading occurred
+                if ($DB->get_manager()->table_exists('question_attempts') && $DB->get_manager()->table_exists('question_attempt_steps')) {
+                    $sql_latest_mgr = "
+                        SELECT qas.userid, qas.timecreated
+                        FROM {quiz_attempts} qa
+                        JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
+                        JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                            AND qas.sequencenumber = (
+                                SELECT MAX(latestqas.sequencenumber)
+                                FROM {question_attempt_steps} latestqas
+                                WHERE latestqas.questionattemptid = qatt.id
+                            )
+                        WHERE qa.quiz = :instance
+                          AND qa.preview = 0
+                          AND qa.state = 'finished'
+                          AND qas.userid IS NOT NULL
+                          AND qas.userid > 0
+                          AND qas.userid != qa.userid
+                          $quiz_stu_sql
+                        ORDER BY qas.timecreated DESC
+                    ";
+                    $latest_mgr_records = $DB->get_records_sql($sql_latest_mgr, $params, 0, 1);
+                    if (!empty($latest_mgr_records)) {
+                        $mgr = reset($latest_mgr_records);
+                        if ((int)$mgr->timecreated > $latest_graded_time) {
+                            $latest_graded_time = (int)$mgr->timecreated;
+                        }
+                        $latest_grader = (int)$mgr->userid;
+                    }
                 }
             } else {
                 continue;
@@ -1403,6 +1500,11 @@ class activity_tracker_service {
                             FROM {quiz_attempts} qa
                             JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
                             JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                                AND qas.sequencenumber = (
+                                    SELECT MAX(latestqas.sequencenumber)
+                                    FROM {question_attempt_steps} latestqas
+                                    WHERE latestqas.questionattemptid = qatt.id
+                                )
                             WHERE qa.quiz = :instance
                               AND qa.preview = 0
                               AND qa.state = 'finished'
@@ -1657,6 +1759,11 @@ class activity_tracker_service {
                     FROM {quiz_attempts} qa
                     JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
                     JOIN {question_attempt_steps} qas ON qas.questionattemptid = qatt.id
+                        AND qas.sequencenumber = (
+                            SELECT MAX(latestqas.sequencenumber)
+                            FROM {question_attempt_steps} latestqas
+                            WHERE latestqas.questionattemptid = qatt.id
+                        )
                     WHERE qa.quiz = :instance
                       AND qa.preview = 0
                       AND qa.state = 'finished'
