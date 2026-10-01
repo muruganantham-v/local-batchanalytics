@@ -755,3 +755,119 @@
     border: 1px solid #fca5a5;
     color: #991b1b;
 }
+
+/* Workflow & Trigger Rules Panel inside Card */
+.ba-cliq-workflow-panel {
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    padding: 14px 20px;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
+.ba-cliq-workflow-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.ba-cliq-workflow-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ba-cliq-switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #047857;
+}
+
+.ba-cliq-switch-label input[type="checkbox"] {
+    accent-color: #059669;
+    cursor: pointer;
+}
+
+.ba-cliq-workflow-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.5fr 1.5fr 1fr;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+@media (max-width: 900px) {
+    .ba-cliq-workflow-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.ba-cliq-workflow-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ba-cliq-workflow-field label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
+    margin: 0;
+}
+
+.ba-cliq-select {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #0f172a;
+    background: #ffffff;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ba-cliq-select:focus {
+    outline: none;
+    border-color: #1b6ec2;
+    box-shadow: 0 0 0 2px rgba(27, 110, 194, 0.15);
+}
+
+.ba-cliq-input-small {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #0f172a;
+    background: #ffffff;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ba-cliq-input-small:focus {
+    outline: none;
+    border-color: #1b6ec2;
+    box-shadow: 0 0 0 2px rgba(27, 110, 194, 0.15);
+}
+
+/* Dry-Run Simulation Modal & Result Cards */
+.ba-cliq-sim-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.ba-cliq-sim-badge.due { background: #fef3c7; color: #92400e; }
+.ba-cliq-sim-badge.today { background: #dbeafe; color: #1e40af; }
+.ba-cliq-sim-badge.overdue { background: #fee2e2; color: #991b1b; }
+

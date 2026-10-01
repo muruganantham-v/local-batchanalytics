@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_batchanalytics
+ * Definition of scheduled tasks for local_batchanalytics.
  *
  * @package    local_batchanalytics
  * @copyright  2026
@@ -24,9 +24,14 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026100102;
-$plugin->requires  = 2024042200;
-$plugin->component = 'local_batchanalytics';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '2.2.4';
-
+$tasks = [
+    [
+        'classname' => 'local_batchanalytics\task\send_cliq_notifications',
+        'blocking'  => 0,
+        'minute'    => '*/15',
+        'hour'      => '9-19',
+        'day'       => '*',
+        'month'     => '*',
+        'dayofweek' => '1-5',
+    ],
+];

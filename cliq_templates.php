@@ -17,8 +17,12 @@
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
 require_once(__DIR__ . '/classes/cliq_notification_service.php');
+require_once(__DIR__ . '/classes/cliq_workflow_engine.php');
+require_once(__DIR__ . '/classes/cliq_recipient_resolver.php');
 
 use local_batchanalytics\cliq_notification_service;
+use local_batchanalytics\cliq_workflow_engine;
+use local_batchanalytics\cliq_recipient_resolver;
 
 require_login();
 $context = context_system::instance();
@@ -49,7 +53,17 @@ if ($action === 'savetemplates') {
         }
 
         cliq_notification_service::save_templates($decoded);
-        echo json_encode(['success' => true, 'message' => 'All templates saved successfully.']);
+
+        // Also save workflow rules if submitted
+        $raw_rules = optional_param('rules', '', PARAM_RAW);
+        if (!empty($raw_rules)) {
+            $decoded_rules = json_decode($raw_rules, true);
+            if (is_array($decoded_rules)) {
+                cliq_workflow_engine::save_all_rules($decoded_rules);
+            }
+        }
+
+        echo json_encode(['success' => true, 'message' => 'All templates and workflow rules saved successfully.']);
     } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -106,12 +120,31 @@ if ($action === 'testsend') {
     exit;
 }
 
+if ($action === 'dryrun') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        require_sesskey();
+        $results = cliq_workflow_engine::evaluate_scheduled_workflows(true, true);
+        echo json_encode(array_merge(['success' => true], $results));
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // -------------------------------------------------------------------------
 // 2. Data Preparation
 // -------------------------------------------------------------------------
 $templates = cliq_notification_service::get_templates();
 $default_templates = cliq_notification_service::DEFAULT_TEMPLATES;
 $placeholders = cliq_notification_service::PLACEHOLDER_DICTIONARY;
+$workflow_rules = cliq_workflow_engine::get_rules();
+
 
 $pm_count = 0;
 $sse_count = 0;
@@ -152,6 +185,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
      data-sesskey="<?= sesskey() ?>"
      data-placeholders="<?= s(json_encode($placeholders)) ?>"
      data-default-templates="<?= s(json_encode($default_templates)) ?>"
+     data-rules="<?= s(json_encode($workflow_rules)) ?>"
      data-cliq-configured="<?= cliq_notification_service::is_configured() ? '1' : '0' ?>"
      data-bot-url="<?= s(cliq_notification_service::get_bot_api_url()) ?>"
      data-user-email="<?= s($USER->email ?? '') ?>">
@@ -188,6 +222,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             </svg>
             Back to Plugin Settings
           </a>
+
+          <button type="button" id="ba-cliq-open-dryrun-modal" class="ba-cliq-btn ba-cliq-btn-secondary" title="Simulate workflow conditions against active live batches">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            Dry-Run Workflow
+          </button>
 
           <button type="button" id="ba-cliq-open-test-modal" class="ba-cliq-btn" style="background:#059669; border-color:#059669; color:#fff;" title="Send a test notification message to Zoho Cliq">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

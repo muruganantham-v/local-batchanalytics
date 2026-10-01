@@ -129,4 +129,5 @@ $string['view_cliq_templates'] = 'Zoho Cliq Templates';
 $string['view_cliq_templates_desc'] = 'View and customize message templates for Project Manager, SSE, Class Mentor, and Lab Mentor roles.';
 $string['cliq_templates_title'] = 'Zoho Cliq Notification Templates';
 $string['cliq_templates_desc'] = 'Configure message templates for batch lifecycle events, operational checklist due dates, attendance nudges, and escalations.';
+$string['task_send_cliq_notifications'] = 'Evaluate and send Zoho Cliq batch notifications';
 
