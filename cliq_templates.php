@@ -620,9 +620,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
         <div>
           <label for="ba-cliq-test-userids" class="ba-cliq-field-label">Recipient User Email(s) / Cliq User IDs (userids)</label>
-          <input type="text" id="ba-cliq-test-userids" class="ba-cliq-input-text" value="<?= s($USER->email ?? '') ?>" placeholder="user@company.com, mentor@company.com">
+          <input type="text" id="ba-cliq-test-userids" class="ba-cliq-input-text" value="<?= s($USER->email ?? '') ?>" placeholder="user@company.com, mentor@company.com or leave blank">
           <div class="ba-cliq-field-help">
-            Enter target email(s) or Cliq userids. Sent in payload as: <code>{ "text": messageText, "userids": [emails] }</code>
+            Enter target email(s) or Cliq user ID(s) (optional). Leave blank to broadcast to the bot channel / subscribers. Sent in payload as: <code>{ "text": messageText, "userids": "email1,email2" }</code>
           </div>
         </div>
 
@@ -630,7 +630,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           <label for="ba-cliq-test-message" class="ba-cliq-field-label">Message Text</label>
           <textarea id="ba-cliq-test-message" class="ba-cliq-input-text" rows="5" style="font-family:inherit; resize:vertical;"></textarea>
           <div class="ba-cliq-field-help">
-            Payload format sent to Cliq: <code>{ "text": messageText, "userids": emails }</code>
+            Payload format sent to Cliq: <code>{ "text": messageText }</code>
           </div>
         </div>
 

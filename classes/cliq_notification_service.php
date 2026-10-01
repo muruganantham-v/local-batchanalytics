@@ -795,18 +795,18 @@ class cliq_notification_service {
             'text' => $message,
         ];
 
-        // Format userids as list of trimmed email strings
+        // Format userids as string (Zoho Cliq bot endpoint expects string, NOT a JSON array)
         if (!empty($userids)) {
             if (is_string($userids)) {
-                $emails = preg_split('/[\s,]+/', trim($userids), -1, PREG_SPLIT_NO_EMPTY);
+                $parts = preg_split('/[\s,]+/', trim($userids), -1, PREG_SPLIT_NO_EMPTY);
             } else if (is_array($userids)) {
-                $emails = array_values(array_filter(array_map('trim', $userids)));
+                $parts = array_values(array_filter(array_map('trim', $userids)));
             } else {
-                $emails = [];
+                $parts = [];
             }
 
-            if (!empty($emails)) {
-                $payload_data['userids'] = $emails;
+            if (!empty($parts)) {
+                $payload_data['userids'] = implode(',', $parts);
             }
         }
 
