@@ -13,6 +13,8 @@
   var currentBatch = 'all';
   var allTodos = [];
   var activeRole = 'admin';
+  var isPmUser = false;
+  var isSsLeadUser = false;
   var pendingTask = null;
 
   // Pagination state
@@ -25,6 +27,15 @@
 
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
+
+    var roleSwitcher = document.getElementById('ba-role-switcher');
+    if (roleSwitcher) {
+      roleSwitcher.addEventListener('change', function() {
+        activeRole = this.value;
+        currentPage = 1;
+        loadDashboardData();
+      });
+    }
 
     var batchSel = document.getElementById('ba-batch-filter');
     if (batchSel) {
@@ -75,6 +86,40 @@
       });
     }
 
+    // Auto-refresh interval (every 30s) so if tasks are completed automatically or by evaluations, counts update
+    setInterval(function() {
+      var ov = document.getElementById('ba-task-modal-overlay');
+      if (!ov || !ov.classList.contains('show')) {
+        loadDashboardData();
+      }
+    }, 30000);
+
+    // Auto-refresh on window focus or tab visibility
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        var ov = document.getElementById('ba-task-modal-overlay');
+        if (!ov || !ov.classList.contains('show')) {
+          loadDashboardData();
+        }
+      }
+    });
+    window.addEventListener('focus', function() {
+      var ov = document.getElementById('ba-task-modal-overlay');
+      if (!ov || !ov.classList.contains('show')) {
+        loadDashboardData();
+      }
+    });
+
+    // Cross-tab sync via storage event
+    window.addEventListener('storage', function(e) {
+      if (e.key === 'ba_task_updated') {
+        var ov = document.getElementById('ba-task-modal-overlay');
+        if (!ov || !ov.classList.contains('show')) {
+          loadDashboardData();
+        }
+      }
+    });
+
     var initDataEl = document.getElementById('ba-dash-initial-data');
     if (initDataEl && initDataEl.textContent.trim()) {
       try {
@@ -94,6 +139,7 @@
 
     var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') +
       'action=get_dashboard_tasks' +
+      '&role=' + encodeURIComponent(activeRole || '') +
       '&sesskey=' + encodeURIComponent(sesskey);
 
     fetch(url, { credentials: 'same-origin' })
@@ -120,13 +166,23 @@
 
     if (d && d.active_role) {
       activeRole = d.active_role;
+      var roleSwitcher = document.getElementById('ba-role-switcher');
+      if (roleSwitcher) {
+        roleSwitcher.value = d.active_role;
+      }
+    }
+    if (d && d.is_pm !== undefined) {
+      isPmUser = !!d.is_pm;
+    }
+    if (d && d.is_sslead !== undefined) {
+      isSsLeadUser = !!d.is_sslead;
     }
 
     // Glance cards
     var elGlance = document.getElementById('ba-dash-glance');
     if (elGlance && Array.isArray(d.glance)) {
       elGlance.innerHTML = d.glance.map(function(g) {
-        var alertCls = g.alert ? ' alert' : '';
+        var alertCls = g.alert ? ' alert gt-alert' : '';
         return '<div class="gt' + alertCls + '">' +
           '<div class="v">' + escapeHtml(g.val) + '</div>' +
           '<div class="k">' + escapeHtml(g.lbl) + '</div>' +
@@ -166,7 +222,6 @@
 
     // Todos
     allTodos = Array.isArray(d.todo) ? d.todo : [];
-    currentPage = 1;
     renderTodoList();
 
     // Forthcoming
@@ -183,6 +238,43 @@
             '</div>';
         }).join('');
       }
+    }
+  }
+
+  function updateGlanceCounts() {
+    var overdueCount = 0;
+    var tasksDueWeek = 0;
+    allTodos.forEach(function(t) {
+      if (t.is_done) return;
+      if (t.status_class === 'over') {
+        overdueCount++;
+        tasksDueWeek++;
+      } else if (t.status_class === 'today' || t.status_class === 'soon') {
+        tasksDueWeek++;
+      }
+    });
+
+    var elGlance = document.getElementById('ba-dash-glance');
+    if (elGlance) {
+      var cards = elGlance.querySelectorAll('.gt');
+      cards.forEach(function(card) {
+        var labelEl = card.querySelector('.k');
+        var valEl = card.querySelector('.v');
+        if (!labelEl || !valEl) return;
+        var lbl = labelEl.textContent.trim().toLowerCase();
+        if (lbl === 'overdue') {
+          valEl.textContent = overdueCount;
+          if (overdueCount > 0) {
+            card.classList.add('alert');
+            card.classList.add('gt-alert');
+          } else {
+            card.classList.remove('alert');
+            card.classList.remove('gt-alert');
+          }
+        } else if (lbl.indexOf('due this week') !== -1 || lbl.indexOf('tasks due') !== -1) {
+          valEl.textContent = tasksDueWeek;
+        }
+      });
     }
   }
 
@@ -216,6 +308,9 @@
       elCount.textContent = totalPending + ' pending';
     }
 
+    // Keep glance counts synchronized
+    updateGlanceCounts();
+
     if (!filtered.length) {
       elList.innerHTML = '<div class="empty-box">✓ No pending tasks matching this filter</div>';
       if (elPagination) elPagination.innerHTML = '';
@@ -239,7 +334,7 @@
         var btnLbl = t.btn_label || 'Update →';
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
-      } else if (activeRole !== 'admin') {
+      } else if (activeRole !== 'admin' && activeRole !== 'pm' && !isPmUser) {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       }
 
@@ -361,9 +456,10 @@
     }
 
     if (validBody) {
+      var isSsePmTask = (activeRole === 'sspm') || (task && task.action_type === 'ss');
       validBody.innerHTML = '<div class="ba-modal-loading">' +
         '<div class="ba-spinner"></div>' +
-        '<span>Checking pending submissions and evaluations...</span>' +
+        '<span>' + (isSsePmTask ? 'Checking activity status...' : 'Checking pending submissions and evaluations...') + '</span>' +
         '</div>';
     }
 
@@ -420,6 +516,34 @@
       if (btnConfirm) {
         btnConfirm.disabled = true;
         btnConfirm.textContent = 'Cannot Complete';
+      }
+      return;
+    }
+
+    var isSsePm = (activeRole === 'sspm') ||
+                  (pendingTask && (pendingTask.action_type === 'ss' || pendingTask.role === 'sspm')) ||
+                  (resp && (resp.action_type === 'ss' || resp.role === 'sspm'));
+
+    if (isSsePm) {
+      var sHtml = '';
+      sHtml += '<div class="ba-modal-alert success">';
+      sHtml += '  <div class="alert-icon">✓</div>';
+      sHtml += '  <div class="alert-content">';
+      sHtml += '    <div class="alert-title">Ready to Mark Complete</div>';
+      sHtml += '    <div class="alert-desc">' + escapeHtml((resp.message && resp.message !== 'Milestone activity. Ready to mark complete.') ? resp.message : 'Ready to mark this activity as completed. Click Confirm Complete to finish.') + '</div>';
+      sHtml += '  </div>';
+      sHtml += '</div>';
+
+      validBody.innerHTML = sHtml;
+
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+      }
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
       }
       return;
     }
@@ -580,6 +704,7 @@
     formData.append('act_name', pendingTask.act_name || '');
     formData.append('act_key', pendingTask.act_key || '');
     formData.append('cmid', pendingTask.cmid || 0);
+    formData.append('role', activeRole || '');
 
     fetch(apiUrl, {
       method: 'POST',
@@ -592,7 +717,20 @@
         if (resp && resp.success) {
           pendingTask.is_done = true;
           closeModal();
+          // Optimistically update counts and todo list immediately
           renderTodoList();
+
+          // Broadcast to other open tabs/windows
+          try {
+            localStorage.setItem('ba_task_updated', Date.now().toString());
+          } catch (e) {}
+
+          // Apply updated server data if returned, otherwise fetch fresh data
+          if (resp.dashboard_data) {
+            applyData(resp.dashboard_data);
+          } else {
+            loadDashboardData();
+          }
         } else {
           renderModalValidation(resp);
         }

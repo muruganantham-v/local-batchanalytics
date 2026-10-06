@@ -181,7 +181,7 @@ $format_mod_date = static function($val): string {
 if (!empty($raw_modules)) {
     foreach ($raw_modules as $mod) {
         $mod_idx = (int)($mod['module'] ?? 1);
-        $course_id = !empty($mod['moodlecourseid']) ? (int)$mod['moodlecourseid'] : 0;
+        $course_id = !empty($mod['moodlecourseid']) ? (int)$mod['moodlecourseid'] : (!empty($mod['courseid']) ? (int)$mod['courseid'] : 0);
         $m_name = !empty($mod['name']) ? $mod['name'] : (!empty($mod['courseshortname']) ? $mod['courseshortname'] : '');
         if ($m_name === '' && $course_id > 0) {
             $c_rec = $DB->get_record('course', ['id' => $course_id], 'id, fullname, shortname');
@@ -658,7 +658,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                     ?>
                     <tr>
                       <td>
-                        <a href="<?= s($module_tracker_url) ?>" class="val" style="color:var(--text-main); font-weight:600; text-decoration:none;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'"><?= s($r['name']) ?></a>
+                        <?php if ($course_linked): ?>
+                          <a href="<?= s($module_tracker_url) ?>" class="val" style="color:var(--text-main); font-weight:600; text-decoration:none;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'"><?= s($r['name']) ?></a>
+                        <?php else: ?>
+                          <span class="val" style="color:var(--text-main); font-weight:600;" title="No course mapped for this module"><?= s($r['name']) ?></span>
+                        <?php endif; ?>
                       </td>
                       <td>
                         <?php if (!empty($r['class_mentors'])): ?>
@@ -695,7 +699,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                         <?php if ($course_linked): ?>
                           <a href="<?= s($module_tracker_url) ?>" class="viewbtn">View Module Tracker</a>
                         <?php else: ?>
-                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn" title="View Module details from Batch Management">View Module Tracker</a>
+                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module">View Module Tracker</button>
                         <?php endif; ?>
                       </td>
                     </tr>

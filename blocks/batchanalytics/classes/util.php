@@ -604,7 +604,7 @@ class util {
                 }
                 $prefix = 'module' . $i;
                 $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? $slot[$prefix . '_name'] ?? $slot[$prefix] ?? ''));
-                $cid = (int)($slot['moodlecourseid'] ?? $slot[$prefix . '_moodlecourseid'] ?? 0);
+                $cid = (int)($slot['moodlecourseid'] ?? $slot[$prefix . '_moodlecourseid'] ?? $slot['courseid'] ?? $slot[$prefix . '_courseid'] ?? 0);
                 $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : (int)($slot[$prefix . '_plannedstart'] ?? 0);
                 $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : (int)($slot[$prefix . '_plannedend'] ?? 0);
                 $pdays = (int)($slot['planneddays'] ?? $slot[$prefix . '_planneddays'] ?? 0);
@@ -651,7 +651,7 @@ class util {
                 }
                 $modnum = isset($slot['module']) && is_numeric($slot['module']) ? (int)$slot['module'] : ($pos + 1);
                 $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? ''));
-                $cid = (int)($slot['moodlecourseid'] ?? 0);
+                $cid = (int)($slot['moodlecourseid'] ?? $slot['courseid'] ?? 0);
                 $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : 0;
                 $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : 0;
                 $pdays = (int)($slot['planneddays'] ?? 0);

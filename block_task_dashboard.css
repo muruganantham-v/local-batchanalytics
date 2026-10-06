@@ -77,6 +77,7 @@ body.editing .block_batchanalytics .card-header {
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   margin-bottom: 24px;
+  align-items: stretch;
 }
 @media (max-width: 900px) {
   .ba-task-dash-wrap .glance {
@@ -87,9 +88,15 @@ body.editing .block_batchanalytics .card-header {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  padding: 16px 20px;
+  padding: 16px 20px !important;
+  margin: 0 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
 }
 .ba-task-dash-wrap .gt:hover {
   transform: translateY(-1px);
@@ -110,14 +117,19 @@ body.editing .block_batchanalytics .card-header {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.ba-task-dash-wrap .gt.alert {
-  border-color: #fca5a5;
-  background: #fef2f2;
+.ba-task-dash-wrap .gt.alert,
+.ba-task-dash-wrap .gt.gt-alert {
+  border-color: #fca5a5 !important;
+  background: #fef2f2 !important;
+  margin: 0 !important;
+  padding: 16px 20px !important;
 }
-.ba-task-dash-wrap .gt.alert .v {
+.ba-task-dash-wrap .gt.alert .v,
+.ba-task-dash-wrap .gt.gt-alert .v {
   color: #dc2626;
 }
-.ba-task-dash-wrap .gt.alert .k {
+.ba-task-dash-wrap .gt.alert .k,
+.ba-task-dash-wrap .gt.gt-alert .k {
   color: #b91c1c;
 }
 

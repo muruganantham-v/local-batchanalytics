@@ -90,6 +90,7 @@ class task_service {
         return !empty($personas['is_manager'])
             || !empty($personas['is_mentor'])
             || !empty($personas['is_sse'])
+            || !empty($personas['is_sslead'])
             || !empty($personas['is_pm'])
             || !empty($personas['is_asst']);
     }
@@ -135,8 +136,23 @@ class task_service {
         // Role config matches
         $has_mentor_role = self::user_has_configured_role($userid, 'mentor_roles');
         $has_sse_role    = self::user_has_configured_role($userid, 'ssexecutive_roles');
+        $has_sslead_role = self::user_has_configured_role($userid, 'sslead_roles');
         $has_pm_role     = self::user_has_configured_role($userid, 'program_manager_roles');
         $has_asst_role   = self::user_has_configured_role($userid, 'assistant_manager_roles');
+
+        // Check SS Lead configured email
+        $cfg_sslead_email = trim((string)(get_config('local_batchanalytics', 'sslead_email') ?: get_config('block_batchanalytics', 'sslead_email')));
+        $email_matches_sslead = false;
+        if ($cfg_sslead_email !== '' && $email !== '') {
+            $parts = array_map('trim', explode(',', $cfg_sslead_email));
+            foreach ($parts as $p) {
+                if (strcasecmp($p, $email) === 0) {
+                    $email_matches_sslead = true;
+                    break;
+                }
+            }
+        }
+        $is_sslead = $has_sslead_role || $email_matches_sslead;
 
         // Check Batch Management direct assignments in local_bm_classsection
         $assigned_sse = false;
@@ -162,26 +178,20 @@ class task_service {
                     $class_mentors = [$m['primarymentor'] ?? '', $m['secondarymentor'] ?? ''];
                     $lab_mentors   = [$m['labmentor1'] ?? '', $m['labmentor2'] ?? '', $m['labmentor3'] ?? ''];
 
+                    $cid = (int)($m['moodlecourseid'] ?? 0);
+                    $c_ctx = ($cid > 0) ? \context_course::instance($cid, IGNORE_MISSING) : null;
+                    $is_enrolled = ($c_ctx && is_enrolled($c_ctx, $userid));
+
                     foreach ($class_mentors as $cm) {
-                        if ($is_user_match($cm)) {
+                        if ($is_user_match($cm) && $is_enrolled) {
                             $assigned_class_mentor = true;
                             break;
                         }
                     }
                     foreach ($lab_mentors as $lm) {
-                        if ($is_user_match($lm)) {
+                        if ($is_user_match($lm) && $is_enrolled) {
                             $assigned_lab_mentor = true;
                             break;
-                        }
-                    }
-
-                    if (!$assigned_class_mentor && $has_mentor_role) {
-                        $cid = (int)($m['moodlecourseid'] ?? 0);
-                        if ($cid > 0) {
-                            $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
-                            if ($c_ctx && is_enrolled($c_ctx, $userid)) {
-                                $assigned_class_mentor = true;
-                            }
                         }
                     }
                 }
@@ -201,6 +211,7 @@ class task_service {
             'is_lab_mentor'         => $is_lab_mentor,
             'is_mentor'             => ($is_class_mentor || $is_lab_mentor),
             'is_sse'                => $is_sse,
+            'is_sslead'             => $is_sslead,
             'is_pm'                 => $is_pm,
             'is_asst'               => $is_asst,
             'assigned_class_mentor' => $assigned_class_mentor,
@@ -209,6 +220,7 @@ class task_service {
             'assigned_pm'           => $assigned_pm,
             'has_mentor_role'       => $has_mentor_role,
             'has_sse_role'          => $has_sse_role,
+            'has_sslead_role'       => $has_sslead_role,
             'has_pm_role'           => $has_pm_role,
             'has_asst_role'         => $has_asst_role,
         ];
@@ -264,11 +276,17 @@ class task_service {
         $personas = self::resolve_user_personas($userid);
         $is_manager = $personas['is_manager'];
 
-        // Normalize requested role to the 4 operational types: mentors, sspm, am, admin
+        // Normalize requested role to operational types: mentors, pm, sse, sslead, sspm, am, admin
         $normalized_role = trim($requested_role);
         if (in_array($normalized_role, ['class', 'lab', 'mentor'], true)) {
             $normalized_role = 'mentors';
-        } else if (in_array($normalized_role, ['sse', 'pm'], true)) {
+        } else if (in_array($normalized_role, ['pm', 'program_manager'], true)) {
+            $normalized_role = 'pm';
+        } else if (in_array($normalized_role, ['sse', 'ssexecutive'], true)) {
+            $normalized_role = 'sse';
+        } else if (in_array($normalized_role, ['sslead', 'ss_lead', 'lead'], true)) {
+            $normalized_role = 'sslead';
+        } else if ($normalized_role === 'sspm') {
             $normalized_role = 'sspm';
         } else if (in_array($normalized_role, ['asst', 'assistant'], true)) {
             $normalized_role = 'am';
@@ -276,13 +294,16 @@ class task_service {
             $normalized_role = 'admin';
         }
 
-        // Define the 4 operational types: admin, mentors, sspm, am
+        // Define operational types: admin, mentors, pm, sse, sslead, sspm, am
         $is_siteadmin = is_siteadmin($userid);
         $available_roles = [];
         if ($is_siteadmin) {
             $available_roles = [
                 'admin'   => 'Admin',
                 'mentors' => 'Mentors',
+                'pm'      => 'Program Manager',
+                'sse'     => 'SS Executive',
+                'sslead'  => 'SS Lead',
                 'sspm'    => 'SS / PM',
                 'am'      => 'Assistant Manager',
             ];
@@ -291,8 +312,14 @@ class task_service {
             if ($personas['is_asst']) {
                 $available_roles['am'] = 'Assistant Manager';
             }
-            if ($personas['is_sse'] || $personas['is_pm'] || $personas['assigned_sse'] || $personas['assigned_pm']) {
-                $available_roles['sspm'] = 'SS / PM';
+            if ($personas['is_pm'] || $personas['assigned_pm']) {
+                $available_roles['pm'] = 'Program Manager';
+            }
+            if (!empty($personas['is_sslead'])) {
+                $available_roles['sslead'] = 'SS Lead';
+            }
+            if ($personas['is_sse'] || $personas['assigned_sse']) {
+                $available_roles['sse'] = 'SS Executive';
             }
             if ($personas['is_mentor']) {
                 $available_roles['mentors'] = 'Mentors';
@@ -301,9 +328,12 @@ class task_service {
             // Fallback for managers with no explicit persona mapped
             if (empty($available_roles) && $is_manager) {
                 $available_roles = [
-                    'am'      => 'Assistant Manager',
-                    'sspm'    => 'SS / PM',
+                    'admin'   => 'Admin',
                     'mentors' => 'Mentors',
+                    'pm'      => 'Program Manager',
+                    'sse'     => 'SS Executive',
+                    'sslead'  => 'SS Lead',
+                    'am'      => 'Assistant Manager',
                 ];
             }
 
@@ -312,12 +342,24 @@ class task_service {
                 $default_role = 'mentors';
             } else if ($personas['is_asst']) {
                 $default_role = 'am';
-            } else if ($personas['assigned_sse'] || $personas['assigned_pm'] || $personas['is_sse'] || $personas['is_pm']) {
-                $default_role = 'sspm';
+            } else if ($personas['is_pm'] || $personas['assigned_pm']) {
+                $default_role = 'pm';
+            } else if (!empty($personas['is_sslead'])) {
+                $default_role = 'sslead';
+            } else if ($personas['is_sse'] || $personas['assigned_sse']) {
+                $default_role = 'sse';
             } else if ($personas['is_mentor']) {
                 $default_role = 'mentors';
             } else {
                 $default_role = array_key_first($available_roles);
+            }
+        }
+
+        if ($normalized_role === 'sspm' && !isset($available_roles['sspm'])) {
+            if (isset($available_roles['pm']) && !isset($available_roles['sse'])) {
+                $normalized_role = 'pm';
+            } else if (isset($available_roles['sse'])) {
+                $normalized_role = 'sse';
             }
         }
 
@@ -341,8 +383,20 @@ class task_service {
         $filtered_sections = [];
         foreach ($sections as $sec) {
             $match = false;
-            if ($active_role === 'admin' || $active_role === 'am') {
+            if ($active_role === 'admin' || $active_role === 'am' || $active_role === 'sslead') {
                 $match = true;
+            } else if ($active_role === 'pm') {
+                if ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
+                    $match = true;
+                } else if (!$personas['assigned_pm'] && ($personas['is_pm'] || $is_manager)) {
+                    $match = true;
+                }
+            } else if ($active_role === 'sse') {
+                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)) {
+                    $match = true;
+                } else if (!$personas['assigned_sse'] && ($personas['is_sse'] || $is_manager)) {
+                    $match = true;
+                }
             } else if ($active_role === 'sspm') {
                 if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)
                     || $is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
@@ -369,19 +423,15 @@ class task_service {
                         }
                     }
 
-                    if (!$is_mentor_in_mod && $personas['has_mentor_role']) {
+                    if ($is_mentor_in_mod) {
                         $cid = (int)($sm['moodlecourseid'] ?? 0);
                         if ($cid > 0) {
                             $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
                             if ($c_ctx && is_enrolled($c_ctx, $userid)) {
-                                $is_mentor_in_mod = true;
+                                $match = true;
+                                break;
                             }
                         }
-                    }
-
-                    if ($is_mentor_in_mod) {
-                        $match = true;
-                        break;
                     }
                 }
             }
@@ -410,9 +460,10 @@ class task_service {
         $forthcoming_list = [];
 
         // ---------------------------------------------------------------------
-        // 1. MENTOR ACTIVITIES (for Mentors or Admin)
+        // 1. MENTOR ACTIVITIES (for Mentors, Program Manager, or Admin)
+        // PM only receives ESCALATED mentor activities (5+ days overdue).
         // ---------------------------------------------------------------------
-        if ($active_role === 'mentors' || $active_role === 'admin') {
+        if ($active_role === 'mentors' || $active_role === 'pm' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
@@ -438,14 +489,14 @@ class task_service {
                             }
                         }
 
-                        if (!$is_assigned && $personas['has_mentor_role']) {
-                            $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
-                            if ($c_ctx && is_enrolled($c_ctx, $userid)) {
-                                $is_assigned = true;
-                            }
+                        // Must be mapped as mentor in the module
+                        if (!$is_assigned) {
+                            continue;
                         }
 
-                        if (!$is_assigned) {
+                        // Must ALSO be enrolled in that course for tasks to display
+                        $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
+                        if (!$c_ctx || !is_enrolled($c_ctx, $userid)) {
                             continue;
                         }
                     }
@@ -483,8 +534,38 @@ class task_service {
                                 'module'    => (int)($sm['module'] ?? 1),
                             ]))->out(false);
 
-                            if ($p_ts < $today_midnight) {
-                                $days = max(1, (int)floor(($today_midnight - $p_ts) / 86400));
+                            $is_overdue = ($p_ts < $today_midnight);
+                            $overdue_days = $is_overdue ? max(1, (int)floor(($today_midnight - $p_ts) / 86400)) : 0;
+                            $is_escalated = ($is_overdue && $overdue_days >= 5);
+
+                            // For Program Manager: ONLY display escalated mentor activities!
+                            if ($active_role === 'pm') {
+                                if (!$is_escalated) {
+                                    continue;
+                                }
+
+                                $todo_list[] = [
+                                    'id'            => 'mentor_' . $sec->id . '_' . $courseid . '_' . $act['key'],
+                                    'title'         => 'Escalated : ' . $act_name . ' — ' . $mod_name,
+                                    'meta'          => 'Batch ' . $batch_name . ' · ' . $act['planned_date_formatted'],
+                                    'batch_name'    => $batch_name,
+                                    'urgency_order' => 1,
+                                    'status_class'  => 'over',
+                                    'status_label'  => 'Escalated ' . $overdue_days . 'd',
+                                    'dest_type'     => 'module',
+                                    'dest_url'      => $dest_url,
+                                    'action_type'   => 'mentor',
+                                    'courseid'      => $courseid,
+                                    'batchid'       => (int)$sec->id,
+                                    'act_key'       => $act['key'],
+                                    'act_name'      => $act_name,
+                                    'planned_ts'    => $p_ts,
+                                ];
+                                continue;
+                            }
+
+                            // For Mentors / Admin:
+                            if ($is_overdue) {
                                 $todo_list[] = [
                                     'id'            => 'mentor_' . $sec->id . '_' . $courseid . '_' . $act['key'],
                                     'title'         => $act_name . ' — ' . $mod_name,
@@ -492,7 +573,7 @@ class task_service {
                                     'batch_name'    => $batch_name,
                                     'urgency_order' => 1,
                                     'status_class'  => 'over',
-                                    'status_label'  => 'Overdue ' . $days . 'd',
+                                    'status_label'  => 'Overdue ' . $overdue_days . 'd',
                                     'dest_type'     => 'module',
                                     'dest_url'      => $dest_url,
                                     'action_type'   => 'mentor',
@@ -559,9 +640,11 @@ class task_service {
         }
 
         // ---------------------------------------------------------------------
-        // 2. SS / PM ACTIVITIES (for SS / PM or Admin)
+        // 2. SS ACTIVITIES (for SSE, SS Lead, SS/PM or Admin)
+        // SS Lead only receives ESCALATED SS activities (5+ days overdue).
+        // PM does NOT receive SS activities (escalated to SS Lead).
         // ---------------------------------------------------------------------
-        if ($active_role === 'sspm' || $active_role === 'admin') {
+        if ($active_role === 'sse' || $active_role === 'sslead' || $active_role === 'sspm' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
                 if (empty($sec->softskillsdata)) {
                     continue;
@@ -580,8 +663,38 @@ class task_service {
                         continue; // Already completed or unassigned
                     }
 
-                    if ($p_ts < $today_midnight) {
-                        $days = max(1, (int)floor(($today_midnight - $p_ts) / 86400));
+                    $is_overdue = ($p_ts < $today_midnight);
+                    $overdue_days = $is_overdue ? max(1, (int)floor(($today_midnight - $p_ts) / 86400)) : 0;
+                    $is_escalated = ($is_overdue && $overdue_days >= 5);
+
+                    // For SS Lead: ONLY display escalated SS activities!
+                    if ($active_role === 'sslead') {
+                        if (!$is_escalated) {
+                            continue;
+                        }
+
+                        $todo_list[] = [
+                            'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
+                            'title'         => 'Escalated : ' . $act_name,
+                            'meta'          => 'Batch ' . $batch_name . ' · ' . $ss['p_date'],
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => 1,
+                            'status_class'  => 'over',
+                            'status_label'  => 'Escalated ' . $overdue_days . 'd',
+                            'dest_type'     => 'batch',
+                            'dest_url'      => $dest_url,
+                            'action_type'   => 'ss',
+                            'courseid'      => 0,
+                            'batchid'       => (int)$sec->id,
+                            'act_key'       => $ss['key'],
+                            'act_name'      => $act_name,
+                            'planned_ts'    => $p_ts,
+                        ];
+                        continue;
+                    }
+
+                    // For SSE / SS/PM / Admin:
+                    if ($is_overdue) {
                         $todo_list[] = [
                             'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
                             'title'         => $act_name,
@@ -589,7 +702,7 @@ class task_service {
                             'batch_name'    => $batch_name,
                             'urgency_order' => 1,
                             'status_class'  => 'over',
-                            'status_label'  => 'Overdue ' . $days . 'd',
+                            'status_label'  => 'Overdue ' . $overdue_days . 'd',
                             'dest_type'     => 'batch',
                             'dest_url'      => $dest_url,
                             'action_type'   => 'ss',
@@ -1010,6 +1123,9 @@ class task_service {
         $role_labels = [
             'admin'   => 'Admin · Operational Cockpit (All Activities)',
             'mentors' => 'Mentors · Module Activities',
+            'pm'      => 'Program Manager · Escalated Mentor Activities',
+            'sse'     => 'SS Executive · Soft Skills Activities',
+            'sslead'  => 'SS Lead · Escalated Soft Skills Activities',
             'sspm'    => 'SS / PM · Soft Skills Activities',
             'am'      => 'Assistant Manager · Module Operations',
         ];
@@ -1065,10 +1181,15 @@ class task_service {
             return strnatcasecmp($a['name'], $b['name']);
         });
 
+        $is_pm_user = ($active_role === 'pm' || (!empty($personas['is_pm']) && empty($personas['is_sse'])));
+        $is_sslead_user = ($active_role === 'sslead' || (!empty($personas['is_sslead']) && empty($personas['is_sse'])));
+
         return [
             'greeting'         => $greeting,
             'role_subtitle'    => $role_subtitle,
             'active_role'      => $active_role,
+            'is_pm'            => $is_pm_user,
+            'is_sslead'        => $is_sslead_user,
             'can_switch_roles' => ($is_manager || count($available_roles) > 1),
             'available_roles'  => $available_roles,
             'glance'           => $glance,
@@ -1130,6 +1251,7 @@ class task_service {
         return [
             'success'         => true,
             'action_type'     => $action_type,
+            'is_milestone'    => true,
             'has_pending'     => false,
             'count'           => 0,
             'pending_count'   => 0,
@@ -1138,7 +1260,7 @@ class task_service {
             'activity_name'   => $params['act_name'] ?? '',
             'activity_url'    => '',
             'items'           => [],
-            'message'         => 'Milestone activity. Ready to mark complete.',
+            'message'         => 'Ready to mark complete.',
             'details'         => [],
             'can_complete'    => true,
         ];

@@ -1,11 +1,118 @@
 <?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * English language strings for local_batchanalytics
+ *
+ * @package    local_batchanalytics
+ * @copyright  2026
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 defined('MOODLE_INTERNAL') || die();
 
-$string['pluginname'] = 'Batch Analytics Tasks';
-$string['batchanalytics:addinstance'] = 'Add a new Batch Analytics Tasks block';
-$string['batchanalytics:myaddinstance'] = 'Add a new Batch Analytics Tasks block to Dashboard';
-$string['batchanalytics:view'] = 'View Batch Analytics Tasks block';
+$string['pluginname'] = 'Batch Analytics';
+$string['batchanalytics:view'] = 'View batch analytics';
+$string['batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
+$string['batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
+$string['batchanalytics:viewenrolledcourses'] = 'View enrolled courses in batch analytics';
+$string['batchanalytics:viewreviewnotes'] = 'View review notes';
+$string['batchanalytics:editreviewnotes'] = 'Add and edit review notes';
+$string['nopermissiontoviewnotes'] = 'You do not have permission to view review notes.';
+
+// Zoho CRM configuration strings
+$string['crmsettings'] = 'CRM Integration Settings';
+$string['crmsettingsdesc'] = 'Configure CRM API credentials for fetching placement data';
+$string['zoho_configuration'] = 'Zoho Configuration';
+$string['zoho_client_id'] = 'Zoho CRM Client ID';
+$string['zoho_client_id_desc'] = 'OAuth client_id for Zoho CRM API';
+$string['zoho_client_secret'] = 'Zoho CRM Client Secret';
+$string['zoho_client_secret_desc'] = 'OAuth client_secret for Zoho CRM API';
+$string['zoho_refresh_token'] = 'Zoho CRM Refresh Token';
+$string['zoho_refresh_token_desc'] = 'OAuth refresh_token for Zoho CRM API';
+$string['zoho_accounts_url'] = 'Zoho Accounts URL';
+$string['zoho_accounts_url_desc'] = 'Zoho OAuth token endpoint base URL (e.g., https://accounts.zoho.com)';
+$string['zoho_api_base_url'] = 'Zoho API Base URL';
+$string['zoho_api_base_url_desc'] = 'Zoho CRM data API base URL (e.g., https://www.zohoapis.com)';
+$string['crmconfigmissing'] = 'CRM configuration missing';
+$string['crmconnectionfailed'] = 'CRM connection failed';
+$string['crmtokenfailed'] = 'CRM token request failed';
+
+// CRM fields
+$string['crm_fields_config'] = 'CRM Fields Configuration';
+$string['crm_fields_config_desc'] = 'Define the CRM fields shown in the PTF/CRM data table. Drag rows to reorder columns. <strong>Numeric</strong>: sort &amp; align as a number. <strong>Restricted</strong>: hide this column from users with only the View capability (Manage users always see all columns).';
+
+// Student CRM settings
+$string['student_crm_data'] = 'Student CRM Data';
+$string['student_crm_module_api_name'] = 'Student CRM module API name';
+$string['student_crm_module_api_name_desc'] = 'Zoho CRM module API name used by the CRM Data tab.';
+
+// Module Tracker
+$string['module_tracker'] = 'Module Tracker';
+$string['module_tracker_configuration'] = 'Module Tracker Categories';
+$string['module_tracker_categories'] = 'Tracker categories';
+$string['module_tracker_categories_desc'] = 'Add the Module Tracker tab name and the comma-separated Gradebook category names or phrases that belong in it.';
+$string['invalidactivity'] = 'The selected activity is not available in this course.';
+$string['invalidcompletiondate'] = 'Enter a valid completion date.';
+$string['activity_tracker_upgrade_required'] = 'Module Tracker data is not available yet. Complete the Moodle plugin upgrade, then reload this page.';
+$string['modal_close'] = 'Close';
+
+// Mentor Activities
+$string['mentor_activities_heading'] = 'Mentor Activities Configuration';
+$string['mentor_activities_heading_desc'] = 'Configure the master list of mentor activities and their course grouping rules.';
+$string['mentor_master_activities'] = 'Master Activity Pool';
+$string['mentor_master_activities_desc'] = 'List all possible mentor activities (one per line).';
+$string['mentor_activity_grouping'] = 'Course Grouping Rules';
+$string['mentor_activity_grouping_desc'] = 'Define activities grouped by course pattern or subject (format: Group Name: Activity 1, Activity 2, ...). If no manual group is chosen in Course Settings, the course title is matched against these group names.';
+$string['mentor_activity_grouping_hdr'] = 'Mentor Activities';
+$string['mentor_activity_group_select'] = 'Mentor Activity Group';
+$string['mentor_activity_group_select_desc'] = 'Select which group of mentor activities applies to this course, or choose None.';
+$string['mentor_activity_none'] = 'None (No Mentor Activity)';
+$string['mentor_activity_autodetect'] = 'None (No Mentor Activity)';
+$string['mentor_activities_empty'] = 'For this module there is no mentor activity.';
+$string['mentor_activities_saved'] = 'Mentor activity saved successfully.';
+$string['mentor_activities_group_badge'] = 'Activity Group';
+
+// Role & Operational Task Configuration
+$string['role_configuration'] = 'Operational Roles & Task Assignments';
+$string['role_configuration_desc'] = 'Select which Moodle roles function as Mentors, SS Executives, Program Managers, and Assistant Managers. Assigned users will automatically see their module mentor activities and batch soft skill tasks in their Dashboard To-Do block.';
+$string['mentor_roles'] = 'Mentor Roles';
+$string['mentor_roles_desc'] = 'Users with these roles (or assigned as mentors in batch module data) will see module mentor activities due.';
+$string['ssexecutive_roles'] = 'SS / MAAC Executive Roles';
+$string['ssexecutive_roles_desc'] = 'Users with these roles (or assigned as maacexecutive in class sections) will see batch soft skill activities.';
+$string['program_manager_roles'] = 'Program Manager Roles';
+$string['program_manager_roles_desc'] = 'Users with these roles (or assigned as pmmanager in class sections) will see batch milestones and soft skill activities.';
+$string['assistant_manager_roles'] = 'Assistant Manager Roles';
+$string['assistant_manager_roles_desc'] = 'Users with these roles will see batch setup and soft skill planning activities.';
 $string['mytodolist'] = 'My To-Do';
 $string['forthcoming'] = 'Forthcoming';
 $string['markcomplete'] = 'Mark Complete';
 $string['completed'] = 'Completed';
+$string['invalidmodule'] = 'The selected module was not found.';
+$string['invalidbatch'] = 'The selected batch or section was not found.';
+$string['invalidparams'] = 'Invalid parameters supplied.';
+$string['invalidaction'] = 'Invalid action specified.';
+$string['modulestartsaved'] = 'Module actual start date recorded.';
+$string['moduleendsaved'] = 'Module completion recorded.';
+$string['mentorassigned'] = 'Module mentor assignment updated.';
+$string['role_mentors'] = 'Mentors';
+$string['role_pm'] = 'Program Manager';
+$string['role_sse'] = 'SS Executive';
+$string['role_sslead'] = 'SS Lead';
+$string['role_sspm'] = 'SS / PM';
+$string['role_am'] = 'Assistant Manager';
+$string['role_admin'] = 'Admin';
+

@@ -1011,7 +1011,7 @@ class cliq_activity_notifier {
         $pm_email  = $pm_user ? $pm_user->email : '';
         $sse_email = $sse_user ? $sse_user->email : '';
         $sse_name  = $sse_user ? fullname($sse_user) : ($sec && !empty($sec->maacexecutivename) ? $sec->maacexecutivename : 'SS Executive');
-        $by_name   = $by_user ? fullname($by_user) : 'User';
+        $by_name   = $by_user ? fullname($by_user) : 'System (Auto)';
         $comp_date = date('d M Y');
 
         $defs = self::get_template_definitions();

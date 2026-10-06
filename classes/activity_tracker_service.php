@@ -89,7 +89,7 @@ class activity_tracker_service {
                 'completiondate' => $record ? (string)$record->completiondate : '',
                 'timemodified' => $record ? (int)$record->timemodified : 0,
                 'modifiedby' => $modby,
-                'modifiedbyname' => $users_map[$modby] ?? '',
+                'modifiedbyname' => ($completed && $modby === 0) ? 'System (Auto)' : ($users_map[$modby] ?? ''),
             ];
             if ($completed) {
                 $categories[$categorykey]['completed']++;
@@ -971,18 +971,18 @@ class activity_tracker_service {
             }
             // Case B: All submissions evaluated -> automatically mark completed
             else if ($metrics['total_pending'] === 0 && $metrics['total_evaluated'] > 0) {
-                if (!$is_currently_complete || empty($current_saved['modifiedby'])) {
+                if (!$is_currently_complete || !empty($current_saved['is_auto']) || empty($current_saved['modifiedby'])) {
                     $eval_time = $metrics['latest_graded_time'] > 0 ? $metrics['latest_graded_time'] : time();
                     $eval_date = date('Y-m-d', $eval_time);
-                    $grader_id = $metrics['latest_grader'] > 0 ? $metrics['latest_grader'] : 2;
 
                     \local_batchanalytics\mentor_activity_service::save_activity_status(
                         $courseid,
                         $act_name,
                         true,
                         $eval_date,
-                        $grader_id,
-                        $sectionid
+                        0,
+                        $sectionid,
+                        true
                     );
                     $results[$act_key] = 'auto_completed';
                 }
@@ -1237,7 +1237,7 @@ class activity_tracker_service {
             // Case B: 0 pending submissions and at least 1 evaluated -> auto-mark complete!
             else if ($pending_count === 0 && $evaluated_count > 0) {
                 $eval_date = date('Y-m-d', $latest_graded_time > 0 ? $latest_graded_time : time());
-                $grader_id = $latest_grader > 0 ? $latest_grader : 2;
+                $grader_id = 0; // 0 indicates System (Auto)
 
                 if (!$is_completed || empty($existing_rec->modifiedby) || empty($existing_rec->completiondate)) {
                     if ($existing_rec) {

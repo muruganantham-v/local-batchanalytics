@@ -13,6 +13,8 @@
   var currentBatch = 'all';
   var allTodos = [];
   var activeRole = 'admin';
+  var isPmUser = false;
+  var isSsLeadUser = false;
   var pendingTask = null;
 
   // Pagination state
@@ -25,6 +27,15 @@
 
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
+
+    var roleSwitcher = document.getElementById('ba-role-switcher');
+    if (roleSwitcher) {
+      roleSwitcher.addEventListener('change', function() {
+        activeRole = this.value;
+        currentPage = 1;
+        loadDashboardData();
+      });
+    }
 
     var batchSel = document.getElementById('ba-batch-filter');
     if (batchSel) {
@@ -155,13 +166,23 @@
 
     if (d && d.active_role) {
       activeRole = d.active_role;
+      var roleSwitcher = document.getElementById('ba-role-switcher');
+      if (roleSwitcher) {
+        roleSwitcher.value = d.active_role;
+      }
+    }
+    if (d && d.is_pm !== undefined) {
+      isPmUser = !!d.is_pm;
+    }
+    if (d && d.is_sslead !== undefined) {
+      isSsLeadUser = !!d.is_sslead;
     }
 
     // Glance cards
     var elGlance = document.getElementById('ba-dash-glance');
     if (elGlance && Array.isArray(d.glance)) {
       elGlance.innerHTML = d.glance.map(function(g) {
-        var alertCls = g.alert ? ' alert' : '';
+        var alertCls = g.alert ? ' alert gt-alert' : '';
         return '<div class="gt' + alertCls + '">' +
           '<div class="v">' + escapeHtml(g.val) + '</div>' +
           '<div class="k">' + escapeHtml(g.lbl) + '</div>' +
@@ -245,8 +266,10 @@
           valEl.textContent = overdueCount;
           if (overdueCount > 0) {
             card.classList.add('alert');
+            card.classList.add('gt-alert');
           } else {
             card.classList.remove('alert');
+            card.classList.remove('gt-alert');
           }
         } else if (lbl.indexOf('due this week') !== -1 || lbl.indexOf('tasks due') !== -1) {
           valEl.textContent = tasksDueWeek;
@@ -311,7 +334,7 @@
         var btnLbl = t.btn_label || 'Update →';
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
-      } else if (activeRole !== 'admin') {
+      } else if (activeRole !== 'admin' && activeRole !== 'pm' && !isPmUser) {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       }
 
@@ -433,9 +456,10 @@
     }
 
     if (validBody) {
+      var isSsePmTask = (activeRole === 'sspm') || (task && task.action_type === 'ss');
       validBody.innerHTML = '<div class="ba-modal-loading">' +
         '<div class="ba-spinner"></div>' +
-        '<span>Checking pending submissions and evaluations...</span>' +
+        '<span>' + (isSsePmTask ? 'Checking activity status...' : 'Checking pending submissions and evaluations...') + '</span>' +
         '</div>';
     }
 
@@ -492,6 +516,34 @@
       if (btnConfirm) {
         btnConfirm.disabled = true;
         btnConfirm.textContent = 'Cannot Complete';
+      }
+      return;
+    }
+
+    var isSsePm = (activeRole === 'sspm') ||
+                  (pendingTask && (pendingTask.action_type === 'ss' || pendingTask.role === 'sspm')) ||
+                  (resp && (resp.action_type === 'ss' || resp.role === 'sspm'));
+
+    if (isSsePm) {
+      var sHtml = '';
+      sHtml += '<div class="ba-modal-alert success">';
+      sHtml += '  <div class="alert-icon">✓</div>';
+      sHtml += '  <div class="alert-content">';
+      sHtml += '    <div class="alert-title">Ready to Mark Complete</div>';
+      sHtml += '    <div class="alert-desc">' + escapeHtml((resp.message && resp.message !== 'Milestone activity. Ready to mark complete.') ? resp.message : 'Ready to mark this activity as completed. Click Confirm Complete to finish.') + '</div>';
+      sHtml += '  </div>';
+      sHtml += '</div>';
+
+      validBody.innerHTML = sHtml;
+
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+      }
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
       }
       return;
     }

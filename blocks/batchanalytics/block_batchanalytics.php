@@ -122,7 +122,7 @@ class block_batchanalytics extends block_base {
 
             // Check mentor activities for this course
             try {
-                $mdata = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid);
+                $mdata = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $coursename);
                 $activities = $mdata['activities'] ?? [];
                 $pending = 0;
                 $overdue = 0;
@@ -182,13 +182,28 @@ class block_batchanalytics extends block_base {
     <div>
       <h1 id="ba-dash-greeting">' . s($dashdata['greeting']) . '</h1>
       <div class="sub" id="ba-dash-rolesub">' . s($dashdata['role_subtitle']) . '</div>
-    </div>
+    </div>';
+
+            if (!empty($dashdata['can_switch_roles']) && count($dashdata['available_roles']) > 1) {
+                $html .= '
+    <div class="ph-role-switch" style="align-self: flex-start;">
+      <select id="ba-role-switcher" class="filter-select" title="Switch Operational Role" aria-label="Switch Operational Role" style="padding: 7px 12px; font-weight: 600; font-size: 13px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;">';
+                foreach ($dashdata['available_roles'] as $rk => $rlbl) {
+                    $sel = ($rk === ($dashdata['active_role'] ?? '')) ? ' selected' : '';
+                    $html .= '<option value="' . s($rk) . '"' . $sel . '>' . s($rlbl) . '</option>';
+                }
+                $html .= '
+      </select>
+    </div>';
+            }
+
+            $html .= '
   </div>
 
   <!-- Glance Stat Cards -->
   <div class="glance" id="ba-dash-glance">';
             foreach ($dashdata['glance'] as $g) {
-                $alert_class = !empty($g['alert']) ? ' alert' : '';
+                $alert_class = !empty($g['alert']) ? ' alert gt-alert' : '';
                 $html .= '<div class="gt' . $alert_class . '">';
                 $html .= '  <div class="v">' . s($g['val']) . '</div>';
                 $html .= '  <div class="k">' . s($g['lbl']) . '</div>';
@@ -238,7 +253,7 @@ class block_batchanalytics extends block_base {
                         $btn_lbl = !empty($t['btn_label']) ? $t['btn_label'] : 'Update →';
                         $act_url = !empty($t['action_url']) ? $t['action_url'] : $t['dest_url'];
                         $html .= '    <a href="' . s($act_url) . '" class="mc-btn2 mc-btn-link">' . s($btn_lbl) . '</a>';
-                    } else if (($dashdata['active_role'] ?? '') !== 'admin') {
+                    } else if (($dashdata['active_role'] ?? '') !== 'admin' && ($dashdata['active_role'] ?? '') !== 'pm' && empty($dashdata['is_pm'])) {
                         $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
                     }
                     $html .= '  </div>';

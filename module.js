@@ -51,11 +51,21 @@
                 return;
             }
 
+            var pts = parseInt(plannedTs, 10) || 0;
+            if (pts <= 0) {
+                badge.className = 'ba-mentor-action-badge st st-b';
+                badge.textContent = 'Upcoming';
+                return;
+            }
+
             var now = new Date();
             var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
-            var pts = parseInt(plannedTs, 10) || 0;
+            var todayEnd = todayMidnight + 86400;
 
-            if (pts <= 0 || todayMidnight <= pts) {
+            if (pts >= todayMidnight && pts < todayEnd) {
+                badge.className = 'ba-mentor-action-badge st st-a';
+                badge.textContent = 'Due Today';
+            } else if (pts >= todayEnd) {
                 badge.className = 'ba-mentor-action-badge st st-b';
                 badge.textContent = 'Upcoming';
             } else {

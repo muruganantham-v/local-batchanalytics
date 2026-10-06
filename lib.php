@@ -82,7 +82,7 @@ function local_batchanalytics_courseform_definition($mform, $course) {
 
     if ($courseid > 0) {
         $selected = \local_batchanalytics\mentor_activity_service::get_course_selected_group($courseid);
-        $mform->setDefault('local_batchanalytics_mentor_group', $selected);
+        $mform->setDefault('local_batchanalytics_mentor_group', ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0) ? $selected : 'none');
     }
 }
 
