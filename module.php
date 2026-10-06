@@ -267,7 +267,7 @@ $format_mod_date = static function($val): string {
 
 // Extract & normalize header fields
 if ($section) {
-    $batchname = $section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id);
+    $batchname = \local_batchanalytics\util::clean_section_name($section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id));
     // Program Manager resolution: prioritize resolving by userid
     $pmuser = null;
     if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
@@ -456,10 +456,13 @@ if (!function_exists('format_cell_muted')) {
 $students_data = [];
 
 $spot_award_counts = [];
-if ($courseid > 0 && $DB->get_manager()->table_exists('spotaward_nominations') && $DB->get_manager()->table_exists('spotaward_nomination_items')) {
+$spot_items_tbl = $DB->get_manager()->table_exists('nominations_sa_items') ? 'nominations_sa_items' : ($DB->get_manager()->table_exists('spotaward_nomination_items') ? 'spotaward_nomination_items' : '');
+$spot_noms_tbl = $DB->get_manager()->table_exists('nominations_sa_nominations') ? 'nominations_sa_nominations' : ($DB->get_manager()->table_exists('spotaward_nominations') ? 'spotaward_nominations' : '');
+
+if ($courseid > 0 && !empty($spot_items_tbl) && !empty($spot_noms_tbl)) {
     $sql = "SELECT sni.studentid, COUNT(sni.id) AS awardcount
-              FROM {spotaward_nomination_items} sni
-              JOIN {spotaward_nominations} sn ON sn.id = sni.nominationid
+              FROM {{$spot_items_tbl}} sni
+              JOIN {{$spot_noms_tbl}} sn ON sn.id = sni.nominationid
              WHERE sn.courseid = :courseid
                AND sni.status = 'closed'
           GROUP BY sni.studentid";
@@ -468,18 +471,74 @@ if ($courseid > 0 && $DB->get_manager()->table_exists('spotaward_nominations') &
     }
 }
 
+$sec_student_uids = [];
+if ($section && $has_bm_student) {
+    $sec_student_uids = $DB->get_fieldset_select(
+        'local_bm_student',
+        'userid',
+        'classsectionid = :secid',
+        ['secid' => $section->id]
+    );
+    if (empty($sec_student_uids) && !empty($section->batchid)) {
+        $sec_student_uids = $DB->get_fieldset_select(
+            'local_bm_student',
+            'userid',
+            'batchid = :bid',
+            ['bid' => $section->batchid]
+        );
+    }
+    $sec_student_uids = array_values(array_filter(array_map('intval', $sec_student_uids)));
+}
+
 $enrolledstudents = [];
 if ($courseid > 0) {
     $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
     $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
     if ($studentroleid > 0 && $coursecontext) {
-        $enrolledstudents = get_role_users(
+        $all_enrolled = get_role_users(
             $studentroleid,
             $coursecontext,
             false,
             'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
         );
+        if (!empty($sec_student_uids)) {
+            $filtered = [];
+            $existing_uids = [];
+            foreach ($all_enrolled as $st_rec) {
+                if (in_array((int)$st_rec->id, $sec_student_uids, true)) {
+                    $filtered[$st_rec->id] = $st_rec;
+                    $existing_uids[] = (int)$st_rec->id;
+                }
+            }
+            $missing_uids = array_diff($sec_student_uids, $existing_uids);
+            if (!empty($missing_uids)) {
+                list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
+                $extra_students = $DB->get_records_select(
+                    'user',
+                    "id $in_missing AND deleted = 0",
+                    $m_params,
+                    'firstname ASC, lastname ASC',
+                    'id, idnumber, username, firstname, lastname, email'
+                );
+                foreach ($extra_students as $mrec) {
+                    $filtered[$mrec->id] = $mrec;
+                }
+            }
+            $enrolledstudents = $filtered;
+        } else {
+            $enrolledstudents = $all_enrolled;
+        }
     }
+}
+if (empty($enrolledstudents) && !empty($sec_student_uids)) {
+    list($in_sec, $sec_params) = $DB->get_in_or_equal($sec_student_uids, SQL_PARAMS_NAMED, 'secstu');
+    $enrolledstudents = $DB->get_records_select(
+        'user',
+        "id $in_sec AND deleted = 0",
+        $sec_params,
+        'firstname ASC, lastname ASC',
+        'id, idnumber, username, firstname, lastname, email'
+    );
 }
 
 foreach ($enrolledstudents as $studentrecord) {
@@ -585,6 +644,11 @@ $students_sql = "
     ORDER BY u.firstname, u.lastname
 ";
 $enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
+if (!empty($sec_student_uids) && !empty($enrolled_students)) {
+    $enrolled_students = array_filter($enrolled_students, static function($st) use ($sec_student_uids) {
+        return in_array((int)$st->userid, $sec_student_uids, true);
+    });
+}
 
 if ($courseid > 0) {
     // 1. Fetch tracker categories configured in Site Admin and course grade categories
@@ -877,21 +941,23 @@ if ($courseid > 0) {
 // -------------------------------------------------------------------------
 // 6. Soft Skills Activities for this Module
 // -------------------------------------------------------------------------
+$all_ss_activities = [];
 $ss_module_activities = [];
 
 if ($section && !empty($section->softskillsdata)) {
     $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
-    if ($mod_p_start_ts > 0 && $mod_p_end_ts > 0) {
-        $range_start = strtotime('today midnight', $mod_p_start_ts);
-        $range_end = strtotime('today midnight', $mod_p_end_ts) + 86399;
+    $range_start = $mod_p_start_ts > 0 ? strtotime('today midnight', $mod_p_start_ts) : 0;
+    $range_end = $mod_p_end_ts > 0 ? (strtotime('today midnight', $mod_p_end_ts) + 86399) : 0;
 
-        foreach ($all_ss_activities as $act) {
-            // Filter: activity planned date falls between module planned start and end date
-            if ($act['planned'] > 0 && $act['planned'] >= $range_start && $act['planned'] <= $range_end) {
-                $ss_module_activities[] = $act;
-            }
+    foreach ($all_ss_activities as &$act) {
+        $is_in_module = ($range_start > 0 && $range_end > 0 && $act['planned'] > 0
+            && $act['planned'] >= $range_start && $act['planned'] <= $range_end);
+        $act['is_current_module'] = $is_in_module;
+        if ($is_in_module) {
+            $ss_module_activities[] = $act;
         }
     }
+    unset($act);
 }
 
 // -------------------------------------------------------------------------
@@ -1256,8 +1322,10 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
     <!-- 2. SS Activities Panel (Module Level) -->
     <div id="panel-ssact" class="panel">
-      <div class="panel-note">
-        Soft skill activities scheduled between this module's planned start date (<b><?= s($p_start) ?></b>) and planned end date (<b><?= s($p_end) ?></b>).
+      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+          Soft skills roadmap for <b><?= s($batchname) ?></b>. Activities scheduled during this module (<b><?= s($p_start) ?></b> – <b><?= s($p_end) ?></b>) are marked with <span class="st st-g" style="padding:2px 8px; font-size:11px;">Active in this module</span>.
+        </div>
       </div>
       <div class="tablecard">
         <table>
@@ -1267,18 +1335,26 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <th>Planned Date</th>
               <th>Actual Date</th>
               <th>Status</th>
+              <th>Module Alignment</th>
             </tr>
           </thead>
           <tbody>
-            <?php if (empty($ss_module_activities)): ?>
-              <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;">No soft skill activities scheduled during this module's duration (<?= s($p_start) ?> – <?= s($p_end) ?>).</td></tr>
+            <?php if (empty($all_ss_activities)): ?>
+              <tr><td colspan="5" class="muted" style="text-align:center; padding:24px;">No soft skill activities are configured for this batch.</td></tr>
             <?php else: ?>
-              <?php foreach ($ss_module_activities as $r): ?>
-                <tr>
+              <?php foreach ($all_ss_activities as $r): ?>
+                <tr <?= !empty($r['is_current_module']) ? 'style="background-color:rgba(14, 165, 233, 0.05); font-weight:500;"' : '' ?>>
                   <td><span class="val"><?= s($r['activity']) ?></span></td>
                   <td class="date"><?= s($r['p_date']) ?></td>
                   <td class="date"><?= format_cell_muted($r['a_date']) ?></td>
                   <td><span class="st st-<?= s($r['status']) ?>"><?= s($r['label']) ?></span></td>
+                  <td>
+                    <?php if (!empty($r['is_current_module'])): ?>
+                      <span class="st st-g" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd; font-weight:600;">Active in Module <?= (int)$module_idx ?></span>
+                    <?php else: ?>
+                      <span class="muted" style="font-size:12px;">Full Batch Roadmap</span>
+                    <?php endif; ?>
+                  </td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>

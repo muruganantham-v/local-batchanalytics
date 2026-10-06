@@ -112,6 +112,7 @@ The bot resolves target emails dynamically at runtime by inspecting LMS batch re
 |---|---|---|
 | `pm` | **Program Manager** | Reads `local_bm_classsection.pmmanager` email or users assigned the Program Manager role configured in `admin/settings.php`. |
 | `sse` | **Student Success Executive** | Reads `local_bm_classsection.maacexecutive` email or users assigned the Student Success Executive role in `admin/settings.php`. |
+| `ss_lead` | **Soft Skills Lead** | Reads `sslead_roles` / `sslead_email` in `admin/settings.php`. Escalation and completion notification target for SS activities (PM is excluded). |
 | `class_mentor` | **Class Mentor** | Reads `primarymentor` and `secondarymentor` from `local_bm_classsection.moduledata` for the active module, falling back to course editing teacher enrollments. |
 | `lab_mentor` | **Lab Mentor** | Reads `labmentor` from `local_bm_classsection.moduledata` for the active module. |
 | `assistant_manager` | **Assistant Manager** | Reads users assigned the Assistant Manager role in plugin settings; acts as the second-tier escalation authority. |
@@ -213,8 +214,7 @@ The Program Manager receives batch-level and escalation messages. The PM is the 
 | PM-01 | Batch created | Existing | — | ℹ️ **New batch created**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date} · Planned end: {planned_end}<br>You are assigned as **Program Manager**.<br>View batch: {lms_link} |
 | PM-02 | Escalation | Existing | PM is the escalation target | 🚨 **ESCALATION**<br>Activity: {activity}<br>Batch / Module: {batch_id} / {module}<br>Owner: {owner} ({owner_role})<br>Overdue by: {delay_days} day(s)<br>Due date was: {due_date}<br>The owner has been reminded but has not completed this. Please follow up.<br>{lms_link} |
 | PM-03 | Schedule slip | Existing | — | ⚠️ **Schedule slip**<br>{batch_id} / {module} is delayed by {delay_days} day(s) vs plan.<br>Planned end: {planned_end} · Revised end: {revised_end}<br>Downstream modules affected: {affected_modules}<br>Review recommended.<br>{lms_link} |
-| PM-04 | Activity completed | Existing | — | ✅ **Activity completed**<br>{activity} for {batch_id} / {module} marked done by {owner} on {date}.<br>{lms_link} |
-| PM-05 | Stage transition | Existing | — | ℹ️ **Stage transition**<br>{batch_id} moved from {module} to {next_module}.<br>New mentor: {next_mentor}<br>SS activities have been re-anchored to the new module dates.<br>{lms_link} |
+| PM-05 | Stage transition | Existing | — | ℹ️ **Batch stage transition**<br>Dear {pm_name} / {sse_name} / {next_mentor_name},<br>This is to inform you that batch {batch_id} has moved from {previous_module} to {next_module}.<br>The applicable Student Success activities have been re-anchored.<br><br>**Notification Details:**<br>• Batch: {batch_id}<br>• Previous Module: {previous_module}<br>• Next Module: {next_module}<br>• Transition Date: {transition_date}<br>• Class Mentor: {next_class_mentor}<br>• Lab Mentor: {next_lab_mentor}<br><br>**Batch Performance Summary:**<br>• Overall Attendance: {overall_attendance}<br>• MAAC Rating: {overall_maac_rating}<br>• Total Students: {student_count}<br>• Prev Module Completion: {prev_module_completion}<br>• Status: {batch_status}<br><br>Action Required: Review activities and proceed with assigned responsibilities.<br>{lms_link} |
 | PM-06 | Nomination raised | Existing | — | 🎉 **Nomination raised**<br>{owner} nominated {count} student(s) for {award_type} in {batch_id}.<br>Nominees: {nominee_names}<br>Approval pending. Please review and approve / reject.<br>{lms_link} |
 | PM-07 | Nomination pending too long | NEW | → Reminder to PM | 🔔 **Nomination awaiting your approval**<br>{award_type} nomination in {batch_id} (raised by {owner} on {date}) is pending for {pending_days} day(s).<br>Please approve or reject.<br>{lms_link} |
 | PM-08 | Batch closure | Existing | — | 🎉 **Batch completed**<br>{batch_id} completed on {end_date}.<br>Pending closure items:<br>• Closure meeting<br>• Final review<br>Please schedule and complete both by {closure_due_date}.<br>{lms_link} |
@@ -233,9 +233,9 @@ The Student Success Executive receives batch-setup, transition, and closure mess
 |---|---|---|---|---|
 | SSE-01 | Batch created | Existing | — | ℹ️ **New batch assigned**<br>Batch: {batch_id} ({mode})<br>Course: {course_name}<br>Start date: {start_date}<br>You are assigned as **Student Success Executive**.<br>View batch: {lms_link} |
 | SSE-02 | Stage transition | Existing | — | ℹ️ **Stage transition**<br>{batch_id} moved from {module} to {next_module}.<br>SS activities have been re-anchored. Please review your upcoming SS activities and due dates.<br>{lms_link} |
-| SSE-03 | SS activity due | NEW | → PM at threshold | 🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.<br>Please complete it in the LMS.<br>{lms_link} |
-| SSE-04 | SS activity overdue | NEW | → PM after {n} days | ⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue by {delay_days} day(s).<br>Complete it now, otherwise it will be escalated to the PM.<br>{lms_link} |
-| SSE-05 | Activity completed | NEW | — | ✅ {activity} for {batch_id} / {module} marked done by {owner} on {date}. Thank you.<br>{lms_link} |
+| SSE-03 | SS activity due | NEW | → SS Lead at threshold | 🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.<br>Please complete it in the LMS.<br>{lms_link} |
+| SSE-04 | SS activity overdue | NEW | → SS Lead after {n} days (PM excluded) | ⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue by {delay_days} day(s).<br>Complete it now, otherwise it will be escalated to the SS Lead.<br>{lms_link} |
+| SSE-05 | Activity completed | NEW | — | ✅ {activity} for {batch_id} / {module} marked done by {owner} on {date}. Sent to SS Executive & SS Lead (PM excluded).<br>{lms_link} |
 | SSE-06 | Schedule slip | NEW | — | ⚠️ {batch_id} / {module} is delayed by {delay_days} day(s) vs plan. Your SS activities may be re-anchored.<br>{lms_link} |
 | SSE-07 | Batch closure | Existing | — | 🎉 **Batch completed**<br>{batch_id} completed on {end_date}.<br>Closure meeting and final review are due by {closure_due_date}.<br>Please complete your closure inputs.<br>{lms_link} |
 
@@ -247,7 +247,7 @@ The Class Mentor receives module-level and activity-level messages for theory / 
 
 | ID | Trigger event | Status | Escalation | Message template |
 |---|---|---|---|---|
-| CM-01 | Module started | Existing | — | ℹ️ **Module started**<br>{module} started for {batch_id} on {actual_start}.<br>Planned end: {planned_end}.<br>Activities due in this module: {activity_count}.<br>{lms_link} |
+| CM-01 | Module assigned / started | Existing | — | ℹ️ **Module Assigned – Class Mentor**<br>Dear {mentor_name},<br>This is to inform you that the {module_name} module for batch {batch_id} has been assigned to you.<br>You are assigned as the **Class Mentor** for this module. Please review the module plan and conduct the scheduled classes within the planned timeline.<br><br>**Notification Details:**<br>• Batch ID: {batch_id}<br>• Module: {module_name}<br>• Actual Start Date: {actual_start_date}<br>• Planned End Date: {planned_end_date}<br><br>Action Required: Review the module plan and proceed with scheduled classes as per the planned timeline.<br>{lms_link} |
 | CM-02 | Activity due | Existing | → PM at threshold | 🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.<br>Please complete it in the LMS.<br>{lms_link} |
 | CM-03 | Activity overdue | Existing | → PM after {n} days | ⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue ({delay_days}d).<br>Complete it now, otherwise it will be escalated to the PM.<br>{lms_link} |
 | CM-04 | Activity completed | Existing | — | ✅ {activity} for {batch_id} / {module} marked done by you on {date}. Thank you.<br>{lms_link} |
@@ -269,7 +269,7 @@ The Lab Mentor receives messages for lab sessions, practicals, and lab-related a
 
 | ID | Trigger event | Status | Escalation | Message template |
 |---|---|---|---|---|
-| LM-01 | Module started | Existing | — | ℹ️ **Module started**<br>{module} started for {batch_id} on {actual_start}.<br>Planned end: {planned_end}.<br>Lab activities in this module: {lab_activity_count}.<br>{lms_link} |
+| LM-01 | Module assigned / started | Existing | — | ℹ️ **Module Assigned – Lab Mentor**<br>Dear {mentor_name},<br>This is to inform you that the {module_name} module for batch {batch_id} has been assigned to you.<br>You are assigned as the **Lab Mentor** for this module. Please review the module plan and conduct the scheduled labs within the planned timeline.<br><br>**Notification Details:**<br>• Batch ID: {batch_id}<br>• Module: {module_name}<br>• Actual Start Date: {actual_start_date}<br>• Planned End Date: {planned_end_date}<br><br>Action Required: Review the module plan and proceed with scheduled labs as per the planned timeline.<br>{lms_link} |
 | LM-02 | Activity due | Existing | → PM at threshold | 🔔 **Reminder:** {activity} for {batch_id} / {module} is due {due_date}.<br>Please complete it in the LMS.<br>{lms_link} |
 | LM-03 | Activity overdue | Existing | → PM after {n} days | ⏰ **Overdue:** {activity} for {batch_id} / {module} is overdue ({delay_days}d).<br>Complete it now, otherwise it will be escalated to the PM.<br>{lms_link} |
 | LM-04 | Activity completed | Existing | — | ✅ {activity} for {batch_id} / {module} marked done by you on {date}. Thank you.<br>{lms_link} |
@@ -290,7 +290,7 @@ Suggested defaults, to be confirmed with Balwant Sir. All values are configurabl
 |---|---|---|---|---|---|
 | Module activity (classroom) | Class Mentor | 1 day before and on due date | Daily | {n} = 2 days overdue | Sent via CM-02 / CM-03 / PM-02 |
 | Lab activity | Lab Mentor | 1 day before and on due date | Daily | {n} = 2 days overdue | Sent via LM-02 / LM-03 / PM-02 |
-| SS activity | SSE | 1 day before and on due date | Daily | {n} = 2 days overdue | Sent via SSE-03 / SSE-04 / PM-02 |
+| SS activity | SSE | 3 days before and on due date | Daily (at 3 days overdue) | {n} = 5 days overdue | Escalate to **SS Lead + SS Executive (PM Excluded)** via `ss_t_plus_5` |
 | Attendance | Class / Lab Mentor | Same-day end-of-day nudge | Next morning | {n} = 1 day overdue | CM-07 / LM-07 |
 | Assessment evaluation | Class / Lab Mentor | 1 day before due | Daily | {n} = 2 days overdue | CM-09 / LM-08 |
 | Nomination approval | PM | — | Reminder to PM after 2 days pending | — | PM-07 |

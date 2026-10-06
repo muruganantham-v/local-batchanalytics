@@ -97,7 +97,7 @@ $batch_id = $section ? (int)$section->id : ($id > 0 ? (int)$id : 1);
 
 // Extract & normalize batch header fields
 if ($section) {
-    $batchid_label  = $section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id);
+    $batchid_label  = \local_batchanalytics\util::clean_section_name($section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id));
     $coursename     = ($batch && !empty($batch->coursename)) ? $batch->coursename : (!empty($section->coursename) ? $section->coursename : '—');
     $deliverymode   = ($batch && !empty($batch->deliverymode)) ? $batch->deliverymode : (!empty($section->deliverymode) ? $section->deliverymode : 'Offline');
     $submode        = ($batch && !empty($batch->submode)) ? $batch->submode : (!empty($section->submode) ? $section->submode : 'Regular');
@@ -249,7 +249,12 @@ if (!empty($raw_modules)) {
         $a_start = $format_mod_date($mod['actualstart'] ?? '');
         $a_end   = $format_mod_date($mod['actualend'] ?? '');
 
-        $delta = isset($mod['scheduledelta']) ? (int)$mod['scheduledelta'] : null;
+        $delta = isset($mod['scheduledelta']) && is_numeric($mod['scheduledelta'])
+            ? (int)$mod['scheduledelta']
+            : (!empty($mod['actualend']) && !empty($mod['plannedend']) && is_numeric($mod['actualend']) && is_numeric($mod['plannedend']) && (int)$mod['actualend'] > 100000 && (int)$mod['plannedend'] > 100000
+                ? (int)round(((int)$mod['actualend'] - (int)$mod['plannedend']) / 86400)
+                : null);
+
         if ($a_start !== '—' && $a_end === '—') {
             $delay_code = 'prog';
         } else if ($delta !== null && ($p_start !== '—' || $a_start !== '—')) {
@@ -270,6 +275,7 @@ if (!empty($raw_modules)) {
             'a_start'       => $a_start,
             'a_end'         => $a_end,
             'delay'         => $delay_code,
+            'scheduledelta' => $delta,
             'courseid'      => $course_id,
             'days'          => !empty($mod['planneddays']) ? (int)$mod['planneddays'] : \local_batchanalytics\util::get_module_total_days($m_name, 10),
         ];
@@ -320,17 +326,39 @@ $students_data = [];
 
 $performance_courseids = array_values(array_unique(array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')))));
 $spot_award_counts = [];
-if (!empty($performance_courseids) && $DB->get_manager()->table_exists('spotaward_nominations') && $DB->get_manager()->table_exists('spotaward_nomination_items')) {
+$spot_items_tbl = $DB->get_manager()->table_exists('nominations_sa_items') ? 'nominations_sa_items' : ($DB->get_manager()->table_exists('spotaward_nomination_items') ? 'spotaward_nomination_items' : '');
+$spot_noms_tbl = $DB->get_manager()->table_exists('nominations_sa_nominations') ? 'nominations_sa_nominations' : ($DB->get_manager()->table_exists('spotaward_nominations') ? 'spotaward_nominations' : '');
+
+if (!empty($performance_courseids) && !empty($spot_items_tbl) && !empty($spot_noms_tbl)) {
     list($incourses, $spotparams) = $DB->get_in_or_equal($performance_courseids, SQL_PARAMS_NAMED, 'spotcourse');
     $sql = "SELECT sni.studentid, COUNT(sni.id) AS awardcount
-              FROM {spotaward_nomination_items} sni
-              JOIN {spotaward_nominations} sn ON sn.id = sni.nominationid
+              FROM {{$spot_items_tbl}} sni
+              JOIN {{$spot_noms_tbl}} sn ON sn.id = sni.nominationid
              WHERE sn.courseid $incourses
                AND sni.status = 'closed'
           GROUP BY sni.studentid";
     foreach ($DB->get_records_sql($sql, $spotparams) as $record) {
         $spot_award_counts[(int)$record->studentid] = (int)$record->awardcount;
     }
+}
+
+$sec_student_uids = [];
+if ($section && $has_bm_student) {
+    $sec_student_uids = $DB->get_fieldset_select(
+        'local_bm_student',
+        'userid',
+        'classsectionid = :secid',
+        ['secid' => $section->id]
+    );
+    if (empty($sec_student_uids) && !empty($section->batchid)) {
+        $sec_student_uids = $DB->get_fieldset_select(
+            'local_bm_student',
+            'userid',
+            'batchid = :bid',
+            ['bid' => $section->batchid]
+        );
+    }
+    $sec_student_uids = array_values(array_filter(array_map('intval', $sec_student_uids)));
 }
 
 $enrolledstudents = [];
@@ -340,9 +368,41 @@ if ($studentroleid > 0) {
         $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
         if (!$coursecontext) continue;
         foreach (get_role_users($studentroleid, $coursecontext, false, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email') as $studentrecord) {
-            $enrolledstudents[$studentrecord->id] = $studentrecord;
+            if (!empty($sec_student_uids)) {
+                if (in_array((int)$studentrecord->id, $sec_student_uids, true)) {
+                    $enrolledstudents[$studentrecord->id] = $studentrecord;
+                }
+            } else {
+                $enrolledstudents[$studentrecord->id] = $studentrecord;
+            }
         }
     }
+    if (!empty($sec_student_uids)) {
+        $missing_uids = array_diff($sec_student_uids, array_keys($enrolledstudents));
+        if (!empty($missing_uids)) {
+            list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
+            $extra_students = $DB->get_records_select(
+                'user',
+                "id $in_missing AND deleted = 0",
+                $m_params,
+                'firstname ASC, lastname ASC',
+                'id, idnumber, username, firstname, lastname, email'
+            );
+            foreach ($extra_students as $mrec) {
+                $enrolledstudents[$mrec->id] = $mrec;
+            }
+        }
+    }
+}
+if (empty($enrolledstudents) && !empty($sec_student_uids)) {
+    list($in_sec, $sec_params) = $DB->get_in_or_equal($sec_student_uids, SQL_PARAMS_NAMED, 'secstu');
+    $enrolledstudents = $DB->get_records_select(
+        'user',
+        "id $in_sec AND deleted = 0",
+        $sec_params,
+        'firstname ASC, lastname ASC',
+        'id, idnumber, username, firstname, lastname, email'
+    );
 }
 
 foreach ($enrolledstudents as $studentrecord) {
@@ -437,7 +497,7 @@ if (!function_exists('format_cell_muted')) {
 $batch_total_delay = 0;
 $batch_has_delay = false;
 foreach ($schedule_rows as $sr) {
-    if (is_numeric($sr['delay'])) {
+    if ($sr['delay'] !== 'prog' && is_numeric($sr['delay'])) {
         $batch_total_delay += (int)$sr['delay'];
         $batch_has_delay = true;
     }

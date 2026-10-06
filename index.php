@@ -76,6 +76,10 @@ if ($action === 'complete_task') {
             'act_key'  => optional_param('act_key', '', PARAM_RAW),
         ];
         $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
+        if (!empty($res['success'])) {
+            $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+            $res['dashboard_data'] = \local_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        }
         echo json_encode($res);
     } catch (\Throwable $e) {
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -464,7 +468,7 @@ if ($action === 'getnewbatchdata') {
         if (!empty($sections)) {
             foreach ($sections as $sec) {
                 $parent = !empty($sec->batchid) && isset($batches[$sec->batchid]) ? $batches[$sec->batchid] : null;
-                $sec_name = $sec->name ?: ($parent ? $parent->name : 'Section ' . $sec->id);
+                $sec_name = \local_batchanalytics\util::clean_section_name($sec->name ?: ($parent ? $parent->name : 'Section ' . $sec->id));
                 $coursename = ($parent && !empty($parent->coursename)) ? $parent->coursename : 'Embedded Systems & IoT';
                 $raw_mode = ($parent && !empty($parent->deliverymode)) ? $parent->deliverymode : 'Offline';
                 $normalizedmode = $raw_mode !== '' ? ucfirst(strtolower(trim($raw_mode))) : 'Offline';
@@ -516,17 +520,19 @@ if ($action === 'getnewbatchdata') {
                         }
                     }
 
-                    // Accumulate schedule delta from all modules in the section
-                    if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
-                        $totaldelta += (int)$m['scheduledelta'];
-                    } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
-                        $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
-                        $totaldelta += $diffdays;
-                    }
-
                     $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
                     if (!$isdone) {
                         $all_completed = false;
+                    }
+
+                    // Accumulate schedule delta only from completed modules (in-progress modules are not finalized)
+                    if ($isdone) {
+                        if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
+                            $totaldelta += (int)$m['scheduledelta'];
+                        } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
+                            $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
+                            $totaldelta += $diffdays;
+                        }
                     }
 
                     if ($currentmodule === 'N/A' && (!$isdone || count($modules) === 1)) {

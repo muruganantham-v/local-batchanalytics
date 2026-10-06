@@ -161,6 +161,9 @@
                     actionBadge.className = 'ba-mentor-action-badge st ' + data.action_class;
                     actionBadge.textContent = data.action_label;
                 }
+                try {
+                    localStorage.setItem('ba_task_updated', Date.now().toString());
+                } catch (e) {}
             })
             .catch(function(err) {
                 console.warn('Mentor activity save error:', err);

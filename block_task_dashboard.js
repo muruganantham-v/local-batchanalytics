@@ -10,6 +10,7 @@
   var apiUrl = '';
   var sesskey = '';
   var currentFilter = 'all';
+  var currentBatch = 'all';
   var allTodos = [];
   var activeRole = 'admin';
   var pendingTask = null;
@@ -24,6 +25,15 @@
 
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
+
+    var batchSel = document.getElementById('ba-batch-filter');
+    if (batchSel) {
+      batchSel.addEventListener('change', function() {
+        currentBatch = this.value;
+        currentPage = 1;
+        renderTodoList();
+      });
+    }
 
     var filterSel = document.getElementById('ba-todo-filter');
     if (filterSel) {
@@ -49,6 +59,10 @@
     var btnCancel = document.getElementById('ba-modal-btn-cancel');
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
 
+    var btnClose = document.getElementById('ba-modal-btn-close');
+    if (btnClose) {
+      btnClose.addEventListener('click', closeModal);
+    }
     if (btnCancel) {
       btnCancel.addEventListener('click', closeModal);
     }
@@ -60,6 +74,40 @@
         if (e.target === overlay) closeModal();
       });
     }
+
+    // Auto-refresh interval (every 30s) so if tasks are completed automatically or by evaluations, counts update
+    setInterval(function() {
+      var ov = document.getElementById('ba-task-modal-overlay');
+      if (!ov || !ov.classList.contains('show')) {
+        loadDashboardData();
+      }
+    }, 30000);
+
+    // Auto-refresh on window focus or tab visibility
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        var ov = document.getElementById('ba-task-modal-overlay');
+        if (!ov || !ov.classList.contains('show')) {
+          loadDashboardData();
+        }
+      }
+    });
+    window.addEventListener('focus', function() {
+      var ov = document.getElementById('ba-task-modal-overlay');
+      if (!ov || !ov.classList.contains('show')) {
+        loadDashboardData();
+      }
+    });
+
+    // Cross-tab sync via storage event
+    window.addEventListener('storage', function(e) {
+      if (e.key === 'ba_task_updated') {
+        var ov = document.getElementById('ba-task-modal-overlay');
+        if (!ov || !ov.classList.contains('show')) {
+          loadDashboardData();
+        }
+      }
+    });
 
     var initDataEl = document.getElementById('ba-dash-initial-data');
     if (initDataEl && initDataEl.textContent.trim()) {
@@ -80,6 +128,7 @@
 
     var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') +
       'action=get_dashboard_tasks' +
+      '&role=' + encodeURIComponent(activeRole || '') +
       '&sesskey=' + encodeURIComponent(sesskey);
 
     fetch(url, { credentials: 'same-origin' })
@@ -120,9 +169,38 @@
       }).join('');
     }
 
+    // Batches filter options refresh
+    var batchSel = document.getElementById('ba-batch-filter');
+    if (batchSel) {
+      var batches = Array.isArray(d.batches) ? d.batches : [];
+      if (!batches.length && Array.isArray(d.todo)) {
+        var map = {};
+        d.todo.forEach(function(t) {
+          var bid = (t.batchid != null && t.batchid !== '') ? String(t.batchid) : '';
+          var bname = t.batch_name ? String(t.batch_name).trim() : '';
+          if (bid && bname && !map[bid]) {
+            map[bid] = true;
+            batches.push({ id: t.batchid, name: bname });
+          }
+        });
+        batches.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      }
+
+      var cur = currentBatch;
+      var bHtml = '<option value="all">All batches</option>';
+      batches.forEach(function(b) {
+        var isSel = (String(b.id) === String(cur)) ? ' selected' : '';
+        bHtml += '<option value="' + escapeHtml(b.id) + '"' + isSel + '>' + escapeHtml(b.name) + '</option>';
+      });
+      batchSel.innerHTML = bHtml;
+      if (cur !== 'all' && !batches.some(function(b) { return String(b.id) === String(cur); })) {
+        currentBatch = 'all';
+        batchSel.value = 'all';
+      }
+    }
+
     // Todos
     allTodos = Array.isArray(d.todo) ? d.todo : [];
-    currentPage = 1;
     renderTodoList();
 
     // Forthcoming
@@ -142,6 +220,41 @@
     }
   }
 
+  function updateGlanceCounts() {
+    var overdueCount = 0;
+    var tasksDueWeek = 0;
+    allTodos.forEach(function(t) {
+      if (t.is_done) return;
+      if (t.status_class === 'over') {
+        overdueCount++;
+        tasksDueWeek++;
+      } else if (t.status_class === 'today' || t.status_class === 'soon') {
+        tasksDueWeek++;
+      }
+    });
+
+    var elGlance = document.getElementById('ba-dash-glance');
+    if (elGlance) {
+      var cards = elGlance.querySelectorAll('.gt');
+      cards.forEach(function(card) {
+        var labelEl = card.querySelector('.k');
+        var valEl = card.querySelector('.v');
+        if (!labelEl || !valEl) return;
+        var lbl = labelEl.textContent.trim().toLowerCase();
+        if (lbl === 'overdue') {
+          valEl.textContent = overdueCount;
+          if (overdueCount > 0) {
+            card.classList.add('alert');
+          } else {
+            card.classList.remove('alert');
+          }
+        } else if (lbl.indexOf('due this week') !== -1 || lbl.indexOf('tasks due') !== -1) {
+          valEl.textContent = tasksDueWeek;
+        }
+      });
+    }
+  }
+
   function renderTodoList() {
     var elList = document.getElementById('ba-dash-todo-list');
     var elCount = document.getElementById('ba-dash-todo-count');
@@ -150,16 +263,30 @@
 
     var filtered = allTodos.filter(function(t) {
       if (t.is_done) return false;
+      if (currentBatch !== 'all') {
+        if (String(t.batchid) !== String(currentBatch)) {
+          return false;
+        }
+      }
       if (currentFilter === 'overdue') return t.status_class === 'over';
       if (currentFilter === 'today') return t.status_class === 'today';
       if (currentFilter === 'soon') return t.status_class === 'soon';
       return true;
     });
 
-    var totalPending = allTodos.filter(function(t) { return !t.is_done; }).length;
+    var totalPending = allTodos.filter(function(t) {
+      if (t.is_done) return false;
+      if (currentBatch !== 'all' && String(t.batchid) !== String(currentBatch)) {
+        return false;
+      }
+      return true;
+    }).length;
     if (elCount) {
       elCount.textContent = totalPending + ' pending';
     }
+
+    // Keep glance counts synchronized
+    updateGlanceCounts();
 
     if (!filtered.length) {
       elList.innerHTML = '<div class="empty-box">✓ No pending tasks matching this filter</div>';
@@ -291,8 +418,214 @@
       nameEl.textContent = task.title + ' (' + (task.meta || '') + ')';
     }
 
+    var validBody = document.getElementById('ba-modal-validation-body');
+    var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var btnGoto = document.getElementById('ba-modal-btn-goto');
+
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.textContent = 'Confirm Complete';
+      btnConfirm.title = 'Validating activity status...';
+    }
+    if (btnGoto) {
+      btnGoto.style.display = 'none';
+      btnGoto.href = '#';
+    }
+
+    if (validBody) {
+      validBody.innerHTML = '<div class="ba-modal-loading">' +
+        '<div class="ba-spinner"></div>' +
+        '<span>Checking pending submissions and evaluations...</span>' +
+        '</div>';
+    }
+
     var overlay = document.getElementById('ba-task-modal-overlay');
     if (overlay) overlay.classList.add('show');
+
+    // Fetch real-time validation status from backend
+    var formData = new FormData();
+    formData.append('action', 'check_task_validation');
+    formData.append('sesskey', sesskey);
+    formData.append('type', task.action_type || '');
+    formData.append('courseid', task.courseid || 0);
+    formData.append('batchid', task.batchid || 0);
+    formData.append('act_name', task.act_name || '');
+    formData.append('act_key', task.act_key || '');
+    formData.append('cmid', task.cmid || 0);
+
+    fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin'
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(resp) {
+        if (!pendingTask || pendingTask.id !== taskId) return;
+        renderModalValidation(resp);
+      })
+      .catch(function(err) {
+        if (!pendingTask || pendingTask.id !== taskId) return;
+        console.error('Validation check error:', err);
+        if (validBody) {
+          validBody.innerHTML = '<div class="ba-modal-alert danger">' +
+            '<div class="alert-content"><div class="alert-desc">⚠️ Connection error checking submission status. You may try again or proceed.</div></div>' +
+            '</div>';
+        }
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+          btnConfirm.title = '';
+        }
+      });
+  }
+
+  function renderModalValidation(resp) {
+    var validBody = document.getElementById('ba-modal-validation-body');
+    var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var btnGoto = document.getElementById('ba-modal-btn-goto');
+    if (!validBody) return;
+
+    if (!resp || !resp.success) {
+      var msg = (resp && (resp.error || resp.message)) || 'Unable to validate activity submissions.';
+      validBody.innerHTML = '<div class="ba-modal-alert danger">' +
+        '<div class="alert-content"><div class="alert-desc">⚠️ ' + escapeHtml(msg) + '</div></div>' +
+        '</div>';
+      if (btnConfirm) {
+        btnConfirm.disabled = true;
+        btnConfirm.textContent = 'Cannot Complete';
+      }
+      return;
+    }
+
+    var normName = (pendingTask && pendingTask.act_name ? pendingTask.act_name : (resp.activity_name || '')).toLowerCase();
+    var normKey  = (pendingTask && pendingTask.act_key ? pendingTask.act_key : '').toLowerCase();
+    var isMilestone = !!resp.is_milestone ||
+                      normName.indexOf('nomination') !== -1 ||
+                      normName.indexOf('spot award') !== -1 ||
+                      normName.indexOf('power track') !== -1 ||
+                      normKey.indexOf('nomination') !== -1 ||
+                      normKey.indexOf('spot_award') !== -1 ||
+                      normKey.indexOf('power_track') !== -1;
+
+    if (isMilestone) {
+      var mHtml = '';
+      mHtml += '<div class="ba-modal-alert success">';
+      mHtml += '  <div class="alert-icon">✓</div>';
+      mHtml += '  <div class="alert-content">';
+      mHtml += '    <div class="alert-title">Operational Milestone Task</div>';
+      mHtml += '    <div class="alert-desc">' + escapeHtml(resp.message || 'Operational milestone activity (no student submissions required). Click Confirm Complete to finish.') + '</div>';
+      mHtml += '  </div>';
+      mHtml += '</div>';
+
+      validBody.innerHTML = mHtml;
+
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+      }
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
+      }
+      return;
+    }
+
+    var hasPending = !!resp.has_pending;
+    var pendingCnt = parseInt(resp.pending_count, 10) || 0;
+    var completedCnt = parseInt(resp.completed_count, 10) || 0;
+    var actUrl = resp.activity_url || (pendingTask && pendingTask.dest_url) || '';
+    var items = Array.isArray(resp.items) ? resp.items : [];
+
+    var html = '';
+
+    // 1. Metric counter pills: Pending vs Completed
+    html += '<div class="ba-modal-metrics">';
+    html += '  <div class="ba-metric-pill pending' + (hasPending ? ' alert' : '') + '">';
+    html += '    <div class="num">' + pendingCnt + '</div>';
+    html += '    <div class="lbl">Pending / Ungraded</div>';
+    html += '  </div>';
+    html += '  <div class="ba-metric-pill completed">';
+    html += '    <div class="num">' + completedCnt + '</div>';
+    html += '    <div class="lbl">Completed / Graded</div>';
+    html += '  </div>';
+    html += '</div>';
+
+    // 2. Alert status banner & item list
+    if (hasPending) {
+      html += '<div class="ba-modal-alert danger">';
+      html += '  <div class="alert-icon">⚠️</div>';
+      html += '  <div class="alert-content">';
+      html += '    <div class="alert-title">Pending Submissions Detected</div>';
+      html += '    <div class="alert-desc">' + escapeHtml(resp.message || 'There are pending submissions or attempts needing to be graded before this activity can be marked complete.') + '</div>';
+      html += '  </div>';
+      html += '</div>';
+
+      // If items breakdown is available, show activities with pending submissions
+      var pendingItems = items.filter(function(it) { return (it.pending || 0) > 0; });
+      if (pendingItems.length > 0) {
+        html += '<div class="ba-modal-items-list">';
+        html += '  <div class="items-title">Activities Needing Evaluation in Course:</div>';
+        pendingItems.slice(0, 5).forEach(function(it) {
+          html += '  <div class="ba-modal-item-row">';
+          html += '    <div class="item-name" title="' + escapeHtml(it.name) + '">' + escapeHtml(it.name) + '</div>';
+          html += '    <div class="item-right">';
+          html += '      <span class="item-badge">' + (it.pending || 0) + ' pending</span>';
+          if (it.url) {
+            html += '      <a href="' + escapeHtml(it.url) + '" target="_blank" class="item-link">Go to activity ↗</a>';
+          }
+          html += '    </div>';
+          html += '  </div>';
+        });
+        if (pendingItems.length > 5) {
+          html += '  <div class="items-more">+ ' + (pendingItems.length - 5) + ' more activities in course</div>';
+        }
+        html += '</div>';
+      }
+
+      validBody.innerHTML = html;
+
+      // Primary "Go to Activity in Course ↗" button
+      if (btnGoto && actUrl) {
+        btnGoto.href = actUrl;
+        btnGoto.textContent = 'Go to Activity in Course ↗';
+        btnGoto.className = 'mc-btn-goto-act primary';
+        btnGoto.style.display = 'inline-flex';
+      }
+
+      // Disable Confirm Complete button
+      if (btnConfirm) {
+        btnConfirm.disabled = true;
+        btnConfirm.textContent = 'Grade Submissions First';
+        btnConfirm.title = 'Cannot mark complete while submissions are pending evaluation';
+      }
+
+    } else {
+      // 0 pending submissions
+      html += '<div class="ba-modal-alert success">';
+      html += '  <div class="alert-icon">✓</div>';
+      html += '  <div class="alert-content">';
+      html += '    <div class="alert-title">Ready to Mark Complete</div>';
+      html += '    <div class="alert-desc">' + escapeHtml(resp.message || 'All submissions and attempts have been evaluated and graded.') + '</div>';
+      html += '  </div>';
+      html += '</div>';
+
+      validBody.innerHTML = html;
+
+      // Optional view link
+      if (btnGoto && actUrl) {
+        btnGoto.href = actUrl;
+        btnGoto.textContent = 'View Activity ↗';
+        btnGoto.className = 'mc-btn-goto-act secondary';
+        btnGoto.style.display = 'inline-flex';
+      }
+
+      // Enable Confirm Complete button
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
+      }
+    }
   }
 
   function closeModal() {
@@ -305,7 +638,10 @@
     if (!pendingTask || !apiUrl) return;
 
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
-    if (btnConfirm) btnConfirm.disabled = true;
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.textContent = 'Marking complete...';
+    }
 
     var formData = new FormData();
     formData.append('action', 'complete_task');
@@ -315,6 +651,8 @@
     formData.append('batchid', pendingTask.batchid || 0);
     formData.append('act_name', pendingTask.act_name || '');
     formData.append('act_key', pendingTask.act_key || '');
+    formData.append('cmid', pendingTask.cmid || 0);
+    formData.append('role', activeRole || '');
 
     fetch(apiUrl, {
       method: 'POST',
@@ -327,13 +665,29 @@
         if (resp && resp.success) {
           pendingTask.is_done = true;
           closeModal();
+          // Optimistically update counts and todo list immediately
           renderTodoList();
+
+          // Broadcast to other open tabs/windows
+          try {
+            localStorage.setItem('ba_task_updated', Date.now().toString());
+          } catch (e) {}
+
+          // Apply updated server data if returned, otherwise fetch fresh data
+          if (resp.dashboard_data) {
+            applyData(resp.dashboard_data);
+          } else {
+            loadDashboardData();
+          }
         } else {
-          alert('Failed to save completion: ' + ((resp && resp.message) || 'Unknown error'));
+          renderModalValidation(resp);
         }
       })
       .catch(function(err) {
-        if (btnConfirm) btnConfirm.disabled = false;
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+          btnConfirm.textContent = 'Confirm Complete';
+        }
         alert('Server connection error. Please try again.');
         console.error(err);
       });

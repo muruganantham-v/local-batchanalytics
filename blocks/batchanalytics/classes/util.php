@@ -52,6 +52,40 @@ class util {
     ];
 
     /**
+     * Clean class section / batch name by stripping suffixes like:
+     * - Primary Section, - Virtual Cohort A, - Fast Track Cohort, - Main Campus Batch, - Campus Batch 2
+     * leaving just the clean batch/section identifier (e.g., 26099 or 26099A).
+     *
+     * @param string|null $name Raw section or batch name
+     * @return string Cleaned section or batch name
+     */
+    public static function clean_section_name(?string $name): string {
+        if ($name === null || trim($name) === '') {
+            return '';
+        }
+        $cleaned = trim($name);
+
+        // 1. If starts with 4-6 digit batch code (optional letter) followed by hyphen and descriptive suffix, keep code
+        if (preg_match('/^([0-9]{4,6}[A-Za-z]?)\s*[-–—]\s*.+$/', $cleaned, $matches)) {
+            return $matches[1];
+        }
+
+        // 2. Strip specific known suffixes (with or without hyphen)
+        $patterns = [
+            '/\s*[-–—]?\s*Primary Section\b/i',
+            '/\s*[-–—]?\s*Virtual Cohort(\s+[A-Za-z0-9]+)?\b/i',
+            '/\s*[-–—]?\s*Fast Track Cohort\b/i',
+            '/\s*[-–—]?\s*Main Campus Batch\b/i',
+            '/\s*[-–—]?\s*Campus Batch(\s+[A-Za-z0-9]+)?\b/i',
+            '/\s*[-–—]?\s*Cliq Test Batch\b/i',
+        ];
+        $cleaned = preg_replace($patterns, '', $cleaned);
+        $cleaned = trim(preg_replace('/\s*[-–—]\s*$/', '', $cleaned));
+
+        return $cleaned;
+    }
+
+    /**
      * Get a plugin configuration value, checking local_batchanalytics first then block_batchanalytics.
      *
      * @param string $name Configuration setting name

@@ -5,17 +5,10 @@
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
-// Moodle is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
  * Batch Analytics Dashboard and Course block.
+ * Renders individual To-Do tasks for Mentors, SS Executives, PMs, and Managers.
  *
  * @package    block_batchanalytics
  * @copyright  2026
@@ -23,8 +16,6 @@
  */
 
 defined('MOODLE_INTERNAL') || die();
-
-require_once(__DIR__ . '/classes/task_service.php');
 
 class block_batchanalytics extends block_base {
 
@@ -36,8 +27,7 @@ class block_batchanalytics extends block_base {
     }
 
     /**
-     * Hide block header to remove default "Batch Analytics" card title when not editing.
-     * In edit mode, header remains visible so users can configure, move, or hide the block.
+     * Hide block header to remove default title card when not in edit mode.
      *
      * @return bool
      */
@@ -52,9 +42,9 @@ class block_batchanalytics extends block_base {
      */
     public function applicable_formats() {
         return [
-            'my' => true,             // User Dashboard (/my/)
-            'course-view' => true,    // Course view pages
-            'site' => true,           // Frontpage / Site home
+            'my'          => true,  // User Dashboard (/my/)
+            'course-view' => true,  // Course view pages
+            'site'        => true,  // Frontpage / Site home
         ];
     }
 
@@ -64,7 +54,7 @@ class block_batchanalytics extends block_base {
      * @return bool
      */
     public function has_config() {
-        return true;
+        return false;
     }
 
     /**
@@ -82,7 +72,7 @@ class block_batchanalytics extends block_base {
      * @return stdClass
      */
     public function get_content() {
-        global $USER, $PAGE, $OUTPUT, $DB;
+        global $USER, $PAGE, $CFG;
 
         if ($this->content !== null) {
             return $this->content;
@@ -96,8 +86,21 @@ class block_batchanalytics extends block_base {
             return $this->content;
         }
 
+        // Verify that local_batchanalytics is present
+        $local_task_service = $CFG->dirroot . '/local/batchanalytics/classes/task_service.php';
+        if (!file_exists($local_task_service)) {
+            $this->content->text = '<div class="alert alert-warning">local_batchanalytics plugin is required.</div>';
+            return $this->content;
+        }
+        require_once($local_task_service);
+
         $context = context_system::instance();
-        if (!is_siteadmin() && !has_capability('block/batchanalytics:view', $context)) {
+        $can_view = is_siteadmin($USER->id)
+            || has_capability('block/batchanalytics:view', $context)
+            || has_capability('local/batchanalytics:view', $context)
+            || \local_batchanalytics\task_service::can_view_dashboard((int)$USER->id);
+
+        if (!$can_view) {
             return $this->content;
         }
 
@@ -108,9 +111,7 @@ class block_batchanalytics extends block_base {
 
         // Course page context: render course-scoped mentor checklist summary
         if ($courseid > 0) {
-            $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]));
-
-            $moduleurl = new moodle_url('/blocks/batchanalytics/module.php', ['courseid' => $courseid]);
+            $moduleurl = new moodle_url('/local/batchanalytics/module.php', ['courseid' => $courseid]);
             $coursename = format_string($PAGE->course->fullname);
 
             $html = '<div class="ba-block-widget" style="font-family:\'Poppins\',-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif; color:#0f172a; font-size:13px; line-height:1.5;">';
@@ -119,9 +120,9 @@ class block_batchanalytics extends block_base {
             $html .= '  <div style="font-weight:600; color:#0f172a; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' . s($coursename) . '">' . s($coursename) . '</div>';
             $html .= '</div>';
 
-            // Check mentor activities for this course.
+            // Check mentor activities for this course
             try {
-                $mdata = \block_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid);
+                $mdata = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid);
                 $activities = $mdata['activities'] ?? [];
                 $pending = 0;
                 $overdue = 0;
@@ -152,22 +153,22 @@ class block_batchanalytics extends block_base {
                 $html .= '  </div>';
                 $html .= '</div>';
             } catch (\Throwable $e) {
-                // Ignore gracefully if tables not populated yet.
+                // Ignore gracefully if not populated
             }
 
-            $html .= '<a href="' . s($moduleurl->out(false)) . '" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#0f172a; color:#ffffff; font-weight:600; font-size:12.5px; padding:9px 14px; border-radius:8px; text-decoration:none; transition:background 0.2s;" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'#0f172a\'">';
+            $html .= '<a href="' . s($moduleurl->out(false)) . '" style="display:flex; align-items:center; justify-content:center; gap:6px; background:#0f172a; color:#ffffff; font-weight:600; font-size:12.5px; padding:9px 14px; border-radius:8px; text-decoration:none; transition:background 0.2s;">';
             $html .= '  <span>View Module Analytics</span>';
             $html .= '  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>';
             $html .= '</a>';
             $html .= '</div>';
 
         } else {
-            // Dashboard (/my/) & Frontpage context: Render To-Do task dashboard matching index/batch/module design
+            // Dashboard (/my/) & Frontpage context: Render To-Do task dashboard
             $PAGE->requires->css(new moodle_url('/blocks/batchanalytics/block_task_dashboard.css', ['v' => filemtime(__DIR__ . '/block_task_dashboard.css')]));
             $PAGE->requires->js(new moodle_url('/blocks/batchanalytics/block_task_dashboard.js', ['v' => filemtime(__DIR__ . '/block_task_dashboard.js')]));
 
-            $apiurl = (new moodle_url('/blocks/batchanalytics/index.php'))->out(false);
-            $dashdata = \block_batchanalytics\task_service::get_dashboard_data((int)$USER->id);
+            $apiurl = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
+            $dashdata = \local_batchanalytics\task_service::get_dashboard_data((int)$USER->id);
 
             $html = '
 <div class="block-batchanalytics-wrap ba-task-dash-wrap" id="ba-task-dash-container"
@@ -201,12 +202,21 @@ class block_batchanalytics extends block_base {
     <div class="dpanel">
       <div class="ph">
         <h2>My To-Do <span class="badge" id="ba-dash-todo-count">' . count($dashdata['todo']) . ' pending</span></h2>
-        <select class="filter-select" id="ba-todo-filter">
-          <option value="all">All tasks</option>
-          <option value="overdue">Overdue only</option>
-          <option value="today">Due today</option>
-          <option value="soon">Due next 7 days</option>
-        </select>
+        <div class="ph-filters">
+          <select class="filter-select" id="ba-batch-filter" title="Filter by Batch" aria-label="Filter by Batch">
+            <option value="all">All batches</option>';
+            foreach (($dashdata['batches'] ?? []) as $b) {
+                $html .= '<option value="' . s($b['id']) . '">' . s($b['name']) . '</option>';
+            }
+            $html .= '
+          </select>
+          <select class="filter-select" id="ba-todo-filter" title="Filter by Task Status" aria-label="Filter by Task Status">
+            <option value="all">All tasks</option>
+            <option value="overdue">Overdue only</option>
+            <option value="today">Due today</option>
+            <option value="soon">Due next 7 days</option>
+          </select>
+        </div>
       </div>
       <div id="ba-dash-todo-list">';
 
@@ -272,12 +282,25 @@ class block_batchanalytics extends block_base {
   <!-- Mark Complete Confirmation Modal -->
   <div class="ba-task-modal-overlay" id="ba-task-modal-overlay">
     <div class="ba-task-modal-box">
-      <h3>Mark Activity Complete</h3>
-      <p>Confirm completion of this milestone activity:</p>
-      <div class="act-name" id="ba-modal-task-name">—</div>
-      <div class="mbtns">
+      <div class="ba-modal-header">
+        <h3 id="ba-modal-title">Mark Activity Complete</h3>
+        <button type="button" class="ba-modal-close-btn" id="ba-modal-btn-close" aria-label="Close modal">&times;</button>
+      </div>
+      <p class="ba-modal-sub">Check submissions and confirm completion of this activity:</p>
+      <div class="act-name" id="ba-modal-task-name">-</div>
+
+      <!-- Dynamic validation container -->
+      <div class="ba-modal-validation-body" id="ba-modal-validation-body">
+        <div class="ba-modal-loading">
+          <div class="ba-spinner"></div>
+          <span>Checking pending submissions and evaluations...</span>
+        </div>
+      </div>
+
+      <div class="mbtns" id="ba-modal-actions">
         <button type="button" class="cancel" id="ba-modal-btn-cancel">Cancel</button>
-        <button type="button" class="confirm" id="ba-modal-btn-confirm">Confirm Complete</button>
+        <a href="#" target="_blank" class="mc-btn-goto-act" id="ba-modal-btn-goto" style="display:none;">Go to Activity ↗</a>
+        <button type="button" class="confirm" id="ba-modal-btn-confirm" disabled>Confirm Complete</button>
       </div>
     </div>
   </div>';

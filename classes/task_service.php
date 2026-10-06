@@ -474,7 +474,7 @@ class task_service {
                             }
 
                             $act_name = $act['name'];
-                            $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                            $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
                             $dest_url = (new \moodle_url('/local/batchanalytics/module.php', [
                                 'courseid'  => $courseid,
@@ -568,7 +568,7 @@ class task_service {
                 }
 
                 $ss_list = util::decode_softskills_activities($sec->softskillsdata);
-                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $dest_url = (new \moodle_url('/local/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
 
                 foreach ($ss_list as $ss) {
@@ -666,7 +666,7 @@ class task_service {
                     continue;
                 }
 
-                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $edit_tracker_url = (new \moodle_url('/local/batchmanagement/edit_moduletracker.php', ['id' => $sec->id]))->out(false);
 
                 $module_keys = array_keys($modules);
@@ -1053,7 +1053,7 @@ class task_service {
         }
         foreach ($filtered_sections as $sec) {
             $bid = (string)$sec->id;
-            $bname = trim((string)($sec->name ?: ('Batch ' . $sec->id)));
+            $bname = util::clean_section_name(trim((string)($sec->name ?: ('Batch ' . $sec->id))));
             if (!isset($batch_options[$bid])) {
                 $batch_options[$bid] = [
                     'id'   => (int)$sec->id,
@@ -1280,6 +1280,10 @@ class task_service {
             $now = time();
             if ($action_type === 'am_start') {
                 $modules[$mod_key]['actualstart'] = $now;
+
+                // Dispatch Stage Transition alert to PM, SSE, Next Class Mentor, and Next Lab Mentor
+                require_once(__DIR__ . '/cliq_activity_notifier.php');
+                cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $modules, $now);
             } else if ($action_type === 'am_end' || $action_type === 'am_closer') {
                 $modules[$mod_key]['actualend'] = $now;
                 if (empty($modules[$mod_key]['actualstart'])) {
@@ -1289,6 +1293,14 @@ class task_service {
                 if (empty($modules[$mod_key]['primarymentor'])) {
                     $modules[$mod_key]['primarymentor'] = (string)$userid;
                 }
+
+                // Dispatch Template 2: Module Assigned alert to assigned mentors
+                require_once(__DIR__ . '/cliq_activity_notifier.php');
+                cliq_activity_notifier::send_module_assigned_mentor_alert(
+                    $batchid,
+                    $modules[$mod_key]['name'] ?? 'Module',
+                    $modules[$mod_key]
+                );
             } else if ($action_type === 'am_sched') {
                 if (empty($modules[$mod_key]['plannedstart'])) {
                     $modules[$mod_key]['plannedstart'] = $now;

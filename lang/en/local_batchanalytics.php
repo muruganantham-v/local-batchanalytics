@@ -92,6 +92,10 @@ $string['mentor_roles'] = 'Mentor Roles';
 $string['mentor_roles_desc'] = 'Users with these roles (or assigned as mentors in batch module data) will see module mentor activities due.';
 $string['ssexecutive_roles'] = 'SS / MAAC Executive Roles';
 $string['ssexecutive_roles_desc'] = 'Users with these roles (or assigned as maacexecutive in class sections) will see batch soft skill activities.';
+$string['sslead_roles'] = 'SS Lead Roles';
+$string['sslead_roles_desc'] = 'Users with these roles will be treated as the Soft Skills (SS) Lead and receive SS activity escalations and completion alerts.';
+$string['sslead_email'] = 'SS Lead Direct Email (Optional)';
+$string['sslead_email_desc'] = 'Optional direct email address of the SS Lead to receive SS activity escalations and completion alerts (comma-separated if multiple).';
 $string['program_manager_roles'] = 'Program Manager Roles';
 $string['program_manager_roles_desc'] = 'Users with these roles (or assigned as pmmanager in class sections) will see batch milestones and soft skill activities.';
 $string['assistant_manager_roles'] = 'Assistant Manager Roles';
@@ -114,7 +118,7 @@ $string['role_admin'] = 'Admin';
 
 // Zoho Cliq Notifications
 $string['zoho_cliq_heading'] = 'Zoho Cliq Notifications';
-$string['zoho_cliq_heading_desc'] = 'Automated notifications for Mentor activities (module-based) and SS activities (batch-based) sent at T-3 days, Due date, T+3 days overdue, and T+5 days PM escalation, plus instant completion alerts.';
+$string['zoho_cliq_heading_desc'] = 'Automated notifications for Mentor activities (module-based) and SS activities (batch-based) sent at T-3 days, Due date, T+3 days overdue, and T+5 days escalation, plus instant completion alerts.';
 $string['zoho_cliq_enabled'] = 'Enable Zoho Cliq Notifications';
 $string['zoho_cliq_enabled_desc'] = 'Enable automated activity due reminders, overdue escalations, and completion alerts to Zoho Cliq.';
 $string['zoho_cliq_bot_url'] = 'Zoho Cliq Bot Message URL';
@@ -141,17 +145,25 @@ $string['cliq_tpl_mentor_completed_desc'] = 'Instant confirmation message sent t
 
 // SS Activity Message Templates
 $string['zoho_cliq_ss_heading'] = 'SS Activity Notification Templates (Batch-Based)';
-$string['zoho_cliq_ss_heading_desc'] = 'Customize the Zoho Cliq messages sent for batch-level SS / Soft Skills milestones. Placeholders available: {batch_name}, {activity_name}, {due_date}, {sse_name}, {pm_name}, {overdue_days}, {completed_by}, {completion_date}, {link}.';
+$string['zoho_cliq_ss_heading_desc'] = 'Customize the Zoho Cliq messages sent for batch-level SS / Soft Skills milestones. Placeholders available: {batch_name}, {activity_name}, {due_date}, {sse_name}, {ss_lead_name}, {overdue_days}, {completed_by}, {completion_date}, {link}.';
 $string['cliq_tpl_ss_t_minus_3'] = 'SS Activity: 3 Days Before Due Template';
 $string['cliq_tpl_ss_t_minus_3_desc'] = 'Message sent to the SSE / MAAC Executive 3 days before the activity due date.';
 $string['cliq_tpl_ss_due_today'] = 'SS Activity: Due Today Template';
 $string['cliq_tpl_ss_due_today_desc'] = 'Message sent to the SSE / MAAC Executive on the due date.';
 $string['cliq_tpl_ss_t_plus_3'] = 'SS Activity: 3 Days Overdue Template';
 $string['cliq_tpl_ss_t_plus_3_desc'] = 'Warning message sent to the SSE / MAAC Executive when the activity is 3 days overdue.';
-$string['cliq_tpl_ss_t_plus_5'] = 'SS Activity: 5th Day PM Escalation Template';
-$string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the Program Manager when the SS activity is 5+ days overdue.';
+$string['cliq_tpl_ss_t_plus_5'] = 'SS Activity: 5th Day SS Lead Escalation Template';
+$string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the SS Lead and SS Executive when the SS activity is 5+ days overdue.';
 $string['cliq_tpl_ss_completed'] = 'SS Activity: Completion Confirmation Template';
-$string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the PM and SSE when the SS activity is marked complete.';
+$string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the SS Executive and SS Lead when the SS activity is marked complete.';
+
+// Stage & Module Transition Message Templates
+$string['zoho_cliq_transition_heading'] = 'Stage & Module Transition Message Templates';
+$string['zoho_cliq_transition_heading_desc'] = 'Notifications and emails dispatched when a batch transitions to the next module/stage (based on actual start date). Placeholders available: {batch_name}, {previous_module}, {next_module}, {transition_date}, {pm_name}, {sse_name}, {next_mentor_name}, {next_class_mentor}, {next_lab_mentor}, {overall_attendance}, {overall_maac_rating}, {student_count}, {prev_module_completion}, {batch_status}, {link}.';
+$string['cliq_tpl_stage_transition'] = 'Stage Transition Template';
+$string['cliq_tpl_stage_transition_desc'] = 'Notification and email sent to Program Manager, SS Executive, Class Mentor, and Lab Mentor when a batch moves to the next module/stage.';
+$string['cliq_tpl_module_assigned_mentor'] = 'Module Assigned: Class/Lab Mentor Template';
+$string['cliq_tpl_module_assigned_mentor_desc'] = 'Notification and email sent to assigned Class and Lab Mentors when a module is assigned or begins for a batch.';
 
 // Dedicated Templates Page Strings
 $string['zoho_cliq_templates'] = 'Zoho Cliq Notification Templates';

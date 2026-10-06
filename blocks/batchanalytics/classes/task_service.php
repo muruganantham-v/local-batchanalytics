@@ -474,7 +474,7 @@ class task_service {
                             }
 
                             $act_name = $act['name'];
-                            $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                            $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
                             $dest_url = (new \moodle_url('/local/batchanalytics/module.php', [
                                 'courseid'  => $courseid,
@@ -568,7 +568,7 @@ class task_service {
                 }
 
                 $ss_list = util::decode_softskills_activities($sec->softskillsdata);
-                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $dest_url = (new \moodle_url('/local/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
 
                 foreach ($ss_list as $ss) {
@@ -666,7 +666,7 @@ class task_service {
                     continue;
                 }
 
-                $batch_name = $sec->name ?: ('Batch ' . $sec->id);
+                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $edit_tracker_url = (new \moodle_url('/local/batchmanagement/edit_moduletracker.php', ['id' => $sec->id]))->out(false);
 
                 $module_keys = array_keys($modules);
@@ -1053,7 +1053,7 @@ class task_service {
         }
         foreach ($filtered_sections as $sec) {
             $bid = (string)$sec->id;
-            $bname = trim((string)($sec->name ?: ('Batch ' . $sec->id)));
+            $bname = util::clean_section_name(trim((string)($sec->name ?: ('Batch ' . $sec->id))));
             if (!isset($batch_options[$bid])) {
                 $batch_options[$bid] = [
                     'id'   => (int)$sec->id,

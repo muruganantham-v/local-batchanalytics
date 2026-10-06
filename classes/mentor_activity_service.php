@@ -66,6 +66,14 @@ class mentor_activity_service {
     /** @var array Default grouping rules with due days */
     public const DEFAULT_GROUPING_RULES = [
         [
+            'group' => 'Linux Systems',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 3],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 4],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 5],
+            ],
+        ],
+        [
             'group' => 'Advanced C',
             'activities' => [
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
@@ -104,6 +112,22 @@ class mentor_activity_service {
                 ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
                 ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
                 ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 15],
+            ],
+        ],
+        [
+            'group' => 'Qt / QML',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 8],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 7],
+            ],
+        ],
+        [
+            'group' => 'ELARM',
+            'activities' => [
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 8],
+                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 7],
             ],
         ],
     ];
@@ -354,11 +378,9 @@ class mentor_activity_service {
             }
         }
 
-        if (empty($rules)) {
-            foreach (self::DEFAULT_GROUPING_RULES as $def_grp) {
-                if (isset($def_grp['group']) && isset($def_grp['activities'])) {
-                    $rules[$def_grp['group']] = $def_grp['activities'];
-                }
+        foreach (self::DEFAULT_GROUPING_RULES as $def_grp) {
+            if (isset($def_grp['group']) && isset($def_grp['activities']) && !isset($rules[$def_grp['group']])) {
+                $rules[$def_grp['group']] = $def_grp['activities'];
             }
         }
 
@@ -453,6 +475,28 @@ class mentor_activity_service {
             }
             if ($all_found) {
                 return true;
+            }
+        }
+
+        $aliases = [
+            'Linux Systems' => ['ls', 'linux system', 'linux systems'],
+            'Advanced C'    => ['adv c', 'advc', 'advance c', 'advanced c'],
+            'Data Structure'=> ['ds', 'data structure', 'data structures'],
+            'MicroController'=> ['mc', 'microcontroller', 'microcontrollers', 'micro controller'],
+            'Linux Internals and TCP/IP Networking' => ['li', 'linux internals', 'linux internal', 'internals', 'tcp/ip'],
+            'Qt / QML'      => ['qt', 'qml', 'qt / qml', 'qt/qml'],
+            'ELARM'         => ['elarm'],
+        ];
+        if (isset($aliases[$g])) {
+            $m_clean = strtolower(trim((string)preg_replace('/[^a-zA-Z0-9]+/', ' ', $m)));
+            $m_tokens = array_filter(explode(' ', $m_clean));
+            foreach ($aliases[$g] as $al) {
+                if (in_array($al, $m_tokens, true)) {
+                    return true;
+                }
+                if (strpos($al, ' ') !== false && strpos($m_clean, $al) !== false) {
+                    return true;
+                }
             }
         }
 
@@ -712,17 +756,53 @@ class mentor_activity_service {
         $rules = self::get_grouping_rules();
 
         if ($groupname === '' || empty($rules[$groupname])) {
-            return [
-                'courseid'        => $courseid,
-                'group'           => '',
-                'is_manual'       => false,
-                'mod_p_start_ts'  => $mod_p_start_ts,
-                'sectionid'       => $sectionid,
-                'activities'      => [],
-            ];
+            $has_saved = false;
+            $saved_acts = [];
+            if ($courseid > 0 && self::is_table_available()) {
+                $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
+                if ($rec && !empty($rec->activitiesdata)) {
+                    $raw = json_decode($rec->activitiesdata, true);
+                    if (!empty($raw) && is_array($raw)) {
+                        $has_saved = true;
+                        $seen = [];
+                        foreach ($raw as $ra) {
+                            $k = $ra['key'] ?? self::slugify_key($ra['name'] ?? '');
+                            if (!empty($k) && !isset($seen[$k])) {
+                                $seen[$k] = true;
+                                $saved_acts[] = [
+                                    'key'     => $k,
+                                    'name'    => $ra['name'] ?? 'Activity',
+                                    'duedays' => isset($ra['duedays']) ? (int)$ra['duedays'] : 5,
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+            if ($has_saved && !empty($saved_acts)) {
+                $groupname = $coursename ?: 'Module Activities';
+                $expected_activities = $saved_acts;
+            } else if ($coursename !== '' || $courseid > 0) {
+                $groupname = $coursename ?: 'Module Activities';
+                $expected_activities = [
+                    ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 3],
+                    ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 4],
+                    ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 5],
+                    ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 5],
+                ];
+            } else {
+                return [
+                    'courseid'        => $courseid,
+                    'group'           => '',
+                    'is_manual'       => false,
+                    'mod_p_start_ts'  => $mod_p_start_ts,
+                    'sectionid'       => $sectionid,
+                    'activities'      => [],
+                ];
+            }
+        } else {
+            $expected_activities = $rules[$groupname];
         }
-
-        $expected_activities = $rules[$groupname];
 
         $saved_map = [];
         $modifier_ids = [];

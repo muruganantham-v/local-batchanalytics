@@ -141,6 +141,22 @@ if ($hassiteconfig) {
     ));
 
     $settings->add(new admin_setting_configselect(
+        'local_batchanalytics/sslead_roles',
+        get_string('sslead_roles', 'local_batchanalytics'),
+        get_string('sslead_roles_desc', 'local_batchanalytics'),
+        '0',
+        $role_choices
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_batchanalytics/sslead_email',
+        get_string('sslead_email', 'local_batchanalytics'),
+        get_string('sslead_email_desc', 'local_batchanalytics'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+
+    $settings->add(new admin_setting_configselect(
         'local_batchanalytics/program_manager_roles',
         get_string('program_manager_roles', 'local_batchanalytics'),
         get_string('program_manager_roles_desc', 'local_batchanalytics'),
