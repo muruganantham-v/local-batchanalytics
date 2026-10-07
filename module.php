@@ -554,34 +554,18 @@ if ($courseid > 0) {
         );
         if (!empty($sec_student_uids)) {
             $filtered = [];
-            $existing_uids = [];
             foreach ($all_enrolled as $st_rec) {
                 if (in_array((int)$st_rec->id, $sec_student_uids, true)) {
                     $filtered[$st_rec->id] = $st_rec;
-                    $existing_uids[] = (int)$st_rec->id;
                 }
             }
-            $missing_uids = array_diff($sec_student_uids, $existing_uids);
-            if (!empty($missing_uids)) {
-                list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
-                $extra_students = $DB->get_records_select(
-                    'user',
-                    "id $in_missing AND deleted = 0",
-                    $m_params,
-                    'firstname ASC, lastname ASC',
-                    'id, idnumber, username, firstname, lastname, email'
-                );
-                foreach ($extra_students as $mrec) {
-                    $filtered[$mrec->id] = $mrec;
-                }
-            }
-            $enrolledstudents = $filtered;
+            $enrolledstudents = !empty($filtered) ? $filtered : $all_enrolled;
         } else {
             $enrolledstudents = $all_enrolled;
         }
     }
-}
-if (empty($enrolledstudents) && !empty($sec_student_uids)) {
+} else if (!empty($sec_student_uids)) {
+    // Only if module has no mapped course ($courseid <= 0), fallback to section students.
     list($in_sec, $sec_params) = $DB->get_in_or_equal($sec_student_uids, SQL_PARAMS_NAMED, 'secstu');
     $enrolledstudents = $DB->get_records_select(
         'user',

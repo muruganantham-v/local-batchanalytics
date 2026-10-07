@@ -320,6 +320,13 @@ class student_performance_service {
         }
         $recordset->close();
 
+        $coursecontext = \context_course::instance($courseid, IGNORE_MISSING);
+        if (!$coursecontext) {
+            return [];
+        }
+        $enrolled_users = get_enrolled_users($coursecontext, '', 0, 'u.id');
+        $enrolled_map = array_fill_keys(array_map('intval', array_keys($enrolled_users)), true);
+
         foreach ($categories as &$category) {
             $category['itemcount'] = 0;
             $category['students'] = [];
@@ -332,6 +339,10 @@ class student_performance_service {
                 }
             }
             foreach ($userids as $userid) {
+                // If student is not enrolled in this course and has no recorded grades, keep them separate!
+                if (empty($enrolled_map[$userid]) && empty($grades[$userid])) {
+                    continue;
+                }
                 $earned = 0.0;
                 $completed = 0;
                 foreach ($category['items'] as $item) {
