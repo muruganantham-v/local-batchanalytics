@@ -25,6 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Batch Analytics';
+$string['batchanalytics:addinstance'] = 'Add a new Batch Analytics block';
+$string['batchanalytics:myaddinstance'] = 'Add a new Batch Analytics block to Dashboard';
 $string['batchanalytics:view'] = 'View batch analytics';
 $string['batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
 $string['batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
