@@ -546,23 +546,12 @@ if ($courseid > 0) {
     $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
     $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
     if ($studentroleid > 0 && $coursecontext) {
-        $all_enrolled = get_role_users(
+        $enrolledstudents = get_role_users(
             $studentroleid,
             $coursecontext,
             false,
             'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
         );
-        if (!empty($sec_student_uids)) {
-            $filtered = [];
-            foreach ($all_enrolled as $st_rec) {
-                if (in_array((int)$st_rec->id, $sec_student_uids, true)) {
-                    $filtered[$st_rec->id] = $st_rec;
-                }
-            }
-            $enrolledstudents = !empty($filtered) ? $filtered : $all_enrolled;
-        } else {
-            $enrolledstudents = $all_enrolled;
-        }
     }
 } else if (!empty($sec_student_uids)) {
     // Only if module has no mapped course ($courseid <= 0), fallback to section students.
@@ -679,11 +668,6 @@ $students_sql = "
     ORDER BY u.firstname, u.lastname
 ";
 $enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
-if (!empty($sec_student_uids) && !empty($enrolled_students)) {
-    $enrolled_students = array_filter($enrolled_students, static function($st) use ($sec_student_uids) {
-        return in_array((int)$st->userid, $sec_student_uids, true);
-    });
-}
 
 if ($courseid > 0) {
     // 1. Fetch tracker categories configured in Site Admin and course grade categories
