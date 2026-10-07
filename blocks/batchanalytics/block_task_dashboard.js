@@ -560,12 +560,99 @@
 
     var normName = (pendingTask && pendingTask.act_name ? pendingTask.act_name : (resp.activity_name || '')).toLowerCase();
     var normKey  = (pendingTask && pendingTask.act_key ? pendingTask.act_key : '').toLowerCase();
+    var isSpotAward = !!resp.is_spot_award ||
+                      normName.indexOf('spot award') !== -1 ||
+                      normName.indexOf('spot_award') !== -1 ||
+                      normKey.indexOf('spot award') !== -1 ||
+                      normKey.indexOf('spot_award') !== -1;
+
+    if (isSpotAward) {
+      var courseId = (pendingTask && pendingTask.courseid) ? pendingTask.courseid : (resp.courseid || '');
+      var spotUrl = resp.spot_award_url || resp.activity_url || ('/local/spotaward/index.php?courseid=' + courseId);
+      var isNominated = (resp.nominated === true) || (parseInt(resp.nominated_count, 10) > 0);
+
+      if (!isNominated || resp.has_pending) {
+        var sHtml = '';
+        sHtml += '<div class="ba-modal-alert danger">';
+        sHtml += '  <div class="alert-icon">⚠️</div>';
+        sHtml += '  <div class="alert-content">';
+        sHtml += '    <div class="alert-title">Spot Award Nomination Required</div>';
+        sHtml += '    <div class="alert-desc">' + escapeHtml(resp.message || 'No students have been nominated for Spot Award in this course yet. Please nominate at least one student before marking this activity as complete.') + '</div>';
+        sHtml += '  </div>';
+        sHtml += '</div>';
+
+        sHtml += '<div style="margin-top: 16px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; text-align: center;">';
+        sHtml += '  <p style="margin: 0 0 12px 0; color: #9a3412; font-size: 13px; font-weight: 500;">Please nominate at least one student from this course before marking this activity as complete.</p>';
+        sHtml += '  <a href="' + escapeHtml(spotUrl) + '" target="_blank" class="mc-btn-goto-act primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; background: #2563eb; color: #ffffff;">';
+        sHtml += '    Nominate Students for Spot Award ↗';
+        sHtml += '  </a>';
+        sHtml += '</div>';
+
+        validBody.innerHTML = sHtml;
+
+        if (btnGoto) {
+          btnGoto.href = spotUrl;
+          btnGoto.textContent = 'Nominate Students for Spot Award ↗';
+          btnGoto.className = 'mc-btn-goto-act primary';
+          btnGoto.style.display = 'inline-flex';
+        }
+
+        if (btnConfirm) {
+          btnConfirm.disabled = true;
+          btnConfirm.textContent = 'Nominate Students First';
+          btnConfirm.title = 'Please nominate at least one student before marking this activity as complete.';
+        }
+        return;
+      }
+
+      // Nominated is verified!
+      var students = Array.isArray(resp.nominated_students) ? resp.nominated_students : [];
+      var sHtml = '';
+      sHtml += '<div class="ba-modal-alert success">';
+      sHtml += '  <div class="alert-icon">✓</div>';
+      sHtml += '  <div class="alert-content">';
+      sHtml += '    <div class="alert-title">Spot Award Nomination Verified</div>';
+      sHtml += '    <div class="alert-desc">' + escapeHtml(resp.message || ('Spot award nomination verified (' + (resp.nominated_count || students.length) + ' student(s) nominated).')) + '</div>';
+      sHtml += '  </div>';
+      sHtml += '</div>';
+
+      if (students.length > 0) {
+        sHtml += '<div class="ba-modal-items-list" style="margin-top: 14px; max-height: 220px; overflow-y: auto;">';
+        sHtml += '  <div class="items-title" style="font-weight: 600; margin-bottom: 8px; color: #1e293b; font-size: 13px;">Nominated Student(s) in Course (' + students.length + '):</div>';
+        students.forEach(function(st) {
+          var name = st.fullname || ((st.firstname || '') + ' ' + (st.lastname || '')).trim() || ('Student #' + st.studentid);
+          var catText = st.awardcategory ? (' · ' + escapeHtml(st.awardcategory)) : '';
+          var idNumberText = st.idnumber ? (' (' + escapeHtml(st.idnumber) + ')') : '';
+          var statusBadge = st.status ? ('<span class="ba-badge status-' + escapeHtml(st.status) + '" style="font-size:11px; padding:2px 8px; border-radius:4px; background:#e0e7ff; color:#3730a3; text-transform:capitalize; font-weight:600;">' + escapeHtml(st.status) + '</span>') : '';
+          sHtml += '  <div class="ba-modal-item-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:6px;">';
+          sHtml += '    <div class="item-name" style="font-weight:500; font-size:13px; color:#0f172a;">' + escapeHtml(name) + '<span style="color:#64748b; font-size:12px;">' + idNumberText + catText + '</span></div>';
+          sHtml += '    <div class="item-right">' + statusBadge + '</div>';
+          sHtml += '  </div>';
+        });
+        sHtml += '</div>';
+      }
+
+      validBody.innerHTML = sHtml;
+
+      if (btnGoto) {
+        btnGoto.href = spotUrl;
+        btnGoto.textContent = 'View Spot Award Nominations ↗';
+        btnGoto.className = 'mc-btn-goto-act secondary';
+        btnGoto.style.display = 'inline-flex';
+      }
+
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Complete';
+        btnConfirm.title = '';
+      }
+      return;
+    }
+
     var isMilestone = !!resp.is_milestone ||
                       normName.indexOf('nomination') !== -1 ||
-                      normName.indexOf('spot award') !== -1 ||
                       normName.indexOf('power track') !== -1 ||
                       normKey.indexOf('nomination') !== -1 ||
-                      normKey.indexOf('spot_award') !== -1 ||
                       normKey.indexOf('power_track') !== -1;
 
     if (isMilestone) {

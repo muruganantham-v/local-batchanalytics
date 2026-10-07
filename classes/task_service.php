@@ -1211,6 +1211,7 @@ class task_service {
         if ($action_type === 'mentor') {
             $courseid = (int)($params['courseid'] ?? 0);
             $act_name = trim((string)($params['act_name'] ?? ''));
+            $act_key  = trim((string)($params['act_key'] ?? ''));
             $batchid  = (int)($params['batchid'] ?? 0);
             $cmid     = (int)($params['cmid'] ?? 0);
 
@@ -1225,22 +1226,28 @@ class task_service {
                 ];
             }
 
-            $pending_check = activity_tracker_service::check_pending_submissions($courseid, $cmid, $act_name, $batchid);
+            $check_name = !empty($act_name) ? $act_name : $act_key;
+            $pending_check = activity_tracker_service::check_pending_submissions($courseid, $cmid, $check_name, $batchid);
 
             return [
-                'success'         => true,
-                'action_type'     => 'mentor',
-                'has_pending'     => $pending_check['has_pending'],
-                'count'           => $pending_check['count'],
-                'pending_count'   => $pending_check['pending_count'],
-                'completed_count' => $pending_check['completed_count'],
-                'total_count'     => $pending_check['total_count'],
-                'activity_name'   => $pending_check['activity_name'] ?: $act_name,
-                'activity_url'    => $pending_check['activity_url'],
-                'items'           => $pending_check['items'] ?? [],
-                'message'         => $pending_check['message'],
-                'details'         => $pending_check['details'],
-                'can_complete'    => !$pending_check['has_pending'],
+                'success'            => true,
+                'action_type'        => 'mentor',
+                'has_pending'        => $pending_check['has_pending'],
+                'count'              => $pending_check['count'],
+                'pending_count'      => $pending_check['pending_count'],
+                'completed_count'    => $pending_check['completed_count'],
+                'total_count'        => $pending_check['total_count'],
+                'activity_name'      => $pending_check['activity_name'] ?: $act_name,
+                'activity_url'       => $pending_check['activity_url'],
+                'items'              => $pending_check['items'] ?? [],
+                'message'            => $pending_check['message'],
+                'details'            => $pending_check['details'],
+                'can_complete'       => !$pending_check['has_pending'],
+                'is_spot_award'      => !empty($pending_check['is_spot_award']),
+                'nominated'          => !empty($pending_check['nominated']),
+                'nominated_count'    => (int)($pending_check['nominated_count'] ?? 0),
+                'nominated_students' => $pending_check['nominated_students'] ?? [],
+                'spot_award_url'     => $pending_check['spot_award_url'] ?? '',
             ];
         }
 
@@ -1278,30 +1285,37 @@ class task_service {
         if ($action_type === 'mentor') {
             $courseid = (int)($params['courseid'] ?? 0);
             $act_name = trim((string)($params['act_name'] ?? ''));
+            $act_key  = trim((string)($params['act_key'] ?? ''));
             $batchid  = (int)($params['batchid'] ?? 0);
             $cmid     = (int)($params['cmid'] ?? 0);
-            if ($courseid <= 0 || $act_name === '') {
+            if ($courseid <= 0 || ($act_name === '' && $act_key === '')) {
                 throw new \moodle_exception('invalidparams', 'local_batchanalytics');
             }
 
-            // Check if there are pending / ungraded submissions before completing
-            $pending_check = activity_tracker_service::check_pending_submissions($courseid, $cmid, $act_name, $batchid);
+            $check_name = !empty($act_name) ? $act_name : $act_key;
+            // Check if there are pending / ungraded submissions or spot award nominations before completing
+            $pending_check = activity_tracker_service::check_pending_submissions($courseid, $cmid, $check_name, $batchid);
             if ($pending_check['has_pending']) {
                 return [
-                    'success'         => false,
-                    'error'           => $pending_check['message'],
-                    'message'         => $pending_check['message'],
-                    'count'           => $pending_check['count'],
-                    'pending_count'   => $pending_check['pending_count'],
-                    'completed_count' => $pending_check['completed_count'],
-                    'total_count'     => $pending_check['total_count'],
-                    'activity_url'    => $pending_check['activity_url'],
-                    'items'           => $pending_check['items'] ?? [],
-                    'details'         => $pending_check['details'],
+                    'success'            => false,
+                    'error'              => $pending_check['message'],
+                    'message'            => $pending_check['message'],
+                    'count'              => $pending_check['count'],
+                    'pending_count'      => $pending_check['pending_count'],
+                    'completed_count'    => $pending_check['completed_count'],
+                    'total_count'        => $pending_check['total_count'],
+                    'activity_url'       => $pending_check['activity_url'],
+                    'spot_award_url'     => $pending_check['spot_award_url'] ?? '',
+                    'is_spot_award'      => !empty($pending_check['is_spot_award']),
+                    'nominated'          => !empty($pending_check['nominated']),
+                    'nominated_students' => $pending_check['nominated_students'] ?? [],
+                    'items'              => $pending_check['items'] ?? [],
+                    'details'            => $pending_check['details'],
                 ];
             }
 
-            $updated = mentor_activity_service::save_activity_status($courseid, $act_name, true, date('Y-m-d'), $userid, $batchid);
+            $target_save = !empty($act_name) ? $act_name : $act_key;
+            $updated = mentor_activity_service::save_activity_status($courseid, $target_save, true, date('Y-m-d'), $userid, $batchid);
             return [
                 'success' => true,
                 'type'    => 'mentor',

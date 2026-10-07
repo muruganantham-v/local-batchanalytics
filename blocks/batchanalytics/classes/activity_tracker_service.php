@@ -1351,8 +1351,51 @@ class activity_tracker_service {
             ];
         }
 
-        // Ignore non-submission operational activities (e.g. spot awards, nominations)
-        if (str_contains($norm, 'nomination') || str_contains($norm, 'spot award') || str_contains($norm, 'power track')) {
+        // 3a. Spot Award nomination validation
+        $is_spot_award = (strpos($norm, 'spot award') !== false || strpos($norm, 'spot_award') !== false);
+        if ($is_spot_award) {
+            $spot = self::check_spot_award_nominations($courseid, $activity_name);
+            if (!$spot['nominated']) {
+                return [
+                    'has_pending'        => true,
+                    'count'              => 1,
+                    'pending_count'      => 1,
+                    'completed_count'    => 0,
+                    'total_count'        => 1,
+                    'activity_name'      => $activity_name,
+                    'activity_url'       => $spot['spot_award_url'],
+                    'spot_award_url'     => $spot['spot_award_url'],
+                    'is_spot_award'      => true,
+                    'nominated'          => false,
+                    'nominated_count'    => 0,
+                    'nominated_students' => [],
+                    'items'              => [],
+                    'message'            => 'No students have been nominated for Spot Award in this course yet. Please nominate at least one student before marking this activity as complete.',
+                    'details'            => ['reason' => 'spot_award_not_nominated'],
+                ];
+            }
+
+            return [
+                'has_pending'        => false,
+                'count'              => 0,
+                'pending_count'      => 0,
+                'completed_count'    => $spot['nominated_count'],
+                'total_count'        => $spot['nominated_count'],
+                'activity_name'      => $activity_name,
+                'activity_url'       => $spot['spot_award_url'],
+                'spot_award_url'     => $spot['spot_award_url'],
+                'is_spot_award'      => true,
+                'nominated'          => true,
+                'nominated_count'    => $spot['nominated_count'],
+                'nominated_students' => $spot['nominated_students'],
+                'items'              => [],
+                'message'            => 'Spot Award nomination verified (' . $spot['nominated_count'] . ' student(s) nominated).',
+                'details'            => ['reason' => 'spot_award_nominated'],
+            ];
+        }
+
+        // Ignore non-submission operational activities (e.g. power track, other nominations)
+        if (str_contains($norm, 'nomination') || str_contains($norm, 'power track')) {
             $fallback_url = (new \moodle_url('/local/batchanalytics/module.php', ['courseid' => $courseid]))->out(false);
             return [
                 'has_pending'     => false,
@@ -1841,6 +1884,88 @@ class activity_tracker_service {
             ]],
             'message'         => "Activity ready to mark complete.",
             'details'         => [],
+        ];
+    }
+
+    /**
+     * Check if spot award nominations exist for a course in local_spotaward.
+     *
+     * @param int $courseid
+     * @param string $activity_name
+     * @return array
+     */
+    public static function check_spot_award_nominations(int $courseid, string $activity_name = ''): array {
+        global $DB;
+
+        $spot_award_url = (new \moodle_url('/local/spotaward/index.php', ['courseid' => $courseid]))->out(false);
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('spotaward_nominations') || !$dbman->table_exists('spotaward_nomination_items')) {
+            return [
+                'is_spot_award'      => true,
+                'nominated'          => true, // Graceful fallback if spotaward plugin is not installed
+                'nominated_count'    => 0,
+                'nominated_students' => [],
+                'spot_award_url'     => $spot_award_url,
+            ];
+        }
+
+        $sql = "SELECT sni.id, sni.nominationid, sni.studentid, sni.awardcategory, sni.status,
+                       u.firstname, u.lastname, u.idnumber, u.email
+                  FROM {spotaward_nominations} sn
+                  JOIN {spotaward_nomination_items} sni ON sni.nominationid = sn.id
+                  JOIN {user} u ON u.id = sni.studentid
+                 WHERE sn.courseid = :courseid
+                   AND sni.status <> 'rejected'
+                 ORDER BY sni.id DESC";
+
+        $records = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+
+        $students = [];
+        foreach ($records as $rec) {
+            $name_parts = array_filter([trim($rec->firstname ?? ''), trim($rec->lastname ?? '')]);
+            $fullname = !empty($name_parts) ? implode(' ', $name_parts) : ('Student #' . $rec->studentid);
+            $students[] = [
+                'id'            => (int)$rec->id,
+                'studentid'     => (int)$rec->studentid,
+                'fullname'      => $fullname,
+                'firstname'     => $rec->firstname,
+                'lastname'      => $rec->lastname,
+                'idnumber'      => $rec->idnumber,
+                'awardcategory' => $rec->awardcategory,
+                'status'        => $rec->status,
+            ];
+        }
+
+        $norm = mb_strtolower(trim($activity_name));
+        $is_mid = (strpos($norm, 'mid') !== false);
+        $is_end = (strpos($norm, 'end') !== false);
+
+        $filtered_students = $students;
+        if ($is_mid) {
+            $mid_students = array_values(array_filter($students, function($s) {
+                return (stripos($s['awardcategory'], 'mid') !== false);
+            }));
+            if (!empty($mid_students)) {
+                $filtered_students = $mid_students;
+            }
+        } else if ($is_end) {
+            $end_students = array_values(array_filter($students, function($s) {
+                return (stripos($s['awardcategory'], 'end') !== false);
+            }));
+            if (!empty($end_students)) {
+                $filtered_students = $end_students;
+            }
+        }
+
+        $count = count($filtered_students);
+
+        return [
+            'is_spot_award'      => true,
+            'nominated'          => ($count > 0),
+            'nominated_count'    => $count,
+            'nominated_students' => $filtered_students,
+            'spot_award_url'     => $spot_award_url,
         ];
     }
 }
