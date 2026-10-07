@@ -310,6 +310,30 @@ if ($section) {
     $raw_modules = [];
 }
 
+$is_manager = is_siteadmin($USER->id)
+    || has_capability('local/batchanalytics:manage', $context, $USER->id)
+    || has_capability('local/batchanalytics:viewallcourses', $context, $USER->id);
+
+if ($section && !$is_manager) {
+    $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
+    if (!$assignment['is_assigned']) {
+        throw new \moodle_exception('nopermissions', 'error', '', 'view this batch module');
+    }
+    // If user is a mentor (not PM, not SSE), ensure they only access a module assigned to them.
+    if (!$assignment['is_pm'] && !$assignment['is_sse']) {
+        $cur_mod_check = $raw_modules[$module_idx - 1] ?? null;
+        if (!$cur_mod_check || !\local_batchanalytics\util::is_mentor_assigned_to_module($cur_mod_check, $USER)) {
+            // Find first module assigned to this mentor in this batch
+            foreach ($raw_modules as $mod_candidate) {
+                if (\local_batchanalytics\util::is_mentor_assigned_to_module($mod_candidate, $USER)) {
+                    $module_idx = (int)($mod_candidate['module'] ?? 1);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 $total_modules = count($raw_modules);
 if ($total_modules === 0) {
     $module_idx = 0;
@@ -440,6 +464,30 @@ if ($is_in_progress && ($delta === null || $delta === 0)) {
 // Previous & Next module links
 $prev_idx = $module_idx > 1 ? ($module_idx - 1) : null;
 $next_idx = $module_idx < $total_modules ? ($module_idx + 1) : null;
+
+if (!$is_manager && $section) {
+    $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
+    if (!$assignment['is_pm'] && !$assignment['is_sse']) {
+        // Mentor view: find previous and next among assigned modules only
+        $assigned_indices = [];
+        foreach ($raw_modules as $rm) {
+            if (\local_batchanalytics\util::is_mentor_assigned_to_module($rm, $USER)) {
+                $assigned_indices[] = (int)($rm['module'] ?? 1);
+            }
+        }
+        $prev_idx = null;
+        $next_idx = null;
+        $curr_pos = array_search($module_idx, $assigned_indices);
+        if ($curr_pos !== false) {
+            if ($curr_pos > 0) {
+                $prev_idx = $assigned_indices[$curr_pos - 1];
+            }
+            if ($curr_pos < count($assigned_indices) - 1) {
+                $next_idx = $assigned_indices[$curr_pos + 1];
+            }
+        }
+    }
+}
 
 $prev_name = $prev_idx ? (!empty($raw_modules[$prev_idx - 1]['courseshortname']) ? $raw_modules[$prev_idx - 1]['courseshortname'] : ($canonical_modules[$prev_idx] ?? ('Module ' . $prev_idx))) : null;
 $next_name = $next_idx ? (!empty($raw_modules[$next_idx - 1]['courseshortname']) ? $raw_modules[$next_idx - 1]['courseshortname'] : ($canonical_modules[$next_idx] ?? ('Module ' . $next_idx))) : null;

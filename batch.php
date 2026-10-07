@@ -58,6 +58,10 @@ if ($action === 'addnote') {
 
 $id = optional_param('id', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
 
+$is_manager = is_siteadmin($USER->id)
+    || has_capability('local/batchanalytics:manage', $context, $USER->id)
+    || has_capability('local/batchanalytics:viewallcourses', $context, $USER->id);
+
 // -------------------------------------------------------------------------
 // 1. Data Retrieval from Batch Management (local_bm_classsection / local_bm_batch)
 // -------------------------------------------------------------------------
@@ -80,13 +84,31 @@ if ($has_bm_section && $id > 0) {
 
 // Fallback: If requested ID is not found or ID is 0, pick the first available classsection record
 if (!$section && $has_bm_section) {
-    $sections = $DB->get_records('local_bm_classsection', null, 'id ASC', '*', 0, 1);
-    if (!empty($sections)) {
-        $section = reset($sections);
+    if ($is_manager) {
+        $sections = $DB->get_records('local_bm_classsection', null, 'id ASC', '*', 0, 1);
+        if (!empty($sections)) {
+            $section = reset($sections);
+        }
+    } else {
+        $all_secs = $DB->get_records('local_bm_classsection', null, 'id ASC');
+        foreach ($all_secs as $sec_candidate) {
+            $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_candidate, $USER);
+            if ($assignment['is_assigned']) {
+                $section = $sec_candidate;
+                break;
+            }
+        }
     }
 }
 if ($section) {
     $id = (int)$section->id;
+}
+
+if ($section && !$is_manager) {
+    $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
+    if (!$assignment['is_assigned']) {
+        throw new \moodle_exception('nopermissions', 'error', '', 'view this batch');
+    }
 }
 
 if ($section && $has_bm_batch && !empty($section->batchid)) {
@@ -146,6 +168,8 @@ if ($section) {
         if ($is_online) {
             $raw_modules = \local_batchanalytics\util::filter_modules_for_mode($raw_modules, $deliverymode);
         }
+        // For mentor: only display the modules which are assigned to them!
+        $raw_modules = \local_batchanalytics\util::filter_modules_for_user($raw_modules, $section, $USER, $is_manager);
     }
 } else {
     $batchid_label  = $id > 0 ? ('Batch ' . $id) : 'Batch';

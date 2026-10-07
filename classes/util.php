@@ -210,6 +210,132 @@ class util {
         return $filtered;
     }
 
+    /**
+     * Check if a given user value (id, name, username, email) matches a Moodle user.
+     *
+     * @param mixed $val Value from batch/module record (user id, name, username, email).
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_user_match($val, $user_or_id): bool {
+        if ($val === null || $val === '' || $val === '0' || $val === '—') {
+            return false;
+        }
+        if (is_array($val) || is_object($val)) {
+            if (is_object($val) && isset($val->id)) {
+                $val = $val->id;
+            } else if (is_array($val) && isset($val['id'])) {
+                $val = $val['id'];
+            } else if (is_array($val) && isset($val['userid'])) {
+                $val = $val['userid'];
+            } else if (is_array($val) && isset($val['name'])) {
+                $val = $val['name'];
+            } else {
+                return false;
+            }
+        }
+        global $DB;
+        if (is_numeric($user_or_id)) {
+            $user = $DB->get_record('user', ['id' => (int)$user_or_id], 'id, username, firstname, lastname, email');
+        } else {
+            $user = $user_or_id;
+        }
+        if (!$user) {
+            return false;
+        }
+        $u_id = (string)$user->id;
+        $u_name = strtolower(trim(fullname($user)));
+        $u_uname = strtolower(trim($user->username ?? ''));
+        $u_email = strtolower(trim($user->email ?? ''));
+
+        $v = trim((string)$val);
+        if ($v === $u_id) {
+            return true;
+        }
+        $lv = strtolower($v);
+        return ($lv === $u_name || $lv === $u_uname || ($u_email !== '' && $lv === $u_email));
+    }
+
+    /**
+     * Check if a user is assigned as mentor in a specific module.
+     *
+     * @param array $module Module associative array.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_mentor_assigned_to_module(array $module, $user_or_id): bool {
+        $mentor_fields = ['primarymentor', 'secondarymentor', 'labmentor1', 'labmentor2', 'labmentor3'];
+        foreach ($mentor_fields as $field) {
+            if (!empty($module[$field]) && self::is_user_match($module[$field], $user_or_id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a user is assigned to a section as PM, SSE, or Mentor.
+     *
+     * @param \stdClass $section Class section object.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @return array{is_pm:bool, is_sse:bool, is_mentor:bool, is_assigned:bool, assigned_modules:array}
+     */
+    public static function get_section_user_assignment(\stdClass $section, $user_or_id): array {
+        $is_pm = self::is_user_match($section->pmmanager ?? '', $user_or_id)
+            || self::is_user_match($section->pmmanagername ?? '', $user_or_id);
+        $is_sse = self::is_user_match($section->maacexecutive ?? '', $user_or_id)
+            || self::is_user_match($section->maacexecutivename ?? '', $user_or_id);
+
+        $modules = self::decode_module_data($section->moduledata ?? '', true);
+        $assigned_modules = [];
+        foreach ($modules as $m) {
+            if (self::is_mentor_assigned_to_module($m, $user_or_id)) {
+                $assigned_modules[] = $m;
+            }
+        }
+        $is_mentor = !empty($assigned_modules);
+        $is_assigned = $is_pm || $is_sse || $is_mentor;
+
+        return [
+            'is_pm' => $is_pm,
+            'is_sse' => $is_sse,
+            'is_mentor' => $is_mentor,
+            'is_assigned' => $is_assigned,
+            'assigned_modules' => $assigned_modules,
+        ];
+    }
+
+    /**
+     * Filter modules for a specific user.
+     * Managers, PMs, and SSEs see all modules. Mentors only see the modules assigned to them.
+     *
+     * @param array $modules List of module arrays.
+     * @param \stdClass|null $section Class section object.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $is_manager Whether user has manager/viewallcourses capability.
+     * @return array Filtered list of modules.
+     */
+    public static function filter_modules_for_user(array $modules, ?\stdClass $section, $user_or_id, bool $is_manager = false): array {
+        if ($is_manager || empty($modules)) {
+            return $modules;
+        }
+        if ($section) {
+            $assignment = self::get_section_user_assignment($section, $user_or_id);
+            // If user is PM or SSE for this section, they see all modules.
+            if ($assignment['is_pm'] || $assignment['is_sse']) {
+                return $modules;
+            }
+        }
+        // Mentor view: only display the modules which are assigned to them.
+        $filtered = [];
+        foreach ($modules as $m) {
+            if (self::is_mentor_assigned_to_module($m, $user_or_id)) {
+                $filtered[] = $m;
+            }
+        }
+        return $filtered;
+    }
+
 
     /**
      * Get module total days by name, course name, or module index.

@@ -360,53 +360,15 @@ if ($action === 'getnewbatchdata') {
             || has_capability('local/batchanalytics:manage', $context, $currentuserid)
             || has_capability('local/batchanalytics:viewallcourses', $context, $currentuserid);
 
-        // Non-managers should only see class sections corresponding to courses/sections they are enrolled in or assigned to
+        // Non-managers (PM, SSE, Mentors) only see batch rows where their name/id is assigned.
         if (!$is_manager) {
-            $user_courses = enrol_get_users_courses($currentuserid, true, ['id', 'fullname', 'shortname']);
-            $user_course_ids = array_map('intval', array_keys($user_courses));
-            $user_course_names = array_map(function($c) { return strtolower(trim($c->fullname)); }, $user_courses);
-            $user_course_shortnames = array_map(function($c) { return strtolower(trim($c->shortname)); }, $user_courses);
-            $user_fullname = trim(fullname($USER));
-
             $allowed_section_ids = [];
 
             if (!empty($sections)) {
                 foreach ($sections as $s_item) {
-                    $parent = !empty($s_item->batchid) && isset($batches[$s_item->batchid]) ? $batches[$s_item->batchid] : null;
-                    if ((string)$s_item->maacexecutive === (string)$currentuserid
-                        || (string)$s_item->pmmanager === (string)$currentuserid
-                        || $s_item->maacexecutivename === $user_fullname
-                        || $s_item->pmmanagername === $user_fullname) {
+                    $assignment = \local_batchanalytics\util::get_section_user_assignment($s_item, $USER);
+                    if ($assignment['is_assigned']) {
                         $allowed_section_ids[(int)$s_item->id] = true;
-                        continue;
-                    }
-                    $s_modules = \local_batchanalytics\util::decode_module_data($s_item->moduledata ?? '', true);
-                    if (!empty($s_modules)) {
-                        foreach ($s_modules as $sm) {
-                            $mcid = (int)($sm['moodlecourseid'] ?? 0);
-                            if ($mcid > 0 && in_array($mcid, $user_course_ids, true)) {
-                                $allowed_section_ids[(int)$s_item->id] = true;
-                                break;
-                            }
-                            $mentors = [
-                                (string)($sm['primarymentor'] ?? ''),
-                                (string)($sm['secondarymentor'] ?? ''),
-                                (string)($sm['labmentor1'] ?? ''),
-                                (string)($sm['labmentor2'] ?? ''),
-                                (string)($sm['labmentor3'] ?? '')
-                            ];
-                            if (in_array((string)$currentuserid, $mentors, true) || in_array($user_fullname, $mentors, true)) {
-                                $allowed_section_ids[(int)$s_item->id] = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (empty($allowed_section_ids[(int)$s_item->id]) && $parent) {
-                        $bcoursename = strtolower(trim((string)($parent->coursename ?? '')));
-                        if ($bcoursename !== '' && (in_array($bcoursename, $user_course_names, true) || in_array($bcoursename, $user_course_shortnames, true))) {
-                            $allowed_section_ids[(int)$s_item->id] = true;
-                        }
                     }
                 }
 
@@ -485,6 +447,8 @@ if ($action === 'getnewbatchdata') {
                 if ($is_online) {
                     $modules = \local_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
                 }
+                // For mentor: only display the modules which are assigned to them!
+                $modules = \local_batchanalytics\util::filter_modules_for_user($modules, $sec, $USER, $is_manager);
 
                 $currentmodule = 'N/A';
                 $currentmoduleidx = 1;
