@@ -173,7 +173,8 @@ class block_batchanalytics extends block_base {
             $html = '
 <div class="block-batchanalytics-wrap ba-task-dash-wrap" id="ba-task-dash-container"
      data-sesskey="' . s(sesskey()) . '"
-     data-api-url="' . s($apiurl) . '">
+     data-api-url="' . s($apiurl) . '"
+     data-active-role="' . s($dashdata['active_role'] ?? 'mentors') . '">
 
   <script type="application/json" id="ba-dash-initial-data">' . json_encode($dashdata, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . '</script>
 
@@ -253,7 +254,7 @@ class block_batchanalytics extends block_base {
                         $btn_lbl = !empty($t['btn_label']) ? $t['btn_label'] : 'Update →';
                         $act_url = !empty($t['action_url']) ? $t['action_url'] : $t['dest_url'];
                         $html .= '    <a href="' . s($act_url) . '" class="mc-btn2 mc-btn-link">' . s($btn_lbl) . '</a>';
-                    } else if (($dashdata['active_role'] ?? '') !== 'admin' && ($dashdata['active_role'] ?? '') !== 'pm' && empty($dashdata['is_pm'])) {
+                    } else if (($dashdata['active_role'] ?? '') === 'mentors' || ($dashdata['active_role'] ?? '') === 'sse' || ($dashdata['active_role'] ?? '') === 'sspm' || (($dashdata['active_role'] ?? '') !== 'admin' && ($dashdata['active_role'] ?? '') !== 'pm')) {
                         $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
                     }
                     $html .= '  </div>';
@@ -292,8 +293,7 @@ class block_batchanalytics extends block_base {
     </div>
   </div>';
 
-            if (($dashdata['active_role'] ?? '') !== 'admin') {
-                $html .= '
+            $html .= '
   <!-- Mark Complete Confirmation Modal -->
   <div class="ba-task-modal-overlay" id="ba-task-modal-overlay">
     <div class="ba-task-modal-box">
@@ -319,7 +319,6 @@ class block_batchanalytics extends block_base {
       </div>
     </div>
   </div>';
-            }
 
             $html .= '
 </div>

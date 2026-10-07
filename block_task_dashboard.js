@@ -27,9 +27,15 @@
 
     apiUrl = container.getAttribute('data-api-url') || '';
     sesskey = container.getAttribute('data-sesskey') || '';
+    if (container.getAttribute('data-active-role')) {
+      activeRole = container.getAttribute('data-active-role');
+    }
 
     var roleSwitcher = document.getElementById('ba-role-switcher');
     if (roleSwitcher) {
+      if (roleSwitcher.value) {
+        activeRole = roleSwitcher.value;
+      }
       roleSwitcher.addEventListener('change', function() {
         activeRole = this.value;
         currentPage = 1;
@@ -165,6 +171,7 @@
     if (elSub && d.role_subtitle) elSub.textContent = d.role_subtitle;
 
     if (d && d.active_role) {
+      activeRole = d.active_role;
       var roleSwitcherWrap = document.querySelector('.ph-role-switch');
       if (roleSwitcherWrap && (!d.can_switch_roles || d.active_role === 'admin')) {
         roleSwitcherWrap.style.display = 'none';
@@ -337,7 +344,7 @@
         var btnLbl = t.btn_label || 'Update →';
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
-      } else if (activeRole !== 'admin' && activeRole !== 'pm' && !isPmUser) {
+      } else if (activeRole === 'mentors' || activeRole === 'sse' || activeRole === 'sspm' || (activeRole !== 'admin' && activeRole !== 'pm')) {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       }
 
