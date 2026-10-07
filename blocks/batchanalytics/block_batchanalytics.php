@@ -183,8 +183,8 @@ class block_batchanalytics extends block_base {
       <h1 id="ba-dash-greeting">' . s($dashdata['greeting']) . '</h1>
       <div class="sub" id="ba-dash-rolesub">' . s($dashdata['role_subtitle']) . '</div>
     </div>';
-
-            if (!empty($dashdata['can_switch_roles']) && count($dashdata['available_roles']) > 1) {
+            $is_admin_user = is_siteadmin($USER->id) || (($dashdata['active_role'] ?? '') === 'admin');
+            if (!$is_admin_user && !empty($dashdata['can_switch_roles']) && count($dashdata['available_roles']) > 1) {
                 $html .= '
     <div class="ph-role-switch" style="align-self: flex-start;">
       <select id="ba-role-switcher" class="filter-select" title="Switch Operational Role" aria-label="Switch Operational Role" style="padding: 7px 12px; font-weight: 600; font-size: 13px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;">';

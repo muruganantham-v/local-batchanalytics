@@ -165,7 +165,10 @@
     if (elSub && d.role_subtitle) elSub.textContent = d.role_subtitle;
 
     if (d && d.active_role) {
-      activeRole = d.active_role;
+      var roleSwitcherWrap = document.querySelector('.ph-role-switch');
+      if (roleSwitcherWrap && (!d.can_switch_roles || d.active_role === 'admin')) {
+        roleSwitcherWrap.style.display = 'none';
+      }
       var roleSwitcher = document.getElementById('ba-role-switcher');
       if (roleSwitcher) {
         roleSwitcher.value = d.active_role;

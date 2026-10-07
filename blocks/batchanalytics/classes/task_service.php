@@ -299,13 +299,7 @@ class task_service {
         $available_roles = [];
         if ($is_siteadmin) {
             $available_roles = [
-                'admin'   => 'Admin',
-                'mentors' => 'Mentors',
-                'pm'      => 'Program Manager',
-                'sse'     => 'SS Executive',
-                'sslead'  => 'SS Lead',
-                'sspm'    => 'SS / PM',
-                'am'      => 'Assistant Manager',
+                'admin' => 'Admin',
             ];
             $default_role = 'admin';
         } else {
@@ -1184,13 +1178,16 @@ class task_service {
         $is_pm_user = ($active_role === 'pm' || (!empty($personas['is_pm']) && empty($personas['is_sse'])));
         $is_sslead_user = ($active_role === 'sslead' || (!empty($personas['is_sslead']) && empty($personas['is_sse'])));
 
+        $is_admin = $is_siteadmin || ($active_role === 'admin');
+        $can_switch_roles = !$is_admin && (count($available_roles) > 1);
+
         return [
             'greeting'         => $greeting,
             'role_subtitle'    => $role_subtitle,
             'active_role'      => $active_role,
             'is_pm'            => $is_pm_user,
             'is_sslead'        => $is_sslead_user,
-            'can_switch_roles' => ($is_manager || count($available_roles) > 1),
+            'can_switch_roles' => $can_switch_roles,
             'available_roles'  => $available_roles,
             'glance'           => $glance,
             'batches'          => array_values($batch_options),

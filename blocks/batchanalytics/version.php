@@ -8,11 +8,11 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026100705;
+$plugin->version   = 2026100706;
 $plugin->requires  = 2024042200;
 $plugin->component = 'block_batchanalytics';
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '2.2.5';
+$plugin->release   = '2.2.6';
 $plugin->dependencies = [
     'local_batchanalytics' => 2026092801,
 ];
