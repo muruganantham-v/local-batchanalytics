@@ -310,14 +310,17 @@ if ($section) {
     $raw_modules = [];
 }
 
-$is_manager = is_siteadmin($USER->id)
-    || has_capability('local/batchanalytics:manage', $context, $USER->id)
-    || has_capability('local/batchanalytics:viewallcourses', $context, $USER->id);
+$is_manager = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
 
 if ($section && !$is_manager) {
     $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
     if (!$assignment['is_assigned']) {
-        throw new \moodle_exception('nopermissions', 'error', '', 'view this batch module');
+        redirect(
+            new \moodle_url('/local/batchanalytics/index.php'),
+            get_string('nopermissiontoviewbatch', 'local_batchanalytics'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
     }
     // If user is a mentor (not PM, not SSE), ensure they only access a module assigned to them.
     if (!$assignment['is_pm'] && !$assignment['is_sse']) {

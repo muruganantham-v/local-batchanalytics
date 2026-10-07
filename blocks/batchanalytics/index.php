@@ -93,7 +93,7 @@ if (!has_capability('local/batchanalytics:view', $context) && !has_capability('b
 $can_manage = is_siteadmin($userid)
     || has_capability('local/batchanalytics:manage', $context)
     || has_capability('local/batchanalytics:viewfullcrmdata', $context);
-$can_view_all_courses = $can_manage || has_capability('local/batchanalytics:viewallcourses', $context);
+$can_view_all_courses = \block_batchanalytics\util::can_view_all_batches($context, $userid);
 $can_view_crm = $can_manage
     || has_capability('local/batchanalytics:viewcrmdata', $context)
     || has_capability('local/batchanalytics:view', $context);
@@ -354,11 +354,9 @@ if ($action === 'getnewbatchdata') {
             die();
         }
 
-        // Check if user is a Manager (site admin, manage capability, or viewallcourses capability)
+        // Check if user can view all courses or is restricted to assigned batches
         $currentuserid = (int)$USER->id;
-        $is_manager = is_siteadmin($currentuserid)
-            || has_capability('local/batchanalytics:manage', $context, $currentuserid)
-            || has_capability('local/batchanalytics:viewallcourses', $context, $currentuserid);
+        $is_manager = \block_batchanalytics\util::can_view_all_batches($context, $currentuserid);
 
         // Non-managers (PM, SSE, Mentors) only see batch rows where their name/id is assigned.
         if (!$is_manager) {

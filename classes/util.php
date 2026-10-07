@@ -338,6 +338,41 @@ class util {
 
 
     /**
+     * Determine if a user can view all batches across the system,
+     * or is restricted to only batches they are assigned to.
+     *
+     * @param \context|null $context Context (defaults to system context).
+     * @param int|\stdClass|null $user_or_id User object or ID.
+     * @return bool True if user can view all batches, false if restricted to assigned batches only.
+     */
+    public static function can_view_all_batches(?\context $context = null, $user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
+        }
+
+        if (is_siteadmin($userid)) {
+            return true;
+        }
+
+        if (!$context) {
+            $context = \context_system::instance();
+        }
+
+        // If the role explicitly has viewassignedcourses, they are restricted to assigned courses only.
+        if (has_capability('local/batchanalytics:viewassignedcourses', $context, $userid)) {
+            return false;
+        }
+
+        // Otherwise, must have explicit viewallcourses capability.
+        return has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+    }
+
+    /**
      * Get module total days by name, course name, or module index.
      *
      * @param string|int $module_name_or_idx Module title or 1-based index

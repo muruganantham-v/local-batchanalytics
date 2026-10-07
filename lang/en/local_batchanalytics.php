@@ -48,6 +48,7 @@ $string['viewfullcrmdata'] = 'View full crm data';
 $string['batchanalytics:manage'] = 'Manage Batch Analytics (full CRM data access)';
 $string['manage'] = 'Manage Batch Analytics (full CRM data access)';
 $string['nopermissiontoviewnotes'] = 'You do not have permission to view review notes.';
+$string['nopermissiontoviewbatch'] = 'You do not have permission to view this batch because you are not assigned to it.';
 
 // Zoho CRM configuration strings
 $string['crmsettings'] = 'CRM Integration Settings';

@@ -58,9 +58,7 @@ if ($action === 'addnote') {
 
 $id = optional_param('id', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
 
-$is_manager = is_siteadmin($USER->id)
-    || has_capability('local/batchanalytics:manage', $context, $USER->id)
-    || has_capability('local/batchanalytics:viewallcourses', $context, $USER->id);
+$is_manager = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
 
 // -------------------------------------------------------------------------
 // 1. Data Retrieval from Batch Management (local_bm_classsection / local_bm_batch)
@@ -104,10 +102,23 @@ if ($section) {
     $id = (int)$section->id;
 }
 
-if ($section && !$is_manager) {
+if (!$is_manager) {
+    if (!$section) {
+        redirect(
+            new \moodle_url('/local/batchanalytics/index.php'),
+            get_string('nopermissiontoviewbatch', 'local_batchanalytics'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
+    }
     $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
     if (!$assignment['is_assigned']) {
-        throw new \moodle_exception('nopermissions', 'error', '', 'view this batch');
+        redirect(
+            new \moodle_url('/local/batchanalytics/index.php'),
+            get_string('nopermissiontoviewbatch', 'local_batchanalytics'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
     }
 }
 
