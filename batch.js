@@ -80,11 +80,17 @@
         var CRM_CAN_MANAGE = container.getAttribute('data-can-manage') === '1';
         var CRM_FIELDS = [];
         try {
-            CRM_FIELDS = JSON.parse(container.getAttribute('data-crm-fields') || '[]');
-        } catch(e) { CRM_FIELDS = []; }
-        var CRM_RESTRICTED = CRM_FIELDS.filter(function(f){ return f.restricted; }).map(function(f){ return f.key; });
-        var CRM_COLS = (CRM_CAN_MANAGE ? CRM_FIELDS : CRM_FIELDS.filter(function(f){ return !f.restricted; }))
-            .map(function(f){ return { h: f.label, k: f.key, num: !!f.numeric, type: f.type || 'text' }; });
+            var rawCrmFields = container.getAttribute('data-crm-fields');
+            var parsedFields = (rawCrmFields && rawCrmFields !== 'null') ? JSON.parse(rawCrmFields) : [];
+            CRM_FIELDS = Array.isArray(parsedFields) ? parsedFields : [];
+        } catch(e) {
+            CRM_FIELDS = [];
+        }
+        var CRM_RESTRICTED = Array.isArray(CRM_FIELDS)
+            ? CRM_FIELDS.filter(function(f){ return f && f.restricted; }).map(function(f){ return f.key; })
+            : [];
+        var CRM_COLS = (CRM_CAN_MANAGE ? CRM_FIELDS : CRM_FIELDS.filter(function(f){ return f && !f.restricted; }))
+            .map(function(f){ return { h: f.label || f.key, k: f.key, num: !!f.numeric, type: f.type || 'text' }; });
 
         var PTF_CACHE  = {};
         var PTF_PENDING = {};

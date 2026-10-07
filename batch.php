@@ -552,6 +552,7 @@ $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js($scripturl);
 
 // Use the same configured CRM field list and explicit capability check as index.php.
+$crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $batch_can_manage = is_siteadmin($USER->id)
     || has_capability('local/batchanalytics:manage', $context)
     || has_capability('local/batchanalytics:viewfullcrmdata', $context);
