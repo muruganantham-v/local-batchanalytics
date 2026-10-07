@@ -37,7 +37,9 @@ class moodledata
      */
     public static function can_manage_all(int $userid): bool {
         $context = \context_system::instance();
-        return is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context, $userid);
+        return is_siteadmin($userid)
+            || has_capability('local/batchanalytics:manage', $context, $userid)
+            || has_capability('local/batchanalytics:viewfullcrmdata', $context, $userid);
     }
 
     /**
@@ -60,7 +62,9 @@ class moodledata
      */
     public function can_view_enrolled_course(int $courseid, int $userid): bool {
         $context = \context_course::instance($courseid, IGNORE_MISSING);
-        return $context && has_capability('local/batchanalytics:viewenrolledcourses', $context, $userid);
+        $sys_context = \context_system::instance();
+        return ($context && has_capability('local/batchanalytics:viewenrolledcourses', $context, $userid))
+            || has_capability('local/batchanalytics:viewassignedcourses', $sys_context, $userid);
     }
     /**
      * Get allowed course keywords from settings.

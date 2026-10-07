@@ -34,19 +34,19 @@ $capabilities = array(
             'teacher' => CAP_ALLOW,
         ),
     ),
-    'local/batchanalytics:manage' => array(
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_SYSTEM,
-        'riskbitmask' => RISK_CONFIG | RISK_DATALOSS,
-        'archetypes' => array(
-            'manager' => CAP_ALLOW,
-        ),
-    ),
     'local/batchanalytics:viewallcourses' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => array(
             'manager' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:viewassignedcourses' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
         ),
     ),
     'local/batchanalytics:viewenrolledcourses' => array(
@@ -75,6 +75,31 @@ $capabilities = array(
             'manager' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,
             'teacher' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:viewcrmdata' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:viewfullcrmdata' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'riskbitmask' => RISK_DATALOSS,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:manage' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'riskbitmask' => RISK_CONFIG | RISK_DATALOSS,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
         ),
     ),
 );

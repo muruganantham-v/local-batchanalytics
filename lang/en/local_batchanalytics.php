@@ -25,14 +25,28 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Batch Analytics';
-$string['batchanalytics:addinstance'] = 'Add a new Batch Analytics block';
-$string['batchanalytics:myaddinstance'] = 'Add a new Batch Analytics block to Dashboard';
-$string['batchanalytics:view'] = 'View batch analytics';
-$string['batchanalytics:manage'] = 'Manage batch analytics (full CRM access)';
-$string['batchanalytics:viewallcourses'] = 'View all courses in batch analytics';
-$string['batchanalytics:viewenrolledcourses'] = 'View enrolled courses in batch analytics';
+$string['batchanalytics:view'] = 'View batchanalytics';
+$string['view'] = 'View batchanalytics';
+$string['batchanalytics:myaddinstance'] = 'Add block to dashboard';
+$string['myaddinstance'] = 'Add block to dashboard';
+$string['batchanalytics:addinstance'] = 'Add Batch Analytics block';
+$string['addinstance'] = 'Add Batch Analytics block';
+$string['batchanalytics:viewallcourses'] = 'View all course data (all courses from the data of batch management)';
+$string['viewallcourses'] = 'View all course data (all courses from the data of batch management)';
+$string['batchanalytics:viewassignedcourses'] = 'View assigned course only (view only the course which is assigned to (mentors, PM or sse))';
+$string['viewassignedcourses'] = 'View assigned course only (view only the course which is assigned to (mentors, PM or sse))';
+$string['batchanalytics:viewenrolledcourses'] = 'View assigned course only (view only the course which is assigned to (mentors, PM or sse))';
+$string['viewenrolledcourses'] = 'View assigned course only (view only the course which is assigned to (mentors, PM or sse))';
 $string['batchanalytics:viewreviewnotes'] = 'View review notes';
-$string['batchanalytics:editreviewnotes'] = 'Add and edit review notes';
+$string['viewreviewnotes'] = 'View review notes';
+$string['batchanalytics:editreviewnotes'] = 'Edit review notes';
+$string['editreviewnotes'] = 'Edit review notes';
+$string['batchanalytics:viewcrmdata'] = 'View crm data (non restricted fields)';
+$string['viewcrmdata'] = 'View crm data (non restricted fields)';
+$string['batchanalytics:viewfullcrmdata'] = 'View full crm data';
+$string['viewfullcrmdata'] = 'View full crm data';
+$string['batchanalytics:manage'] = 'Manage Batch Analytics (full CRM data access)';
+$string['manage'] = 'Manage Batch Analytics (full CRM data access)';
 $string['nopermissiontoviewnotes'] = 'You do not have permission to view review notes.';
 
 // Zoho CRM configuration strings
