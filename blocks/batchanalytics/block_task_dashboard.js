@@ -456,6 +456,7 @@
     var btnGoto = document.getElementById('ba-modal-btn-goto');
 
     if (btnConfirm) {
+      btnConfirm.style.display = '';
       btnConfirm.disabled = true;
       btnConfirm.textContent = 'Confirm Complete';
       btnConfirm.title = 'Validating activity status...';
@@ -590,17 +591,13 @@
 
         validBody.innerHTML = sHtml;
 
+        // Hide below buttons when nomination is required
         if (btnGoto) {
-          btnGoto.href = spotUrl;
-          btnGoto.textContent = 'Nominate Students for Spot Award ↗';
-          btnGoto.className = 'mc-btn-goto-act primary';
-          btnGoto.style.display = 'inline-flex';
+          btnGoto.style.display = 'none';
         }
 
         if (btnConfirm) {
-          btnConfirm.disabled = true;
-          btnConfirm.textContent = 'Nominate Students First';
-          btnConfirm.title = 'Please nominate at least one student before marking this activity as complete.';
+          btnConfirm.style.display = 'none';
         }
         return;
       }
@@ -632,16 +629,16 @@
         sHtml += '</div>';
       }
 
+      sHtml += '<div style="margin-top: 8px; margin-bottom: 4px; text-align: right;"><a href="' + escapeHtml(spotUrl) + '" target="_blank" style="color: #0284c7; text-decoration: none; font-size: 12px; font-weight: 500;">View in Spot Award ↗</a></div>';
+
       validBody.innerHTML = sHtml;
 
       if (btnGoto) {
-        btnGoto.href = spotUrl;
-        btnGoto.textContent = 'View Spot Award Nominations ↗';
-        btnGoto.className = 'mc-btn-goto-act secondary';
-        btnGoto.style.display = 'inline-flex';
+        btnGoto.style.display = 'none';
       }
 
       if (btnConfirm) {
+        btnConfirm.style.display = '';
         btnConfirm.disabled = false;
         btnConfirm.textContent = 'Confirm Complete';
         btnConfirm.title = '';
