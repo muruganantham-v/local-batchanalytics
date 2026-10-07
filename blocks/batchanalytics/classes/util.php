@@ -274,17 +274,45 @@ class util {
     }
 
     /**
-     * Check if a user is assigned to a section as PM, SSE, or Mentor.
+     * Check if a user is designated as SS Lead (via configured role or email).
+     *
+     * @param \stdClass|int|null $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_user_sslead($user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
+        }
+
+        if (class_exists('\local_batchanalytics\task_service')) {
+            $personas = \local_batchanalytics\task_service::resolve_user_personas($userid);
+            return !empty($personas['is_sslead']);
+        }
+        if (class_exists('\block_batchanalytics\task_service')) {
+            $personas = \block_batchanalytics\task_service::resolve_user_personas($userid);
+            return !empty($personas['is_sslead']);
+        }
+        return false;
+    }
+
+    /**
+     * Check if a user is assigned to a section as PM, SSE, SS Lead, or Mentor.
      *
      * @param \stdClass $section Class section object.
      * @param \stdClass|int $user_or_id User object or user ID.
-     * @return array{is_pm:bool, is_sse:bool, is_mentor:bool, is_assigned:bool, assigned_modules:array}
+     * @return array{is_pm:bool, is_sse:bool, is_sslead:bool, is_mentor:bool, is_assigned:bool, assigned_modules:array}
      */
     public static function get_section_user_assignment(\stdClass $section, $user_or_id): array {
         $is_pm = self::is_user_match($section->pmmanager ?? '', $user_or_id)
             || self::is_user_match($section->pmmanagername ?? '', $user_or_id);
         $is_sse = self::is_user_match($section->maacexecutive ?? '', $user_or_id)
             || self::is_user_match($section->maacexecutivename ?? '', $user_or_id);
+        $is_sslead = self::is_user_sslead($user_or_id);
 
         $modules = self::decode_module_data($section->moduledata ?? '', true);
         $assigned_modules = [];
@@ -294,11 +322,12 @@ class util {
             }
         }
         $is_mentor = !empty($assigned_modules);
-        $is_assigned = $is_pm || $is_sse || $is_mentor;
+        $is_assigned = $is_pm || $is_sse || $is_mentor || $is_sslead;
 
         return [
             'is_pm' => $is_pm,
             'is_sse' => $is_sse,
+            'is_sslead' => $is_sslead,
             'is_mentor' => $is_mentor,
             'is_assigned' => $is_assigned,
             'assigned_modules' => $assigned_modules,
@@ -307,7 +336,7 @@ class util {
 
     /**
      * Filter modules for a specific user.
-     * Managers, PMs, and SSEs see all modules. Mentors only see the modules assigned to them.
+     * Managers, PMs, SSEs, and SS Leads see all modules. Mentors only see the modules assigned to them.
      *
      * @param array $modules List of module arrays.
      * @param \stdClass|null $section Class section object.
@@ -321,8 +350,8 @@ class util {
         }
         if ($section) {
             $assignment = self::get_section_user_assignment($section, $user_or_id);
-            // If user is PM or SSE for this section, they see all modules.
-            if ($assignment['is_pm'] || $assignment['is_sse']) {
+            // If user is PM, SSE, or SS Lead for this section, they see all modules.
+            if ($assignment['is_pm'] || $assignment['is_sse'] || !empty($assignment['is_sslead'])) {
                 return $modules;
             }
         }
@@ -361,6 +390,11 @@ class util {
 
         if (!$context) {
             $context = \context_system::instance();
+        }
+
+        // SS Lead oversees soft skills across all batches.
+        if (self::is_user_sslead($userid)) {
+            return true;
         }
 
         // If the role explicitly has viewassignedcourses, they are restricted to assigned courses only.
