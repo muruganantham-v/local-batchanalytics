@@ -1094,6 +1094,9 @@ class util {
                 $req_at  = (int)($val['requested_at'] ?? $val['requestedat'] ?? 0);
                 $appr_by = (int)($val['approved_by'] ?? $val['approvedby'] ?? 0);
                 $appr_at = (int)($val['approved_at'] ?? $val['approvedat'] ?? 0);
+                $rej_by  = (int)($val['rejected_by'] ?? $val['rejectedby'] ?? 0);
+                $rej_at  = (int)($val['rejected_at'] ?? $val['rejectedat'] ?? 0);
+                $rev_notes = (string)($val['review_notes'] ?? $val['reviewnotes'] ?? '');
 
                 $grouped[$base] = [
                     'key'             => $base,
@@ -1105,6 +1108,9 @@ class util {
                     'requested_at'    => $req_at,
                     'approved_by'     => $appr_by,
                     'approved_at'     => $appr_at,
+                    'rejected_by'     => $rej_by,
+                    'rejected_at'     => $rej_at,
+                    'review_notes'    => $rev_notes,
                 ];
                 continue;
             }
@@ -1114,7 +1120,7 @@ class util {
             }
 
             $key = trim((string)$key);
-            if (preg_match('/^(.+)_(planned|actual|approvalstatus|requestedby|requestedat|approvedby|approvedat)$/i', $key, $m)) {
+            if (preg_match('/^(.+)_(planned|actual|approvalstatus|requestedby|requestedat|approvedby|approvedat|rejectedby|rejectedat|reviewnotes)$/i', $key, $m)) {
                 $base = $m[1];
                 $type = strtolower($m[2]);
 
@@ -1130,6 +1136,9 @@ class util {
                         'requested_at'    => 0,
                         'approved_by'     => 0,
                         'approved_at'     => 0,
+                        'rejected_by'     => 0,
+                        'rejected_at'     => 0,
+                        'review_notes'    => '',
                     ];
                 }
 
@@ -1143,6 +1152,12 @@ class util {
                     $grouped[$base]['approved_by'] = (int)$val;
                 } else if ($type === 'approvedat') {
                     $grouped[$base]['approved_at'] = (int)$val;
+                } else if ($type === 'rejectedby') {
+                    $grouped[$base]['rejected_by'] = (int)$val;
+                } else if ($type === 'rejectedat') {
+                    $grouped[$base]['rejected_at'] = (int)$val;
+                } else if ($type === 'reviewnotes') {
+                    $grouped[$base]['review_notes'] = (string)$val;
                 } else {
                     $ts = 0;
                     if (is_numeric($val)) {
@@ -1208,6 +1223,9 @@ class util {
                 'requested_at'    => (int)($entry['requested_at'] ?? 0),
                 'approved_by'     => (int)($entry['approved_by'] ?? 0),
                 'approved_at'     => (int)($entry['approved_at'] ?? 0),
+                'rejected_by'     => (int)($entry['rejected_by'] ?? 0),
+                'rejected_at'     => (int)($entry['rejected_at'] ?? 0),
+                'review_notes'    => (string)($entry['review_notes'] ?? ''),
             ];
         }
 

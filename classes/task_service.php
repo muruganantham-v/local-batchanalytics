@@ -721,9 +721,9 @@ class task_service {
                                 'title'               => $act_name,
                                 'meta'                => $meta_str,
                                 'batch_name'          => $batch_name,
-                                'urgency_order'       => 0, // Top priority for pending approval
+                                'urgency_order'       => 0, // Top priority for pending review
                                 'status_class'        => 'today',
-                                'status_label'        => 'Pending Approval',
+                                'status_label'        => 'Pending Review',
                                 'dest_type'           => 'batch',
                                 'dest_url'            => $dest_url,
                                 'action_type'         => 'ss_approve',
@@ -767,11 +767,11 @@ class task_service {
                         $todo_list[] = [
                             'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
                             'title'         => $act_name,
-                            'meta'          => 'Batch ' . $batch_name . ' · Approval requested',
+                            'meta'          => 'Batch ' . $batch_name . ' · Submitted for review',
                             'batch_name'    => $batch_name,
                             'urgency_order' => 2,
                             'status_class'  => 'soon',
-                            'status_label'  => 'Approval Requested',
+                            'status_label'  => 'In Review',
                             'dest_type'     => 'batch',
                             'dest_url'      => $dest_url,
                             'action_type'   => 'ss_requested',
@@ -781,6 +781,44 @@ class task_service {
                             'act_name'      => $act_name,
                             'planned_ts'    => $p_ts,
                             'is_requested'  => true,
+                        ];
+                        continue;
+                    }
+
+                    $is_rejected = (!empty($ss['approval_status']) && $ss['approval_status'] === 'rejected');
+                    if ($is_rejected) {
+                        $rej_id = (int)($ss['rejected_by'] ?? 0);
+                        $rej_name = '';
+                        if ($rej_id > 0) {
+                            $ru = $DB->get_record('user', ['id' => $rej_id]);
+                            if ($ru) {
+                                $rej_name = fullname($ru);
+                            }
+                        }
+                        $rej_at = (int)($ss['rejected_at'] ?? 0);
+                        $rej_date_str = ($rej_at > 0) ? userdate($rej_at, '%d %b') : 'recently';
+                        $rev_notes = (string)($ss['review_notes'] ?? '');
+
+                        $todo_list[] = [
+                            'id'                => 'ss_' . $sec->id . '_' . $ss['key'],
+                            'title'             => $act_name,
+                            'meta'              => 'Batch ' . $batch_name . ' · Changes requested' . ($rej_name ? ' by ' . $rej_name : ''),
+                            'batch_name'        => $batch_name,
+                            'urgency_order'     => 1, // High priority for SSE to resubmit
+                            'status_class'      => 'over',
+                            'status_label'      => 'Changes Requested',
+                            'dest_type'         => 'batch',
+                            'dest_url'          => $dest_url,
+                            'action_type'       => 'ss',
+                            'courseid'          => 0,
+                            'batchid'           => (int)$sec->id,
+                            'act_key'           => $ss['key'],
+                            'act_name'          => $act_name,
+                            'planned_ts'        => $p_ts,
+                            'is_rejected'       => true,
+                            'review_notes'      => $rev_notes,
+                            'rejected_by_name'  => $rej_name,
+                            'rejected_date_str' => $rej_date_str,
                         ];
                         continue;
                     }
@@ -1450,6 +1488,95 @@ class task_service {
     }
 
     /**
+     * Reject a Soft Skills activity approval request and record review notes.
+     *
+     * @param int $userid User rejecting the request (SS Lead)
+     * @param int $batchid Batch section id
+     * @param string $act_key Activity key
+     * @param string $review_notes Review notes / reasons for rejection
+     * @return array
+     * @throws \moodle_exception
+     */
+    public static function reject_ss_approval(int $userid, int $batchid, string $act_key, string $review_notes = ''): array {
+        global $DB;
+
+        if ($batchid <= 0 || trim($act_key) === '') {
+            throw new \moodle_exception('invalidparams', 'local_batchanalytics');
+        }
+
+        $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+        if (!$sec) {
+            throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+        }
+
+        $raw_data = json_decode($sec->softskillsdata ?? '', true);
+        if (!is_array($raw_data)) {
+            $raw_data = [];
+        }
+
+        $now = time();
+        $target_base = strtolower(trim($act_key));
+        $updated = false;
+
+        // Check key-based format: ${base}_Planned / ${base}_Actual
+        foreach ($raw_data as $k => $v) {
+            if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                $base = strtolower($m[1]);
+                if ($base === $target_base) {
+                    $raw_data[$m[1] . '_ApprovalStatus'] = 'rejected';
+                    $raw_data[$m[1] . '_RejectedBy'] = $userid;
+                    $raw_data[$m[1] . '_RejectedAt'] = $now;
+                    $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
+                    $raw_data[$m[1] . '_Actual'] = 0;
+                    $updated = true;
+                    break;
+                }
+            }
+        }
+
+        // Check object list format: [{activity: ..., planned: ...}]
+        if (!$updated) {
+            foreach ($raw_data as &$item) {
+                if (is_array($item)) {
+                    $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                    $key  = strtolower(trim($item['key'] ?? ''));
+                    if ($key === $target_base || $name === $target_base) {
+                        $item['approval_status'] = 'rejected';
+                        $item['rejected_by'] = $userid;
+                        $item['rejected_at'] = $now;
+                        $item['review_notes'] = $review_notes;
+                        $item['actual'] = 0;
+                        $updated = true;
+                        break;
+                    }
+                }
+            }
+            unset($item);
+        }
+
+        if (!$updated) {
+            $raw_data[$act_key . '_ApprovalStatus'] = 'rejected';
+            $raw_data[$act_key . '_RejectedBy'] = $userid;
+            $raw_data[$act_key . '_RejectedAt'] = $now;
+            $raw_data[$act_key . '_ReviewNotes'] = $review_notes;
+            $raw_data[$act_key . '_Actual'] = 0;
+        }
+
+        $sec->softskillsdata = json_encode($raw_data);
+        $sec->timemodified = $now;
+        $DB->update_record('local_bm_classsection', $sec);
+
+        return [
+            'success'      => true,
+            'type'         => 'ss_reject',
+            'batchid'      => $batchid,
+            'act_key'      => $act_key,
+            'review_notes' => $review_notes,
+            'rejected_at'  => $now,
+        ];
+    }
+
+    /**
      * Mark an operational activity complete.
      *
      * @param int $userid
@@ -1505,6 +1632,7 @@ class task_service {
         if ($action_type === 'ss' || $action_type === 'ss_approve') {
             $batchid = (int)($params['batchid'] ?? 0);
             $act_key = trim((string)($params['act_key'] ?? ''));
+            $review_notes = trim((string)($params['review_notes'] ?? ''));
             if ($batchid <= 0 || $act_key === '') {
                 throw new \moodle_exception('invalidparams', 'local_batchanalytics');
             }
@@ -1529,6 +1657,9 @@ class task_service {
                             $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
                             $raw_data[$m[1] . '_ApprovedBy'] = $userid;
                             $raw_data[$m[1] . '_ApprovedAt'] = $now;
+                            if ($review_notes !== '') {
+                                $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
+                            }
                             $updated = true;
                             break;
                         }
@@ -1545,6 +1676,9 @@ class task_service {
                                 $item['approval_status'] = 'approved';
                                 $item['approved_by'] = $userid;
                                 $item['approved_at'] = $now;
+                                if ($review_notes !== '') {
+                                    $item['review_notes'] = $review_notes;
+                                }
                                 $updated = true;
                                 break;
                             }
@@ -1558,6 +1692,9 @@ class task_service {
                     $raw_data[$act_key . '_ApprovalStatus'] = 'approved';
                     $raw_data[$act_key . '_ApprovedBy'] = $userid;
                     $raw_data[$act_key . '_ApprovedAt'] = $now;
+                    if ($review_notes !== '') {
+                        $raw_data[$act_key . '_ReviewNotes'] = $review_notes;
+                    }
                 }
 
                 $sec->softskillsdata = json_encode($raw_data);

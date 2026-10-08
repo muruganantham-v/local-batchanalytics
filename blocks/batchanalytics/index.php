@@ -81,6 +81,28 @@ if ($action === 'request_ss_approval') {
     die();
 }
 
+if ($action === 'reject_ss_approval') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $batchid = required_param('batchid', PARAM_INT);
+        $act_key = required_param('act_key', PARAM_RAW);
+        $review_notes = optional_param('review_notes', '', PARAM_RAW);
+        $res = \local_batchanalytics\task_service::reject_ss_approval($userid, $batchid, $act_key, $review_notes);
+        if (!empty($res['success'])) {
+            $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+            $res['dashboard_data'] = \local_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        }
+        echo json_encode($res);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
 if ($action === 'complete_task') {
     while (ob_get_level()) {
         ob_end_clean();
@@ -90,13 +112,18 @@ if ($action === 'complete_task') {
         require_sesskey();
         $type = required_param('type', PARAM_ALPHANUMEXT);
         $params = [
-            'courseid' => optional_param('courseid', 0, PARAM_INT),
-            'cmid'     => optional_param('cmid', 0, PARAM_INT),
-            'batchid'  => optional_param('batchid', 0, PARAM_INT),
-            'act_name' => optional_param('act_name', '', PARAM_RAW),
-            'act_key'  => optional_param('act_key', '', PARAM_RAW),
+            'courseid'     => optional_param('courseid', 0, PARAM_INT),
+            'cmid'         => optional_param('cmid', 0, PARAM_INT),
+            'batchid'      => optional_param('batchid', 0, PARAM_INT),
+            'act_name'     => optional_param('act_name', '', PARAM_RAW),
+            'act_key'      => optional_param('act_key', '', PARAM_RAW),
+            'review_notes' => optional_param('review_notes', '', PARAM_RAW),
         ];
         $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
+        if (!empty($res['success'])) {
+            $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+            $res['dashboard_data'] = \local_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        }
         echo json_encode($res);
     } catch (\Throwable $e) {
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);

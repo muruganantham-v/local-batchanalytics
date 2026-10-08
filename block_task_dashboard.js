@@ -75,6 +75,7 @@
     var overlay = document.getElementById('ba-task-modal-overlay');
     var btnCancel = document.getElementById('ba-modal-btn-cancel');
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var btnReject = document.getElementById('ba-modal-btn-reject');
 
     var btnClose = document.getElementById('ba-modal-btn-close');
     if (btnClose) {
@@ -82,6 +83,9 @@
     }
     if (btnCancel) {
       btnCancel.addEventListener('click', closeModal);
+    }
+    if (btnReject) {
+      btnReject.addEventListener('click', rejectApproval);
     }
     if (btnConfirm) {
       btnConfirm.addEventListener('click', confirmCompletion);
@@ -345,11 +349,11 @@
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
       } else if (t.action_type === 'ss_approve' || ((activeRole === 'sslead' || activeRole === 'admin') && t.is_pending_approval)) {
-        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-approve" data-task-id="' + escapeHtml(t.id) + '" style="background:#059669; border-color:#059669; color:#fff;">Approve</button>';
+        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-approve" data-task-id="' + escapeHtml(t.id) + '" style="background:#059669; border-color:#059669; color:#fff;">Review</button>';
       } else if (t.action_type === 'ss_requested' || t.is_requested) {
-        actionBtnHtml = '<button type="button" class="mc-btn2 disabled" disabled style="background:#f1f5f9; border-color:#cbd5e1; color:#94a3b8; cursor:not-allowed;">Requested</button>';
+        actionBtnHtml = '<button type="button" class="mc-btn2 disabled" disabled style="background:#f1f5f9; border-color:#cbd5e1; color:#94a3b8; cursor:not-allowed;">In Review</button>';
       } else if (activeRole === 'sse' && t.action_type === 'ss') {
-        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-request" data-task-id="' + escapeHtml(t.id) + '" style="background:#4f46e5; border-color:#4f46e5; color:#fff;">Request Approval</button>';
+        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-request" data-task-id="' + escapeHtml(t.id) + '" style="background:#4f46e5; border-color:#4f46e5; color:#fff;">Submit for Review</button>';
       } else if (activeRole === 'mentors' || activeRole === 'sspm' || (activeRole !== 'admin' && activeRole !== 'pm' && activeRole !== 'sslead')) {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       } else if (activeRole === 'admin') {
@@ -463,7 +467,14 @@
     var modalSub = document.querySelector('.ba-modal-sub');
     var validBody = document.getElementById('ba-modal-validation-body');
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var btnReject = document.getElementById('ba-modal-btn-reject');
     var btnGoto = document.getElementById('ba-modal-btn-goto');
+
+    if (btnReject) {
+      btnReject.style.display = 'none';
+      btnReject.disabled = false;
+      btnReject.textContent = 'Reject';
+    }
 
     if (btnGoto) {
       btnGoto.style.display = 'none';
@@ -477,31 +488,47 @@
     var isSslApprove = ((activeRole === 'sslead' || activeRole === 'admin') && (task.action_type === 'ss_approve' || task.is_pending_approval));
 
     if (isSseRequest) {
-      if (modalTitle) modalTitle.textContent = 'Request Approval';
-      if (modalSub) modalSub.textContent = 'Confirm that you want to submit this Soft Skills activity for approval:';
+      if (modalTitle) modalTitle.textContent = 'Submit for Review';
+      if (modalSub) modalSub.textContent = 'Submit this Soft Skills activity for review by the SS Lead:';
       if (btnGoto) {
         btnGoto.style.display = 'none';
         btnGoto.setAttribute('style', 'display: none !important;');
         btnGoto.classList.remove('is-visible', 'primary', 'secondary');
         btnGoto.classList.add('is-hidden');
       }
+      if (btnReject) {
+        btnReject.style.display = 'none';
+      }
       if (btnConfirm) {
         btnConfirm.style.display = '';
         btnConfirm.disabled = false;
-        btnConfirm.textContent = 'Request Approval';
+        btnConfirm.textContent = 'Submit for Review';
         btnConfirm.className = 'confirm mc-btn-request';
         btnConfirm.style.background = '#4f46e5';
         btnConfirm.style.borderColor = '#4f46e5';
         btnConfirm.title = '';
       }
       if (validBody) {
+        var notesHtml = '';
+        if (task.is_rejected && task.review_notes) {
+          var rejUser = task.rejected_by_name ? (' from ' + escapeHtml(task.rejected_by_name)) : '';
+          notesHtml = '<div class="ba-modal-rejection-notes" style="margin-top:14px; padding:12px 14px; background:#fff1f2; border:1.5px solid #fecdd3; border-radius:10px;">' +
+            '<div style="font-weight:700; color:#be123c; font-size:13px; margin-bottom:6px; display:flex; align-items:center; gap:6px;">' +
+            '  <span>⚠️</span><span>Review Notes' + rejUser + ':</span>' +
+            '</div>' +
+            '<div style="color:#9f1239; font-size:13px; line-height:1.45; white-space:pre-wrap; background:#fff; padding:10px 12px; border-radius:6px; border:1px solid #ffe4e6;">' +
+            escapeHtml(task.review_notes) +
+            '</div>' +
+            '</div>';
+        }
         validBody.innerHTML = '<div class="ba-modal-alert success">' +
           '<div class="alert-icon">ℹ️</div>' +
           '<div class="alert-content">' +
           '  <div class="alert-title">Submit Due Activity for Approval</div>' +
           '  <div class="alert-desc">This activity due notice will be sent to the Student Success Lead (SSL) for review and sign-off.</div>' +
           '</div>' +
-          '</div>';
+          '</div>' +
+          notesHtml;
       }
       var overlay = document.getElementById('ba-task-modal-overlay');
       if (overlay) overlay.classList.add('show');
@@ -509,18 +536,23 @@
     }
 
     if (isSslApprove) {
-      if (modalTitle) modalTitle.textContent = 'Approve Activity';
-      if (modalSub) modalSub.textContent = 'Confirm approval of this Soft Skills activity:';
+      if (modalTitle) modalTitle.textContent = 'Review Activity';
+      if (modalSub) modalSub.textContent = 'Review this Soft Skills activity and choose an action:';
       if (btnGoto) {
         btnGoto.style.display = 'none';
         btnGoto.setAttribute('style', 'display: none !important;');
         btnGoto.classList.remove('is-visible', 'primary', 'secondary');
         btnGoto.classList.add('is-hidden');
       }
+      if (btnReject) {
+        btnReject.style.display = 'inline-block';
+        btnReject.disabled = false;
+        btnReject.textContent = 'Reject';
+      }
       if (btnConfirm) {
         btnConfirm.style.display = '';
         btnConfirm.disabled = false;
-        btnConfirm.textContent = 'Confirm Approval';
+        btnConfirm.textContent = 'Approve';
         btnConfirm.className = 'confirm mc-btn-approve';
         btnConfirm.style.background = '#059669';
         btnConfirm.style.borderColor = '#059669';
@@ -532,9 +564,32 @@
           '<div class="alert-icon">✓</div>' +
           '<div class="alert-content">' +
           '  <div class="alert-title">Ready for Final Sign-off</div>' +
-          '  <div class="alert-desc">Confirming approval will officially mark this activity as completed and notify the team.' + reqInfo + '</div>' +
+          '  <div class="alert-desc">Review this activity submission. You can approve to complete or reject with review notes.' + reqInfo + '</div>' +
           '</div>' +
+          '</div>' +
+          '<div class="ba-modal-review-notes-section" style="margin-top:14px;">' +
+          '  <label class="ba-modal-review-notes-check" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13.5px; font-weight:600; color:#334155; user-select:none;">' +
+          '    <input type="checkbox" id="ba-modal-check-review-notes" style="width:16px; height:16px; cursor:pointer; accent-color:#0284c7;" />' +
+          '    <span>Add Review Notes</span>' +
+          '  </label>' +
+          '  <div id="ba-modal-notes-container" style="display:none; margin-top:10px;">' +
+          '    <textarea id="ba-modal-review-notes" rows="3" placeholder="Provide feedback or reasons for rejection / approval..." style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-family:inherit; resize:vertical; line-height:1.4; outline:none; transition:border-color 0.15s ease;"></textarea>' +
+          '  </div>' +
           '</div>';
+
+        var checkEl = document.getElementById('ba-modal-check-review-notes');
+        var notesContainer = document.getElementById('ba-modal-notes-container');
+        var textareaEl = document.getElementById('ba-modal-review-notes');
+        if (checkEl && notesContainer) {
+          checkEl.addEventListener('change', function() {
+            if (this.checked) {
+              notesContainer.style.display = 'block';
+              if (textareaEl) textareaEl.focus();
+            } else {
+              notesContainer.style.display = 'none';
+            }
+          });
+        }
       }
       var overlay = document.getElementById('ba-task-modal-overlay');
       if (overlay) overlay.classList.add('show');
@@ -855,6 +910,8 @@
   function closeModal() {
     var overlay = document.getElementById('ba-task-modal-overlay');
     if (overlay) overlay.classList.remove('show');
+    var btnReject = document.getElementById('ba-modal-btn-reject');
+    if (btnReject) btnReject.style.display = 'none';
     pendingTask = null;
   }
 
@@ -864,11 +921,12 @@
     var isSseRequest = (activeRole === 'sse' && pendingTask.action_type === 'ss') || (pendingTask.action_type === 'ss_request');
     var isSslApprove = ((activeRole === 'sslead' || activeRole === 'admin') && (pendingTask.action_type === 'ss_approve' || pendingTask.is_pending_approval));
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var btnReject = document.getElementById('ba-modal-btn-reject');
 
     if (isSseRequest) {
       if (btnConfirm) {
         btnConfirm.disabled = true;
-        btnConfirm.textContent = 'Submitting request...';
+        btnConfirm.textContent = 'Submitting for review...';
       }
 
       var formData = new FormData();
@@ -900,13 +958,13 @@
               loadDashboardData();
             }
           } else {
-            alert((resp && resp.message) || 'Failed to submit approval request.');
+            alert((resp && resp.message) || 'Failed to submit review request.');
           }
         })
         .catch(function(err) {
           if (btnConfirm) {
             btnConfirm.disabled = false;
-            btnConfirm.textContent = 'Request Approval';
+            btnConfirm.textContent = 'Submit for Review';
           }
           alert('Server connection error. Please try again.');
           console.error(err);
@@ -917,6 +975,16 @@
     if (btnConfirm) {
       btnConfirm.disabled = true;
       btnConfirm.textContent = isSslApprove ? 'Approving...' : 'Marking complete...';
+    }
+    if (btnReject) {
+      btnReject.disabled = true;
+    }
+
+    var reviewNotes = '';
+    var checkEl = document.getElementById('ba-modal-check-review-notes');
+    var txtEl = document.getElementById('ba-modal-review-notes');
+    if (checkEl && checkEl.checked && txtEl) {
+      reviewNotes = txtEl.value.trim();
     }
 
     var formData = new FormData();
@@ -929,6 +997,7 @@
     formData.append('act_key', pendingTask.act_key || '');
     formData.append('cmid', pendingTask.cmid || 0);
     formData.append('role', activeRole || '');
+    formData.append('review_notes', reviewNotes);
 
     fetch(apiUrl, {
       method: 'POST',
@@ -938,6 +1007,7 @@
       .then(function(res) { return res.json(); })
       .then(function(resp) {
         if (btnConfirm) btnConfirm.disabled = false;
+        if (btnReject) btnReject.disabled = false;
         if (resp && resp.success) {
           pendingTask.is_done = true;
           closeModal();
@@ -962,7 +1032,93 @@
       .catch(function(err) {
         if (btnConfirm) {
           btnConfirm.disabled = false;
-          btnConfirm.textContent = isSslApprove ? 'Confirm Approval' : 'Confirm Complete';
+          btnConfirm.textContent = isSslApprove ? 'Approve' : 'Confirm Complete';
+        }
+        if (btnReject) {
+          btnReject.disabled = false;
+        }
+        alert('Server connection error. Please try again.');
+        console.error(err);
+      });
+  }
+
+  function rejectApproval() {
+    if (!pendingTask || !apiUrl) return;
+
+    var btnReject = document.getElementById('ba-modal-btn-reject');
+    var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+    var checkEl = document.getElementById('ba-modal-check-review-notes');
+    var txtEl = document.getElementById('ba-modal-review-notes');
+    var notesContainer = document.getElementById('ba-modal-notes-container');
+
+    var reviewNotes = '';
+    if (checkEl && checkEl.checked && txtEl) {
+      reviewNotes = txtEl.value.trim();
+    }
+
+    if (!reviewNotes) {
+      if (checkEl && !checkEl.checked) {
+        checkEl.checked = true;
+        if (notesContainer) notesContainer.style.display = 'block';
+      }
+      if (txtEl) {
+        txtEl.focus();
+        txtEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      var confirmReject = confirm('Please enter review notes explaining why this activity is rejected. Do you want to reject anyway?');
+      if (!confirmReject) return;
+      if (txtEl) reviewNotes = txtEl.value.trim();
+    }
+
+    if (btnReject) {
+      btnReject.disabled = true;
+      btnReject.textContent = 'Rejecting...';
+    }
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+    }
+
+    var formData = new FormData();
+    formData.append('action', 'reject_ss_approval');
+    formData.append('sesskey', sesskey);
+    formData.append('batchid', pendingTask.batchid || 0);
+    formData.append('act_key', pendingTask.act_key || '');
+    formData.append('review_notes', reviewNotes);
+    formData.append('role', activeRole || '');
+
+    fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin'
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(resp) {
+        if (btnReject) btnReject.disabled = false;
+        if (btnConfirm) btnConfirm.disabled = false;
+        if (resp && resp.success) {
+          pendingTask.is_done = true;
+          closeModal();
+          renderTodoList();
+          try {
+            localStorage.setItem('ba_task_updated', Date.now().toString());
+          } catch (e) {}
+          if (resp.dashboard_data) {
+            applyData(resp.dashboard_data);
+          } else {
+            loadDashboardData();
+          }
+        } else {
+          alert((resp && resp.message) || 'Failed to reject activity.');
+          if (btnReject) btnReject.textContent = 'Reject';
+        }
+      })
+      .catch(function(err) {
+        if (btnReject) {
+          btnReject.disabled = false;
+          btnReject.textContent = 'Reject';
+        }
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
         }
         alert('Server connection error. Please try again.');
         console.error(err);

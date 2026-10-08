@@ -857,3 +857,37 @@ body.editing .block_batchanalytics .card-header {
   border: 1px solid #e2e8f0 !important;
 }
 
+.ba-task-dash-wrap .ba-task-modal-box .reject,
+.ba-task-dash-wrap .mc-btn-reject {
+  padding: 9px 18px !important;
+  border: 1.5px solid #e11d48 !important;
+  background: #fff !important;
+  color: #e11d48 !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  font-family: inherit !important;
+  white-space: nowrap !important;
+}
+.ba-task-dash-wrap .ba-task-modal-box .reject:hover:not(:disabled),
+.ba-task-dash-wrap .mc-btn-reject:hover:not(:disabled) {
+  background: #e11d48 !important;
+  color: #ffffff !important;
+}
+.ba-task-dash-wrap .ba-task-modal-box .reject:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+.ba-task-dash-wrap .ba-modal-review-notes-section textarea:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+}
+
+.ba-task-dash-wrap .ba-modal-rejection-notes {
+  box-shadow: 0 1px 3px rgba(190, 18, 60, 0.08) !important;
+}
+
+
