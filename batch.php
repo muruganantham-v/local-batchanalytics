@@ -565,6 +565,8 @@ $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
 $batch_can_manage = is_siteadmin($USER->id)
     || has_capability('local/batchanalytics:manage', $context)
     || has_capability('local/batchanalytics:viewfullcrmdata', $context);
+$batch_can_view_crm = $batch_can_manage
+    || has_capability('local/batchanalytics:viewcrmdata', $context);
 $crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
 
 echo $OUTPUT->header();
@@ -583,6 +585,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
   data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
   data-crm-fields="<?= htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) ?>"
   data-can-manage="<?= $batch_can_manage ? '1' : '0' ?>"
+  data-can-view-crm="<?= $batch_can_view_crm ? '1' : '0' ?>"
   data-crm-index-url="<?= s($crm_index_url) ?>">
 
   <!-- Breadcrumb Bar -->
@@ -644,7 +647,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <?php if ($can_view_notes || $can_edit_notes): ?>
           <button type="button" class="tab" data-tab="notes">Review Notes</button>
         <?php endif; ?>
-        <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn">CRM Data</button>
+        <?php if ($batch_can_view_crm): ?>
+          <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn">CRM Data</button>
+        <?php endif; ?>
       </div>
 
       <!-- Panels Container -->
@@ -732,9 +737,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                       <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
                       <td class="actioncell">
                         <?php if ($course_linked): ?>
-                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn">View Module Tracker</a>
+                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn">View Module</a>
                         <?php else: ?>
-                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module">View Module Tracker</button>
+                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module">View Module</button>
                         <?php endif; ?>
                       </td>
                     </tr>
@@ -839,6 +844,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           </div>
         </div>
 
+        <?php if ($batch_can_view_crm): ?>
         <!-- 5. CRM Data Panel -->
         <div id="panel-crm" class="panel">
           <div class="panel-note">
@@ -962,6 +968,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             </div>
           </div>
         </div>
+        <?php endif; ?>
 
         <?php if ($can_view_notes || $can_edit_notes): ?>
         <!-- 4. Review Notes Panel -->

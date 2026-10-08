@@ -397,13 +397,35 @@ class util {
             return true;
         }
 
-        // If the role explicitly has viewassignedcourses, they are restricted to assigned courses only.
-        if (has_capability('local/batchanalytics:viewassignedcourses', $context, $userid)) {
-            return false;
+        return has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+    }
+
+    /**
+     * Check whether the user has permission to view their assigned batches.
+     *
+     * @param \context|null $context
+     * @param mixed $user_or_id
+     * @return bool
+     */
+    public static function can_view_assigned_batches($context = null, $user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
         }
 
-        // Otherwise, must have explicit viewallcourses capability.
-        return has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+        if (is_siteadmin($userid)) {
+            return true;
+        }
+
+        if (!$context) {
+            $context = \context_system::instance();
+        }
+
+        return has_capability('local/batchanalytics:viewassignedcourses', $context, $userid);
     }
 
     /**

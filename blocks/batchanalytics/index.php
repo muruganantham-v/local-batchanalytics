@@ -94,9 +94,12 @@ $can_manage = is_siteadmin($userid)
     || has_capability('local/batchanalytics:manage', $context)
     || has_capability('local/batchanalytics:viewfullcrmdata', $context);
 $can_view_all_courses = \block_batchanalytics\util::can_view_all_batches($context, $userid);
+$can_view_assigned_courses = \block_batchanalytics\util::can_view_assigned_batches($context, $userid);
+if (!$can_view_all_courses && !$can_view_assigned_courses) {
+    $can_view_assigned_courses = true;
+}
 $can_view_crm = $can_manage
-    || has_capability('local/batchanalytics:viewcrmdata', $context)
-    || has_capability('local/batchanalytics:view', $context);
+    || has_capability('local/batchanalytics:viewcrmdata', $context);
 
 /**
  * Return a safe CRM error for the browser.
@@ -159,6 +162,11 @@ if ($action === 'getptfdata') {
         die();
     }
     require_sesskey();
+    if (!$can_view_crm) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied. CRM data access is disabled.']);
+        die();
+    }
 
     if (!\local_batchanalytics\util::check_crm_rate_limit($userid)) {
         http_response_code(429);
@@ -356,10 +364,14 @@ if ($action === 'getnewbatchdata') {
 
         // Check if user can view all courses or is restricted to assigned batches
         $currentuserid = (int)$USER->id;
-        $is_manager = \block_batchanalytics\util::can_view_all_batches($context, $currentuserid);
+        $can_view_all_courses = \block_batchanalytics\util::can_view_all_batches($context, $currentuserid);
+        $can_view_assigned_courses = \block_batchanalytics\util::can_view_assigned_batches($context, $currentuserid);
+        if (!$can_view_all_courses && !$can_view_assigned_courses) {
+            $can_view_assigned_courses = true;
+        }
 
-        // Non-managers (PM, SSE, Mentors) only see batch rows where their name/id is assigned.
-        if (!$is_manager) {
+        // If user cannot view all courses, only see batch rows where their name/id is assigned.
+        if (!$can_view_all_courses) {
             $allowed_section_ids = [];
 
             if (!empty($sections)) {
@@ -384,7 +396,7 @@ if ($action === 'getnewbatchdata') {
                 $studentcounts_by_section[(int)$row->classsectionid] = (int)$row->cnt;
             }
 
-            if ($is_manager) {
+            if ($can_view_all_courses) {
                 $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}");
             } else {
                 $sec_ids_list = array_map('intval', array_keys($sections));
@@ -446,7 +458,10 @@ if ($action === 'getnewbatchdata') {
                     $modules = \local_batchanalytics\util::filter_modules_for_mode($modules, $normalizedmode);
                 }
                 // For mentor: only display the modules which are assigned to them!
-                $modules = \local_batchanalytics\util::filter_modules_for_user($modules, $sec, $USER, $is_manager);
+                $modules = \local_batchanalytics\util::filter_modules_for_user($modules, $sec, $USER, $can_view_all_courses);
+
+                $assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER);
+                $is_assigned = !empty($assignment['is_assigned']);
 
                 $currentmodule = 'N/A';
                 $currentmoduleidx = 1;
@@ -549,6 +564,7 @@ if ($action === 'getnewbatchdata') {
                     'classMentors' => array_values(array_keys($sec_classmentors)),
                     'labMentors' => array_values(array_keys($sec_labmentors)),
                     'isCompleted' => $is_completed,
+                    'isAssigned' => $is_assigned,
                     'sectionId' => (int)$sec->id,
                     'parentBatchId' => $parent ? (int)$parent->id : 0,
                     'parentBatchName' => $parent ? (string)$parent->name : ''
@@ -587,6 +603,7 @@ if ($action === 'getnewbatchdata') {
                     'classMentors' => [],
                     'labMentors' => [],
                     'isCompleted' => false,
+                    'isAssigned' => false,
                     'sectionId' => (int)$b->id
                 ];
             }
@@ -658,6 +675,12 @@ if ($action === 'getnewbatchdata') {
                 'courses' => $courses,
                 'modes' => $modes,
                 'batchNames' => $batchnames
+            ],
+            'capabilities' => [
+                'canViewAllCourses' => $can_view_all_courses,
+                'canViewAssignedCourses' => $can_view_assigned_courses,
+                'canViewCrm' => $can_view_crm,
+                'canManage' => $can_manage
             ]
         ]);
         die();
@@ -689,7 +712,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
 
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
-echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
+echo '<div class="local-batchanalytics-wrap" data-can-manage="' . ($can_manage ? '1' : '0') . '" data-can-view-all-courses="' . ($can_view_all_courses ? '1' : '0') . '" data-can-view-assigned-courses="' . ($can_view_assigned_courses ? '1' : '0') . '" data-can-view-crm="' . ($can_view_crm ? '1' : '0') . '" data-crm-fields="' . htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) . '" data-sesskey="' . sesskey() . '">';
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Batch Analytics Dashboard
@@ -860,19 +883,28 @@ echo '    </div>';
 
 echo '    <!-- Subtabs Navigation -->';
 echo '    <div class="ba-new-subtabs-bar">';
-echo '      <button type="button" class="ba-new-subtab active" data-subtab="running">';
-echo '        Current Running Batches';
-echo '      </button>';
+if ($can_view_assigned_courses) {
+    echo '      <button type="button" class="ba-new-subtab active" data-subtab="my_running">';
+    echo '        My Running Batches';
+    echo '      </button>';
+}
+if ($can_view_all_courses) {
+    $active_cls = !$can_view_assigned_courses ? ' active' : '';
+    echo '      <button type="button" class="ba-new-subtab' . $active_cls . '" data-subtab="running">';
+    echo '        Current Running Batches';
+    echo '      </button>';
+}
 echo '      <button type="button" class="ba-new-subtab" data-subtab="completed">';
 echo '        Completed Batches';
 echo '      </button>';
 echo '    </div>';
 
+$initial_table_title = $can_view_assigned_courses ? 'My Running Batches' : 'Current Running Batches';
 echo '    <!-- Table Section Header -->';
 echo '    <div class="ba-table-header-row">';
 echo '      <div class="ba-table-title-wrap">';
 echo '        <span class="ba-glance-indicator"></span>';
-echo '        <h2 class="ba-table-title" id="ba-table-title-text">Current Running Batches</h2>';
+echo '        <h2 class="ba-table-title" id="ba-table-title-text">' . $initial_table_title . '</h2>';
 echo '      </div>';
 echo '      <div class="ba-table-showing-info" id="ba-new-pagination-info">Showing 0 of 0</div>';
 echo '    </div>';

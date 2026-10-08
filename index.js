@@ -17,9 +17,13 @@ function initNewBatchAnalytics() {
   const BASE_URL = window.location.href.split("?")[0];
   const sesskey = document.querySelector(".local-batchanalytics-wrap")?.dataset.sesskey || "";
 
-  let rawData = null;
-  let currentSubTab = "running";
-  let currentStatFilter = "running";
+  const wrap = document.querySelector(".local-batchanalytics-wrap");
+  let canViewAll = wrap?.dataset.canViewAllCourses === "1";
+  let canViewAssigned = wrap?.dataset.canViewAssignedCourses === "1";
+  const initialActiveSubtab = document.querySelector(".ba-new-subtab.active");
+  let defaultSubTab = initialActiveSubtab?.dataset.subtab || (canViewAssigned ? "my_running" : "running");
+  let currentSubTab = defaultSubTab;
+  let currentStatFilter = currentSubTab === "completed" ? "completed" : "running";
   let currentScheduleFilter = "";
   let currentPage = 1;
   const pageSize = 10;
@@ -45,6 +49,14 @@ function initNewBatchAnalytics() {
         return;
       }
       rawData = data;
+      if (data.capabilities) {
+        if (typeof data.capabilities.canViewAllCourses === "boolean") {
+          canViewAll = data.capabilities.canViewAllCourses;
+        }
+        if (typeof data.capabilities.canViewAssignedCourses === "boolean") {
+          canViewAssigned = data.capabilities.canViewAssignedCourses;
+        }
+      }
       renderStats(data.stats, data.batches);
       populateFilters(data.filters);
       setupEventListeners();
@@ -167,11 +179,17 @@ function initNewBatchAnalytics() {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
-        currentSubTab = "running";
-        currentStatFilter = "running";
+        currentSubTab = defaultSubTab;
+        currentStatFilter = currentSubTab === "completed" ? "completed" : "running";
         const titleEl = document.getElementById("ba-table-title-text");
         if (titleEl) {
-          titleEl.textContent = "Current Running Batches";
+          if (currentSubTab === "completed") {
+            titleEl.textContent = "Completed Batches";
+          } else if (currentSubTab === "my_running") {
+            titleEl.textContent = "My Running Batches";
+          } else {
+            titleEl.textContent = "Current Running Batches";
+          }
         }
         currentScheduleFilter = "";
         setActiveSubtab();
@@ -190,7 +208,13 @@ function initNewBatchAnalytics() {
         currentSubTab = this.dataset.subtab;
         const titleEl = document.getElementById("ba-table-title-text");
         if (titleEl) {
-          titleEl.textContent = currentSubTab === "completed" ? "Completed Batches" : "Current Running Batches";
+          if (currentSubTab === "completed") {
+            titleEl.textContent = "Completed Batches";
+          } else if (currentSubTab === "my_running") {
+            titleEl.textContent = "My Running Batches";
+          } else {
+            titleEl.textContent = "Current Running Batches";
+          }
         }
         if (currentSubTab === "completed") {
           currentStatFilter = "completed";
@@ -216,7 +240,9 @@ function initNewBatchAnalytics() {
           currentSubTab = "completed";
           if (modeSelect) modeSelect.value = "";
         } else {
-          currentSubTab = "running";
+          if (currentSubTab === "completed") {
+            currentSubTab = defaultSubTab;
+          }
           if (modeSelect) {
             modeSelect.value = currentStatFilter === "running" ? "" :
               currentStatFilter.charAt(0).toUpperCase() + currentStatFilter.slice(1);
@@ -224,7 +250,13 @@ function initNewBatchAnalytics() {
         }
         const titleEl = document.getElementById("ba-table-title-text");
         if (titleEl) {
-          titleEl.textContent = currentSubTab === "completed" ? "Completed Batches" : "Current Running Batches";
+          if (currentSubTab === "completed") {
+            titleEl.textContent = "Completed Batches";
+          } else if (currentSubTab === "my_running") {
+            titleEl.textContent = "My Running Batches";
+          } else {
+            titleEl.textContent = "Current Running Batches";
+          }
         }
         setActiveSubtab();
         setActiveStatCard();
@@ -250,7 +282,17 @@ function initNewBatchAnalytics() {
           currentScheduleFilter = filterVal;
           currentStatFilter = "";
         }
-        currentSubTab = "running";
+        if (currentSubTab === "completed") {
+          currentSubTab = defaultSubTab;
+          const titleEl = document.getElementById("ba-table-title-text");
+          if (titleEl) {
+            if (currentSubTab === "my_running") {
+              titleEl.textContent = "My Running Batches";
+            } else {
+              titleEl.textContent = "Current Running Batches";
+            }
+          }
+        }
         setActiveSubtab();
         setActiveStatCard();
         setActiveScheduleCard();
@@ -296,7 +338,9 @@ function initNewBatchAnalytics() {
 
     rawData.batches.forEach((b) => {
       if (b.isCompleted) {
-        completedCount++;
+        if (canViewAll || b.isAssigned) {
+          completedCount++;
+        }
       } else {
         runningCount++;
       }
@@ -309,8 +353,14 @@ function initNewBatchAnalytics() {
     setStatValue("stat-completed-batches", completedCount);
 
     let filtered = rawData.batches.filter((b) => {
-      if (currentSubTab === "completed" && !b.isCompleted) return false;
-      if (currentSubTab === "running" && b.isCompleted) return false;
+      if (currentSubTab === "completed") {
+        if (!b.isCompleted) return false;
+        if (!canViewAll && !b.isAssigned) return false;
+      } else if (currentSubTab === "my_running") {
+        if (b.isCompleted || !b.isAssigned) return false;
+      } else if (currentSubTab === "running") {
+        if (b.isCompleted) return false;
+      }
 
       if (searchTerm) {
         const matchesName = (b.batchId || "").toString().toLowerCase().includes(searchTerm) || (b.parentBatchName || "").toString().toLowerCase().includes(searchTerm);
@@ -329,7 +379,7 @@ function initNewBatchAnalytics() {
 
     renderContextStats(filtered);
 
-    if (currentSubTab === "running" && currentScheduleFilter) {
+    if ((currentSubTab === "running" || currentSubTab === "my_running") && currentScheduleFilter) {
       filtered = filtered.filter((b) => b.status === currentScheduleFilter);
     }
 
@@ -359,7 +409,15 @@ function initNewBatchAnalytics() {
     if (!tbody) return;
 
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="ba-new-empty">No matching batches found.</td></tr>';
+      let emptyMsg = "No matching batches found.";
+      if (currentSubTab === "my_running") {
+        emptyMsg = "No running batches currently assigned to you.";
+      } else if (currentSubTab === "running") {
+        emptyMsg = "No running batches found.";
+      } else if (currentSubTab === "completed") {
+        emptyMsg = "No completed batches found.";
+      }
+      tbody.innerHTML = `<tr><td colspan="8" class="ba-new-empty">${emptyMsg}</td></tr>`;
       return;
     }
 
