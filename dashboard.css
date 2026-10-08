@@ -2309,7 +2309,33 @@ body#page-local-batchanalytics-module #page-header h1,
   border: 1px solid #e2e8f0 !important;
   border-radius: 14px !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
-  overflow: hidden !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  max-width: 100% !important;
+}
+
+/* Schedule and SS activities tables horizontal scrolling on tablet and mobile */
+.ba-batch-page #panel-sched .tablecard,
+.ba-batch-page #panel-ss .tablecard {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+.ba-batch-page #panel-sched table {
+  min-width: 880px !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.ba-batch-page #panel-ss table {
+  min-width: 600px !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
 }
 
 /* The CRM table contains a configurable, potentially wide set of columns. */

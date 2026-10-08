@@ -660,8 +660,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           <div class="panel-note">
             One row per module in the batch's configured sequence. <b>Delay</b> is colour-coded. Open any module for its detail.
           </div>
-          <div class="tablecard">
-            <table>
+          <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+            <table style="min-width:880px;">
               <thead>
                 <tr>
                   <th>Module</th>
@@ -755,8 +755,8 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
           <div class="panel-note">
             Batch-level soft skill activities from Batch Management. Displays planned date, actual completion date, and current status.
           </div>
-          <div class="tablecard">
-            <table>
+          <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+            <table style="min-width:600px;">
               <thead>
                 <tr>
                   <th>Activity</th>
