@@ -359,7 +359,19 @@ if ($section && !empty($section->softskillsdata)) {
 // -------------------------------------------------------------------------
 $students_data = [];
 
-$performance_courseids = array_values(array_unique(array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')))));
+$all_batch_modules = (!empty($section) && !empty($section->moduledata))
+    ? \local_batchanalytics\util::decode_module_data($section->moduledata, true)
+    : $raw_modules;
+
+$all_modules_list = !empty($raw_modules) ? array_merge($all_batch_modules, $raw_modules) : $all_batch_modules;
+$performance_courseids = [];
+foreach ($all_modules_list as $bm) {
+    $cid = !empty($bm['moodlecourseid']) ? (int)$bm['moodlecourseid'] : (!empty($bm['courseid']) ? (int)$bm['courseid'] : 0);
+    if ($cid > 0) {
+        $performance_courseids[] = $cid;
+    }
+}
+$performance_courseids = array_values(array_unique($performance_courseids));
 $spot_award_counts = [];
 $spot_items_tbl = $DB->get_manager()->table_exists('nominations_sa_items') ? 'nominations_sa_items' : ($DB->get_manager()->table_exists('spotaward_nomination_items') ? 'spotaward_nomination_items' : '');
 $spot_noms_tbl = $DB->get_manager()->table_exists('nominations_sa_nominations') ? 'nominations_sa_nominations' : ($DB->get_manager()->table_exists('spotaward_nominations') ? 'spotaward_nominations' : '');
@@ -396,48 +408,35 @@ if ($section && $has_bm_student) {
     $sec_student_uids = array_values(array_filter(array_map('intval', $sec_student_uids)));
 }
 
+// Fetch and merge enrolled students across all linked courses in the batch.
 $enrolledstudents = [];
-$studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
-if ($studentroleid > 0) {
-    foreach ($performance_courseids as $enrolledcourseid) {
-        $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
-        if (!$coursecontext) continue;
-        foreach (get_role_users($studentroleid, $coursecontext, false, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email') as $studentrecord) {
-            if (!empty($sec_student_uids)) {
-                if (in_array((int)$studentrecord->id, $sec_student_uids, true)) {
-                    $enrolledstudents[$studentrecord->id] = $studentrecord;
-                }
-            } else {
-                $enrolledstudents[$studentrecord->id] = $studentrecord;
-            }
-        }
+foreach ($performance_courseids as $enrolledcourseid) {
+    $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
+    if (!$coursecontext) {
+        continue;
     }
-    if (!empty($sec_student_uids)) {
-        $missing_uids = array_diff($sec_student_uids, array_keys($enrolledstudents));
-        if (!empty($missing_uids)) {
-            list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
-            $extra_students = $DB->get_records_select(
-                'user',
-                "id $in_missing AND deleted = 0",
-                $m_params,
-                'firstname ASC, lastname ASC',
-                'id, idnumber, username, firstname, lastname, email'
-            );
-            foreach ($extra_students as $mrec) {
-                $enrolledstudents[$mrec->id] = $mrec;
-            }
-        }
+    $course_students = get_enrolled_users($coursecontext, '', 0, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
+    foreach ($course_students as $studentrecord) {
+        $enrolledstudents[(int)$studentrecord->id] = $studentrecord;
     }
 }
-if (empty($enrolledstudents) && !empty($sec_student_uids)) {
-    list($in_sec, $sec_params) = $DB->get_in_or_equal($sec_student_uids, SQL_PARAMS_NAMED, 'secstu');
-    $enrolledstudents = $DB->get_records_select(
-        'user',
-        "id $in_sec AND deleted = 0",
-        $sec_params,
-        'firstname ASC, lastname ASC',
-        'id, idnumber, username, firstname, lastname, email'
-    );
+
+// Also include any section students from local_bm_student not yet in enrolled list
+if (!empty($sec_student_uids)) {
+    $missing_uids = array_diff($sec_student_uids, array_keys($enrolledstudents));
+    if (!empty($missing_uids)) {
+        list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
+        $extra_students = $DB->get_records_select(
+            'user',
+            "id $in_missing AND deleted = 0",
+            $m_params,
+            'firstname ASC, lastname ASC',
+            'id, idnumber, username, firstname, lastname, email'
+        );
+        foreach ($extra_students as $mrec) {
+            $enrolledstudents[(int)$mrec->id] = $mrec;
+        }
+    }
 }
 
 foreach ($enrolledstudents as $studentrecord) {
@@ -463,7 +462,6 @@ foreach ($enrolledstudents as $studentrecord) {
     ];
 }
 // Reuse the Course-tab Advanced Filter Gradebook dataset across linked modules.
-$performance_courseids = array_filter(array_map('intval', array_column($raw_modules, 'moodlecourseid')));
 $performance_data = (new \local_batchanalytics\student_performance_service())->build(
     $students_data,
     $performance_courseids,

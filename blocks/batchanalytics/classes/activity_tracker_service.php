@@ -480,17 +480,25 @@ class activity_tracker_service {
         if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
             $uids = $DB->get_fieldset_select('local_bm_student', 'userid', 'classsectionid = :secid', ['secid' => $sectionid]);
             if (!empty($uids)) {
-                [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
-                $student_filter_sql = " AND s.userid $in_sql";
-                $student_params = $in_params;
+                $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
+                $enrolled_ids = $c_ctx ? array_keys(get_enrolled_users($c_ctx, '', 0, 'u.id')) : [];
+                $matching_uids = !empty($enrolled_ids) ? array_values(array_intersect($uids, $enrolled_ids)) : $uids;
+
+                if (!empty($matching_uids) && count($matching_uids) >= 10 && count($matching_uids) >= (count($enrolled_ids) * 0.35)) {
+                    [$in_sql, $in_params] = $DB->get_in_or_equal($matching_uids, SQL_PARAMS_NAMED, 'bmstu');
+                    $student_filter_sql = " AND s.userid $in_sql";
+                    $student_params = $in_params;
+                }
             }
         }
 
         $matching_instances = ['assign' => [], 'vpl' => [], 'quiz' => []];
         $instance_names = [];
+        $is_quiz_or_test_target = in_array($target_type, ['Quiz', 'Test', 'Module Test'], true);
         foreach ($items as $gi) {
             $cat = $act_service->resolve_grade_item_category($gi, $cats);
-            if ($cat === $target_type || (($target_type === 'Quiz' || $target_type === 'Test') && ($cat === 'Quiz' || $cat === 'Test'))) {
+            $cat_match = ($cat === $target_type) || ($is_quiz_or_test_target && in_array($cat, ['Quiz', 'Test', 'Module Test'], true));
+            if ($cat_match) {
                 $matching_instances[$gi->itemmodule][] = (int)$gi->iteminstance;
                 $instance_names[$gi->itemmodule . ':' . $gi->iteminstance] = $gi->itemname;
             }
@@ -500,7 +508,7 @@ class activity_tracker_service {
         if (empty($matching_instances['assign']) && empty($matching_instances['vpl']) && empty($matching_instances['quiz'])) {
             foreach ($items as $gi) {
                 if ($gi->itemmodule === 'quiz') {
-                    if ($target_type === 'Quiz' || $target_type === 'Test') {
+                    if (in_array($target_type, ['Quiz', 'Test', 'Module Test'], true)) {
                         $matching_instances['quiz'][] = (int)$gi->iteminstance;
                         $instance_names['quiz:' . $gi->iteminstance] = $gi->itemname;
                     }
@@ -907,9 +915,10 @@ class activity_tracker_service {
 
         $results = [];
         $eval_types = [
-            'Assignment' => ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation'],
-            'Project'    => ['key' => 'project_evaluation',    'name' => 'Project evaluation'],
-            'Quiz'       => ['key' => 'quiz_evaluation',       'name' => 'Quiz evaluation'],
+            'Assignment'  => ['key' => 'assignment_evaluation',  'name' => 'Assignment evaluation'],
+            'Project'     => ['key' => 'project_evaluation',     'name' => 'Project evaluation'],
+            'Quiz'        => ['key' => 'quiz_evaluation',        'name' => 'Quiz evaluation'],
+            'Module Test' => ['key' => 'module_test_evaluation', 'name' => 'Module test evaluation'],
         ];
 
         // Fetch current saved record for this course
@@ -917,18 +926,8 @@ class activity_tracker_service {
         $saved_list = [];
         if ($rec && !empty($rec->activitiesdata)) {
             $raw_saved = json_decode($rec->activitiesdata, true) ?: [];
-            $cleaned = false;
             foreach ($raw_saved as $item) {
-                $k = mb_strtolower(trim($item['key'] ?? ''));
-                if (in_array($k, ['test_evaluation', 'module_test_eveluation', 'module_test_evaluation'], true)) {
-                    $cleaned = true;
-                    continue;
-                }
                 $saved_list[] = $item;
-            }
-            if ($cleaned) {
-                $rec->activitiesdata = json_encode(array_values($saved_list));
-                $DB->update_record(\local_batchanalytics\mentor_activity_service::get_table_name(), $rec);
             }
         }
 
@@ -1303,9 +1302,15 @@ class activity_tracker_service {
         if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_student')) {
             $uids = $DB->get_fieldset_select('local_bm_student', 'userid', 'classsectionid = :secid', ['secid' => $sectionid]);
             if (!empty($uids)) {
-                [$in_sql, $in_params] = $DB->get_in_or_equal($uids, SQL_PARAMS_NAMED, 'bmstu');
-                $student_filter_sql = " AND s.userid $in_sql";
-                $student_params = $in_params;
+                $c_ctx = \context_course::instance($courseid, IGNORE_MISSING);
+                $enrolled_ids = $c_ctx ? array_keys(get_enrolled_users($c_ctx, '', 0, 'u.id')) : [];
+                $matching_uids = !empty($enrolled_ids) ? array_values(array_intersect($uids, $enrolled_ids)) : $uids;
+
+                if (!empty($matching_uids) && count($matching_uids) >= 10 && count($matching_uids) >= (count($enrolled_ids) * 0.35)) {
+                    [$in_sql, $in_params] = $DB->get_in_or_equal($matching_uids, SQL_PARAMS_NAMED, 'bmstu');
+                    $student_filter_sql = " AND s.userid $in_sql";
+                    $student_params = $in_params;
+                }
             }
         }
 
@@ -1426,7 +1431,9 @@ class activity_tracker_service {
         // 4. Gradebook setup-based checks for mentor evaluation activities:
         $is_project = str_contains($norm, 'project') || $norm === 'project_evaluation';
         $is_assign  = (str_contains($norm, 'assign') || $norm === 'assignment_evaluation') && !$is_project;
-        $is_quiz    = str_contains($norm, 'quiz') || str_contains($norm, 'test') || $norm === 'quiz_evaluation' || $norm === 'test_evaluation';
+        $is_quiz    = str_contains($norm, 'quiz') || str_contains($norm, 'test') ||
+                      $norm === 'quiz_evaluation' || $norm === 'test_evaluation' ||
+                      $norm === 'module_test_evaluation' || $norm === 'module_test_eveluation';
 
         // A) Projects (resolved via Gradebook categories)
         if ($is_project) {
@@ -1625,7 +1632,7 @@ class activity_tracker_service {
                     'pending_count'   => $total_pending,
                     'completed_count' => $total_completed,
                     'total_count'     => $total_pending + $total_completed,
-                    'activity_name'   => 'Quiz evaluation',
+                    'activity_name'   => (str_contains($norm, 'test') ? 'Module test evaluation' : 'Quiz evaluation'),
                     'activity_url'    => $primary_url,
                     'items'           => $quiz_items,
                     'message'         => $msg,

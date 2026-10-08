@@ -1343,7 +1343,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <div id="panel-ssact" class="panel">
       <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
-          Soft skills roadmap for <b><?= s($batchname) ?></b>. Activities scheduled during this module (<b><?= s($p_start) ?></b> – <b><?= s($p_end) ?></b>) are marked with <span class="st st-g" style="padding:2px 8px; font-size:11px;">Active in this module</span>.
+          Soft skills activities scheduled during this module's planned date range (<b><?= s($p_start) ?></b> – <b><?= s($p_end) ?></b>).
         </div>
       </div>
       <div class="tablecard">
@@ -1354,26 +1354,18 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <th>Planned Date</th>
               <th>Actual Date</th>
               <th>Status</th>
-              <th>Module Alignment</th>
             </tr>
           </thead>
           <tbody>
-            <?php if (empty($all_ss_activities)): ?>
-              <tr><td colspan="5" class="muted" style="text-align:center; padding:24px;">No soft skill activities are configured for this batch.</td></tr>
+            <?php if (empty($ss_module_activities)): ?>
+              <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;">No soft skill activities are scheduled within this module's planned date range (<?= s($p_start) ?> – <?= s($p_end) ?>).</td></tr>
             <?php else: ?>
-              <?php foreach ($all_ss_activities as $r): ?>
-                <tr <?= !empty($r['is_current_module']) ? 'style="background-color:rgba(14, 165, 233, 0.05); font-weight:500;"' : '' ?>>
+              <?php foreach ($ss_module_activities as $r): ?>
+                <tr>
                   <td><span class="val"><?= s($r['activity']) ?></span></td>
                   <td class="date"><?= s($r['p_date']) ?></td>
                   <td class="date"><?= format_cell_muted($r['a_date']) ?></td>
                   <td><span class="st st-<?= s($r['status']) ?>"><?= s($r['label']) ?></span></td>
-                  <td>
-                    <?php if (!empty($r['is_current_module'])): ?>
-                      <span class="st st-g" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd; font-weight:600;">Active in Module <?= (int)$module_idx ?></span>
-                    <?php else: ?>
-                      <span class="muted" style="font-size:12px;">Full Batch Roadmap</span>
-                    <?php endif; ?>
-                  </td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>

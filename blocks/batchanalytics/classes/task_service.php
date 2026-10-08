@@ -508,10 +508,6 @@ class task_service {
                             }
                             $act_k = mb_strtolower(trim($act['key'] ?? ''));
                             $act_n = mb_strtolower(trim($act['name'] ?? ''));
-                            if (in_array($act_k, ['test_evaluation', 'module_test_eveluation', 'module_test_evaluation'], true) ||
-                                (strpos($act_n, 'test') !== false && strpos($act_n, 'eval') !== false)) {
-                                continue;
-                            }
 
                             $p_ts = (int)($act['planned_ts'] ?? 0);
                             if ($p_ts <= 0) {

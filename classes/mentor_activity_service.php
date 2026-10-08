@@ -60,6 +60,7 @@ class mentor_activity_service {
         ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
         ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
         ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
+        ['key' => 'module_test_evaluation', 'name' => 'Module test evaluation', 'desc' => 'Module test evaluation', 'category' => 'Evaluation'],
         ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'desc' => 'Quiz evaluation', 'category' => 'Evaluation'],
     ];
 
@@ -379,16 +380,6 @@ class mentor_activity_service {
                                 ];
                             }
                         }
-                    }
-
-                    // Ensure quiz_evaluation is present in each configured group
-                    if (!isset($seen_keys['quiz_evaluation'])) {
-                        $seen_keys['quiz_evaluation'] = true;
-                        $clean_acts[] = [
-                            'key'     => 'quiz_evaluation',
-                            'name'    => 'Quiz evaluation',
-                            'duedays' => 7,
-                        ];
                     }
 
                     if (!empty($clean_acts)) {
@@ -893,12 +884,6 @@ class mentor_activity_service {
         foreach ($expected_activities as $act) {
             $act_name = $act['name'];
             $act_key = $act['key'] ?? self::slugify_key($act_name);
-            $lookup_k = mb_strtolower(trim($act_key));
-            $lookup_n = mb_strtolower(trim($act_name));
-            if (in_array($lookup_k, ['test_evaluation', 'module_test_eveluation', 'module_test_evaluation'], true) ||
-                (strpos($lookup_n, 'test') !== false && strpos($lookup_n, 'eval') !== false)) {
-                continue;
-            }
             $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
 
             // Calculate planned due date excluding Saturdays & Sundays

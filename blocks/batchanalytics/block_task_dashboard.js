@@ -582,20 +582,22 @@
         sHtml += '  </div>';
         sHtml += '</div>';
 
-        sHtml += '<div style="margin-top: 16px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; text-align: center;">';
-        sHtml += '  <p style="margin: 0 0 12px 0; color: #9a3412; font-size: 13px; font-weight: 500;">Please nominate at least one student from this course before marking this activity as complete.</p>';
-        sHtml += '  <a href="' + escapeHtml(spotUrl) + '" target="_blank" class="mc-btn-goto-act primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; background: #2563eb; color: #ffffff;">';
-        sHtml += '    Nominate Students for Spot Award ↗';
-        sHtml += '  </a>';
+        sHtml += '<div style="margin-top: 14px; padding: 12px 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; text-align: center;">';
+        sHtml += '  <p style="margin: 0; color: #9a3412; font-size: 13px; font-weight: 500;">Please nominate at least one student from this course before marking this activity as complete.</p>';
         sHtml += '</div>';
 
         validBody.innerHTML = sHtml;
 
-        // Hide below buttons when nomination is required
+        // Show "Nominate Students for Spot Award" button in modal footer
         if (btnGoto) {
-          btnGoto.style.display = 'none';
+          btnGoto.href = spotUrl;
+          btnGoto.target = '_blank';
+          btnGoto.textContent = 'Nominate Students for Spot Award ↗';
+          btnGoto.className = 'mc-btn-goto-act primary';
+          btnGoto.style.display = 'inline-flex';
         }
 
+        // Hide Confirm button since nomination is required
         if (btnConfirm) {
           btnConfirm.style.display = 'none';
         }
@@ -613,23 +615,7 @@
       sHtml += '  </div>';
       sHtml += '</div>';
 
-      if (students.length > 0) {
-        sHtml += '<div class="ba-modal-items-list" style="margin-top: 14px; max-height: 220px; overflow-y: auto;">';
-        sHtml += '  <div class="items-title" style="font-weight: 600; margin-bottom: 8px; color: #1e293b; font-size: 13px;">Nominated Student(s) in Course (' + students.length + '):</div>';
-        students.forEach(function(st) {
-          var name = st.fullname || ((st.firstname || '') + ' ' + (st.lastname || '')).trim() || ('Student #' + st.studentid);
-          var catText = st.awardcategory ? (' · ' + escapeHtml(st.awardcategory)) : '';
-          var idNumberText = st.idnumber ? (' (' + escapeHtml(st.idnumber) + ')') : '';
-          var statusBadge = st.status ? ('<span class="ba-badge status-' + escapeHtml(st.status) + '" style="font-size:11px; padding:2px 8px; border-radius:4px; background:#e0e7ff; color:#3730a3; text-transform:capitalize; font-weight:600;">' + escapeHtml(st.status) + '</span>') : '';
-          sHtml += '  <div class="ba-modal-item-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:6px;">';
-          sHtml += '    <div class="item-name" style="font-weight:500; font-size:13px; color:#0f172a;">' + escapeHtml(name) + '<span style="color:#64748b; font-size:12px;">' + idNumberText + catText + '</span></div>';
-          sHtml += '    <div class="item-right">' + statusBadge + '</div>';
-          sHtml += '  </div>';
-        });
-        sHtml += '</div>';
-      }
-
-      sHtml += '<div style="margin-top: 8px; margin-bottom: 4px; text-align: right;"><a href="' + escapeHtml(spotUrl) + '" target="_blank" style="color: #0284c7; text-decoration: none; font-size: 12px; font-weight: 500;">View in Spot Award ↗</a></div>';
+      sHtml += '<div style="margin-top: 10px; margin-bottom: 4px; text-align: right;"><a href="' + escapeHtml(spotUrl) + '" target="_blank" style="color: #0284c7; text-decoration: none; font-size: 12px; font-weight: 500;">View in Spot Award ↗</a></div>';
 
       validBody.innerHTML = sHtml;
 
