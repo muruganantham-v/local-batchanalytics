@@ -796,17 +796,23 @@ body.editing .block_batchanalytics .card-header {
   color: #0f172a !important;
 }
 .ba-task-dash-wrap .mc-btn-goto-act {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.ba-task-dash-wrap .mc-btn-goto-act.is-visible {
   display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 9px 16px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  text-decoration: none !important;
-  transition: all 0.15s ease !important;
-  font-family: inherit !important;
-  white-space: nowrap !important;
+}
+.ba-task-dash-wrap .mc-btn-goto-act.is-hidden {
+  display: none !important;
 }
 .ba-task-dash-wrap .mc-btn-goto-act.primary {
   background: #0284c7 !important;

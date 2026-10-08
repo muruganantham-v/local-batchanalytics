@@ -467,6 +467,9 @@
 
     if (btnGoto) {
       btnGoto.style.display = 'none';
+      btnGoto.setAttribute('style', 'display: none !important;');
+      btnGoto.classList.remove('is-visible', 'primary', 'secondary');
+      btnGoto.classList.add('is-hidden');
       btnGoto.href = '#';
     }
 
@@ -476,6 +479,12 @@
     if (isSseRequest) {
       if (modalTitle) modalTitle.textContent = 'Request Approval';
       if (modalSub) modalSub.textContent = 'Confirm that you want to submit this Soft Skills activity for approval:';
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+        btnGoto.classList.remove('is-visible', 'primary', 'secondary');
+        btnGoto.classList.add('is-hidden');
+      }
       if (btnConfirm) {
         btnConfirm.style.display = '';
         btnConfirm.disabled = false;
@@ -502,6 +511,12 @@
     if (isSslApprove) {
       if (modalTitle) modalTitle.textContent = 'Approve Activity';
       if (modalSub) modalSub.textContent = 'Confirm approval of this Soft Skills activity:';
+      if (btnGoto) {
+        btnGoto.style.display = 'none';
+        btnGoto.setAttribute('style', 'display: none !important;');
+        btnGoto.classList.remove('is-visible', 'primary', 'secondary');
+        btnGoto.classList.add('is-hidden');
+      }
       if (btnConfirm) {
         btnConfirm.style.display = '';
         btnConfirm.disabled = false;
@@ -622,6 +637,8 @@
       if (btnGoto) {
         btnGoto.style.display = 'none';
         btnGoto.setAttribute('style', 'display: none !important;');
+        btnGoto.classList.remove('is-visible', 'primary', 'secondary');
+        btnGoto.classList.add('is-hidden');
       }
       if (btnConfirm) {
         btnConfirm.disabled = false;
@@ -665,7 +682,8 @@
           btnGoto.href = spotUrl;
           btnGoto.target = '_blank';
           btnGoto.textContent = 'Nominate Students for Spot Award ↗';
-          btnGoto.className = 'mc-btn-goto-act primary';
+          btnGoto.className = 'mc-btn-goto-act primary is-visible';
+          btnGoto.classList.remove('is-hidden');
           btnGoto.style.display = 'inline-flex';
         }
 
@@ -792,7 +810,8 @@
       if (btnGoto && actUrl) {
         btnGoto.href = actUrl;
         btnGoto.textContent = 'Go to Activity in Course ↗';
-        btnGoto.className = 'mc-btn-goto-act primary';
+        btnGoto.className = 'mc-btn-goto-act primary is-visible';
+        btnGoto.classList.remove('is-hidden');
         btnGoto.style.display = 'inline-flex';
       }
 
@@ -819,7 +838,8 @@
       if (btnGoto && actUrl) {
         btnGoto.href = actUrl;
         btnGoto.textContent = 'View Activity ↗';
-        btnGoto.className = 'mc-btn-goto-act secondary';
+        btnGoto.className = 'mc-btn-goto-act secondary is-visible';
+        btnGoto.classList.remove('is-hidden');
         btnGoto.style.display = 'inline-flex';
       }
 
