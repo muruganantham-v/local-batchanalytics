@@ -344,7 +344,15 @@
         var btnLbl = t.btn_label || 'Update →';
         var actUrl = t.action_url || t.dest_url;
         actionBtnHtml = '<a href="' + escapeHtml(actUrl) + '" class="mc-btn2 mc-btn-link">' + escapeHtml(btnLbl) + '</a>';
-      } else if (activeRole === 'mentors' || activeRole === 'sse' || activeRole === 'sspm' || (activeRole !== 'admin' && activeRole !== 'pm')) {
+      } else if (t.action_type === 'ss_approve' || ((activeRole === 'sslead' || activeRole === 'admin') && t.is_pending_approval)) {
+        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-approve" data-task-id="' + escapeHtml(t.id) + '" style="background:#059669; border-color:#059669; color:#fff;">Approve</button>';
+      } else if (t.action_type === 'ss_requested' || t.is_requested) {
+        actionBtnHtml = '<button type="button" class="mc-btn2 disabled" disabled style="background:#f1f5f9; border-color:#cbd5e1; color:#94a3b8; cursor:not-allowed;">Requested</button>';
+      } else if (activeRole === 'sse' && t.action_type === 'ss') {
+        actionBtnHtml = '<button type="button" class="mc-btn2 mc-btn-request" data-task-id="' + escapeHtml(t.id) + '" style="background:#4f46e5; border-color:#4f46e5; color:#fff;">Request Approval</button>';
+      } else if (activeRole === 'mentors' || activeRole === 'sspm' || (activeRole !== 'admin' && activeRole !== 'pm' && activeRole !== 'sslead')) {
+        actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
+      } else if (activeRole === 'admin') {
         actionBtnHtml = '<button type="button" class="mc-btn2" data-task-id="' + escapeHtml(t.id) + '">Mark Complete</button>';
       }
 
@@ -451,19 +459,83 @@
       nameEl.textContent = task.title + ' (' + (task.meta || '') + ')';
     }
 
+    var modalTitle = document.getElementById('ba-modal-title');
+    var modalSub = document.querySelector('.ba-modal-sub');
     var validBody = document.getElementById('ba-modal-validation-body');
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
     var btnGoto = document.getElementById('ba-modal-btn-goto');
 
+    if (btnGoto) {
+      btnGoto.style.display = 'none';
+      btnGoto.href = '#';
+    }
+
+    var isSseRequest = (activeRole === 'sse' && task.action_type === 'ss') || (task.action_type === 'ss_request');
+    var isSslApprove = ((activeRole === 'sslead' || activeRole === 'admin') && (task.action_type === 'ss_approve' || task.is_pending_approval));
+
+    if (isSseRequest) {
+      if (modalTitle) modalTitle.textContent = 'Request Approval';
+      if (modalSub) modalSub.textContent = 'Confirm that you want to submit this Soft Skills activity for approval:';
+      if (btnConfirm) {
+        btnConfirm.style.display = '';
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Request Approval';
+        btnConfirm.className = 'confirm mc-btn-request';
+        btnConfirm.style.background = '#4f46e5';
+        btnConfirm.style.borderColor = '#4f46e5';
+        btnConfirm.title = '';
+      }
+      if (validBody) {
+        validBody.innerHTML = '<div class="ba-modal-alert success">' +
+          '<div class="alert-icon">ℹ️</div>' +
+          '<div class="alert-content">' +
+          '  <div class="alert-title">Submit Due Activity for Approval</div>' +
+          '  <div class="alert-desc">This activity due notice will be sent to the Student Success Lead (SSL) for review and sign-off.</div>' +
+          '</div>' +
+          '</div>';
+      }
+      var overlay = document.getElementById('ba-task-modal-overlay');
+      if (overlay) overlay.classList.add('show');
+      return;
+    }
+
+    if (isSslApprove) {
+      if (modalTitle) modalTitle.textContent = 'Approve Activity';
+      if (modalSub) modalSub.textContent = 'Confirm approval of this Soft Skills activity:';
+      if (btnConfirm) {
+        btnConfirm.style.display = '';
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm Approval';
+        btnConfirm.className = 'confirm mc-btn-approve';
+        btnConfirm.style.background = '#059669';
+        btnConfirm.style.borderColor = '#059669';
+        btnConfirm.title = '';
+      }
+      if (validBody) {
+        var reqInfo = task.requested_by_name ? (' (Requested by: ' + escapeHtml(task.requested_by_name) + ')') : '';
+        validBody.innerHTML = '<div class="ba-modal-alert success">' +
+          '<div class="alert-icon">✓</div>' +
+          '<div class="alert-content">' +
+          '  <div class="alert-title">Ready for Final Sign-off</div>' +
+          '  <div class="alert-desc">Confirming approval will officially mark this activity as completed and notify the team.' + reqInfo + '</div>' +
+          '</div>' +
+          '</div>';
+      }
+      var overlay = document.getElementById('ba-task-modal-overlay');
+      if (overlay) overlay.classList.add('show');
+      return;
+    }
+
+    if (modalTitle) modalTitle.textContent = 'Mark Activity Complete';
+    if (modalSub) modalSub.textContent = 'Check submissions and confirm completion of this activity:';
     if (btnConfirm) {
       btnConfirm.style.display = '';
       btnConfirm.disabled = true;
       btnConfirm.textContent = 'Confirm Complete';
+      btnConfirm.className = 'confirm';
+      btnConfirm.style.background = '';
+      btnConfirm.style.borderColor = '';
       btnConfirm.title = 'Validating activity status...';
-    }
-    if (btnGoto) {
-      btnGoto.style.display = 'none';
-      btnGoto.href = '#';
     }
 
     if (validBody) {
@@ -769,16 +841,68 @@
   function confirmCompletion() {
     if (!pendingTask || !apiUrl) return;
 
+    var isSseRequest = (activeRole === 'sse' && pendingTask.action_type === 'ss') || (pendingTask.action_type === 'ss_request');
+    var isSslApprove = ((activeRole === 'sslead' || activeRole === 'admin') && (pendingTask.action_type === 'ss_approve' || pendingTask.is_pending_approval));
     var btnConfirm = document.getElementById('ba-modal-btn-confirm');
+
+    if (isSseRequest) {
+      if (btnConfirm) {
+        btnConfirm.disabled = true;
+        btnConfirm.textContent = 'Submitting request...';
+      }
+
+      var formData = new FormData();
+      formData.append('action', 'request_ss_approval');
+      formData.append('sesskey', sesskey);
+      formData.append('batchid', pendingTask.batchid || 0);
+      formData.append('act_key', pendingTask.act_key || '');
+      formData.append('role', activeRole || '');
+
+      fetch(apiUrl, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(resp) {
+          if (btnConfirm) btnConfirm.disabled = false;
+          if (resp && resp.success) {
+            pendingTask.is_requested = true;
+            pendingTask.action_type = 'ss_requested';
+            closeModal();
+            renderTodoList();
+            try {
+              localStorage.setItem('ba_task_updated', Date.now().toString());
+            } catch (e) {}
+            if (resp.dashboard_data) {
+              applyData(resp.dashboard_data);
+            } else {
+              loadDashboardData();
+            }
+          } else {
+            alert((resp && resp.message) || 'Failed to submit approval request.');
+          }
+        })
+        .catch(function(err) {
+          if (btnConfirm) {
+            btnConfirm.disabled = false;
+            btnConfirm.textContent = 'Request Approval';
+          }
+          alert('Server connection error. Please try again.');
+          console.error(err);
+        });
+      return;
+    }
+
     if (btnConfirm) {
       btnConfirm.disabled = true;
-      btnConfirm.textContent = 'Marking complete...';
+      btnConfirm.textContent = isSslApprove ? 'Approving...' : 'Marking complete...';
     }
 
     var formData = new FormData();
     formData.append('action', 'complete_task');
     formData.append('sesskey', sesskey);
-    formData.append('type', pendingTask.action_type || '');
+    formData.append('type', isSslApprove ? 'ss_approve' : (pendingTask.action_type || ''));
     formData.append('courseid', pendingTask.courseid || 0);
     formData.append('batchid', pendingTask.batchid || 0);
     formData.append('act_name', pendingTask.act_name || '');
@@ -818,7 +942,7 @@
       .catch(function(err) {
         if (btnConfirm) {
           btnConfirm.disabled = false;
-          btnConfirm.textContent = 'Confirm Complete';
+          btnConfirm.textContent = isSslApprove ? 'Confirm Approval' : 'Confirm Complete';
         }
         alert('Server connection error. Please try again.');
         console.error(err);

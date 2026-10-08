@@ -1089,12 +1089,22 @@ class util {
                 $a_val = $val['actual'] ?? $val['actual_date'] ?? $val['actualdate'] ?? 0;
                 $p_ts = is_numeric($p_val) ? (int)$p_val : (strtotime((string)$p_val) ?: 0);
                 $a_ts = is_numeric($a_val) ? (int)$a_val : (strtotime((string)$a_val) ?: 0);
+                $appr_st = (string)($val['approval_status'] ?? $val['approvalstatus'] ?? '');
+                $req_by  = (int)($val['requested_by'] ?? $val['requestedby'] ?? 0);
+                $req_at  = (int)($val['requested_at'] ?? $val['requestedat'] ?? 0);
+                $appr_by = (int)($val['approved_by'] ?? $val['approvedby'] ?? 0);
+                $appr_at = (int)($val['approved_at'] ?? $val['approvedat'] ?? 0);
 
                 $grouped[$base] = [
-                    'key'     => $base,
-                    'label'   => trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base))),
-                    'planned' => $p_ts,
-                    'actual'  => $a_ts,
+                    'key'             => $base,
+                    'label'           => trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base))),
+                    'planned'         => $p_ts,
+                    'actual'          => $a_ts,
+                    'approval_status' => $appr_st,
+                    'requested_by'    => $req_by,
+                    'requested_at'    => $req_at,
+                    'approved_by'     => $appr_by,
+                    'approved_at'     => $appr_at,
                 ];
                 continue;
             }
@@ -1104,30 +1114,47 @@ class util {
             }
 
             $key = trim((string)$key);
-            if (preg_match('/^(.+)_(planned|actual)$/i', $key, $m)) {
+            if (preg_match('/^(.+)_(planned|actual|approvalstatus|requestedby|requestedat|approvedby|approvedat)$/i', $key, $m)) {
                 $base = $m[1];
-                $type = strtolower($m[2]); // 'planned' or 'actual'
+                $type = strtolower($m[2]);
 
                 if (!isset($grouped[$base])) {
                     $label = trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base)));
                     $grouped[$base] = [
-                        'key'     => $base,
-                        'label'   => $label,
-                        'planned' => 0,
-                        'actual'  => 0,
+                        'key'             => $base,
+                        'label'           => $label,
+                        'planned'         => 0,
+                        'actual'          => 0,
+                        'approval_status' => '',
+                        'requested_by'    => 0,
+                        'requested_at'    => 0,
+                        'approved_by'     => 0,
+                        'approved_at'     => 0,
                     ];
                 }
 
-                $ts = 0;
-                if (is_numeric($val)) {
-                    $ts = (int)$val;
-                } else if (is_string($val) && trim($val) !== '') {
-                    $parsed = strtotime($val);
-                    if ($parsed !== false) {
-                        $ts = $parsed;
+                if ($type === 'approvalstatus') {
+                    $grouped[$base]['approval_status'] = (string)$val;
+                } else if ($type === 'requestedby') {
+                    $grouped[$base]['requested_by'] = (int)$val;
+                } else if ($type === 'requestedat') {
+                    $grouped[$base]['requested_at'] = (int)$val;
+                } else if ($type === 'approvedby') {
+                    $grouped[$base]['approved_by'] = (int)$val;
+                } else if ($type === 'approvedat') {
+                    $grouped[$base]['approved_at'] = (int)$val;
+                } else {
+                    $ts = 0;
+                    if (is_numeric($val)) {
+                        $ts = (int)$val;
+                    } else if (is_string($val) && trim($val) !== '') {
+                        $parsed = strtotime($val);
+                        if ($parsed !== false) {
+                            $ts = $parsed;
+                        }
                     }
+                    $grouped[$base][$type] = $ts;
                 }
-                $grouped[$base][$type] = $ts;
             }
         }
 
@@ -1138,10 +1165,14 @@ class util {
         foreach ($grouped as $entry) {
             $p = (int)$entry['planned'];
             $a = (int)$entry['actual'];
+            $appr_st = (string)($entry['approval_status'] ?? '');
 
             if ($a > 0) {
                 $status = 'g';
                 $label  = 'Completed';
+            } else if ($appr_st === 'pending_approval') {
+                $status = 'pending_approval';
+                $label  = 'Pending Approval';
             } else if ($p > 0 && $p < $today_start) {
                 $days   = max(1, floor(($today_start - $p) / 86400));
                 $status = 'r';
@@ -1162,16 +1193,21 @@ class util {
             $a_str = $a > 0 ? userdate($a, '%d %b %Y') : '—';
 
             $results[] = [
-                'key'          => $entry['key'],
-                'activity'     => $entry['label'],
-                'planned'      => $p,
-                'actual'       => $a,
-                'p_date'       => $p_str,
-                'a_date'       => $a_str,
-                'planned_date' => $p_str,
-                'actual_date'  => $a_str,
-                'status'       => $status,
-                'label'        => $label,
+                'key'             => $entry['key'],
+                'activity'        => $entry['label'],
+                'planned'         => $p,
+                'actual'          => $a,
+                'p_date'          => $p_str,
+                'a_date'          => $a_str,
+                'planned_date'    => $p_str,
+                'actual_date'     => $a_str,
+                'status'          => $status,
+                'label'           => $label,
+                'approval_status' => $appr_st,
+                'requested_by'    => (int)($entry['requested_by'] ?? 0),
+                'requested_at'    => (int)($entry['requested_at'] ?? 0),
+                'approved_by'     => (int)($entry['approved_by'] ?? 0),
+                'approved_at'     => (int)($entry['approved_at'] ?? 0),
             ];
         }
 

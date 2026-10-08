@@ -60,6 +60,27 @@ if ($action === 'check_task_validation') {
     die();
 }
 
+if ($action === 'request_ss_approval') {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $batchid = required_param('batchid', PARAM_INT);
+        $act_key = required_param('act_key', PARAM_RAW);
+        $res = \local_batchanalytics\task_service::request_ss_approval($userid, $batchid, $act_key);
+        if (!empty($res['success'])) {
+            $role = optional_param('role', '', PARAM_ALPHANUMEXT);
+            $res['dashboard_data'] = \local_batchanalytics\task_service::get_dashboard_data($userid, $role);
+        }
+        echo json_encode($res);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    die();
+}
+
 if ($action === 'complete_task') {
     while (ob_get_level()) {
         ob_end_clean();

@@ -318,7 +318,8 @@ body.editing .block_batchanalytics .card-header {
   color: #475569;
   border: 1px solid #e2e8f0;
 }
-.ba-task-dash-wrap .due.today {
+.ba-task-dash-wrap .due.today,
+.ba-task-dash-wrap .due.pending {
   background: #fef3c7;
   color: #b45309;
   border: 1px solid #fde68a;
@@ -327,6 +328,26 @@ body.editing .block_batchanalytics .card-header {
   background: #fee2e2;
   color: #b91c1c;
   border: 1px solid #fecaca;
+}
+.ba-task-dash-wrap .mc-btn-approve {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+}
+.ba-task-dash-wrap .mc-btn-approve:hover {
+  background: #047857 !important;
+  border-color: #047857 !important;
+  color: #ffffff !important;
+}
+.ba-task-dash-wrap .mc-btn-request {
+  background: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+  color: #ffffff !important;
+}
+.ba-task-dash-wrap .mc-btn-request:hover {
+  background: #4338ca !important;
+  border-color: #4338ca !important;
+  color: #ffffff !important;
 }
 .ba-task-dash-wrap .mc-btn2,
 .ba-task-dash-wrap a.mc-btn2 {

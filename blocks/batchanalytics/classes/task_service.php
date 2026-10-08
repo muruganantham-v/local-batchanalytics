@@ -76,6 +76,31 @@ class task_service {
     }
 
     /**
+     * Check if a user holds a role by shortname or name across any context.
+     *
+     * @param int $userid
+     * @param string[] $terms
+     * @return bool
+     */
+    public static function user_has_role_by_shortnames_or_names(int $userid, array $terms): bool {
+        global $DB;
+        if ($userid <= 0 || empty($terms)) {
+            return false;
+        }
+        $lowers = array_map('strtolower', $terms);
+        [$in_sql1, $params1] = $DB->get_in_or_equal($lowers, SQL_PARAMS_NAMED, 'sn');
+        [$in_sql2, $params2] = $DB->get_in_or_equal($lowers, SQL_PARAMS_NAMED, 'nm');
+        $params = array_merge($params1, $params2, ['uid' => $userid]);
+        return $DB->record_exists_sql("
+            SELECT ra.id
+              FROM {role_assignments} ra
+              JOIN {role} r ON r.id = ra.roleid
+             WHERE ra.userid = :uid
+               AND (LOWER(r.shortname) $in_sql1 OR LOWER(r.name) $in_sql2)
+        ", $params);
+    }
+
+    /**
      * Check if a user can view batch analytics dashboard or pages based on capabilities or assigned personas.
      *
      * @param int $userid
@@ -139,6 +164,18 @@ class task_service {
         $has_sslead_role = self::user_has_configured_role($userid, 'sslead_roles');
         $has_pm_role     = self::user_has_configured_role($userid, 'program_manager_roles');
         $has_asst_role   = self::user_has_configured_role($userid, 'assistant_manager_roles');
+
+        // Fallback by role shortnames or names in Moodle
+        if (!$has_sse_role) {
+            $has_sse_role = self::user_has_role_by_shortnames_or_names($userid, [
+                'ss_team_member', 'ss_executive', 'sse', 'ssexecutive', 'ss team member', 'ss executive', 'student success executive'
+            ]);
+        }
+        if (!$has_sslead_role) {
+            $has_sslead_role = self::user_has_role_by_shortnames_or_names($userid, [
+                'ss_team_lead', 'sslead', 'ss_lead', 'student_success_lead', 'ss team lead', 'ss lead', 'student success lead'
+            ]);
+        }
 
         // Check SS Lead configured email
         $cfg_sslead_email = trim((string)(get_config('local_batchanalytics', 'sslead_email') ?: get_config('block_batchanalytics', 'sslead_email')));
@@ -299,7 +336,12 @@ class task_service {
         $available_roles = [];
         if ($is_siteadmin) {
             $available_roles = [
-                'admin' => 'Admin',
+                'admin'   => 'Admin',
+                'mentors' => 'Mentors',
+                'pm'      => 'Program Manager',
+                'sse'     => 'SS Executive',
+                'sslead'  => 'SS Lead',
+                'am'      => 'Assistant Manager',
             ];
             $default_role = 'admin';
         } else {
@@ -657,9 +699,45 @@ class task_service {
                     $is_overdue = ($p_ts < $today_midnight);
                     $overdue_days = $is_overdue ? max(1, (int)floor(($today_midnight - $p_ts) / 86400)) : 0;
                     $is_escalated = ($is_overdue && $overdue_days >= 5);
+                    $is_pending_approval = (!empty($ss['approval_status']) && $ss['approval_status'] === 'pending_approval');
 
-                    // For SS Lead: ONLY display escalated SS activities!
-                    if ($active_role === 'sslead') {
+                    // For SS Lead & Admin: Display pending approval tasks submitted by SSE, plus any escalated tasks
+                    if ($active_role === 'sslead' || ($active_role === 'admin' && $is_pending_approval)) {
+                        if ($is_pending_approval) {
+                            $requester_id = (int)($ss['requested_by'] ?? 0);
+                            $requester_name = '';
+                            if ($requester_id > 0) {
+                                $ru = $DB->get_record('user', ['id' => $requester_id]);
+                                if ($ru) {
+                                    $requester_name = fullname($ru);
+                                }
+                            }
+                            $req_at = (int)($ss['requested_at'] ?? 0);
+                            $req_date_str = ($req_at > 0) ? userdate($req_at, '%d %b') : 'recently';
+                            $meta_str = 'Batch ' . $batch_name . ' · Requested ' . $req_date_str . ($requester_name ? ' by ' . $requester_name : '');
+
+                            $todo_list[] = [
+                                'id'                  => 'ss_' . $sec->id . '_' . $ss['key'],
+                                'title'               => $act_name,
+                                'meta'                => $meta_str,
+                                'batch_name'          => $batch_name,
+                                'urgency_order'       => 0, // Top priority for pending approval
+                                'status_class'        => 'today',
+                                'status_label'        => 'Pending Approval',
+                                'dest_type'           => 'batch',
+                                'dest_url'            => $dest_url,
+                                'action_type'         => 'ss_approve',
+                                'courseid'            => 0,
+                                'batchid'             => (int)$sec->id,
+                                'act_key'             => $ss['key'],
+                                'act_name'            => $act_name,
+                                'planned_ts'          => $p_ts,
+                                'is_pending_approval' => true,
+                                'requested_by_name'   => $requester_name,
+                            ];
+                            continue;
+                        }
+
                         if (!$is_escalated) {
                             continue;
                         }
@@ -684,7 +762,30 @@ class task_service {
                         continue;
                     }
 
-                    // For SSE / SS/PM / Admin:
+                    // For SSE / SS/PM:
+                    if ($is_pending_approval) {
+                        $todo_list[] = [
+                            'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
+                            'title'         => $act_name,
+                            'meta'          => 'Batch ' . $batch_name . ' · Approval requested',
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => 2,
+                            'status_class'  => 'soon',
+                            'status_label'  => 'Approval Requested',
+                            'dest_type'     => 'batch',
+                            'dest_url'      => $dest_url,
+                            'action_type'   => 'ss_requested',
+                            'courseid'      => 0,
+                            'batchid'       => (int)$sec->id,
+                            'act_key'       => $ss['key'],
+                            'act_name'      => $act_name,
+                            'planned_ts'    => $p_ts,
+                            'is_requested'  => true,
+                        ];
+                        continue;
+                    }
+
+                    // For SSE / Admin (Due, Overdue, Due Soon):
                     if ($is_overdue) {
                         $todo_list[] = [
                             'id'            => 'ss_' . $sec->id . '_' . $ss['key'],
@@ -1268,10 +1369,91 @@ class task_service {
     }
 
     /**
+     * Request approval for a Soft Skills activity by SSE.
+     *
+     * @param int $userid
+     * @param int $batchid
+     * @param string $act_key
+     * @return array
+     * @throws \moodle_exception
+     */
+     public static function request_ss_approval(int $userid, int $batchid, string $act_key): array {
+        global $DB;
+
+        if ($batchid <= 0 || trim($act_key) === '') {
+            throw new \moodle_exception('invalidparams', 'local_batchanalytics');
+        }
+
+        $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+        if (!$sec) {
+            throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+        }
+
+        $raw_data = json_decode($sec->softskillsdata ?? '', true);
+        if (!is_array($raw_data)) {
+            $raw_data = [];
+        }
+
+        $now = time();
+        $target_base = strtolower(trim($act_key));
+        $updated = false;
+
+        // Check key-based format: ${base}_Planned / ${base}_Actual
+        foreach ($raw_data as $k => $v) {
+            if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                $base = strtolower($m[1]);
+                if ($base === $target_base) {
+                    $raw_data[$m[1] . '_ApprovalStatus'] = 'pending_approval';
+                    $raw_data[$m[1] . '_RequestedBy'] = $userid;
+                    $raw_data[$m[1] . '_RequestedAt'] = $now;
+                    $updated = true;
+                    break;
+                }
+            }
+        }
+
+        // Check object list format: [{activity: ..., planned: ...}]
+        if (!$updated) {
+            foreach ($raw_data as &$item) {
+                if (is_array($item)) {
+                    $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                    $key  = strtolower(trim($item['key'] ?? ''));
+                    if ($key === $target_base || $name === $target_base) {
+                        $item['approval_status'] = 'pending_approval';
+                        $item['requested_by'] = $userid;
+                        $item['requested_at'] = $now;
+                        $updated = true;
+                        break;
+                    }
+                }
+            }
+            unset($item);
+        }
+
+        if (!$updated) {
+            $raw_data[$act_key . '_ApprovalStatus'] = 'pending_approval';
+            $raw_data[$act_key . '_RequestedBy'] = $userid;
+            $raw_data[$act_key . '_RequestedAt'] = $now;
+        }
+
+        $sec->softskillsdata = json_encode($raw_data);
+        $sec->timemodified = $now;
+        $DB->update_record('local_bm_classsection', $sec);
+
+        return [
+            'success'      => true,
+            'type'         => 'ss_request',
+            'batchid'      => $batchid,
+            'act_key'      => $act_key,
+            'requested_at' => $now,
+        ];
+    }
+
+    /**
      * Mark an operational activity complete.
      *
      * @param int $userid
-     * @param string $action_type 'mentor', 'ss', 'am_start', 'am_end', or 'am_mentor'
+     * @param string $action_type 'mentor', 'ss', 'ss_approve', 'am_start', 'am_end', or 'am_mentor'
      * @param array $params
      * @return array
      * @throws \moodle_exception
@@ -1320,7 +1502,7 @@ class task_service {
             ];
         }
 
-        if ($action_type === 'ss') {
+        if ($action_type === 'ss' || $action_type === 'ss_approve') {
             $batchid = (int)($params['batchid'] ?? 0);
             $act_key = trim((string)($params['act_key'] ?? ''));
             if ($batchid <= 0 || $act_key === '') {
@@ -1344,6 +1526,9 @@ class task_service {
                         $base = strtolower($m[1]);
                         if ($base === $target_base) {
                             $raw_data[$m[1] . '_Actual'] = $now;
+                            $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
+                            $raw_data[$m[1] . '_ApprovedBy'] = $userid;
+                            $raw_data[$m[1] . '_ApprovedAt'] = $now;
                             $updated = true;
                             break;
                         }
@@ -1357,6 +1542,9 @@ class task_service {
                             $key  = strtolower(trim($item['key'] ?? ''));
                             if ($key === $target_base || $name === $target_base) {
                                 $item['actual'] = $now;
+                                $item['approval_status'] = 'approved';
+                                $item['approved_by'] = $userid;
+                                $item['approved_at'] = $now;
                                 $updated = true;
                                 break;
                             }
@@ -1367,6 +1555,9 @@ class task_service {
 
                 if (!$updated) {
                     $raw_data[$act_key . '_Actual'] = $now;
+                    $raw_data[$act_key . '_ApprovalStatus'] = 'approved';
+                    $raw_data[$act_key . '_ApprovedBy'] = $userid;
+                    $raw_data[$act_key . '_ApprovedAt'] = $now;
                 }
 
                 $sec->softskillsdata = json_encode($raw_data);

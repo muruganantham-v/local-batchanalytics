@@ -1906,6 +1906,8 @@ input:checked+.ba-slider:before {
 .ba-batch-page .st-n::before { background: #b3b9bf; }
 .ba-batch-page .st-b { background: #e0f2fe; color: #0369a1; }
 .ba-batch-page .st-b::before { background: #0284c7; }
+.ba-batch-page .st-pending_approval { background: #fef3c7; color: #b45309; }
+.ba-batch-page .st-pending_approval::before { background: #f59e0b; }
 
 .ba-batch-page .muted { color: #b3b9bf; }
 .ba-batch-page table .val,
