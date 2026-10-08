@@ -122,7 +122,7 @@ class block_batchanalytics extends block_base {
 
             // Check mentor activities for this course
             try {
-                $mdata = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $coursename);
+                $mdata = \local_batchanalytics\mentor_activity_service::get_course_mentor_activities($courseid, $coursename, 0, 0, false);
                 $activities = $mdata['activities'] ?? [];
                 $pending = 0;
                 $overdue = 0;

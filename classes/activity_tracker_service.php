@@ -599,8 +599,9 @@ class activity_tracker_service {
         // 2. Check Virtual Programming Lab (mod_vpl)
         if (!empty($matching_instances['vpl']) && $DB->get_manager()->table_exists('vpl') && $DB->get_manager()->table_exists('vpl_submissions')) {
             [$in_sql, $in_params] = $DB->get_in_or_equal($matching_instances['vpl'], SQL_PARAMS_NAMED, 'vpl');
+            [$in_sub_sql, $in_sub_params] = $DB->get_in_or_equal($matching_instances['vpl'], SQL_PARAMS_NAMED, 'vplsub');
             $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
-            $params = array_merge($in_params, $student_params);
+            $params = array_merge($in_params, $in_sub_params, $student_params);
 
             $sql_vpl_pend = "
                 SELECT s.vpl, COUNT(DISTINCT s.id) as pendingcnt
@@ -608,6 +609,7 @@ class activity_tracker_service {
                 JOIN (
                     SELECT vpl, userid, MAX(id) as maxid
                     FROM {vpl_submissions}
+                    WHERE vpl $in_sub_sql
                     GROUP BY vpl, userid
                 ) latest ON latest.maxid = s.id
                 WHERE s.vpl $in_sql
@@ -626,12 +628,16 @@ class activity_tracker_service {
                 }
             }
 
+            [$in_sub_sql2, $in_sub_params2] = $DB->get_in_or_equal($matching_instances['vpl'], SQL_PARAMS_NAMED, 'vplsubeval');
+            $params_eval = array_merge($in_params, $in_sub_params2, $student_params);
+
             $sql_vpl_eval = "
                 SELECT s.id, s.vpl, s.dategraded
                 FROM {vpl_submissions} s
                 JOIN (
                     SELECT vpl, userid, MAX(id) as maxid
                     FROM {vpl_submissions}
+                    WHERE vpl $in_sub_sql2
                     GROUP BY vpl, userid
                 ) latest ON latest.maxid = s.id
                 WHERE s.vpl $in_sql
@@ -640,7 +646,7 @@ class activity_tracker_service {
                   $vpl_stu_sql
                 ORDER BY s.dategraded DESC
             ";
-            $vpl_eval_rows = $DB->get_records_sql($sql_vpl_eval, $params);
+            $vpl_eval_rows = $DB->get_records_sql($sql_vpl_eval, $params_eval);
             $total_evaluated += count($vpl_eval_rows);
             foreach ($vpl_eval_rows as $row) {
                 $v_id = (int)$row->vpl;

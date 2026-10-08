@@ -805,7 +805,8 @@ class mentor_activity_service {
         int $courseid,
         string $coursename = '',
         int $mod_p_start_ts = 0,
-        int $sectionid = 0
+        int $sectionid = 0,
+        bool $sync_evaluations = true
     ): array {
         global $DB;
 
@@ -831,11 +832,13 @@ class mentor_activity_service {
 
         if ($courseid > 0 && self::is_table_available()) {
             // Automatically synchronize evaluation completion & reversion based on gradebook setup and submissions.
-            try {
-                require_once(__DIR__ . '/activity_tracker_service.php');
-                activity_tracker_service::sync_mentor_evaluation_status($courseid, $sectionid);
-            } catch (\Throwable $e) {
-                // Graceful fallback if sync fails.
+            if ($sync_evaluations) {
+                try {
+                    require_once(__DIR__ . '/activity_tracker_service.php');
+                    activity_tracker_service::sync_mentor_evaluation_status($courseid, $sectionid);
+                } catch (\Throwable $e) {
+                    // Graceful fallback if sync fails.
+                }
             }
 
             $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'activitiesdata', IGNORE_MISSING);

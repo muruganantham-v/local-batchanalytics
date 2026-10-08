@@ -499,7 +499,8 @@ class task_service {
                     $mod_p_start = (int)($sm['plannedstart'] ?? 0);
 
                     try {
-                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start, (int)$sec->id);
+                        // Pass false to read stored status without deep site-wide submission scan
+                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start, (int)$sec->id, false);
                         $activities = $mdata['activities'] ?? [];
 
                         foreach ($activities as $act) {

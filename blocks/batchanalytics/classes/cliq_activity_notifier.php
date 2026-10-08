@@ -825,7 +825,7 @@ class cliq_activity_notifier {
 
                     // Fetch course mentor activities
                     try {
-                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start, (int)$sec->id);
+                        $mdata = mentor_activity_service::get_course_mentor_activities($courseid, $mod_name, $mod_p_start, (int)$sec->id, false);
                         $activities = $mdata['activities'] ?? [];
 
                         $module_url = $CFG->wwwroot . '/local/batchanalytics/module.php?courseid=' . $courseid
