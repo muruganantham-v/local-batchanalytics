@@ -156,48 +156,48 @@ class cliq_activity_notifier {
                         'title'           => '3 Days Before Due Reminder',
                         'timing_badge'    => 'T-3 Days',
                         'badge_color'     => '#0d6efd',
-                        'recipient'       => 'Student Success Executive (SSE)',
-                        'recipient_badge' => 'SSE',
+                        'recipient'       => 'SS Executive + SS Lead + Current Module Mentors',
+                        'recipient_badge' => 'SSE + SS Lead + Mentors',
                         'card_theme'      => 'modern-inline',
                         'default_subject' => '⏳ Upcoming SS Activity Reminder: {activity_name}',
-                        'default_body'    => "Hello {sse_name},\n\nThis is a reminder that the following batch SS activity is due in 3 days:\n• Batch: {batch_name}\n• Pending Activity: {activity_name}\n• Due Date: {due_date}\n• Responsible: {sse_name}\n\n🔗 View Batch: {link}",
-                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                        'default_body'    => "Hello Team,\n\nThis is a reminder that the following batch SS activity is due in 3 days:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Due Date: {due_date}\n• Assigned SS Executive: {sse_name}\n• Current Module Mentors: {mentor_name}\n\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{mentor_name}', '{link}'],
                     ],
                     'due_today' => [
                         'key'             => 'ss_due_today',
                         'title'           => 'Due Today Alert',
                         'timing_badge'    => 'Due Today (T-0)',
                         'badge_color'     => '#fd7e14',
-                        'recipient'       => 'Student Success Executive (SSE)',
-                        'recipient_badge' => 'SSE',
+                        'recipient'       => 'SS Executive + SS Lead + Current Module Mentors',
+                        'recipient_badge' => 'SSE + SS Lead + Mentors',
                         'card_theme'      => 'amber',
                         'default_subject' => '🚨 SS Activity Due Today: {activity_name}',
-                        'default_body'    => "Hello {sse_name},\n\nThe following batch SS activity is due today:\n• Batch: {batch_name}\n• Pending Activity: {activity_name}\n• Due Date: {due_date} (Today)\n• Responsible: {sse_name}\n\nPlease record completion in the LMS:\n🔗 View Batch: {link}",
-                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                        'default_body'    => "Hello Team,\n\nThe following batch SS activity is due today:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Due Date: {due_date} (Today)\n• Assigned SS Executive: {sse_name}\n• Current Module Mentors: {mentor_name}\n\nPlease record completion in the LMS:\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{mentor_name}', '{link}'],
                     ],
                     't_plus_3' => [
                         'key'             => 'ss_t_plus_3',
                         'title'           => '3 Days Overdue Warning',
                         'timing_badge'    => '3 Days Overdue (T+3)',
                         'badge_color'     => '#dc3545',
-                        'recipient'       => 'Student Success Executive (SSE)',
-                        'recipient_badge' => 'SSE',
+                        'recipient'       => 'SS Executive + SS Lead',
+                        'recipient_badge' => 'SSE + SS Lead',
                         'card_theme'      => 'red',
                         'default_subject' => '⚠️ Overdue Warning: Pending SS Activity ({activity_name}) 3 Days Overdue',
-                        'default_body'    => "Attention {sse_name},\n\nThe following batch SS activity is 3 days overdue:\n• Batch: {batch_name}\n• Pending Activity: {activity_name}\n• Original Due Date: {due_date}\n• Status: 3 days overdue\n\nKindly complete this deliverable immediately to avoid management escalation.\n🔗 View Batch: {link}",
-                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{link}'],
+                        'default_body'    => "Attention {sse_name} & SS Lead,\n\nThe following batch SS activity is 3 days overdue:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Original Due Date: {due_date}\n• Assigned SS Executive: {sse_name}\n• Status: 3 days overdue\n\nKindly complete this deliverable immediately to avoid management escalation.\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{link}'],
                     ],
                     't_plus_5' => [
                         'key'             => 'ss_t_plus_5',
                         'title'           => '5th Day SS Lead Escalation',
                         'timing_badge'    => '5+ Days Overdue (T+5)',
                         'badge_color'     => '#dc2626',
-                        'recipient'       => 'SS Lead Only (PM & SSE Excluded)',
+                        'recipient'       => 'SS Lead Only (PM, SSE & Mentors Excluded)',
                         'recipient_badge' => 'SS Lead Only',
                         'card_theme'      => 'red',
                         'default_subject' => '🛑 ESCALATION: Pending SS Activity {activity_name} is {overdue_days} Days Overdue',
-                        'default_body'    => "Attention {ss_lead_name},\n\nThe following batch SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Pending Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue\n\nPlease coordinate to ensure this milestone is completed and recorded in the LMS:\n🔗 View Batch: {link}",
-                        'placeholders'    => ['{batch_name}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{overdue_days}', '{link}'],
+                        'default_body'    => "Attention {ss_lead_name},\n\nThe following batch SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue\n\nPlease coordinate to ensure this milestone is completed and recorded in the LMS:\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{overdue_days}', '{link}'],
                     ],
                     'completed' => [
                         'key'             => 'ss_completed',
@@ -469,7 +469,7 @@ class cliq_activity_notifier {
         // 2. Role configuration
         $role_id = (int)get_config('local_batchanalytics', 'sslead_roles');
         if ($role_id > 0) {
-            $sql = "SELECT DISTINCT u.id, u.email, u.firstname, u.lastname
+            $sql = "SELECT DISTINCT u.*
                       FROM {user} u
                       JOIN {role_assignments} ra ON ra.userid = u.id
                      WHERE ra.roleid = :roleid AND u.deleted = 0 AND u.suspended = 0";
@@ -488,6 +488,97 @@ class cliq_activity_notifier {
         return [
             'emails' => $emails,
             'names'  => $names,
+        ];
+    }
+
+    /**
+     * Resolve the current/active module and its assigned mentor(s) for a batch section.
+     *
+     * Active module determination:
+     * 1. Module currently in progress (actualstart > 0 and empty actualend).
+     * 2. If none in progress, first module where actualend is empty.
+     * 3. Fallback to the first module in the schedule.
+     *
+     * @param object $sec Section record from local_bm_classsection
+     * @return array{emails: string[], names: string[], module_name: string}
+     */
+    public static function resolve_current_module_mentors(object $sec): array {
+        $emails = [];
+        $names  = [];
+        $module_name = 'Current Module';
+
+        if (empty($sec->moduledata)) {
+            return [
+                'emails'      => [],
+                'names'       => [],
+                'module_name' => $module_name,
+            ];
+        }
+
+        $modules = util::decode_module_data($sec->moduledata, true);
+        if (empty($modules)) {
+            return [
+                'emails'      => [],
+                'names'       => [],
+                'module_name' => $module_name,
+            ];
+        }
+
+        $cur_mod = null;
+
+        // 1. Check for module currently in progress
+        foreach ($modules as $m) {
+            $a_start = (int)($m['actualstart'] ?? 0);
+            $a_end   = (int)($m['actualend'] ?? 0);
+            if ($a_start > 0 && $a_end <= 0) {
+                $cur_mod = $m;
+                break;
+            }
+        }
+
+        // 2. If none in progress, first module where actual end is not completed
+        if (!$cur_mod) {
+            foreach ($modules as $m) {
+                $a_end = (int)($m['actualend'] ?? 0);
+                if ($a_end <= 0) {
+                    $cur_mod = $m;
+                    break;
+                }
+            }
+        }
+
+        // 3. Fallback to first module
+        if (!$cur_mod) {
+            $cur_mod = reset($modules);
+        }
+
+        if ($cur_mod) {
+            $module_name = trim((string)($cur_mod['name'] ?? $cur_mod['courseshortname'] ?? 'Current Module'));
+
+            $mentor_cands = [
+                $cur_mod['primarymentor'] ?? '',
+                $cur_mod['secondarymentor'] ?? '',
+                $cur_mod['labmentor1'] ?? '',
+                $cur_mod['labmentor2'] ?? '',
+                $cur_mod['labmentor3'] ?? ''
+            ];
+
+            foreach ($mentor_cands as $cand) {
+                $u = self::resolve_user($cand);
+                if ($u && !empty($u->email)) {
+                    $emails[] = $u->email;
+                    $names[]  = fullname($u);
+                }
+            }
+        }
+
+        $emails = array_values(array_unique(array_filter($emails)));
+        $names  = array_values(array_unique(array_filter($names)));
+
+        return [
+            'emails'      => $emails,
+            'names'       => $names,
+            'module_name' => $module_name,
         ];
     }
 
@@ -733,6 +824,12 @@ class cliq_activity_notifier {
                 $ss_lead_emails = $ss_lead_info['emails'];
                 $ss_lead_name   = !empty($ss_lead_info['names']) ? implode(', ', $ss_lead_info['names']) : 'SS Lead';
 
+                // Resolve Current Module Mentor(s)
+                $mod_mentor_info   = self::resolve_current_module_mentors($sec);
+                $cur_mentor_emails = $mod_mentor_info['emails'];
+                $cur_mentor_name   = !empty($mod_mentor_info['names']) ? implode(', ', $mod_mentor_info['names']) : '—';
+                $cur_module_name   = $mod_mentor_info['module_name'];
+
                 foreach ($ss_list as $ss) {
                     $p_ts = (int)($ss['planned'] ?? 0);
                     $a_ts = (int)($ss['actual'] ?? 0);
@@ -757,45 +854,58 @@ class cliq_activity_notifier {
                     $body = '';
 
                     $placeholders = [
-                        '{batch_name}'    => $batch_name,
-                        '{activity_name}' => $act_name,
-                        '{due_date}'      => $due_date_str,
-                        '{sse_name}'      => $sse_name,
-                        '{ss_lead_name}'  => $ss_lead_name,
-                        '{pm_name}'       => $pm_name,
-                        '{overdue_days}'  => abs($diff_days),
-                        '{link}'          => $batch_url,
-                        '{url}'           => $batch_url,
+                        '{batch_name}'     => $batch_name,
+                        '{activity_name}'  => $act_name,
+                        '{due_date}'       => $due_date_str,
+                        '{sse_name}'       => $sse_name,
+                        '{ss_lead_name}'   => $ss_lead_name,
+                        '{mentor_name}'    => $cur_mentor_name,
+                        '{current_module}' => $cur_module_name,
+                        '{pm_name}'        => $pm_name,
+                        '{overdue_days}'   => abs($diff_days),
+                        '{link}'           => $batch_url,
+                        '{url}'            => $batch_url,
                     ];
 
                     $defs = self::get_template_definitions();
 
                     if ($diff_days === 3) {
-                        // 1. Before 3 days -> SSE
+                        // 1. Before 3 days -> SSE + SS Lead + Current Module Mentors
                         $stage = 't_minus_3';
-                        $recipient_emails = [$sse_email];
+                        $recipient_emails = array_values(array_filter(array_unique(array_merge(
+                            [$sse_email],
+                            $ss_lead_emails,
+                            $cur_mentor_emails
+                        ))));
                         $card_theme = 'modern-inline';
                         $stg_def = $defs['ss']['stages']['t_minus_3'];
                         $subject = self::render_template(self::get_template_subject('ss_t_minus_3', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_t_minus_3', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days === 0) {
-                        // 2. On Due Date -> SSE
+                        // 2. On Due Date -> SSE + SS Lead + Current Module Mentors
                         $stage = 'due_today';
-                        $recipient_emails = [$sse_email];
+                        $recipient_emails = array_values(array_filter(array_unique(array_merge(
+                            [$sse_email],
+                            $ss_lead_emails,
+                            $cur_mentor_emails
+                        ))));
                         $card_theme = 'amber';
                         $stg_def = $defs['ss']['stages']['due_today'];
                         $subject = self::render_template(self::get_template_subject('ss_due_today', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_due_today', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days === -3) {
-                        // 3. After 3 days overdue -> SSE
+                        // 3. After 3 days overdue -> SSE + SS Lead
                         $stage = 't_plus_3';
-                        $recipient_emails = [$sse_email];
+                        $recipient_emails = array_values(array_filter(array_unique(array_merge(
+                            [$sse_email],
+                            $ss_lead_emails
+                        ))));
                         $card_theme = 'red';
                         $stg_def = $defs['ss']['stages']['t_plus_3'];
                         $subject = self::render_template(self::get_template_subject('ss_t_plus_3', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_t_plus_3', $stg_def['default_body']), $placeholders);
                     } else if ($diff_days <= -5) {
-                        // 4. After 5th day overdue -> SS Lead Escalation (PM & SSE Excluded)
+                        // 4. After 5th day overdue -> SS Lead Escalation (PM, SSE & Mentors Excluded)
                         $stage = 't_plus_5_escalation';
                         $recipient_emails = array_values(array_filter(array_unique($ss_lead_emails)));
                         $card_theme = 'red';
