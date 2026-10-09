@@ -247,7 +247,7 @@
       } else {
         elFc.innerHTML = fcItems.map(function(f) {
           return '<div class="fc">' +
-            '<div class="t">' + escapeHtml(f.title) + '</div>' +
+            '<div class="t">' + escapeHtml(toTitleCase(f.title)) + '</div>' +
             '<div class="m">' + escapeHtml(f.meta) + '</div>' +
             '</div>';
         }).join('');
@@ -362,7 +362,7 @@
 
       return '<div class="todo" id="todo-row-' + escapeHtml(t.id) + '">' +
         '<div class="body">' +
-          '<div class="t">' + escapeHtml(t.title) + '</div>' +
+          '<div class="t">' + escapeHtml(toTitleCase(t.title)) + '</div>' +
           '<div class="m">' + escapeHtml(t.meta) + '</div>' +
           '<a href="' + escapeHtml(t.dest_url) + '" class="go">' + destLabel + '</a>' +
         '</div>' +
@@ -1122,6 +1122,16 @@
         }
         alert('Server connection error. Please try again.');
         console.error(err);
+      });
+  }
+
+  function toTitleCase(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/_/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\b[a-zA-Z]/g, function(txt) {
+        return txt.toUpperCase();
       });
   }
 

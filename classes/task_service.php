@@ -558,7 +558,7 @@ class task_service {
                                 continue;
                             }
 
-                            $act_name = $act['name'];
+                            $act_name = util::format_activity_title($act['name']);
                             $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
                             $dest_url = (new \moodle_url('/local/batchanalytics/module.php', [
@@ -689,7 +689,7 @@ class task_service {
                 $dest_url = (new \moodle_url('/local/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
 
                 foreach ($ss_list as $ss) {
-                    $act_name = $ss['activity'];
+                    $act_name = util::format_activity_title($ss['activity']);
                     $p_ts = (int)($ss['planned'] ?? 0);
                     $a_ts = (int)($ss['actual'] ?? 0);
 

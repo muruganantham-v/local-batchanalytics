@@ -54,14 +54,14 @@ class mentor_activity_service {
 
     /** @var array Default pool of master mentor activities with field API keys */
     public const DEFAULT_MASTER_ACTIVITIES = [
-        ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'desc' => 'Assignment evaluation', 'category' => 'Evaluation'],
-        ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'desc' => 'Project evaluation', 'category' => 'Evaluation'],
-        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'desc' => 'Spot award nomination - mid c', 'category' => 'Award'],
-        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
-        ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
-        ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
-        ['key' => 'module_test_evaluation', 'name' => 'Module test evaluation', 'desc' => 'Module test evaluation', 'category' => 'Evaluation'],
-        ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'desc' => 'Quiz evaluation', 'category' => 'Evaluation'],
+        ['key' => 'assignment_evaluation', 'name' => 'Assignment Evaluation', 'desc' => 'Assignment evaluation', 'category' => 'Evaluation'],
+        ['key' => 'project_evaluation', 'name' => 'Project Evaluation', 'desc' => 'Project evaluation', 'category' => 'Evaluation'],
+        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot Award Nomination - Mid C', 'desc' => 'Spot award nomination - mid c', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot Award Nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination', 'name' => 'Spot Award Nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
+        ['key' => 'power_track_nomination', 'name' => 'Power Track Nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
+        ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'desc' => 'Module test evaluation', 'category' => 'Evaluation'],
+        ['key' => 'quiz_evaluation', 'name' => 'Quiz Evaluation', 'desc' => 'Quiz evaluation', 'category' => 'Evaluation'],
     ];
 
     /** @var array Default grouping rules with due days */
@@ -885,7 +885,7 @@ class mentor_activity_service {
 
         $activities = [];
         foreach ($expected_activities as $act) {
-            $act_name = $act['name'];
+            $act_name = util::format_activity_title($act['name']);
             $act_key = $act['key'] ?? self::slugify_key($act_name);
             $duedays = isset($act['duedays']) ? (int)$act['duedays'] : 5;
 

@@ -1049,6 +1049,25 @@ class util {
     }
 
     /**
+     * Format an activity name or key into Title Case style.
+     * Preserves acronyms like SS, DSA, TCP/IP, and AANCHOR.
+     *
+     * @param string $str Raw activity name or key
+     * @return string Formatted Title Case activity name
+     */
+    public static function format_activity_title(string $str): string {
+        $str = trim($str);
+        if ($str === '') {
+            return '';
+        }
+        $str = str_replace('_', ' ', $str);
+        $str = preg_replace('/\s+/', ' ', $str);
+        return preg_replace_callback('/\b[a-zA-Z]/', function ($m) {
+            return strtoupper($m[0]);
+        }, $str);
+    }
+
+    /**
      * Decode and extract soft skill activities from local_bm_classsection softskillsdata.
      * All activities and keys are parsed dynamically from the database record with zero hardcoding.
      *
@@ -1100,7 +1119,7 @@ class util {
 
                 $grouped[$base] = [
                     'key'             => $base,
-                    'label'           => trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base))),
+                    'label'           => self::format_activity_title($base),
                     'planned'         => $p_ts,
                     'actual'          => $a_ts,
                     'approval_status' => $appr_st,
@@ -1125,7 +1144,7 @@ class util {
                 $type = strtolower($m[2]);
 
                 if (!isset($grouped[$base])) {
-                    $label = trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $base)));
+                    $label = self::format_activity_title($base);
                     $grouped[$base] = [
                         'key'             => $base,
                         'label'           => $label,
