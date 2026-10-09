@@ -97,6 +97,15 @@ final class batch_notes_service {
         $id = $DB->insert_record(self::TABLE, $record);
         $record->id = $id;
 
+        // Dispatch real-time Zoho Cliq alert for Batch Review completion to Program Manager
+        try {
+            if (class_exists('\\local_batchanalytics\\cliq_activity_notifier')) {
+                cliq_activity_notifier::send_batch_review_note_alert($batchid, $userid, $author, $body);
+            }
+        } catch (\Throwable $e) {
+            // Silently continue so note creation is never interrupted
+        }
+
         return [
             'id'          => $id,
             'batchid'     => $batchid,
@@ -105,6 +114,92 @@ final class batch_notes_service {
             'date'        => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
             'timecreated' => $record->timecreated,
             'body'        => $body,
+        ];
+    }
+
+    /**
+     * Calculate the 15-day recurring batch review due information.
+     *
+     * Cadence rule:
+     * 1. If batch has started, initial review due date is 15 days after batch start date.
+     * 2. Once a review note is added/updated, reset due date to 15 days from the latest note timestamp.
+     * 3. Continues recurring every 15 days.
+     *
+     * @param int $batchid Class section ID
+     * @param ?object $section Optional pre-loaded section object
+     * @return ?array Array containing due info or null if batch not started / invalid
+     */
+    public static function get_batch_review_due_info(int $batchid, ?object $section = null): ?array {
+        global $DB;
+        self::ensure_table_exists();
+
+        if ($batchid <= 0) {
+            return null;
+        }
+
+        if ($section === null) {
+            $dbman = $DB->get_manager();
+            if (!$dbman->table_exists('local_bm_classsection')) {
+                return null;
+            }
+            $section = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+        }
+
+        if (!$section) {
+            return null;
+        }
+
+        // Determine batch start date
+        $startdate_ts = 0;
+        if (!empty($section->batchid)) {
+            $dbman = $DB->get_manager();
+            if ($dbman->table_exists('local_bm_batch')) {
+                $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
+                if ($batch && !empty($batch->startdate)) {
+                    $startdate_ts = (int)$batch->startdate;
+                }
+            }
+        }
+        if ($startdate_ts <= 0 && !empty($section->timecreated)) {
+            $startdate_ts = (int)$section->timecreated;
+        }
+
+        if ($startdate_ts <= 0) {
+            return null;
+        }
+
+        // Only evaluate if batch has started (start date is now or in the past)
+        if ($startdate_ts > time()) {
+            return null;
+        }
+
+        $cycle_days = 15;
+        $cycle_seconds = $cycle_days * 86400;
+
+        // Fetch latest review note
+        $notes = $DB->get_records(self::TABLE, ['batchid' => $batchid], 'timecreated DESC, id DESC', 'id, userid, author, timecreated', 0, 1);
+        if (!empty($notes)) {
+            $latest = reset($notes);
+            $has_notes = true;
+            $last_review_ts = (int)$latest->timecreated;
+            $last_review_author = (string)$latest->author;
+            $due_ts = $last_review_ts + $cycle_seconds;
+        } else {
+            $has_notes = false;
+            $last_review_ts = 0;
+            $last_review_author = '';
+            $due_ts = $startdate_ts + $cycle_seconds;
+        }
+
+        return [
+            'batchid'            => $batchid,
+            'startdate_ts'       => $startdate_ts,
+            'has_notes'          => $has_notes,
+            'last_review_ts'     => $last_review_ts,
+            'last_review_author' => $last_review_author,
+            'due_ts'             => $due_ts,
+            'due_date_str'       => userdate($due_ts, '%d %b %Y'),
+            'cycle_days'         => $cycle_days,
         ];
     }
 
@@ -120,3 +215,4 @@ final class batch_notes_service {
         return $DB->delete_records(self::TABLE, ['id' => $noteid]);
     }
 }
+

@@ -342,7 +342,7 @@
 
     // Render list items
     elList.innerHTML = pageItems.map(function(t) {
-      var destLabel = (t.dest_type === 'batch') ? 'Go to batch →' : ((t.dest_type === 'section') ? 'Go to class section →' : 'Go to module →');
+      var destLabel = (t.dest_type === 'notes') ? 'Go to review notes →' : ((t.dest_type === 'batch') ? 'Go to batch →' : ((t.dest_type === 'section') ? 'Go to class section →' : 'Go to module →'));
       var actionBtnHtml = '';
       if (t.action_mode === 'redirect') {
         var btnLbl = t.btn_label || 'Update →';

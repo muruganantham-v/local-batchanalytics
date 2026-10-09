@@ -14,6 +14,7 @@ global $CFG;
 require_once($CFG->libdir . '/filelib.php');
 require_once(__DIR__ . '/util.php');
 require_once(__DIR__ . '/mentor_activity_service.php');
+require_once(__DIR__ . '/batch_notes_service.php');
 
 /**
  * Service to evaluate and dispatch Zoho Cliq notifications for
@@ -210,7 +211,61 @@ class cliq_activity_notifier {
                         'default_body'    => "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Completed Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}",
                         'placeholders'    => ['{batch_name}', '{activity_name}', '{sse_name}', '{ss_lead_name}', '{completed_by}', '{completion_date}', '{link}'],
                     ],
-
+                ],
+            ],
+            'batch_review' => [
+                'title'       => 'Program Manager (PM) Batch Review Message Templates',
+                'scope'       => 'batch',
+                'description' => 'Notifications dispatched for recurring 15-day Program Manager batch reviews (evaluated against batch start date or latest review note).',
+                'stages'      => [
+                    't_minus_3' => [
+                        'key'             => 'batch_review_t_minus_3',
+                        'title'           => '3 Days Before Due Reminder',
+                        'timing_badge'    => 'T-3 Days',
+                        'badge_color'     => '#0d6efd',
+                        'recipient'       => 'Program Manager (PM)',
+                        'recipient_badge' => 'PM',
+                        'card_theme'      => 'modern-inline',
+                        'default_subject' => '⏳ Upcoming Batch Review Reminder: {batch_name}',
+                        'default_body'    => "Hello {pm_name},\n\nThis is a reminder that the 15-day recurring batch review for {batch_name} is due in 3 days:\n• Batch: {batch_name}\n• Review Due Date: {due_date}\n• Responsible PM: {pm_name}\n• Previous Review: {last_review_info}\n\nPlease conduct the batch review and log notes in the LMS:\n🔗 Open Batch Review Notes: {link}",
+                        'placeholders'    => ['{batch_name}', '{pm_name}', '{due_date}', '{last_review_info}', '{link}'],
+                    ],
+                    'due_today' => [
+                        'key'             => 'batch_review_due_today',
+                        'title'           => 'Due Today Alert',
+                        'timing_badge'    => 'Due Today (T-0)',
+                        'badge_color'     => '#fd7e14',
+                        'recipient'       => 'Program Manager (PM)',
+                        'recipient_badge' => 'PM',
+                        'card_theme'      => 'amber',
+                        'default_subject' => '🚨 Batch Review Due Today: {batch_name}',
+                        'default_body'    => "Hello {pm_name},\n\nThe 15-day batch review for {batch_name} is due today:\n• Batch: {batch_name}\n• Due Date: {due_date} (Today)\n• Responsible PM: {pm_name}\n• Previous Review: {last_review_info}\n\nPlease update the batch review notes:\n🔗 Open Batch Review Notes: {link}",
+                        'placeholders'    => ['{batch_name}', '{pm_name}', '{due_date}', '{last_review_info}', '{link}'],
+                    ],
+                    'overdue' => [
+                        'key'             => 'batch_review_overdue',
+                        'title'           => 'Overdue Warning',
+                        'timing_badge'    => 'Overdue (T+3 / T+5)',
+                        'badge_color'     => '#dc3545',
+                        'recipient'       => 'Program Manager (PM)',
+                        'recipient_badge' => 'PM',
+                        'card_theme'      => 'red',
+                        'default_subject' => '⚠️ Overdue Warning: Batch Review for {batch_name} is {overdue_days} Days Overdue',
+                        'default_body'    => "Attention {pm_name},\n\nThe 15-day recurring batch review for {batch_name} is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Original Due Date: {due_date}\n• Responsible PM: {pm_name}\n• Status: {overdue_days} days overdue\n\nKindly complete the review and record notes in the LMS:\n🔗 Open Batch Review Notes: {link}",
+                        'placeholders'    => ['{batch_name}', '{pm_name}', '{due_date}', '{overdue_days}', '{link}'],
+                    ],
+                    'completed' => [
+                        'key'             => 'batch_review_completed',
+                        'title'           => 'Instant Review Note Added Confirmation',
+                        'timing_badge'    => 'Note Added',
+                        'badge_color'     => '#198754',
+                        'recipient'       => 'Program Manager (PM)',
+                        'recipient_badge' => 'PM',
+                        'card_theme'      => 'green',
+                        'default_subject' => '✅ Batch Review Note Added: {batch_name}',
+                        'default_body'    => "Hello {pm_name},\n\nA batch review note has been recorded for {batch_name}:\n• Batch: {batch_name}\n• Logged By: {author}\n• Date: {review_date}\n• Note: {note_preview}\n• Next Review Due: {next_due_date}\n\n🔗 View Batch Review Notes: {link}",
+                        'placeholders'    => ['{batch_name}', '{pm_name}', '{author}', '{review_date}', '{note_preview}', '{next_due_date}', '{link}'],
+                    ],
                 ],
             ],
             'transition' => [
@@ -967,6 +1022,96 @@ class cliq_activity_notifier {
                         }
                     }
                 }
+            }
+
+            // -----------------------------------------------------------------
+            // C. BATCH REVIEW (Recurring 15-day Cadence for Program Manager)
+            // -----------------------------------------------------------------
+            try {
+                $rev_info = \local_batchanalytics\batch_notes_service::get_batch_review_due_info((int)$sec->id, $sec);
+                if ($rev_info) {
+                    $rev_due_ts = (int)$rev_info['due_ts'];
+                    $diff_days = (int)round(($rev_due_ts - $today_midnight) / 86400);
+
+                    $notes_url = $batch_url . '&tab=notes#panel-notes';
+                    $last_rev_str = $rev_info['has_notes']
+                        ? (date('d M Y', $rev_info['last_review_ts']) . ($rev_info['last_review_author'] ? ' by ' . $rev_info['last_review_author'] : ''))
+                        : ('Initial review (batch started ' . date('d M Y', $rev_info['startdate_ts']) . ')');
+
+                    $placeholders = [
+                        '{batch_name}'        => $batch_name,
+                        '{pm_name}'           => $pm_name,
+                        '{due_date}'          => date('d M Y', $rev_due_ts),
+                        '{last_review_info}'  => $last_rev_str,
+                        '{overdue_days}'      => abs($diff_days),
+                        '{link}'              => $notes_url,
+                        '{url}'               => $notes_url,
+                    ];
+
+                    $stage = null;
+                    $recipient_emails = !empty($pm_email) ? [$pm_email] : [];
+                    $card_theme = 'modern-inline';
+
+                    if ($diff_days === 3) {
+                        // T-3 Days
+                        $stage = 'batch_review_t_minus_3';
+                        $card_theme = 'modern-inline';
+                        $stg_def = $defs['batch_review']['stages']['t_minus_3'];
+                        $subject = self::render_template(self::get_template_subject('batch_review_t_minus_3', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('batch_review_t_minus_3', $stg_def['default_body']), $placeholders);
+                    } else if ($diff_days === 0) {
+                        // T-0 Due Today
+                        $stage = 'batch_review_due_today';
+                        $card_theme = 'amber';
+                        $stg_def = $defs['batch_review']['stages']['due_today'];
+                        $subject = self::render_template(self::get_template_subject('batch_review_due_today', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('batch_review_due_today', $stg_def['default_body']), $placeholders);
+                    } else if ($diff_days === -3 || $diff_days <= -5) {
+                        // T+3 or T+5 Overdue
+                        $stage = ($diff_days === -3) ? 'batch_review_overdue_3' : 'batch_review_overdue_5';
+                        $card_theme = 'red';
+                        $stg_def = $defs['batch_review']['stages']['overdue'];
+                        $subject = self::render_template(self::get_template_subject('batch_review_overdue', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('batch_review_overdue', $stg_def['default_body']), $placeholders);
+                    }
+
+                    if ($stage !== null && !empty($recipient_emails)) {
+                        $results['matched']++;
+                        $act_unique_key = 'batch_review_' . $sec->id;
+
+                        if (self::is_already_sent($sec->id, $act_unique_key, $stage, $date_sent)) {
+                            $results['skipped_dedup']++;
+                        } else {
+                            $dispatch = self::send_cliq_message($recipient_emails, $body, ['title' => $subject, 'theme' => $card_theme], $dry_run);
+                            if ($dispatch['success']) {
+                                $results['sent']++;
+                                if (!$dry_run) {
+                                    self::log_notification(
+                                        $sec->id,
+                                        0,
+                                        'batch_review',
+                                        $act_unique_key,
+                                        $stage,
+                                        implode(',', $recipient_emails),
+                                        'sent'
+                                    );
+                                }
+                            } else {
+                                $results['errors'][] = "Failed Batch Review [{$batch_name}]: " . $dispatch['response'];
+                            }
+
+                            $results['details'][] = [
+                                'type'       => 'batch_review',
+                                'batch'      => $batch_name,
+                                'activity'   => 'Batch Review Note',
+                                'stage'      => $stage,
+                                'recipients' => $recipient_emails,
+                            ];
+                        }
+                    }
+                }
+            } catch (\Throwable $re) {
+                $results['errors'][] = "Batch review evaluation error for {$batch_name}: " . $re->getMessage();
             }
         }
 
@@ -1831,4 +1976,83 @@ class cliq_activity_notifier {
             'success'          => ($trans_res['success'] ?? false) || ($assign_res['success'] ?? false),
         ];
     }
+
+    /**
+     * Send real-time instant confirmation alert when a batch review note is added.
+     * Notifies the Program Manager.
+     *
+     * @param int $batchid Class section ID
+     * @param int $userid
+     * @param string $author
+     * @param string $note_text
+     * @return bool
+     */
+    public static function send_batch_review_note_alert(
+        int $batchid,
+        int $userid,
+        string $author,
+        string $note_text
+    ): bool {
+        global $DB, $CFG;
+
+        if (!self::is_enabled()) {
+            return false;
+        }
+
+        $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+        if (!$sec) {
+            return false;
+        }
+
+        $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
+        $pm_user = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
+        $pm_email = $pm_user ? $pm_user->email : '';
+        $pm_name  = $pm_user ? fullname($pm_user) : ($sec->pmmanagername ?: 'Program Manager');
+
+        if (empty($pm_email)) {
+            return false;
+        }
+
+        $notes_url = $CFG->wwwroot . '/local/batchanalytics/batch.php?id=' . $sec->id . '&tab=notes#panel-notes';
+
+        // Calculate next due date (15 days from now)
+        $next_due_ts = time() + (15 * 86400);
+        $next_due_date_str = date('d M Y', $next_due_ts);
+
+        $preview = (mb_strlen($note_text) > 160) ? (mb_substr($note_text, 0, 157) . '...') : $note_text;
+
+        $placeholders = [
+            '{batch_name}'    => $batch_name,
+            '{pm_name}'       => $pm_name,
+            '{author}'        => $author,
+            '{review_date}'   => date('d M Y, h:i A'),
+            '{note_preview}'  => $preview,
+            '{next_due_date}' => $next_due_date_str,
+            '{link}'          => $notes_url,
+            '{url}'           => $notes_url,
+        ];
+
+        $defs = self::get_template_definitions();
+        $stg_def = $defs['batch_review']['stages']['completed'];
+
+        $subject = self::render_template(self::get_template_subject('batch_review_completed', $stg_def['default_subject']), $placeholders);
+        $body    = self::render_template(self::get_template_body('batch_review_completed', $stg_def['default_body']), $placeholders);
+
+        $dispatch = self::send_cliq_message([$pm_email], $body, ['title' => $subject, 'theme' => 'green']);
+
+        if ($dispatch['success']) {
+            self::log_notification(
+                $sec->id,
+                0,
+                'batch_review',
+                'batch_review_' . $sec->id,
+                'completed',
+                $pm_email,
+                'sent'
+            );
+            return true;
+        }
+        return false;
+    }
 }
+

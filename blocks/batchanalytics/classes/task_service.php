@@ -21,6 +21,7 @@ defined('MOODLE_INTERNAL') || die();
 require_once(__DIR__ . '/util.php');
 require_once(__DIR__ . '/mentor_activity_service.php');
 require_once(__DIR__ . '/activity_tracker_service.php');
+require_once(__DIR__ . '/batch_notes_service.php');
 
 /**
  * Service for operational role resolution, To-Do task generation,
@@ -1209,6 +1210,115 @@ class task_service {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 4. PROGRAM MANAGER BATCH REVIEW ACTIVITIES (for PM or Admin)
+        // Recurring 15-day cadence for batch review notes.
+        // ---------------------------------------------------------------------
+        if ($active_role === 'pm' || $active_role === 'admin') {
+            foreach ($filtered_sections as $sec) {
+                try {
+                    $rev_info = batch_notes_service::get_batch_review_due_info((int)$sec->id, $sec);
+                    if (!$rev_info) {
+                        continue;
+                    }
+
+                    $due_ts = (int)$rev_info['due_ts'];
+                    $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
+                    $notes_url = (new \moodle_url('/local/batchanalytics/batch.php', [
+                        'id'  => $sec->id,
+                        'tab' => 'notes',
+                    ]))->out(false) . '#panel-notes';
+
+                    $is_overdue   = ($due_ts < $today_midnight);
+                    $overdue_days = $is_overdue ? max(1, (int)floor(($today_midnight - $due_ts) / 86400)) : 0;
+                    $is_due_today = ($due_ts >= $today_midnight && $due_ts < $today_end);
+                    $is_due_soon  = ($due_ts >= $today_end && $due_ts <= $next_week_end);
+
+                    $meta_str = $rev_info['has_notes']
+                        ? ('Batch ' . $batch_name . ' · Last review ' . userdate($rev_info['last_review_ts'], '%d %b') . ($rev_info['last_review_author'] ? ' by ' . $rev_info['last_review_author'] : ''))
+                        : ('Batch ' . $batch_name . ' · 15-day initial review due ' . userdate($due_ts, '%d %b'));
+
+                    if ($is_overdue) {
+                        $todo_list[] = [
+                            'id'            => 'batch_review_' . $sec->id,
+                            'title'         => 'Batch Review Note — ' . $batch_name,
+                            'meta'          => $meta_str,
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => 1,
+                            'status_class'  => 'over',
+                            'status_label'  => 'Overdue ' . $overdue_days . 'd',
+                            'dest_type'     => 'notes',
+                            'dest_url'      => $notes_url,
+                            'action_type'   => 'batch_review',
+                            'action_mode'   => 'redirect',
+                            'action_url'    => $notes_url,
+                            'btn_label'     => 'Add Review Note →',
+                            'courseid'      => 0,
+                            'batchid'       => (int)$sec->id,
+                            'act_key'       => 'batch_review',
+                            'act_name'      => 'Batch Review Note',
+                            'planned_ts'    => $due_ts,
+                        ];
+                    } else if ($is_due_today) {
+                        $todo_list[] = [
+                            'id'            => 'batch_review_' . $sec->id,
+                            'title'         => 'Batch Review Note — ' . $batch_name,
+                            'meta'          => $meta_str,
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => 2,
+                            'status_class'  => 'today',
+                            'status_label'  => 'Due today',
+                            'dest_type'     => 'notes',
+                            'dest_url'      => $notes_url,
+                            'action_type'   => 'batch_review',
+                            'action_mode'   => 'redirect',
+                            'action_url'    => $notes_url,
+                            'btn_label'     => 'Add Review Note →',
+                            'courseid'      => 0,
+                            'batchid'       => (int)$sec->id,
+                            'act_key'       => 'batch_review',
+                            'act_name'      => 'Batch Review Note',
+                            'planned_ts'    => $due_ts,
+                        ];
+                    } else if ($is_due_soon) {
+                        $days = max(1, (int)floor(($due_ts - $today_midnight) / 86400));
+                        $todo_list[] = [
+                            'id'            => 'batch_review_' . $sec->id,
+                            'title'         => 'Batch Review Note — ' . $batch_name,
+                            'meta'          => $meta_str,
+                            'batch_name'    => $batch_name,
+                            'urgency_order' => 3,
+                            'status_class'  => 'soon',
+                            'status_label'  => 'Due in ' . $days . 'd',
+                            'dest_type'     => 'notes',
+                            'dest_url'      => $notes_url,
+                            'action_type'   => 'batch_review',
+                            'action_mode'   => 'redirect',
+                            'action_url'    => $notes_url,
+                            'btn_label'     => 'Add Review Note →',
+                            'courseid'      => 0,
+                            'batchid'       => (int)$sec->id,
+                            'act_key'       => 'batch_review',
+                            'act_name'      => 'Batch Review Note',
+                            'planned_ts'    => $due_ts,
+                        ];
+                    }
+
+                    // Forthcoming: strictly next 7 days only
+                    if ($due_ts >= $today_midnight && $due_ts <= $next_week_end) {
+                        $days = (int)floor(($due_ts - $today_midnight) / 86400);
+                        $forthcoming_list[] = [
+                            'title' => 'Batch Review Note — ' . $batch_name,
+                            'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                            'ts'    => $due_ts,
+                        ];
+                    }
+                } catch (\Throwable $e) {
+                    // Gracefully skip section if error
                 }
             }
         }

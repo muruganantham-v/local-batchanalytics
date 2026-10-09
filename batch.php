@@ -26,6 +26,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 require_once(__DIR__ . '/classes/batch_notes_service.php');
+require_once(__DIR__ . '/classes/cliq_activity_notifier.php');
 
 require_login();
 

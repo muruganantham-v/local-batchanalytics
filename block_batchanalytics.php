@@ -241,7 +241,7 @@ class block_batchanalytics extends block_base {
             } else {
                 $initial_todos = array_slice($dashdata['todo'], 0, 5);
                 foreach ($initial_todos as $t) {
-                    $dest_label = ($t['dest_type'] === 'batch') ? 'Go to batch →' : (($t['dest_type'] === 'section') ? 'Go to class section →' : 'Go to module →');
+                    $dest_label = ($t['dest_type'] === 'notes') ? 'Go to review notes →' : (($t['dest_type'] === 'batch') ? 'Go to batch →' : (($t['dest_type'] === 'section') ? 'Go to class section →' : 'Go to module →'));
                     $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
                     $html .= '  <div class="body">';
                     $html .= '    <div class="t">' . s($t['title']) . '</div>';

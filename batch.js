@@ -120,6 +120,23 @@
             });
         });
 
+        // Auto-activate tab from URL parameter (?tab=notes) or hash (#panel-notes)
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            var reqTab = urlParams.get('tab');
+            if (!reqTab && window.location.hash) {
+                reqTab = window.location.hash.replace('#panel-', '').replace('#', '');
+            }
+            if (reqTab) {
+                var tabToClick = container.querySelector('.ba-batch-tabs .tab[data-tab="' + reqTab + '"]');
+                if (tabToClick) {
+                    tabToClick.click();
+                }
+            }
+        } catch (e) {
+            // Silently continue
+        }
+
         // 2. Performance Banding & Pagination Logic
         var tgGrade = document.getElementById('tg-grade');
         var tgPct = document.getElementById('tg-pct');
