@@ -1228,7 +1228,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <div class="sec-label" style="margin-bottom:0;">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
     <div class="toggle ba-kpi-toggle" id="ba-kpi-toggle" style="margin:0;">
       <span class="on" id="ba-kpi-tg-grade" role="button" tabindex="0">Grade</span>
-      <span id="ba-kpi-tg-pct" role="button" tabindex="0">Percentile</span>
+      <span id="ba-kpi-tg-pct" role="button" tabindex="0">Completion %</span>
     </div>
   </div>
   <?php
@@ -1377,13 +1377,13 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <!-- 3. Student Performance Panel -->
     <div id="panel-mstudents" class="panel">
       <div class="panel-note">
-        Module-level student performance — same view as batch level, scoped to this module. Grade or Percentile banding.
+        Module-level student performance — same view as batch level, scoped to this module. Grade or Completion % banding.
       </div>
 
       <div class="filterbar">
         <div class="toggle">
           <span class="on" id="ba-mod-tg-grade">Grade</span>
-          <span id="ba-mod-tg-pct">Percentile</span>
+          <span id="ba-mod-tg-pct">Completion %</span>
         </div>
         <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
 
