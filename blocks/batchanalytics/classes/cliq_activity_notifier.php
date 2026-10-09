@@ -204,12 +204,12 @@ class cliq_activity_notifier {
                         'title'           => 'Instant Completion Confirmation',
                         'timing_badge'    => 'Completed',
                         'badge_color'     => '#198754',
-                        'recipient'       => 'SS Executive + SS Lead (PM Excluded)',
-                        'recipient_badge' => 'SSE + SS Lead',
+                        'recipient'       => 'SS Executive + SS Lead + Current Module Mentors',
+                        'recipient_badge' => 'SSE + SS Lead + Mentors',
                         'card_theme'      => 'green',
                         'default_subject' => '✅ SS Activity Completed: {activity_name}',
-                        'default_body'    => "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Completed Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}",
-                        'placeholders'    => ['{batch_name}', '{activity_name}', '{sse_name}', '{ss_lead_name}', '{completed_by}', '{completion_date}', '{link}'],
+                        'default_body'    => "Hello Team,\n\nThe following batch SS activity has been successfully marked as completed:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Completed Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Current Module Mentors: {mentor_name}\n• Completed By: {completed_by}\n• Completion Date: {completion_date}\n\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{sse_name}', '{ss_lead_name}', '{mentor_name}', '{completed_by}', '{completion_date}', '{link}'],
                     ],
                 ],
             ],
@@ -1288,15 +1288,23 @@ class cliq_activity_notifier {
             $ss_lead_emails = $ss_lead_info['emails'];
             $ss_lead_name   = !empty($ss_lead_info['names']) ? implode(', ', $ss_lead_info['names']) : 'SS Lead';
 
-            // Both SSE and SS Lead receive notification whether SSE or SSL marks complete
-            $recipients = array_values(array_filter(array_unique(array_merge([$sse_email, $by_email], $ss_lead_emails))));
+            // Resolve Current Module Mentor(s)
+            $mentor_info       = $sec ? self::resolve_current_module_mentors($sec) : ['emails' => [], 'names' => [], 'module_name' => ''];
+            $cur_mentor_emails = $mentor_info['emails'];
+            $cur_mentor_name   = !empty($mentor_info['names']) ? implode(', ', $mentor_info['names']) : 'Mentors';
+            $cur_module_name   = $mentor_info['module_name'] ?: 'Module';
+
+            // SSE, SS Lead, and Current Module Mentors receive completion notification
+            $recipients = array_values(array_filter(array_unique(array_merge([$sse_email, $by_email], $ss_lead_emails, $cur_mentor_emails))));
 
             $stg_def = $defs['ss']['stages']['completed'];
             $placeholders = [
                 '{batch_name}'      => $batch_name,
+                '{current_module}'  => $cur_module_name,
                 '{activity_name}'   => $act_name,
                 '{sse_name}'        => $sse_name,
                 '{ss_lead_name}'    => $ss_lead_name,
+                '{mentor_name}'     => $cur_mentor_name,
                 '{completed_by}'    => $by_name,
                 '{completion_date}' => $comp_date,
                 '{link}'            => $batch_url,

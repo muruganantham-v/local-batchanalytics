@@ -176,7 +176,7 @@ $string['cliq_tpl_ss_t_plus_3_desc'] = 'Warning message sent to the SSE / MAAC E
 $string['cliq_tpl_ss_t_plus_5'] = 'SS Activity: 5th Day SS Lead Escalation Template';
 $string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the SS Lead and SS Executive when the SS activity is 5+ days overdue.';
 $string['cliq_tpl_ss_completed'] = 'SS Activity: Completion Confirmation Template';
-$string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the SS Executive and SS Lead when the SS activity is marked complete.';
+$string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the SS Executive, SS Lead, and Current Module Mentors when the SS activity is marked complete.';
 
 // Stage & Module Transition Message Templates
 $string['zoho_cliq_transition_heading'] = 'Stage & Module Transition Message Templates';
