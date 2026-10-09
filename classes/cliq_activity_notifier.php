@@ -259,12 +259,12 @@ class cliq_activity_notifier {
                         'title'           => 'Instant Review Note Added Confirmation',
                         'timing_badge'    => 'Note Added',
                         'badge_color'     => '#198754',
-                        'recipient'       => 'Program Manager (PM)',
-                        'recipient_badge' => 'PM',
+                        'recipient'       => 'SS Executive + SS Lead + Current Module Mentors + PM',
+                        'recipient_badge' => 'SSE + SSL + Mentors + PM',
                         'card_theme'      => 'green',
                         'default_subject' => '✅ Batch Review Note Added: {batch_name}',
-                        'default_body'    => "Hello {pm_name},\n\nA batch review note has been recorded for {batch_name}:\n• Batch: {batch_name}\n• Logged By: {author}\n• Date: {review_date}\n• Note: {note_preview}\n• Next Review Due: {next_due_date}\n\n🔗 View Batch Review Notes: {link}",
-                        'placeholders'    => ['{batch_name}', '{pm_name}', '{author}', '{review_date}', '{note_preview}', '{next_due_date}', '{link}'],
+                        'default_body'    => "Hello Team,\n\nA batch review note has been recorded for {batch_name}:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Logged By: {author}\n• Date: {review_date}\n• Note: {note_preview}\n• Next Review Due: {next_due_date}\n\n🔗 View Batch Review Notes: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{pm_name}', '{sse_name}', '{ss_lead_name}', '{mentor_name}', '{author}', '{review_date}', '{note_preview}', '{next_due_date}', '{link}'],
                     ],
                 ],
             ],
@@ -1372,6 +1372,10 @@ class cliq_activity_notifier {
             return $dispatch['success'];
         }
 
+        if ($action_type === 'batch_review') {
+            return self::send_batch_review_note_alert($batchid, $completed_by_userid, $by_name, 'Batch review note recorded.');
+        }
+
         return false;
     }
 
@@ -2123,11 +2127,41 @@ class cliq_activity_notifier {
         }
 
         $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
-        $pm_user = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
+
+        // 1. Program Manager
+        $pm_user  = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
         $pm_email = $pm_user ? $pm_user->email : '';
         $pm_name  = $pm_user ? fullname($pm_user) : ($sec->pmmanagername ?: 'Program Manager');
 
-        if (empty($pm_email)) {
+        // 2. SS Executive
+        $sse_user  = self::resolve_user($sec->maacexecutive) ?: self::resolve_user($sec->maacexecutivename);
+        $sse_email = $sse_user ? $sse_user->email : '';
+        $sse_name  = $sse_user ? fullname($sse_user) : ($sec->maacexecutivename ?: 'SS Executive');
+
+        // 3. SS Lead
+        $ss_lead_info   = self::resolve_ss_leads();
+        $ss_lead_emails = $ss_lead_info['emails'];
+        $ss_lead_name   = !empty($ss_lead_info['names']) ? implode(', ', $ss_lead_info['names']) : 'SS Lead';
+
+        // 4. Current Module Mentors
+        $mentor_info       = self::resolve_current_module_mentors($sec);
+        $cur_mentor_emails = $mentor_info['emails'];
+        $cur_mentor_name   = !empty($mentor_info['names']) ? implode(', ', $mentor_info['names']) : 'Mentors';
+        $cur_module_name   = $mentor_info['module_name'] ?: 'Current Module';
+
+        // 5. Author / User who logged the note
+        $by_user  = self::resolve_user($userid);
+        $by_email = ($by_user && !empty($by_user->email)) ? $by_user->email : '';
+
+        // Recipients: SS Executive, SS Lead, Current Module Mentors (+ PM & Author if available)
+        $recipients = array_values(array_filter(array_unique(array_merge(
+            [$sse_email],
+            $ss_lead_emails,
+            $cur_mentor_emails,
+            [$pm_email, $by_email]
+        ))));
+
+        if (empty($recipients)) {
             return false;
         }
 
@@ -2140,14 +2174,18 @@ class cliq_activity_notifier {
         $preview = (mb_strlen($note_text) > 160) ? (mb_substr($note_text, 0, 157) . '...') : $note_text;
 
         $placeholders = [
-            '{batch_name}'    => $batch_name,
-            '{pm_name}'       => $pm_name,
-            '{author}'        => $author,
-            '{review_date}'   => date('d M Y, h:i A'),
-            '{note_preview}'  => $preview,
-            '{next_due_date}' => $next_due_date_str,
-            '{link}'          => $notes_url,
-            '{url}'           => $notes_url,
+            '{batch_name}'     => $batch_name,
+            '{current_module}' => $cur_module_name,
+            '{pm_name}'        => $pm_name,
+            '{sse_name}'       => $sse_name,
+            '{ss_lead_name}'   => $ss_lead_name,
+            '{mentor_name}'    => $cur_mentor_name,
+            '{author}'         => $author,
+            '{review_date}'    => date('d M Y, h:i A'),
+            '{note_preview}'   => $preview,
+            '{next_due_date}'  => $next_due_date_str,
+            '{link}'           => $notes_url,
+            '{url}'            => $notes_url,
         ];
 
         $defs = self::get_template_definitions();
@@ -2156,7 +2194,7 @@ class cliq_activity_notifier {
         $subject = self::render_template(self::get_template_subject('batch_review_completed', $stg_def['default_subject']), $placeholders);
         $body    = self::render_template(self::get_template_body('batch_review_completed', $stg_def['default_body']), $placeholders);
 
-        $dispatch = self::send_cliq_message([$pm_email], $body, ['title' => $subject, 'theme' => 'green']);
+        $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
 
         if ($dispatch['success']) {
             self::log_notification(
@@ -2165,7 +2203,7 @@ class cliq_activity_notifier {
                 'batch_review',
                 'batch_review_' . $sec->id,
                 'completed',
-                $pm_email,
+                implode(',', $recipients),
                 'sent'
             );
             return true;
