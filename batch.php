@@ -787,12 +787,12 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 3. Student Performance Panel -->
         <div id="panel-students" class="panel">
           <div class="panel-note">
-            Two ways to band the same students: <b>Grade</b> (by actual score) or <b>Percentile</b> (default 15/70/15 by rank). Merit and core signals stay the same; only the banding changes.
+            Two ways to band the same students: <b>Grade</b> (by actual score) or <b>Completion %</b> (default 15/70/15 by rank). Merit and core signals stay the same; only the banding changes.
           </div>
           <div class="filterbar">
             <div class="toggle">
               <span class="on" id="tg-grade">Grade</span>
-              <span id="tg-pct">Percentile</span>
+              <span id="tg-pct">Completion %</span>
             </div>
             <button type="button" class="exp" id="ba-btn-export">Export Filtered</button>
           </div>

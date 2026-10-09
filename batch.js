@@ -731,8 +731,8 @@
             if (!performanceTable) return;
             var thead = performanceTable.querySelector('thead');
             if (!thead) return;
-            var overallLabel = perfMode === 'grade' ? 'Grade' : 'Percentile';
-            var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Percentile';
+            var overallLabel = perfMode === 'grade' ? 'Grade' : 'Completion %';
+            var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             var html = '<tr>' +
                 '<th class="sortable" data-sort="band" title="Sort by Band">Band</th>' +
                 '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
@@ -883,8 +883,8 @@
         function updateOverallHeading() {
             var heading = container.querySelector('.ba-performance-overall-head');
             if (heading) {
-                heading.textContent = perfMode === 'grade' ? 'Grade' : 'Percentile';
-                heading.title = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Percentile';
+                heading.textContent = perfMode === 'grade' ? 'Grade' : 'Completion %';
+                heading.title = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             }
         }
 
@@ -1004,7 +1004,7 @@
                             '<thead style="position:sticky; top:0; background:#fff; z-index:10; box-shadow:0 1px 0 #e2e8f0;">' +
                                 '<tr>' +
                                     '<th class="ba-modal-th-sortable ba-modal-sticky-col" data-modal-col="name">Student <span class="ba-sort-indicator">⇅</span></th>' +
-                                    '<th class="ba-modal-th-sortable" data-modal-col="grade">' + (perfMode === 'grade' ? 'Grade' : 'Percentile') + ' <span class="ba-sort-indicator">⇅</span></th>' +
+                                    '<th class="ba-modal-th-sortable" data-modal-col="grade">' + (perfMode === 'grade' ? 'Grade' : 'Completion %') + ' <span class="ba-sort-indicator">⇅</span></th>' +
                                     categoryHeadersHtml +
                                 '</tr>' +
                             '</thead>' +
@@ -1182,7 +1182,7 @@
             var exportBtn = modal.querySelector('#ba-band-modal-export');
             if (exportBtn) {
                 exportBtn.addEventListener('click', function() {
-                    var csvHeaders = ['Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile'];
+                    var csvHeaders = ['Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %'];
                     performanceColumns.forEach(function(column) {
                         var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
                         csvHeaders.push(column.label + suffix);
@@ -1538,7 +1538,7 @@
         // Export Filtered Students to CSV
         if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Percentile', 'Attendance'];
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
                 performanceColumns.forEach(function(column) {
                     var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
                     csvHeaders.push(column.label + suffix);
