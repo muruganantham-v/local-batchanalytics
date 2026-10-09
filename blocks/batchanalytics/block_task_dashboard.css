@@ -119,18 +119,22 @@ body.editing .block_batchanalytics .card-header {
 }
 .ba-task-dash-wrap .gt.alert,
 .ba-task-dash-wrap .gt.gt-alert {
-  border-color: #fca5a5 !important;
-  background: #fef2f2 !important;
+  border-color: #fdba74 !important;
+  background: #fff7ed !important;
   margin: 0 !important;
   padding: 16px 20px !important;
 }
 .ba-task-dash-wrap .gt.alert .v,
 .ba-task-dash-wrap .gt.gt-alert .v {
-  color: #dc2626;
+  color: #ea580c;
 }
 .ba-task-dash-wrap .gt.alert .k,
 .ba-task-dash-wrap .gt.gt-alert .k {
-  color: #b91c1c;
+  color: #c2410c;
+}
+.ba-task-dash-wrap .gt.alert:hover,
+.ba-task-dash-wrap .gt.gt-alert:hover {
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.15);
 }
 
 /* Columns (To-Do & Forthcoming) */
