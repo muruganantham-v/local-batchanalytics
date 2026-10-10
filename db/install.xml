@@ -73,6 +73,7 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="dedup_ix" UNIQUE="false" FIELDS="batchid, activity_key, stage, date_sent"/>
+        <INDEX NAME="dedup_recipient_ix" UNIQUE="false" FIELDS="batchid, activity_key, stage, recipient_email, date_sent"/>
         <INDEX NAME="timesent_ix" UNIQUE="false" FIELDS="timesent"/>
       </INDEXES>
     </TABLE>

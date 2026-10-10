@@ -389,5 +389,15 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026100104, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026101001) {
+        $table = new xmldb_table('local_batchanalytics_cliq_log');
+        $index = new xmldb_index('dedup_recipient_ix', XMLDB_INDEX_NOTUNIQUE, ['batchid', 'activity_key', 'stage', 'recipient_email', 'date_sent']);
+        if ($dbman->table_exists($table) && !$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_plugin_savepoint(true, 2026101001, 'local', 'batchanalytics');
+    }
+
     return true;
 }

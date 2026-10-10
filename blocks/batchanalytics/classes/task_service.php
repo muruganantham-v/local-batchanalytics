@@ -1882,9 +1882,10 @@ class task_service {
                 require_once(__DIR__ . '/cliq_activity_notifier.php');
                 cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $modules, $now);
             } else if ($action_type === 'am_end' || $action_type === 'am_closer') {
-                $modules[$mod_key]['actualend'] = $now;
+                $closer_ts = !empty($params['actualend']) ? (int)$params['actualend'] : $now;
+                $modules[$mod_key]['actualend'] = $closer_ts;
                 if (empty($modules[$mod_key]['actualstart'])) {
-                    $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $now);
+                    $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $closer_ts);
                 }
             } else if ($action_type === 'am_mentor') {
                 if (empty($modules[$mod_key]['primarymentor'])) {
