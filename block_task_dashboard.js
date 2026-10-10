@@ -481,7 +481,7 @@
       btnGoto.setAttribute('style', 'display: none !important;');
       btnGoto.classList.remove('is-visible', 'primary', 'secondary');
       btnGoto.classList.add('is-hidden');
-      btnGoto.href = '#';
+      btnGoto.href = 'javascript:void(0);';
     }
 
     var isSseRequest = (activeRole === 'sse' && task.action_type === 'ss') || (task.action_type === 'ss_request');
@@ -1011,18 +1011,17 @@
         if (resp && resp.success) {
           pendingTask.is_done = true;
           closeModal();
-          // Optimistically update counts and todo list immediately
-          renderTodoList();
 
           // Broadcast to other open tabs/windows
           try {
             localStorage.setItem('ba_task_updated', Date.now().toString());
           } catch (e) {}
 
-          // Apply updated server data if returned, otherwise fetch fresh data
+          // Apply updated server data if returned, otherwise render optimistically and fetch fresh data
           if (resp.dashboard_data) {
             applyData(resp.dashboard_data);
           } else {
+            renderTodoList();
             loadDashboardData();
           }
         } else {
@@ -1065,9 +1064,8 @@
         txtEl.focus();
         txtEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-      var confirmReject = confirm('Please enter review notes explaining why this activity is rejected. Do you want to reject anyway?');
-      if (!confirmReject) return;
-      if (txtEl) reviewNotes = txtEl.value.trim();
+      alert('Please enter review notes explaining why this activity is being rejected before proceeding.');
+      return;
     }
 
     if (btnReject) {
@@ -1098,13 +1096,13 @@
         if (resp && resp.success) {
           pendingTask.is_done = true;
           closeModal();
-          renderTodoList();
           try {
             localStorage.setItem('ba_task_updated', Date.now().toString());
           } catch (e) {}
           if (resp.dashboard_data) {
             applyData(resp.dashboard_data);
           } else {
+            renderTodoList();
             loadDashboardData();
           }
         } else {

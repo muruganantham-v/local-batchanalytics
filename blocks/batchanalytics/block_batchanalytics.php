@@ -236,31 +236,7 @@ class block_batchanalytics extends block_base {
       </div>
       <div id="ba-dash-todo-list">';
 
-            if (empty($dashdata['todo'])) {
-                $html .= '<div class="empty-box">✓ No pending tasks matching this filter</div>';
-            } else {
-                $initial_todos = array_slice($dashdata['todo'], 0, 5);
-                foreach ($initial_todos as $t) {
-                    $dest_label = ($t['dest_type'] === 'notes') ? 'Go to review notes →' : (($t['dest_type'] === 'batch') ? 'Go to batch →' : (($t['dest_type'] === 'section') ? 'Go to class section →' : 'Go to module →'));
-                    $html .= '<div class="todo" id="todo-row-' . s($t['id']) . '">';
-                    $html .= '  <div class="body">';
-                    $html .= '    <div class="t">' . s($t['title']) . '</div>';
-                    $html .= '    <div class="m">' . s($t['meta']) . '</div>';
-                    $html .= '    <a href="' . s($t['dest_url']) . '" class="go">' . s($dest_label) . '</a>';
-                    $html .= '  </div>';
-                    $html .= '  <div class="actions">';
-                    $html .= '    <span class="due ' . s($t['status_class']) . '">' . s($t['status_label']) . '</span>';
-                    if (!empty($t['action_mode']) && $t['action_mode'] === 'redirect') {
-                        $btn_lbl = !empty($t['btn_label']) ? $t['btn_label'] : 'Update →';
-                        $act_url = !empty($t['action_url']) ? $t['action_url'] : $t['dest_url'];
-                        $html .= '    <a href="' . s($act_url) . '" class="mc-btn2 mc-btn-link">' . s($btn_lbl) . '</a>';
-                    } else if (($dashdata['active_role'] ?? '') === 'mentors' || ($dashdata['active_role'] ?? '') === 'sse' || ($dashdata['active_role'] ?? '') === 'sspm' || (($dashdata['active_role'] ?? '') !== 'admin' && ($dashdata['active_role'] ?? '') !== 'pm')) {
-                        $html .= '    <button type="button" class="mc-btn2" data-task-id="' . s($t['id']) . '">Mark Complete</button>';
-                    }
-                    $html .= '  </div>';
-                    $html .= '</div>';
-                }
-            }
+            $html .= '<div class="ba-dash-loading-placeholder" style="padding:16px 12px; text-align:center; color:#64748b; font-size:13px;">Loading tasks...</div>';
 
             $html .= '
       </div>
@@ -315,7 +291,7 @@ class block_batchanalytics extends block_base {
       <div class="mbtns" id="ba-modal-actions">
         <button type="button" class="cancel" id="ba-modal-btn-cancel">Cancel</button>
         <button type="button" class="reject mc-btn-reject" id="ba-modal-btn-reject" style="display:none;">Reject</button>
-        <a href="#" target="_blank" class="mc-btn-goto-act" id="ba-modal-btn-goto" style="display:none;">Go to Activity ↗</a>
+        <a href="javascript:void(0);" target="_blank" class="mc-btn-goto-act" id="ba-modal-btn-goto" style="display:none;">Go to Activity ↗</a>
         <button type="button" class="confirm" id="ba-modal-btn-confirm" disabled>Confirm Complete</button>
       </div>
     </div>
