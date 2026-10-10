@@ -1783,6 +1783,12 @@
                 } else {
                     kv.textContent = card.getAttribute('data-grade') || '0.00%';
                 }
+                if (card.getAttribute('data-is-overall') === '1') {
+                    var kl = card.querySelector('.kl');
+                    if (kl) {
+                        kl.textContent = kpiSectionMode === 'percentile' ? 'Avg Completion' : 'Avg Grade';
+                    }
+                }
             });
         }
 
