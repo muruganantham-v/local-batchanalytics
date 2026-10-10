@@ -591,7 +591,7 @@ class cliq_activity_notifier {
      * @param string $date_sent
      * @return bool
      */
-    public static function is_already_sent(int $batchid, string $act_key, string $stage, string $date_sent = ''): bool {
+    public static function is_already_sent(int $batchid, string $act_key, string $stage, string $date_sent = '', string $recipient_email = ''): bool {
         global $DB;
 
         if (!$DB->get_manager()->table_exists(self::LOG_TABLE)) {
@@ -605,6 +605,9 @@ class cliq_activity_notifier {
         ];
         if (!empty($date_sent)) {
             $conditions['date_sent'] = $date_sent;
+        }
+        if (!empty($recipient_email)) {
+            $conditions['recipient_email'] = $recipient_email;
         }
 
         return $DB->record_exists(self::LOG_TABLE, $conditions);
@@ -637,19 +640,31 @@ class cliq_activity_notifier {
             return 0;
         }
 
-        $rec = (object)[
-            'batchid'         => $batchid,
-            'courseid'        => $courseid,
-            'activity_type'   => $act_type,
-            'activity_key'    => $act_key,
-            'stage'           => $stage,
-            'recipient_email' => $recipient_email,
-            'timesent'        => time(),
-            'date_sent'       => date('Y-m-d'),
-            'status'          => $status,
-        ];
+        $emails = explode(',', $recipient_email);
+        $last_id = 0;
+        $now = time();
+        $today = date('Y-m-d');
 
-        return (int)$DB->insert_record(self::LOG_TABLE, $rec);
+        foreach ($emails as $em) {
+            $em = trim($em);
+            if ($em === '') {
+                continue;
+            }
+            $rec = (object)[
+                'batchid'         => $batchid,
+                'courseid'        => $courseid,
+                'activity_type'   => $act_type,
+                'activity_key'    => $act_key,
+                'stage'           => $stage,
+                'recipient_email' => $em,
+                'timesent'        => $now,
+                'date_sent'       => $today,
+                'status'          => $status,
+            ];
+            $last_id = (int)$DB->insert_record(self::LOG_TABLE, $rec);
+        }
+
+        return $last_id;
     }
 
     /**
@@ -722,6 +737,7 @@ class cliq_activity_notifier {
 
         if (!empty($clean_emails)) {
             $overall_success = true;
+            $first_error_code = 0;
             $last_http_code = 200;
             $responses = [];
 
@@ -733,6 +749,9 @@ class cliq_activity_notifier {
                 $is_ok = ($http_code >= 200 && $http_code < 300);
                 if (!$is_ok) {
                     $overall_success = false;
+                    if ($first_error_code === 0) {
+                        $first_error_code = $http_code;
+                    }
                 }
                 $last_http_code = $http_code;
                 $responses[$single_email] = $raw_response;
@@ -740,7 +759,7 @@ class cliq_activity_notifier {
 
             return [
                 'success'   => $overall_success,
-                'http_code' => $last_http_code,
+                'http_code' => $overall_success ? $last_http_code : ($first_error_code ?: $last_http_code),
                 'response'  => json_encode($responses),
             ];
         } else if (!empty($cfg['channel'])) {
@@ -867,9 +886,7 @@ class cliq_activity_notifier {
                         '{url}'            => $batch_url,
                     ];
 
-                    $defs = self::get_template_definitions();
-
-                    if ($diff_days === 3) {
+                    if ($diff_days >= 1 && $diff_days <= 3) {
                         // 1. Before 3 days -> SSE + SS Lead + Current Module Mentors
                         $stage = 't_minus_3';
                         $recipient_emails = array_values(array_filter(array_unique(array_merge(
@@ -881,7 +898,7 @@ class cliq_activity_notifier {
                         $stg_def = $defs['ss']['stages']['t_minus_3'];
                         $subject = self::render_template(self::get_template_subject('ss_t_minus_3', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_t_minus_3', $stg_def['default_body']), $placeholders);
-                    } else if ($diff_days === 0) {
+                    } else if ($diff_days === 0 || ($diff_days < 0 && $diff_days > -3)) {
                         // 2. On Due Date -> SSE + SS Lead + Current Module Mentors
                         $stage = 'due_today';
                         $recipient_emails = array_values(array_filter(array_unique(array_merge(
@@ -893,7 +910,7 @@ class cliq_activity_notifier {
                         $stg_def = $defs['ss']['stages']['due_today'];
                         $subject = self::render_template(self::get_template_subject('ss_due_today', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_due_today', $stg_def['default_body']), $placeholders);
-                    } else if ($diff_days === -3) {
+                    } else if ($diff_days <= -3 && $diff_days > -5) {
                         // 3. After 3 days overdue -> SSE + SS Lead
                         $stage = 't_plus_3';
                         $recipient_emails = array_values(array_filter(array_unique(array_merge(
@@ -917,7 +934,8 @@ class cliq_activity_notifier {
                     if ($stage !== null) {
                         $results['matched']++;
 
-                        if (self::is_already_sent($sec->id, $act_key, $stage, $date_sent)) {
+                        $dedup_check_date = ($stage === 't_plus_5_escalation') ? $date_sent : '';
+                        if (self::is_already_sent($sec->id, $act_key, $stage, $dedup_check_date)) {
                             $results['skipped_dedup']++;
                             continue;
                         }
@@ -1031,7 +1049,7 @@ class cliq_activity_notifier {
                                 '{url}'           => $module_url,
                             ];
 
-                            if ($diff_days === 3) {
+                            if ($diff_days >= 1 && $diff_days <= 3) {
                                 // 1. Before 3 days -> Mentor
                                 $stage = 't_minus_3';
                                 $recipient_emails = $mentor_emails;
@@ -1039,7 +1057,7 @@ class cliq_activity_notifier {
                                 $stg_def = $defs['mentor']['stages']['t_minus_3'];
                                 $subject = self::render_template(self::get_template_subject('mentor_t_minus_3', $stg_def['default_subject']), $placeholders);
                                 $body = self::render_template(self::get_template_body('mentor_t_minus_3', $stg_def['default_body']), $placeholders);
-                            } else if ($diff_days === 0) {
+                            } else if ($diff_days === 0 || ($diff_days < 0 && $diff_days > -3)) {
                                 // 2. On Due Date -> Mentor
                                 $stage = 'due_today';
                                 $recipient_emails = $mentor_emails;
@@ -1047,7 +1065,7 @@ class cliq_activity_notifier {
                                 $stg_def = $defs['mentor']['stages']['due_today'];
                                 $subject = self::render_template(self::get_template_subject('mentor_due_today', $stg_def['default_subject']), $placeholders);
                                 $body = self::render_template(self::get_template_body('mentor_due_today', $stg_def['default_body']), $placeholders);
-                            } else if ($diff_days === -3) {
+                            } else if ($diff_days <= -3 && $diff_days > -5) {
                                 // 3. After 3 days overdue -> Mentor
                                 $stage = 't_plus_3';
                                 $recipient_emails = $mentor_emails;
@@ -1069,8 +1087,9 @@ class cliq_activity_notifier {
                                 $results['matched']++;
 
                                 $act_unique_key = 'mentor_' . $courseid . '_' . $act_key;
+                                $dedup_check_date = ($stage === 't_plus_5_escalation') ? $date_sent : '';
 
-                                if (self::is_already_sent($sec->id, $act_unique_key, $stage, $date_sent)) {
+                                if (self::is_already_sent($sec->id, $act_unique_key, $stage, $dedup_check_date)) {
                                     $results['skipped_dedup']++;
                                     continue;
                                 }
