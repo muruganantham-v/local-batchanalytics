@@ -1525,7 +1525,7 @@ class task_service {
      * @return array
      * @throws \moodle_exception
      */
-     public static function request_ss_approval(int $userid, int $batchid, string $act_key): array {
+    public static function request_ss_approval(int $userid, int $batchid, string $act_key): array {
         global $DB;
 
         if ($batchid <= 0 || trim($act_key) === '') {
@@ -1535,6 +1535,14 @@ class task_service {
         $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
         if (!$sec) {
             throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+        }
+
+        $personas = self::resolve_user_personas($userid);
+        $sys_ctx = \context_system::instance();
+        $is_admin = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $sys_ctx);
+        $is_assigned_sse = (!empty($sec->maacexecutive) && (string)$sec->maacexecutive === (string)$userid);
+        if (!$is_admin && !$personas['is_sse'] && !$is_assigned_sse) {
+            throw new \moodle_exception('nopermissions', 'error', '', 'request soft skills approval');
         }
 
         $raw_data = json_decode($sec->softskillsdata ?? '', true);
@@ -1617,6 +1625,13 @@ class task_service {
         $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
         if (!$sec) {
             throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+        }
+
+        $personas = self::resolve_user_personas($userid);
+        $sys_ctx = \context_system::instance();
+        $is_admin = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $sys_ctx);
+        if (!$is_admin && !$personas['is_sslead']) {
+            throw new \moodle_exception('nopermissions', 'error', '', 'reject soft skills approval');
         }
 
         $raw_data = json_decode($sec->softskillsdata ?? '', true);
@@ -1750,6 +1765,20 @@ class task_service {
             $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
             if (!$sec) {
                 throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+            }
+
+            $personas = self::resolve_user_personas($userid);
+            $sys_ctx = \context_system::instance();
+            $is_admin = is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $sys_ctx);
+            if ($action_type === 'ss_approve') {
+                if (!$is_admin && !$personas['is_sslead']) {
+                    throw new \moodle_exception('nopermissions', 'error', '', 'approve soft skills activity');
+                }
+            } else if ($action_type === 'ss') {
+                $is_assigned_sse = (!empty($sec->maacexecutive) && (string)$sec->maacexecutive === (string)$userid);
+                if (!$is_admin && !$personas['is_sse'] && !$is_assigned_sse) {
+                    throw new \moodle_exception('nopermissions', 'error', '', 'complete soft skills activity');
+                }
             }
 
             $raw_data = json_decode($sec->softskillsdata ?? '', true);
