@@ -18,9 +18,25 @@ require_login();
 $context = context_system::instance();
 $userid = $USER->id;
 
+// Permission check for viewing local_batchanalytics / dashboard
+$can_view = has_capability('local/batchanalytics:view', $context)
+    || has_capability('block/batchanalytics:view', $context)
+    || \local_batchanalytics\task_service::can_view_dashboard($userid);
+
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 
-// Dashboard block AJAX endpoints (available to any authenticated user with a dashboard block)
+// Dashboard block AJAX endpoints (protected by capability and dashboard view authorization)
+if (!empty($action) && in_array($action, ['get_dashboard_tasks', 'check_task_validation', 'request_ss_approval', 'reject_ss_approval', 'complete_task'], true)) {
+    if (!$can_view) {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => get_string('nopermissions', 'error')]);
+        die();
+    }
+}
+
 if ($action === 'get_dashboard_tasks') {
     while (ob_get_level()) {
         ob_end_clean();
@@ -132,17 +148,15 @@ if ($action === 'complete_task') {
 }
 
 // Capability-based permission check. Assign 'local/batchanalytics:view' to roles in Site administration > Users > Permissions > Define roles.
-if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
-    if (!\local_batchanalytics\task_service::can_view_dashboard($userid)) {
-        require_capability('local/batchanalytics:view', $context);
-    }
+if (!$can_view) {
+    require_capability('local/batchanalytics:view', $context);
 }
 
 $can_manage = is_siteadmin($userid)
     || has_capability('local/batchanalytics:manage', $context)
     || has_capability('local/batchanalytics:viewfullcrmdata', $context);
-$can_view_all_courses = \block_batchanalytics\util::can_view_all_batches($context, $userid);
-$can_view_assigned_courses = \block_batchanalytics\util::can_view_assigned_batches($context, $userid);
+$can_view_all_courses = \local_batchanalytics\util::can_view_all_batches($context, $userid);
+$can_view_assigned_courses = \local_batchanalytics\util::can_view_assigned_batches($context, $userid);
 if (!$can_view_all_courses && !$can_view_assigned_courses) {
     $can_view_assigned_courses = true;
 }
@@ -412,8 +426,8 @@ if ($action === 'getnewbatchdata') {
 
         // Check if user can view all courses or is restricted to assigned batches
         $currentuserid = (int)$USER->id;
-        $can_view_all_courses = \block_batchanalytics\util::can_view_all_batches($context, $currentuserid);
-        $can_view_assigned_courses = \block_batchanalytics\util::can_view_assigned_batches($context, $currentuserid);
+        $can_view_all_courses = \local_batchanalytics\util::can_view_all_batches($context, $currentuserid);
+        $can_view_assigned_courses = \local_batchanalytics\util::can_view_assigned_batches($context, $currentuserid);
         if (!$can_view_all_courses && !$can_view_assigned_courses) {
             $can_view_assigned_courses = true;
         }
