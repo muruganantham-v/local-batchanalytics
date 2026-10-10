@@ -33,6 +33,9 @@ require_once(__DIR__ . '/batch_notes_service.php');
  */
 class task_service {
 
+    /** @var array Request cache for resolve_user_personas */
+    protected static $personas_cache = [];
+
     /**
      * Get configured role IDs for a given setting name.
      *
@@ -128,6 +131,10 @@ class task_service {
      * @return array
      */
     public static function resolve_user_personas(int $userid): array {
+        if (isset(self::$personas_cache[$userid])) {
+            return self::$personas_cache[$userid];
+        }
+
         global $DB, $USER;
 
         $user_obj = ($userid === (int)$USER->id) ? $USER : $DB->get_record('user', ['id' => $userid]);
@@ -243,7 +250,7 @@ class task_service {
         $is_pm           = $assigned_pm || $has_pm_role;
         $is_asst         = $has_asst_role;
 
-        return [
+        $res = [
             'is_manager'            => $is_manager,
             'is_class_mentor'       => $is_class_mentor,
             'is_lab_mentor'         => $is_lab_mentor,
@@ -262,6 +269,8 @@ class task_service {
             'has_pm_role'           => $has_pm_role,
             'has_asst_role'         => $has_asst_role,
         ];
+        self::$personas_cache[$userid] = $res;
+        return $res;
     }
 
     /**
