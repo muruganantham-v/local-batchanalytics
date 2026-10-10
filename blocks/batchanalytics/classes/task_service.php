@@ -1556,7 +1556,7 @@ class task_service {
 
         $raw_data = json_decode($sec->softskillsdata ?? '', true);
         if (!is_array($raw_data)) {
-            $raw_data = [];
+            throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
         }
 
         $now = time();
@@ -1596,9 +1596,7 @@ class task_service {
         }
 
         if (!$updated) {
-            $raw_data[$act_key . '_ApprovalStatus'] = 'pending_approval';
-            $raw_data[$act_key . '_RequestedBy'] = $userid;
-            $raw_data[$act_key . '_RequestedAt'] = $now;
+            throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
         }
 
         $sec->softskillsdata = json_encode($raw_data);
@@ -1645,7 +1643,7 @@ class task_service {
 
         $raw_data = json_decode($sec->softskillsdata ?? '', true);
         if (!is_array($raw_data)) {
-            $raw_data = [];
+            throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
         }
 
         $now = time();
@@ -1689,11 +1687,7 @@ class task_service {
         }
 
         if (!$updated) {
-            $raw_data[$act_key . '_ApprovalStatus'] = 'rejected';
-            $raw_data[$act_key . '_RejectedBy'] = $userid;
-            $raw_data[$act_key . '_RejectedAt'] = $now;
-            $raw_data[$act_key . '_ReviewNotes'] = $review_notes;
-            $raw_data[$act_key . '_Actual'] = 0;
+            throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
         }
 
         $sec->softskillsdata = json_encode($raw_data);
@@ -1791,79 +1785,75 @@ class task_service {
             }
 
             $raw_data = json_decode($sec->softskillsdata ?? '', true);
+            if (!is_array($raw_data)) {
+                throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+            }
+
             $now = time();
             $target_base = strtolower(trim($act_key));
+            $updated = false;
 
-            if (is_array($raw_data)) {
-                $updated = false;
-                // Check key-based format: ${base}_Actual
-                foreach ($raw_data as $k => $v) {
-                    if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
-                        $base = strtolower($m[1]);
-                        if ($base === $target_base) {
-                            $raw_data[$m[1] . '_Actual'] = $now;
-                            $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
-                            $raw_data[$m[1] . '_ApprovedBy'] = $userid;
-                            $raw_data[$m[1] . '_ApprovedAt'] = $now;
+            // Check key-based format: ${base}_Actual
+            foreach ($raw_data as $k => $v) {
+                if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                    $base = strtolower($m[1]);
+                    if ($base === $target_base) {
+                        $raw_data[$m[1] . '_Actual'] = $now;
+                        $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
+                        $raw_data[$m[1] . '_ApprovedBy'] = $userid;
+                        $raw_data[$m[1] . '_ApprovedAt'] = $now;
+                        if ($review_notes !== '') {
+                            $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
+                        }
+                        $updated = true;
+                        break;
+                    }
+                }
+            }
+            // Check object list format: [{activity: ..., actual: ...}]
+            if (!$updated) {
+                foreach ($raw_data as &$item) {
+                    if (is_array($item)) {
+                        $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                        $key  = strtolower(trim($item['key'] ?? ''));
+                        if ($key === $target_base || $name === $target_base) {
+                            $item['actual'] = $now;
+                            $item['approval_status'] = 'approved';
+                            $item['approved_by'] = $userid;
+                            $item['approved_at'] = $now;
                             if ($review_notes !== '') {
-                                $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
+                                $item['review_notes'] = $review_notes;
                             }
                             $updated = true;
                             break;
                         }
                     }
                 }
-                // Check object list format: [{activity: ..., actual: ...}]
-                if (!$updated) {
-                    foreach ($raw_data as &$item) {
-                        if (is_array($item)) {
-                            $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
-                            $key  = strtolower(trim($item['key'] ?? ''));
-                            if ($key === $target_base || $name === $target_base) {
-                                $item['actual'] = $now;
-                                $item['approval_status'] = 'approved';
-                                $item['approved_by'] = $userid;
-                                $item['approved_at'] = $now;
-                                if ($review_notes !== '') {
-                                    $item['review_notes'] = $review_notes;
-                                }
-                                $updated = true;
-                                break;
-                            }
-                        }
-                    }
-                    unset($item);
-                }
-
-                if (!$updated) {
-                    $raw_data[$act_key . '_Actual'] = $now;
-                    $raw_data[$act_key . '_ApprovalStatus'] = 'approved';
-                    $raw_data[$act_key . '_ApprovedBy'] = $userid;
-                    $raw_data[$act_key . '_ApprovedAt'] = $now;
-                    if ($review_notes !== '') {
-                        $raw_data[$act_key . '_ReviewNotes'] = $review_notes;
-                    }
-                }
-
-                $sec->softskillsdata = json_encode($raw_data);
-                $sec->timemodified = $now;
-                $DB->update_record('local_bm_classsection', $sec);
-
-                // Trigger real-time Zoho Cliq completion alert
-                try {
-                    require_once(__DIR__ . '/cliq_activity_notifier.php');
-                    cliq_activity_notifier::send_completion_alert('ss', $batchid, 0, $act_key, $userid);
-                } catch (\Throwable $e) {
-                    // Silently avoid interrupting the save response
-                }
-
-                return [
-                    'success'   => true,
-                    'type'      => 'ss',
-                    'batchid'   => $batchid,
-                    'actual_ts' => $now,
-                ];
+                unset($item);
             }
+
+            if (!$updated) {
+                throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
+            }
+
+            $sec->softskillsdata = json_encode($raw_data);
+            $sec->timemodified = $now;
+            $DB->update_record('local_bm_classsection', $sec);
+
+            // Trigger real-time Zoho Cliq completion alert
+            try {
+                require_once(__DIR__ . '/cliq_activity_notifier.php');
+                cliq_activity_notifier::send_completion_alert('ss', $batchid, 0, $act_key, $userid);
+            } catch (\Throwable $e) {
+                // Silently avoid interrupting the save response
+            }
+
+            return [
+                'success'   => true,
+                'type'      => 'ss',
+                'batchid'   => $batchid,
+                'actual_ts' => $now,
+            ];
         }
 
         if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_closer' || $action_type === 'am_mentor' || $action_type === 'am_sched') {
