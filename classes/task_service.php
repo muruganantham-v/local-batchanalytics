@@ -309,8 +309,8 @@ class task_service {
             return false;
         };
 
-        // Time-based greeting
-        $hour = (int)date('G');
+        // Time-based greeting respecting user timezone
+        $hour = (int)userdate(time(), '%H');
         if ($hour < 12) {
             $greeting_prefix = 'Good morning';
         } else if ($hour < 17) {
@@ -1023,9 +1023,10 @@ class task_service {
                                     ];
 
                                     if ($p_end >= $today_midnight && $p_end <= $next_week_end) {
+                                        $m_days = max(0, (int)floor(($p_end - $today_midnight) / 86400));
                                         $forthcoming_list[] = [
                                             'title' => 'Assign mentor for next module — ' . $next_mod_name,
-                                            'meta'  => 'Batch ' . $batch_name . ' · ' . ($days === 0 ? 'today' : 'in ' . $days . ' days'),
+                                            'meta'  => 'Batch ' . $batch_name . ' · ' . ($m_days === 0 ? 'today' : 'in ' . $m_days . ' days'),
                                             'ts'    => $p_end,
                                         ];
                                     }
@@ -1898,9 +1899,8 @@ class task_service {
                     $modules[$mod_key]
                 );
             } else if ($action_type === 'am_sched') {
-                if (empty($modules[$mod_key]['plannedstart'])) {
-                    $modules[$mod_key]['plannedstart'] = $now;
-                }
+                $sched_ts = !empty($params['plannedstart']) ? (int)$params['plannedstart'] : $now;
+                $modules[$mod_key]['plannedstart'] = $sched_ts;
             }
 
             $sec->moduledata = json_encode($modules);
