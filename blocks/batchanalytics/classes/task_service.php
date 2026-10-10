@@ -712,7 +712,7 @@ class task_service {
                     $is_pending_approval = (!empty($ss['approval_status']) && $ss['approval_status'] === 'pending_approval');
 
                     // For SS Lead & Admin: Display pending approval tasks submitted by SSE, plus any escalated tasks
-                    if ($active_role === 'sslead' || ($active_role === 'admin' && $is_pending_approval)) {
+                    if ($active_role === 'sslead' || ($active_role === 'admin' && ($is_pending_approval || $is_escalated))) {
                         if ($is_pending_approval) {
                             $requester_id = (int)($ss['requested_by'] ?? 0);
                             $requester_name = '';
