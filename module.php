@@ -774,20 +774,32 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
     if (!empty($module_kpis)) {
         // Overall Avg KPI Card
         $course_grades = [];
+        $overall_comp_list = [];
         $overall_student_grades = [];
+        $total_course_items = 0;
+
         foreach ($students_data as $s) {
             $cg = ($s['grade'] !== null && $s['grade'] !== '') ? (float)$s['grade'] : null;
+            $comp = ($s['completion'] !== null && $s['completion'] !== '') ? (float)$s['completion'] : 0.0;
+            $c_items = (int)($s['completed_items'] ?? 0);
+            $t_items = (int)($s['total_items'] ?? 0);
+            if ($t_items > $total_course_items) {
+                $total_course_items = $t_items;
+            }
+
             if ($cg !== null) {
                 $course_grades[] = $cg;
             }
+            $overall_comp_list[] = $comp;
+
             $overall_student_grades[] = [
                 'userid' => (int)($s['userid'] ?? $s['id'] ?? 0),
                 'fullname' => $s['name'] ?? $s['fullname'] ?? '',
                 'username' => !empty($s['id']) ? $s['id'] : ($s['idnumber'] ?? $s['username'] ?? ''),
                 'percentage' => $cg,
-                'completionRate' => 100.0,
-                'itemsCompleted' => 1,
-                'totalItems' => 1,
+                'completionRate' => $comp,
+                'itemsCompleted' => $c_items,
+                'totalItems' => $t_items,
                 'finalGrade' => $cg,
                 'totalEarned' => 0.0,
             ];
@@ -795,6 +807,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
 
         $overall_avg = !empty($course_grades) ? round(array_sum($course_grades) / count($course_grades), 2) : 0.0;
         $overall_avg_formatted = number_format($overall_avg, 2);
+        $overall_avg_comp = !empty($overall_comp_list) ? round(array_sum($overall_comp_list) / count($overall_comp_list), 2) : 0.0;
+        $overall_avg_comp_formatted = number_format($overall_avg_comp, 2);
 
         // Overall Median
         $sorted_cg = $course_grades;
@@ -836,13 +850,13 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
 
         $overall_cat_record = [
             'categoryname' => 'Overall Avg',
-            'totalItems' => 1,
+            'totalItems' => $total_course_items,
             'avgGrade' => $overall_avg,
             'avgGradeFormatted' => $overall_avg_formatted,
             'medianGrade' => $overall_median,
             'medianGradeFormatted' => number_format($overall_median, 2),
-            'avgCompletion' => 100.0,
-            'avgCompFormatted' => '100.00',
+            'avgCompletion' => $overall_avg_comp,
+            'avgCompFormatted' => $overall_avg_comp_formatted,
             'avgFinalGrade' => $overall_avg,
             'avgFinalGradeFormatted' => $overall_avg_formatted,
             'isAttendance' => false,
@@ -855,16 +869,16 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             'label' => 'Overall Avg',
             'clean_name' => 'overall_avg',
             'val'   => $overall_avg_formatted . '%',
-            'sub'   => 'Avg Grade',
+            'sub'   => 'Avg Grade · Completion ' . $overall_avg_comp_formatted . '%',
             'avgGrade' => $overall_avg,
             'avgGradeFormatted' => $overall_avg_formatted,
             'medianGrade' => $overall_median,
             'medianGradeFormatted' => number_format($overall_median, 2),
-            'avgCompletion' => 100.0,
-            'avgCompFormatted' => '100.00',
+            'avgCompletion' => $overall_avg_comp,
+            'avgCompFormatted' => $overall_avg_comp_formatted,
             'avgFinalGrade' => $overall_avg,
             'avgFinalGradeFormatted' => $overall_avg_formatted,
-            'compClass' => 'text-success',
+            'compClass' => get_ba_comp_class((float)$overall_avg_comp),
             'icon_bg' => '#eff6ff',
             'icon_svg' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="#2563eb"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>',
             'isAttendance' => false,
