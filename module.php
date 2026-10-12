@@ -650,422 +650,203 @@ function get_ba_comp_class(float $v): string {
 $module_kpis = [];
 $kpi_categories_data = [];
 
-// Resolve enrolled students for course metrics
-$student_role_id = $DB->get_field('role', 'id', ['shortname' => 'student']) ?: 5;
-$students_sql = "
-    SELECT DISTINCT
-        u.id as userid,
-        CONCAT(u.firstname, ' ', u.lastname) as fullname,
-        u.username,
-        u.idnumber
-    FROM {user} u
-    JOIN {role_assignments} ra ON ra.userid = u.id
-    JOIN {context} ctx ON ctx.id = ra.contextid
-    WHERE ctx.instanceid = :courseid
-      AND ctx.contextlevel = 50
-      AND ra.roleid = :roleid
-      AND u.deleted = 0
-    ORDER BY u.firstname, u.lastname
-";
-$enrolled_students = $courseid > 0 ? $DB->get_records_sql($students_sql, ['courseid' => $courseid, 'roleid' => $student_role_id]) : [];
-
-if ($courseid > 0) {
-    // 1. Fetch tracker categories configured in Site Admin and course grade categories
-    $act_service = new \local_batchanalytics\activity_tracker_service();
-    $configured_categories = $act_service->get_configured_categories();
-    $all_cats = $DB->get_records('grade_categories', ['courseid' => $courseid]);
-
-    // 2. Fetch all mod and manual grade items that are not permanently hidden
-    $items_sql = "
-        SELECT
-            gi.id as itemid, gi.itemname, gi.itemtype, gi.itemmodule, gi.grademax, gi.grademin,
-            gc.id as categoryid, gc.fullname as categoryname
-        FROM {grade_items} gi
-        LEFT JOIN {grade_categories} gc ON gc.id = gi.categoryid
-        WHERE gi.courseid = :courseid
-          AND gi.itemtype IN ('mod', 'manual')
-          AND gi.hidden != 1
-        ORDER BY gi.sortorder ASC, gi.id ASC
-    ";
-    $grade_items = $DB->get_records_sql($items_sql, ['courseid' => $courseid]);
-
-    // 3. Initialize configured categories in configured sequence
-    $grouped_cats = [];
-    foreach (array_keys($configured_categories) as $cname) {
-        $grouped_cats[$cname] = [
-            'categoryname' => $cname,
-            'items'        => [],
-            'studentGrades'=> []
-        ];
-    }
-
-    // 4. Map each grade item to its matched configured tracker category (attendance is excluded)
-    foreach ($grade_items as $item) {
-        $matched_cat = $act_service->resolve_grade_item_category($item, $all_cats);
-        if ($matched_cat !== null && isset($grouped_cats[$matched_cat])) {
-            $grouped_cats[$matched_cat]['items'][] = [
-                'itemid'   => $item->itemid,
-                'grademax' => (float)$item->grademax,
-                'grademin' => (float)$item->grademin
-            ];
-        }
-    }
-
-    // Filter out categories that have NO grade items in this course (only show cards for present categories)
-    $raw_cats = array_filter($grouped_cats, function($cdata) {
-        return !empty($cdata['items']);
-    });
-
-    if (!empty($raw_cats) && !empty($enrolled_students)) {
-        foreach ($raw_cats as &$category_data) {
-            $category_data['displayname'] = $category_data['categoryname'] . ' (' . count($category_data['items']) . ')';
-        }
-        unset($category_data);
-
-        $all_grades_sql = "
-            SELECT gg.id, gg.userid, gg.itemid, gg.finalgrade
-            FROM {grade_grades} gg
-            JOIN {grade_items} gi ON gi.id = gg.itemid
-            WHERE gi.courseid = :courseid
-              AND gi.hidden != 1
-              AND gg.finalgrade IS NOT NULL
-              AND gg.excluded = 0
-              AND gg.hidden = 0
-        ";
-        $grades_map = [];
-        $rs = $DB->get_recordset_sql($all_grades_sql, ['courseid' => $courseid]);
-        foreach ($rs as $rec) {
-            $grades_map[$rec->userid][$rec->itemid] = $rec->finalgrade;
-        }
-        $rs->close();
-
-        $kpi_card_idx = 0;
-        foreach ($raw_cats as $cat_id => &$cat_data) {
-            $display_name = $cat_data['displayname'];
-            $cat_clean_name = $cat_data['categoryname'];
-            $gradable_items_in_cat = 0;
-            $category_total_max = 0;
-
-            foreach ($cat_data['items'] as $item) {
-                $gmax = $item['grademax'];
-                $gmin = $item['grademin'];
-                if ($gmax > $gmin) {
-                    $gradable_items_in_cat++;
-                    $category_total_max += ($gmax - $gmin);
-                }
-            }
-
-            $total_pct_sum = 0;
-            $valid_pct_count = 0;
-            $total_comp_sum = 0;
-            $total_final_grade_sum = 0;
-            $valid_final_count = 0;
-
-            foreach ($enrolled_students as $student) {
-                $total_earned = 0;
-                $total_max = 0;
-                $items_completed = 0;
-
-                foreach ($cat_data['items'] as $item) {
-                    $itemid = $item['itemid'];
-                    $userid = $student->userid;
-
-                    if (isset($grades_map[$userid]) && isset($grades_map[$userid][$itemid])) {
-                        $finalgrade = $grades_map[$userid][$itemid];
-                        $gmax = $item['grademax'];
-                        $gmin = $item['grademin'];
-                        if ($gmax > $gmin) {
-                            $items_completed++;
-                            $total_earned += ($finalgrade - $gmin);
-                            $total_max += ($gmax - $gmin);
-                        }
-                    }
-                }
-
-                $percentage = $total_max > 0 ? round(($total_earned / $total_max) * 100, 2) : null;
-                $comp_rate = $gradable_items_in_cat > 0
-                    ? round(($items_completed / $gradable_items_in_cat) * 100, 2)
-                    : 0;
-
-                if ($gradable_items_in_cat > 0) {
-                    $final_grade = ($percentage !== null)
-                        ? round(($percentage * $items_completed) / $gradable_items_in_cat, 2)
-                        : 0.0;
-                } else {
-                    $final_grade = $percentage;
-                }
-
-                if ($percentage !== null) {
-                    $total_pct_sum += $percentage;
-                    $valid_pct_count++;
-                }
-                $total_comp_sum += $comp_rate;
-
-                if ($final_grade !== null) {
-                    $total_final_grade_sum += $final_grade;
-                    $valid_final_count++;
-                }
-
-                $cat_data['studentGrades'][] = [
-                    'userid' => $student->userid,
-                    'fullname' => $student->fullname,
-                    'username' => !empty($student->idnumber) ? $student->idnumber : $student->username,
-                    'percentage' => $percentage,
-                    'completionRate' => $comp_rate,
-                    'itemsCompleted' => $items_completed,
-                    'totalItems' => $gradable_items_in_cat,
-                    'finalGrade' => $final_grade,
-                    'totalEarned' => $total_earned
-                ];
-            }
-
-            $avgG = $valid_pct_count > 0 ? ($total_pct_sum / $valid_pct_count) : 0.0;
-            $avgC = count($enrolled_students) > 0 ? ($total_comp_sum / count($enrolled_students)) : 0.0;
-            $avgFinalG = $valid_final_count > 0 ? ($total_final_grade_sum / $valid_final_count) : 0.0;
-            $avgGFormatted = number_format($avgG, 2);
-            $avgCFormatted = number_format($avgC, 2);
-            $avgFinalGFormatted = number_format($avgFinalG, 2);
-
-            // Calculate 50th percentile (Median) grade and assign rank percentiles to students
-            $valid_percentages = [];
-            foreach ($cat_data['studentGrades'] as $sg_item) {
-                if ($sg_item['percentage'] !== null && $sg_item['percentage'] !== '') {
-                    $valid_percentages[] = (float)$sg_item['percentage'];
-                }
-            }
-            sort($valid_percentages);
-            $vp_count = count($valid_percentages);
-            if ($vp_count > 0) {
-                $mid = (int)floor(($vp_count - 1) / 2);
-                $median_grade = ($vp_count % 2 === 0)
-                    ? (($valid_percentages[$mid] + $valid_percentages[$mid + 1]) / 2)
-                    : $valid_percentages[$mid];
-            } else {
-                $median_grade = 0.0;
-            }
-            $medianGradeFormatted = number_format($median_grade, 2);
-
-            // Compute student category rank percentiles
-            $sorted_by_grade = $cat_data['studentGrades'];
-            usort($sorted_by_grade, static function($a, $b) {
-                $scA = $a['percentage'] !== null ? (float)$a['percentage'] : -1.0;
-                $scB = $b['percentage'] !== null ? (float)$b['percentage'] : -1.0;
-                return $scB <=> $scA;
-            });
-            $tot_s = count($sorted_by_grade);
-            $user_cat_percentiles = [];
-            $prev_score = null;
-            $prev_pct = null;
-            foreach ($sorted_by_grade as $s_idx => $s_entry) {
-                $sc = $s_entry['percentage'] !== null ? (float)$s_entry['percentage'] : null;
-                if ($sc === null) {
-                    $p_val = 0;
-                } else {
-                    $p_val = $tot_s <= 1 ? 100 : (int)round((($tot_s - $s_idx - 1) / ($tot_s - 1)) * 100);
-                    if ($prev_score !== null && $sc == $prev_score) {
-                        $p_val = $prev_pct;
-                    }
-                }
-                $user_cat_percentiles[$s_entry['userid']] = $p_val;
-                $prev_score = $sc;
-                $prev_pct = $p_val;
-            }
-            foreach ($cat_data['studentGrades'] as &$sg_entry) {
-                $sg_entry['percentile'] = $user_cat_percentiles[$sg_entry['userid']] ?? 0;
-            }
-            unset($sg_entry);
-
-            $style = get_ba_category_icon_and_color($display_name, $kpi_card_idx);
-            $kpi_card_idx++;
-
-            $module_kpis[] = [
-                'label' => $display_name,
-                'clean_name' => $cat_clean_name,
-                'val'   => $avgGFormatted . '%',
-                'sub'   => 'Avg Grade · Completion ' . $avgCFormatted . '%',
-                'avgGrade' => $avgG,
-                'avgGradeFormatted' => $avgGFormatted,
-                'medianGrade' => $median_grade,
-                'medianGradeFormatted' => $medianGradeFormatted,
-                'avgCompletion' => $avgC,
-                'avgCompFormatted' => $avgCFormatted,
-                'avgFinalGrade' => $avgFinalG,
-                'avgFinalGradeFormatted' => $avgFinalGFormatted,
-                'compClass' => get_ba_comp_class((float)$avgC),
-                'icon_bg' => $style['bg'],
-                'icon_svg' => $style['icon'],
-                'isAttendance' => false
-            ];
-
-            $cat_data_record = [
-                'categoryname' => $display_name,
-                'totalItems' => $gradable_items_in_cat,
-                'avgGrade' => $avgG,
-                'avgGradeFormatted' => $avgGFormatted,
-                'medianGrade' => $median_grade,
-                'medianGradeFormatted' => $medianGradeFormatted,
-                'avgCompletion' => $avgC,
-                'avgCompFormatted' => $avgCFormatted,
-                'avgFinalGrade' => $avgFinalG,
-                'avgFinalGradeFormatted' => $avgFinalGFormatted,
-                'isAttendance' => false,
-                'studentGrades' => $cat_data['studentGrades']
-            ];
-            $kpi_categories_data[$display_name] = $cat_data_record;
-            $kpi_categories_data[$cat_clean_name] = $cat_data_record;
-        }
-        unset($cat_data);
-    }
-
-    if (!empty($module_kpis)) {
-        $tot_cat_count = count($module_kpis);
-        $sum_final_grades = 0.0;
-        $sum_completions = 0.0;
-        $sum_avg_grades = 0.0;
-        $total_items_all_cats = 0;
-
-        foreach ($module_kpis as $mk) {
-            $sum_final_grades += (float)($mk['avgFinalGrade'] ?? 0);
-            $sum_completions += (float)($mk['avgCompletion'] ?? 0);
-            $sum_avg_grades += (float)($mk['avgGrade'] ?? 0);
-            $cat_rec = $kpi_categories_data[$mk['label']] ?? null;
-            if ($cat_rec && !empty($cat_rec['totalItems'])) {
-                $total_items_all_cats += (int)$cat_rec['totalItems'];
-            }
+if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
+    $kpi_card_idx = 0;
+    foreach ($performance_columns as $col) {
+        if (!empty($col['isattendance']) || !empty($col['ismaac'])) {
+            continue;
         }
 
-        $overall_avg_final_grade = $tot_cat_count > 0 ? ($sum_final_grades / $tot_cat_count) : 0.0;
-        $overall_avg_comp = $tot_cat_count > 0 ? ($sum_completions / $tot_cat_count) : 0.0;
-        $overall_avg_grade = $tot_cat_count > 0 ? ($sum_avg_grades / $tot_cat_count) : 0.0;
+        $colkey = $col['key'];
+        $display_name = $col['label'];
+        $cat_clean_name = preg_replace('/\s*\(\d+\)$/', '', $col['label']);
+        $total_items = (int)($col['count'] ?? 0);
 
-        $overall_avg_final_grade_formatted = number_format($overall_avg_final_grade, 2);
-        $overall_avg_comp_formatted = number_format($overall_avg_comp, 2);
-        $overall_avg_grade_formatted = number_format($overall_avg_grade, 2);
+        $grades_list = [];
+        $comp_list = [];
+        $student_grades = [];
 
-        // Build overall student grades by aggregating each student across all categories
-        $student_cat_map = [];
-        foreach ($module_kpis as $mk) {
-            $cat_rec = $kpi_categories_data[$mk['label']] ?? null;
-            if (!$cat_rec || empty($cat_rec['studentGrades'])) {
-                continue;
+        foreach ($students_data as $s) {
+            $cdata = $s['categories'][$colkey] ?? null;
+            $g = ($cdata && $cdata['grade'] !== null && $cdata['grade'] !== '') ? (float)$cdata['grade'] : null;
+            $comp = ($cdata && $cdata['completion'] !== null && $cdata['completion'] !== '') ? (float)$cdata['completion'] : 0.0;
+            $completed_items = $total_items > 0 ? (int)round(($comp / 100) * $total_items) : 0;
+
+            if ($g !== null) {
+                $grades_list[] = $g;
             }
-            foreach ($cat_rec['studentGrades'] as $sg) {
-                $uid = (int)($sg['userid'] ?? 0);
-                if ($uid <= 0) {
-                    continue;
-                }
-                if (!isset($student_cat_map[$uid])) {
-                    $student_cat_map[$uid] = [
-                        'userid' => $uid,
-                        'fullname' => $sg['fullname'] ?? '',
-                        'username' => $sg['username'] ?? '',
-                        'pct_sum' => 0.0,
-                        'pct_count' => 0,
-                        'comp_sum' => 0.0,
-                        'comp_count' => 0,
-                        'fg_sum' => 0.0,
-                        'fg_count' => 0,
-                        'items_completed' => 0,
-                        'total_items' => 0,
-                        'total_earned' => 0.0,
-                    ];
-                }
-                if ($sg['percentage'] !== null && $sg['percentage'] !== '') {
-                    $student_cat_map[$uid]['pct_sum'] += (float)$sg['percentage'];
-                    $student_cat_map[$uid]['pct_count']++;
-                }
-                if (isset($sg['completionRate'])) {
-                    $student_cat_map[$uid]['comp_sum'] += (float)$sg['completionRate'];
-                    $student_cat_map[$uid]['comp_count']++;
-                }
-                if (isset($sg['finalGrade']) && $sg['finalGrade'] !== null) {
-                    $student_cat_map[$uid]['fg_sum'] += (float)$sg['finalGrade'];
-                    $student_cat_map[$uid]['fg_count']++;
-                }
-                $student_cat_map[$uid]['items_completed'] += (int)($sg['itemsCompleted'] ?? 0);
-                $student_cat_map[$uid]['total_items'] += (int)($sg['totalItems'] ?? 0);
-                $student_cat_map[$uid]['total_earned'] += (float)($sg['totalEarned'] ?? 0);
-            }
-        }
+            $comp_list[] = $comp;
 
-        $overall_student_grades = [];
-        $valid_percentages = [];
-        foreach ($student_cat_map as $uid => $data) {
-            $s_pct = $data['pct_count'] > 0 ? round($data['pct_sum'] / $data['pct_count'], 2) : null;
-            $s_comp = $tot_cat_count > 0 ? round($data['comp_sum'] / $tot_cat_count, 2) : 0.0;
-            $s_fg = $tot_cat_count > 0 ? round($data['fg_sum'] / $tot_cat_count, 2) : 0.0;
-
-            if ($s_pct !== null) {
-                $valid_percentages[] = (float)$s_pct;
-            }
-
-            $overall_student_grades[] = [
-                'userid' => $data['userid'],
-                'fullname' => $data['fullname'],
-                'username' => $data['username'],
-                'percentage' => $s_pct,
-                'completionRate' => $s_comp,
-                'itemsCompleted' => $data['items_completed'],
-                'totalItems' => $data['total_items'],
-                'finalGrade' => $s_fg,
-                'totalEarned' => $data['total_earned']
+            $student_grades[] = [
+                'userid' => (int)($s['userid'] ?? $s['id'] ?? 0),
+                'fullname' => $s['name'] ?? $s['fullname'] ?? '',
+                'username' => !empty($s['id']) ? $s['id'] : ($s['idnumber'] ?? $s['username'] ?? ''),
+                'percentage' => $g,
+                'completionRate' => $comp,
+                'itemsCompleted' => $completed_items,
+                'totalItems' => $total_items,
+                'finalGrade' => $g,
+                'totalEarned' => 0.0,
             ];
         }
 
-        sort($valid_percentages);
-        $vp_count = count($valid_percentages);
-        if ($vp_count > 0) {
-            $mid = (int)floor(($vp_count - 1) / 2);
-            $overall_median_grade = ($vp_count % 2 === 0)
-                ? (($valid_percentages[$mid] + $valid_percentages[$mid + 1]) / 2)
-                : $valid_percentages[$mid];
+        $avg_grade = !empty($grades_list) ? round(array_sum($grades_list) / count($grades_list), 2) : 0.0;
+        $avg_comp = !empty($comp_list) ? round(array_sum($comp_list) / count($comp_list), 2) : 0.0;
+
+        // Median Grade
+        $sorted_grades = $grades_list;
+        sort($sorted_grades);
+        $cnt_g = count($sorted_grades);
+        if ($cnt_g > 0) {
+            $mid = (int)floor(($cnt_g - 1) / 2);
+            $median_grade = ($cnt_g % 2 === 0)
+                ? round(($sorted_grades[$mid] + $sorted_grades[$mid + 1]) / 2, 2)
+                : round($sorted_grades[$mid], 2);
         } else {
-            $overall_median_grade = 0.0;
+            $median_grade = 0.0;
         }
-        $overall_median_grade_formatted = number_format($overall_median_grade, 2);
 
-        $sorted_overall_students = $overall_student_grades;
-        usort($sorted_overall_students, static function($a, $b) {
+        // Assign student category rank percentiles
+        usort($student_grades, static function($a, $b) {
             $scA = $a['percentage'] !== null ? (float)$a['percentage'] : -1.0;
             $scB = $b['percentage'] !== null ? (float)$b['percentage'] : -1.0;
             return $scB <=> $scA;
         });
-        $tot_s = count($sorted_overall_students);
-        $user_overall_percentiles = [];
-        $prev_score = null;
-        $prev_pct = null;
-        foreach ($sorted_overall_students as $s_idx => $s_entry) {
-            $sc = $s_entry['percentage'] !== null ? (float)$s_entry['percentage'] : null;
+        $tot_s = count($student_grades);
+        $prev_sc = null;
+        $prev_p = null;
+        foreach ($student_grades as $sidx => &$sg) {
+            $sc = $sg['percentage'];
             if ($sc === null) {
                 $p_val = 0;
             } else {
-                $p_val = $tot_s <= 1 ? 100 : (int)round((($tot_s - $s_idx - 1) / ($tot_s - 1)) * 100);
-                if ($prev_score !== null && $sc == $prev_score) {
-                    $p_val = $prev_pct;
+                $p_val = $tot_s <= 1 ? 100 : (int)round((($tot_s - $sidx - 1) / ($tot_s - 1)) * 100);
+                if ($prev_sc !== null && $sc == $prev_sc) {
+                    $p_val = $prev_p;
                 }
             }
-            $user_overall_percentiles[$s_entry['userid']] = $p_val;
-            $prev_score = $sc;
-            $prev_pct = $p_val;
+            $sg['percentile'] = $p_val;
+            $prev_sc = $sc;
+            $prev_p = $p_val;
         }
-        foreach ($overall_student_grades as &$sg_entry) {
-            $sg_entry['percentile'] = $user_overall_percentiles[$sg_entry['userid']] ?? 0;
+        unset($sg);
+
+        $style = get_ba_category_icon_and_color($cat_clean_name, $kpi_card_idx);
+        $kpi_card_idx++;
+
+        $module_kpis[] = [
+            'label' => $display_name,
+            'clean_name' => $cat_clean_name,
+            'val'   => number_format($avg_grade, 2) . '%',
+            'sub'   => 'Avg Grade · Completion ' . number_format($avg_comp, 2) . '%',
+            'avgGrade' => $avg_grade,
+            'avgGradeFormatted' => number_format($avg_grade, 2),
+            'medianGrade' => $median_grade,
+            'medianGradeFormatted' => number_format($median_grade, 2),
+            'avgCompletion' => $avg_comp,
+            'avgCompFormatted' => number_format($avg_comp, 2),
+            'avgFinalGrade' => $avg_grade,
+            'avgFinalGradeFormatted' => number_format($avg_grade, 2),
+            'compClass' => get_ba_comp_class((float)$avg_comp),
+            'icon_bg' => $style['bg'],
+            'icon_svg' => $style['icon'],
+            'isAttendance' => false,
+        ];
+
+        $cat_data_record = [
+            'categoryname' => $display_name,
+            'totalItems' => $total_items,
+            'avgGrade' => $avg_grade,
+            'avgGradeFormatted' => number_format($avg_grade, 2),
+            'medianGrade' => $median_grade,
+            'medianGradeFormatted' => number_format($median_grade, 2),
+            'avgCompletion' => $avg_comp,
+            'avgCompFormatted' => number_format($avg_comp, 2),
+            'avgFinalGrade' => $avg_grade,
+            'avgFinalGradeFormatted' => number_format($avg_grade, 2),
+            'isAttendance' => false,
+            'studentGrades' => $student_grades,
+        ];
+        $kpi_categories_data[$display_name] = $cat_data_record;
+        $kpi_categories_data[$cat_clean_name] = $cat_data_record;
+    }
+
+    if (!empty($module_kpis)) {
+        // Overall Avg KPI Card
+        $course_grades = [];
+        $overall_student_grades = [];
+        foreach ($students_data as $s) {
+            $cg = ($s['grade'] !== null && $s['grade'] !== '') ? (float)$s['grade'] : null;
+            if ($cg !== null) {
+                $course_grades[] = $cg;
+            }
+            $overall_student_grades[] = [
+                'userid' => (int)($s['userid'] ?? $s['id'] ?? 0),
+                'fullname' => $s['name'] ?? $s['fullname'] ?? '',
+                'username' => !empty($s['id']) ? $s['id'] : ($s['idnumber'] ?? $s['username'] ?? ''),
+                'percentage' => $cg,
+                'completionRate' => 100.0,
+                'itemsCompleted' => 1,
+                'totalItems' => 1,
+                'finalGrade' => $cg,
+                'totalEarned' => 0.0,
+            ];
         }
-        unset($sg_entry);
+
+        $overall_avg = !empty($course_grades) ? round(array_sum($course_grades) / count($course_grades), 2) : 0.0;
+        $overall_avg_formatted = number_format($overall_avg, 2);
+
+        // Overall Median
+        $sorted_cg = $course_grades;
+        sort($sorted_cg);
+        $cnt_cg = count($sorted_cg);
+        if ($cnt_cg > 0) {
+            $mid = (int)floor(($cnt_cg - 1) / 2);
+            $overall_median = ($cnt_cg % 2 === 0)
+                ? round(($sorted_cg[$mid] + $sorted_cg[$mid + 1]) / 2, 2)
+                : round($sorted_cg[$mid], 2);
+        } else {
+            $overall_median = 0.0;
+        }
+
+        // Overall rank percentiles
+        usort($overall_student_grades, static function($a, $b) {
+            $scA = $a['percentage'] !== null ? (float)$a['percentage'] : -1.0;
+            $scB = $b['percentage'] !== null ? (float)$b['percentage'] : -1.0;
+            return $scB <=> $scA;
+        });
+        $tot_os = count($overall_student_grades);
+        $prev_osc = null;
+        $prev_op = null;
+        foreach ($overall_student_grades as $osidx => &$osg) {
+            $sc = $osg['percentage'];
+            if ($sc === null) {
+                $p_val = 0;
+            } else {
+                $p_val = $tot_os <= 1 ? 100 : (int)round((($tot_os - $osidx - 1) / ($tot_os - 1)) * 100);
+                if ($prev_osc !== null && $sc == $prev_osc) {
+                    $p_val = $prev_op;
+                }
+            }
+            $osg['percentile'] = $p_val;
+            $prev_osc = $sc;
+            $prev_op = $p_val;
+        }
+        unset($osg);
 
         $overall_cat_record = [
             'categoryname' => 'Overall Avg',
-            'totalItems' => $total_items_all_cats,
-            'avgGrade' => $overall_avg_grade,
-            'avgGradeFormatted' => $overall_avg_grade_formatted,
-            'medianGrade' => $overall_median_grade,
-            'medianGradeFormatted' => $overall_median_grade_formatted,
-            'avgCompletion' => $overall_avg_comp,
-            'avgCompFormatted' => $overall_avg_comp_formatted,
-            'avgFinalGrade' => $overall_avg_final_grade,
-            'avgFinalGradeFormatted' => $overall_avg_final_grade_formatted,
+            'totalItems' => 1,
+            'avgGrade' => $overall_avg,
+            'avgGradeFormatted' => $overall_avg_formatted,
+            'medianGrade' => $overall_median,
+            'medianGradeFormatted' => number_format($overall_median, 2),
+            'avgCompletion' => 100.0,
+            'avgCompFormatted' => '100.00',
+            'avgFinalGrade' => $overall_avg,
+            'avgFinalGradeFormatted' => $overall_avg_formatted,
             'isAttendance' => false,
-            'studentGrades' => $overall_student_grades
+            'studentGrades' => $overall_student_grades,
         ];
         $kpi_categories_data['Overall Avg'] = $overall_cat_record;
         $kpi_categories_data['overall_avg'] = $overall_cat_record;
@@ -1073,29 +854,28 @@ if ($courseid > 0) {
         $overall_kpi = [
             'label' => 'Overall Avg',
             'clean_name' => 'overall_avg',
-            'val'   => $overall_avg_final_grade_formatted . '%',
-            'sub'   => 'Avg Grade · Completion ' . $overall_avg_comp_formatted . '%',
-            'avgGrade' => $overall_avg_grade,
-            'avgGradeFormatted' => $overall_avg_grade_formatted,
-            'medianGrade' => $overall_median_grade,
-            'medianGradeFormatted' => $overall_median_grade_formatted,
-            'avgCompletion' => $overall_avg_comp,
-            'avgCompFormatted' => $overall_avg_comp_formatted,
-            'avgFinalGrade' => $overall_avg_final_grade,
-            'avgFinalGradeFormatted' => $overall_avg_final_grade_formatted,
-            'compClass' => get_ba_comp_class((float)$overall_avg_comp),
+            'val'   => $overall_avg_formatted . '%',
+            'sub'   => 'Avg Grade',
+            'avgGrade' => $overall_avg,
+            'avgGradeFormatted' => $overall_avg_formatted,
+            'medianGrade' => $overall_median,
+            'medianGradeFormatted' => number_format($overall_median, 2),
+            'avgCompletion' => 100.0,
+            'avgCompFormatted' => '100.00',
+            'avgFinalGrade' => $overall_avg,
+            'avgFinalGradeFormatted' => $overall_avg_formatted,
+            'compClass' => 'text-success',
             'icon_bg' => '#eff6ff',
             'icon_svg' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="#2563eb"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>',
             'isAttendance' => false,
-            'isOverall' => true
+            'isOverall' => true,
         ];
-
         array_unshift($module_kpis, $overall_kpi);
     }
 }
 
 // Calculate overall attendance percentage for this module course (displayed in schedule strip)
-$enrolled_userids = array_map(function($s) { return (int)($s->userid ?? $s->id ?? 0); }, $enrolled_students);
+$enrolled_userids = array_map(function($s) { return (int)($s['userid'] ?? $s['id'] ?? 0); }, $students_data);
 $course_attendance_pct = \local_batchanalytics\util::get_course_attendance_percentage($courseid, $enrolled_userids);
 
 // Module Planned Date timestamps (used for both Mentor Activities due dates and SS Activities)
