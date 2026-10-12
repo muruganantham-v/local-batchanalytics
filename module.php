@@ -660,7 +660,12 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         $colkey = $col['key'];
         $display_name = $col['label'];
         $cat_clean_name = preg_replace('/\s*\(\d+\)$/', '', $col['label']);
-                $grades_list = [];
+        $total_items = (int)($col['count'] ?? 0);
+        if ($total_items <= 0 && preg_match('/\((\d+)\)$/', $col['label'], $item_matches)) {
+            $total_items = (int)$item_matches[1];
+        }
+
+        $grades_list = [];
         $comp_list = [];
         $final_grades_list = [];
         $student_grades = [];
@@ -668,12 +673,13 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             $cdata = $s['categories'][$colkey] ?? null;
             $g = ($cdata && $cdata['grade'] !== null && $cdata['grade'] !== '') ? (float)$cdata['grade'] : null;
             $comp = ($cdata && $cdata['completion'] !== null && $cdata['completion'] !== '') ? (float)$cdata['completion'] : 0.0;
-            $completed_items = $total_items > 0 ? (int)round(($comp / 100) * $total_items) : 0;
+            $stu_tot_items = (isset($cdata['items']) && (int)$cdata['items'] > 0) ? (int)$cdata['items'] : $total_items;
+            $completed_items = isset($cdata['completed']) ? (int)$cdata['completed'] : ($stu_tot_items > 0 ? (int)round(($comp / 100) * $stu_tot_items) : 0);
 
             if ($g !== null) {
                 $grades_list[] = $g;
-                $cat_final = ($total_items > 0)
-                    ? round(($g * $completed_items) / $total_items, 2)
+                $cat_final = ($stu_tot_items > 0)
+                    ? round(($g * $completed_items) / $stu_tot_items, 2)
                     : round(($g * $comp) / 100, 2);
                 $final_grades_list[] = $cat_final;
             } else {
@@ -688,7 +694,7 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
                 'percentage' => $g,
                 'completionRate' => $comp,
                 'itemsCompleted' => $completed_items,
-                'totalItems' => $total_items,
+                'totalItems' => $stu_tot_items,
                 'finalGrade' => $cat_final,
                 'totalEarned' => 0.0,
             ];

@@ -1886,10 +1886,15 @@
 
             // Total items count for category
             var catTotalItems = 0;
-            if (cat && cat.totalItems !== undefined) {
-                catTotalItems = parseInt(cat.totalItems, 10) || 0;
-            } else if (hasStudentData && studentGrades[0].totalItems !== undefined) {
-                catTotalItems = parseInt(studentGrades[0].totalItems, 10) || 0;
+            if (cat && cat.totalItems !== undefined && parseInt(cat.totalItems, 10) > 0) {
+                catTotalItems = parseInt(cat.totalItems, 10);
+            } else if (hasStudentData && studentGrades[0].totalItems !== undefined && parseInt(studentGrades[0].totalItems, 10) > 0) {
+                catTotalItems = parseInt(studentGrades[0].totalItems, 10);
+            } else {
+                var catCountMatch = cname.match(/\((\d+)\)$/);
+                if (catCountMatch) {
+                    catTotalItems = parseInt(catCountMatch[1], 10) || 0;
+                }
             }
 
             var fgSum = 0;
@@ -1999,8 +2004,13 @@
                 studentGrades.forEach(function(s) {
                     var compNum = s.completionRate !== undefined ? parseFloat(s.completionRate) : 0;
                     var compFormatted = (compNum % 1 === 0) ? compNum.toFixed(0) : compNum.toFixed(2);
-                    var totItems = (s.totalItems !== undefined && s.totalItems > 0) ? s.totalItems : catTotalItems;
-                    var itemsComp = s.itemsCompleted !== undefined ? s.itemsCompleted : 0;
+                    var totItems = (s.totalItems !== undefined && parseInt(s.totalItems, 10) > 0) ? parseInt(s.totalItems, 10) : catTotalItems;
+                    var itemsComp = (s.itemsCompleted !== undefined && s.itemsCompleted !== null && parseInt(s.itemsCompleted, 10) >= 0 && (s.totalItems !== undefined && parseInt(s.totalItems, 10) > 0))
+                        ? parseInt(s.itemsCompleted, 10)
+                        : (totItems > 0 ? Math.round((compNum / 100) * totItems) : 0);
+                    if (compNum === 0) {
+                        itemsComp = 0;
+                    }
 
                     var displayMetric = (s.percentage === null || s.percentage === undefined)
                         ? '—'

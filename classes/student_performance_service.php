@@ -126,7 +126,12 @@ class student_performance_service {
                 $completion = $metric && $metric['items'] > 0
                     ? round(($metric['completed'] / $metric['items']) * 100, 2)
                     : null;
-                $student['categories'][$key] = ['grade' => $grade, 'completion' => $completion];
+                $student['categories'][$key] = [
+                    'grade' => $grade,
+                    'completion' => $completion,
+                    'completed' => $metric ? (int)($metric['completed'] ?? 0) : 0,
+                    'items' => $metric ? (int)($metric['items'] ?? 0) : 0,
+                ];
                 if ($grade !== null && empty($column['ismaac']) && empty($column['isattendance'])) {
                     $overall[] = $grade;
                 }
