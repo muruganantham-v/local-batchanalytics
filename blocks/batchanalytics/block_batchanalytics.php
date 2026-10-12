@@ -147,9 +147,9 @@ class block_batchanalytics extends block_base {
                 $html .= '    <div style="font-size:18px; font-weight:800; color:#b45309;">' . $pending . '</div>';
                 $html .= '    <div style="font-size:11px; color:#b45309; font-weight:600;">Pending</div>';
                 $html .= '  </div>';
-                $html .= '  <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:8px 4px;">';
-                $html .= '    <div style="font-size:18px; font-weight:800; color:#b91c1c;">' . $overdue . '</div>';
-                $html .= '    <div style="font-size:11px; color:#b91c1c; font-weight:600;">Overdue</div>';
+                $html .= '  <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:8px 4px;">';
+                $html .= '    <div style="font-size:18px; font-weight:800; color:#c2410c;">' . $overdue . '</div>';
+                $html .= '    <div style="font-size:11px; color:#c2410c; font-weight:600;">Overdue</div>';
                 $html .= '  </div>';
                 $html .= '</div>';
             } catch (\Throwable $e) {

@@ -1902,6 +1902,13 @@ input:checked+.ba-slider:before {
 .ba-batch-page .st-a::before { background: var(--amber); }
 .ba-batch-page .st-r { background: var(--red-bg); color: var(--red); }
 .ba-batch-page .st-r::before { background: var(--red); }
+.ba-batch-page #panel-ss .st-r {
+  background: #ffedd5;
+  color: #c2410c;
+}
+.ba-batch-page #panel-ss .st-r::before {
+  background: #ea580c;
+}
 .ba-batch-page .st-n { background: #eef1f4; color: #8a9097; }
 .ba-batch-page .st-n::before { background: #b3b9bf; }
 .ba-batch-page .st-b { background: #e0f2fe; color: #0369a1; }
@@ -2664,6 +2671,18 @@ input:checked+.ba-slider:before {
 }
 .ba-module-page .st-r::before {
   background: var(--red, #c0392b);
+}
+/* Overdue status badges for Mentor Activities and SS Activities */
+.ba-module-page .ba-mentor-action-badge.st-r,
+.ba-module-page #panel-mentor .st-r,
+.ba-module-page #panel-ssact .st-r {
+  background: #ffedd5;
+  color: #c2410c;
+}
+.ba-module-page .ba-mentor-action-badge.st-r::before,
+.ba-module-page #panel-mentor .st-r::before,
+.ba-module-page #panel-ssact .st-r::before {
+  background: #ea580c;
 }
 .ba-module-page .st-n {
   background: #eef1f4;
