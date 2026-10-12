@@ -300,7 +300,7 @@ class admin_setting_mentor_master_activities extends \admin_setting {
     var actKey = keyInput ? keyInput.value.trim() : '';
     var displayName = actName || actKey || 'this activity';
 
-    var confirmMsg = 'Are you sure you want to delete "' + displayName + '"?\n\nIt will also be removed from all course grouping rules.';
+    var confirmMsg = 'Are you sure you want to delete "' + displayName + '"?\\n\\nIt will also be removed from all course grouping rules.';
     if (!confirm(confirmMsg)) {
       return;
     }
@@ -347,7 +347,7 @@ class admin_setting_mentor_master_activities extends \admin_setting {
   });
 })();
 
-function baMentorMasterAddRow(id) {
+window.baMentorMasterAddRow = function (id) {
   var tbody = document.getElementById(id + '_tbody');
   var tr = document.createElement('tr');
   tr.setAttribute('draggable', 'true');
