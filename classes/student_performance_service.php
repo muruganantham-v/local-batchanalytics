@@ -113,6 +113,8 @@ class student_performance_service {
             $student['attendance'] = isset($student_attendance[$userid]) ? $student_attendance[$userid] : null;
             $student['categories'] = [];
             $overall = [];
+            $total_completed = 0;
+            $total_items = 0;
             foreach ($columns as $key => $column) {
                 $metric = $values[$userid][$key] ?? null;
                 $grade = $metric && $metric['maximum'] > 0
@@ -125,8 +127,12 @@ class student_performance_service {
                     ? round(($metric['completed'] / $metric['items']) * 100, 2)
                     : null;
                 $student['categories'][$key] = ['grade' => $grade, 'completion' => $completion];
-                if ($grade !== null && empty($column['ismaac'])) {
+                if ($grade !== null && empty($column['ismaac']) && empty($column['isattendance'])) {
                     $overall[] = $grade;
+                }
+                if (empty($column['ismaac']) && empty($column['isattendance']) && !empty($metric['items'])) {
+                    $total_completed += (int)($metric['completed'] ?? 0);
+                    $total_items += (int)$metric['items'];
                 }
             }
             // Use Moodle Course Total grade if available; fallback to category average
@@ -135,6 +141,13 @@ class student_performance_service {
             } else {
                 $student['grade'] = !empty($overall) ? round(array_sum($overall) / count($overall), 2) : null;
             }
+            // Overall activity completion percentage across all module activities
+            $student['completion'] = $total_items > 0
+                ? round(($total_completed / $total_items) * 100, 2)
+                : 0.0;
+            $student['completion_pct'] = $student['completion'];
+            $student['completed_items'] = $total_completed;
+            $student['total_items'] = $total_items;
             $student['custom'] = [];
             foreach ($customgroups as $group) {
                 foreach ($group['columns'] as $column) {

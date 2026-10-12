@@ -906,8 +906,8 @@
                         res = nameA.localeCompare(nameB);
                         break;
                     case 'grade':
-                        var grA = Number(a.grade) || 0;
-                        var grB = Number(b.grade) || 0;
+                        var grA = perfMode === 'grade' ? (Number(a.grade) || 0) : ((a.completion !== undefined && a.completion !== null) ? Number(a.completion) : (Number(a.grade) || 0));
+                        var grB = perfMode === 'grade' ? (Number(b.grade) || 0) : ((b.completion !== undefined && b.completion !== null) ? Number(b.completion) : (Number(b.grade) || 0));
                         res = grA - grB;
                         break;
                     case 'attendance':
@@ -931,8 +931,8 @@
                         res = tstA - tstB;
                         break;
                     case 'band':
-                        var bA = Number(a.grade) || 0;
-                        var bB = Number(b.grade) || 0;
+                        var bA = perfMode === 'grade' ? (Number(a.grade) || 0) : ((a.completion !== undefined && a.completion !== null) ? Number(a.completion) : (Number(a.grade) || 0));
+                        var bB = perfMode === 'grade' ? (Number(b.grade) || 0) : ((b.completion !== undefined && b.completion !== null) ? Number(b.completion) : (Number(b.grade) || 0));
                         res = bA - bB;
                         break;
                     case 'merit':
@@ -999,8 +999,12 @@
 
         function getOverallDisplayValue(student, percentiles) {
             if (perfMode === 'percentile') {
-                var percentile = (percentiles && student && student._origIdx !== undefined) ? percentiles[student._origIdx] : undefined;
-                return (percentile === undefined || isNaN(percentile)) ? '&mdash;' : percentile + '%';
+                if (!student || student.completion === null || student.completion === undefined || student.completion === '') {
+                    var percentile = (percentiles && student && student._origIdx !== undefined) ? percentiles[student._origIdx] : undefined;
+                    return (percentile === undefined || isNaN(percentile)) ? '&mdash;' : percentile + '%';
+                }
+                var cnum = parseFloat(student.completion);
+                return isNaN(cnum) ? '&mdash;' : escapeHtml(cnum.toFixed(1) + '%');
             }
             if (!student || student.grade === null || student.grade === undefined || student.grade === '') {
                 return '&mdash;';
@@ -1030,12 +1034,20 @@
                 });
             }
 
-            // Percentile mode: Top 15%, Middle 70%, Bottom 15% by score rank
+            // Completion % mode: Top 15%, Middle 70%, Bottom 15% by completion rate
             var indexed = students.map(function(s, idx) {
-                return { idx: idx, grade: Number(s.grade) || 0 };
+                var compVal = (s.completion !== undefined && s.completion !== null && s.completion !== '') ? Number(s.completion) : null;
+                return {
+                    idx: idx,
+                    completion: compVal !== null ? compVal : (Number(s.grade) || 0),
+                    grade: Number(s.grade) || 0
+                };
             });
 
             indexed.sort(function(a, b) {
+                if (b.completion !== a.completion) {
+                    return b.completion - a.completion;
+                }
                 return b.grade - a.grade;
             });
 
@@ -1067,19 +1079,19 @@
             var meta = {
                 top: {
                     title: perfMode === 'grade' ? 'Top Performers' : 'Top 15%',
-                    sub: perfMode === 'grade' ? 'Overall Grade > 70%' : 'Top 15% by class rank',
+                    sub: perfMode === 'grade' ? 'Overall Grade > 70%' : 'Top 15% by completion',
                     color: '#16a34a',
                     dotClass: 'var(--green, #1e8e4e)'
                 },
                 mid: {
                     title: perfMode === 'grade' ? 'Middle Performers' : 'Middle 70%',
-                    sub: perfMode === 'grade' ? 'Overall Grade 40% – 70%' : 'Middle 70% by class rank',
+                    sub: perfMode === 'grade' ? 'Overall Grade 40% – 70%' : 'Middle 70% by completion',
                     color: '#d97706',
                     dotClass: 'var(--amber, #c77a0a)'
                 },
                 bot: {
                     title: perfMode === 'grade' ? 'Low Performers' : 'Bottom 15%',
-                    sub: perfMode === 'grade' ? 'Overall Grade < 40%' : 'Bottom 15% by class rank',
+                    sub: perfMode === 'grade' ? 'Overall Grade < 40%' : 'Bottom 15% by completion',
                     color: '#dc2626',
                     dotClass: 'var(--red, #c0392b)'
                 }
@@ -1155,6 +1167,9 @@
                 }
                 if (col === 'grade') {
                     if (perfMode === 'percentile') {
+                        if (student.completion !== undefined && student.completion !== null && student.completion !== '') {
+                            return parseFloat(student.completion) || 0;
+                        }
                         var p = (percentileValues && percentileValues[student._origIdx] !== undefined) ? percentileValues[student._origIdx] : -1;
                         return p;
                     }
@@ -1362,9 +1377,9 @@
                 mid: ['Middle Performers', 'grade 40–70'],
                 bot: ['Low Performers', 'grade &lt; 40']
             } : {
-                top: ['Top 15%', 'by rank'],
-                mid: ['Middle 70%', 'by rank'],
-                bot: ['Bottom 15%', 'by rank']
+                top: ['Top 15%', 'by completion'],
+                mid: ['Middle 70%', 'by completion'],
+                bot: ['Bottom 15%', 'by completion']
             };
 
             if (bandrow) {
