@@ -44,8 +44,9 @@ class student_performance_service {
         $customgroups = [];
         $customvalues = [];
         $trenddetails = [];
+        $course_totals = [];
         foreach (array_unique(array_filter(array_map('intval', $courseids))) as $courseid) {
-            foreach ($this->get_course_categories($courseid, $userids) as $category) {
+            foreach ($this->get_course_categories($courseid, $userids, $course_totals) as $category) {
                 $name = $category['name'];
                 $key = 'category_' . substr(sha1(strtolower($name)), 0, 12);
                 if (!isset($columns[$key])) {
@@ -73,10 +74,21 @@ class student_performance_service {
         // Reorder columns: configured categories in defined order, then others, and MAAC Ratings always last
         $ordered_keys = [];
         $configured_cats = (new activity_tracker_service())->get_configured_categories();
-        foreach (array_keys($configured_cats) as $cname) {
-            $ckey = 'category_' . substr(sha1(strtolower($cname)), 0, 12);
-            if (isset($columns[$ckey])) {
-                $ordered_keys[] = $ckey;
+        $conf_names = array_keys($configured_cats);
+        foreach ($conf_names as $cname) {
+            $cname_clean = strtolower(trim($cname));
+            foreach ($columns as $ckey => $col) {
+                if (in_array($ckey, $ordered_keys, true) || !empty($col['ismaac'])) {
+                    continue;
+                }
+                $label_clean = strtolower(trim($col['label']));
+                if ($label_clean === $cname_clean
+                    || rtrim($label_clean, 's') === rtrim($cname_clean, 's')
+                    || stripos($label_clean, $cname_clean) !== false
+                    || stripos($cname_clean, $label_clean) !== false) {
+                    $ordered_keys[] = $ckey;
+                    break;
+                }
             }
         }
         foreach (array_keys($columns) as $ckey) {
@@ -117,7 +129,12 @@ class student_performance_service {
                     $overall[] = $grade;
                 }
             }
-            $student['grade'] = !empty($overall) ? round(array_sum($overall) / count($overall), 2) : null;
+            // Use Moodle Course Total grade if available; fallback to category average
+            if (isset($course_totals[$userid]) && $course_totals[$userid]['maximum'] > 0) {
+                $student['grade'] = round(($course_totals[$userid]['earned'] / $course_totals[$userid]['maximum']) * 100, 2);
+            } else {
+                $student['grade'] = !empty($overall) ? round(array_sum($overall) / count($overall), 2) : null;
+            }
             $student['custom'] = [];
             foreach ($customgroups as $group) {
                 foreach ($group['columns'] as $column) {
@@ -222,17 +239,225 @@ class student_performance_service {
 
     /**
      * Mirrors the Course tab Advanced Filter category, grade, and completion calculation.
+     * Uses Moodle Gradebook native categories and aggregated grades for 100% parity.
      *
      * @param int $courseid
      * @param int[] $userids
+     * @param array $course_totals [userid => ['earned' => float, 'maximum' => float]]
      * @return array
      */
-    private function get_course_categories(int $courseid, array $userids): array {
+    private function get_course_categories(int $courseid, array $userids, array &$course_totals = []): array {
         global $DB;
 
+        $allcategories = $DB->get_records('grade_categories', ['courseid' => $courseid]);
+        if (empty($allcategories)) {
+            return [];
+        }
+
+        // Fetch top-level categories under course root (depth = 2) ordered by grade_item sortorder
+        $sql_top = "
+            SELECT gc.id, gc.fullname, gi.id AS gradeitemid, gi.grademax, gi.grademin, gi.sortorder
+              FROM {grade_categories} gc
+              JOIN {grade_items} gi ON gi.iteminstance = gc.id AND gi.itemtype = 'category'
+             WHERE gc.courseid = :courseid AND gc.depth = 2
+          ORDER BY gi.sortorder ASC, gc.id ASC
+        ";
+        $topcats = $DB->get_records_sql($sql_top, ['courseid' => $courseid]);
+
+        // If top-level categories exist, use Gradebook-First aggregation
+        if (!empty($topcats)) {
+            // Find all descendant category IDs for each top category
+            $cat_descendants = [];
+            foreach ($topcats as $tc) {
+                $descendants = [(int)$tc->id];
+                foreach ($allcategories as $c) {
+                    $path_parts = array_map('intval', array_filter(explode('/', trim((string)$c->path, '/'))));
+                    if (in_array((int)$tc->id, $path_parts, true)) {
+                        $descendants[] = (int)$c->id;
+                    }
+                }
+                $cat_descendants[$tc->id] = array_values(array_unique($descendants));
+            }
+
+            // Fetch all gradable activity items in the course (mod, manual)
+            $act_items_sql = "
+                SELECT gi.id, gi.categoryid, gi.grademax, gi.grademin
+                  FROM {grade_items} gi
+                 WHERE gi.courseid = :courseid
+                   AND gi.itemtype IN ('mod', 'manual')
+            ";
+            $all_act_items = $DB->get_records_sql($act_items_sql, ['courseid' => $courseid]);
+
+            $topcat_items = [];
+            foreach ($topcats as $tc) {
+                $topcat_items[$tc->id] = [];
+            }
+            foreach ($all_act_items as $item) {
+                foreach ($cat_descendants as $tcid => $desc_ids) {
+                    if (in_array((int)$item->categoryid, $desc_ids, true)) {
+                        $topcat_items[$tcid][] = $item;
+                        break;
+                    }
+                }
+            }
+
+            // Fetch category grades
+            list($usersql, $params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'usr');
+            $params['courseid'] = $courseid;
+
+            $cat_item_ids = array_map(function($tc) { return (int)$tc->gradeitemid; }, $topcats);
+            list($cat_gi_sql, $cat_gi_params) = $DB->get_in_or_equal($cat_item_ids, SQL_PARAMS_NAMED, 'catgi');
+            $all_params = array_merge($params, $cat_gi_params);
+
+            $cat_grades_sql = "
+                SELECT gg.userid, gg.itemid, gg.finalgrade
+                  FROM {grade_grades} gg
+                 WHERE gg.itemid $cat_gi_sql
+                   AND gg.userid $usersql
+                   AND gg.finalgrade IS NOT NULL
+                   AND gg.hidden = 0
+            ";
+            $cat_grades_rs = $DB->get_recordset_sql($cat_grades_sql, $all_params);
+            $user_cat_grades = [];
+            foreach ($cat_grades_rs as $row) {
+                $user_cat_grades[(int)$row->userid][(int)$row->itemid] = (float)$row->finalgrade;
+            }
+            $cat_grades_rs->close();
+
+            // Fetch activity grades to count completed items per user
+            $act_item_ids = array_keys($all_act_items);
+            $user_act_completed = [];
+            if (!empty($act_item_ids)) {
+                list($act_gi_sql, $act_gi_params) = $DB->get_in_or_equal($act_item_ids, SQL_PARAMS_NAMED, 'actgi');
+                $act_params = array_merge($params, $act_gi_params);
+                $act_grades_sql = "
+                    SELECT gg.userid, gg.itemid
+                      FROM {grade_grades} gg
+                     WHERE gg.itemid $act_gi_sql
+                       AND gg.userid $usersql
+                       AND gg.finalgrade IS NOT NULL
+                       AND gg.hidden = 0
+                ";
+                $act_grades_rs = $DB->get_recordset_sql($act_grades_sql, $act_params);
+                foreach ($act_grades_rs as $row) {
+                    $user_act_completed[(int)$row->userid][(int)$row->itemid] = true;
+                }
+                $act_grades_rs->close();
+            }
+
+            // Build categories structure
+            $categories = [];
+            foreach ($topcats as $tc) {
+                $cname = trim($tc->fullname);
+                if (stripos($cname, 'attend') !== false) {
+                    continue; // Attendance has dedicated column
+                }
+
+                $items_in_cat = $topcat_items[$tc->id] ?? [];
+                $itemcount = count($items_in_cat);
+                $grademax = (float)$tc->grademax;
+                $grademin = (float)$tc->grademin;
+                $range = $grademax - $grademin;
+
+                $student_metrics = [];
+                foreach ($userids as $userid) {
+                    $has_grade = isset($user_cat_grades[$userid][$tc->gradeitemid]);
+                    $finalgrade = $has_grade ? $user_cat_grades[$userid][$tc->gradeitemid] : null;
+
+                    $completed_count = 0;
+                    foreach ($items_in_cat as $it) {
+                        if (!empty($user_act_completed[$userid][$it->id])) {
+                            $completed_count++;
+                        }
+                    }
+
+                    if ($has_grade && $range > 0) {
+                        $student_metrics[$userid] = [
+                            'earned' => $finalgrade - $grademin,
+                            'maximum' => $range,
+                            'completed' => $completed_count,
+                            'items' => $itemcount,
+                        ];
+                    } else {
+                        $student_metrics[$userid] = [
+                            'earned' => 0.0,
+                            'maximum' => 0.0,
+                            'completed' => $completed_count,
+                            'items' => $itemcount,
+                        ];
+                    }
+                }
+
+                $categories[$cname] = [
+                    'name' => $cname,
+                    'isattendance' => false,
+                    'ismaac' => false,
+                    'itemcount' => $itemcount,
+                    'students' => $student_metrics,
+                ];
+            }
+
+            // Add Course Total for Course Grade and MAAC Ratings
+            $course_gi = $DB->get_record('grade_items', ['courseid' => $courseid, 'itemtype' => 'course']);
+            if ($course_gi) {
+                $course_range = (float)$course_gi->grademax - (float)$course_gi->grademin;
+                $c_grades_sql = "
+                    SELECT gg.userid, gg.finalgrade
+                      FROM {grade_grades} gg
+                     WHERE gg.itemid = :itemid
+                       AND gg.userid $usersql
+                       AND gg.finalgrade IS NOT NULL
+                       AND gg.hidden = 0
+                ";
+                $c_rs = $DB->get_recordset_sql($c_grades_sql, ['itemid' => $course_gi->id] + $params);
+                $user_course_grades = [];
+                foreach ($c_rs as $r) {
+                    $user_course_grades[(int)$r->userid] = (float)$r->finalgrade;
+                }
+                $c_rs->close();
+
+                $maac_metrics = [];
+                foreach ($userids as $userid) {
+                    $has_c = isset($user_course_grades[$userid]);
+                    $cg = $has_c ? $user_course_grades[$userid] : null;
+                    if ($has_c && $course_range > 0) {
+                        $earned = $cg - (float)$course_gi->grademin;
+                        $maac_metrics[$userid] = [
+                            'earned' => $earned,
+                            'maximum' => $course_range,
+                            'completed' => 1,
+                            'items' => 1,
+                        ];
+                        if (!isset($course_totals[$userid])) {
+                            $course_totals[$userid] = ['earned' => 0.0, 'maximum' => 0.0];
+                        }
+                        $course_totals[$userid]['earned'] += $earned;
+                        $course_totals[$userid]['maximum'] += $course_range;
+                    } else {
+                        $maac_metrics[$userid] = [
+                            'earned' => 0.0,
+                            'maximum' => 0.0,
+                            'completed' => 0,
+                            'items' => 1,
+                        ];
+                    }
+                }
+
+                $categories['MAAC Ratings'] = [
+                    'name' => 'MAAC Ratings',
+                    'isattendance' => false,
+                    'ismaac' => true,
+                    'itemcount' => 1,
+                    'students' => $maac_metrics,
+                ];
+            }
+
+            return $categories;
+        }
+
+        // Fallback for courses without top-level grade categories:
         $act_service = new activity_tracker_service();
         $configured_categories = $act_service->get_configured_categories();
-        $allcategories = $DB->get_records('grade_categories', ['courseid' => $courseid]);
 
         $itemssql = "SELECT gi.id AS itemid, gi.itemtype, gi.itemmodule, gi.itemname, gi.grademax, gi.grademin,
                             gc.id AS categoryid, gc.fullname AS categoryname
@@ -244,7 +469,6 @@ class student_performance_service {
                    ORDER BY gi.sortorder ASC, gi.id ASC";
         $gradeitems = $DB->get_records_sql($itemssql, ['courseid' => $courseid]);
 
-        // Initialize configured tracker categories in order
         $categories = [];
         foreach (array_keys($configured_categories) as $cname) {
             $categories[$cname] = [
@@ -256,7 +480,6 @@ class student_performance_service {
         }
 
         $maac_category = null;
-
         foreach ($gradeitems as $item) {
             if ($item->itemtype === 'course') {
                 if ($maac_category === null) {
@@ -275,7 +498,6 @@ class student_performance_service {
                 continue;
             }
 
-            // Group activity grade items using the configured tracker categories
             $matched = $act_service->resolve_grade_item_category($item, $allcategories);
             if ($matched !== null && isset($categories[$matched])) {
                 $categories[$matched]['items'][] = [
@@ -286,12 +508,10 @@ class student_performance_service {
             }
         }
 
-        // Only keep categories that have items in this course (skip empty categories)
         $active_categories = array_filter($categories, static function(array $cat): bool {
             return !empty($cat['items']);
         });
 
-        // Append MAAC Ratings at the end of the activity categories
         if ($maac_category !== null && !empty($maac_category['items'])) {
             $active_categories['MAAC Ratings'] = $maac_category;
         }
@@ -339,7 +559,6 @@ class student_performance_service {
                 }
             }
             foreach ($userids as $userid) {
-                // If student is not enrolled in this course and has no recorded grades, keep them separate!
                 if (empty($enrolled_map[$userid]) && empty($grades[$userid])) {
                     continue;
                 }
@@ -416,7 +635,7 @@ class student_performance_service {
         $result = [];
         foreach ($user_atts as $uid => $pct_list) {
             if (!empty($pct_list)) {
-                $result[$uid] = round(array_sum($pct_list) / count($pct_list), 1);
+                $result[$uid] = round(array_sum($pct_list) / count($pct_list), 2);
             }
         }
 
