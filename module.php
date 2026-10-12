@@ -660,12 +660,10 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         $colkey = $col['key'];
         $display_name = $col['label'];
         $cat_clean_name = preg_replace('/\s*\(\d+\)$/', '', $col['label']);
-        $total_items = (int)($col['count'] ?? 0);
-
-        $grades_list = [];
+                $grades_list = [];
         $comp_list = [];
+        $final_grades_list = [];
         $student_grades = [];
-
         foreach ($students_data as $s) {
             $cdata = $s['categories'][$colkey] ?? null;
             $g = ($cdata && $cdata['grade'] !== null && $cdata['grade'] !== '') ? (float)$cdata['grade'] : null;
@@ -674,6 +672,12 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
 
             if ($g !== null) {
                 $grades_list[] = $g;
+                $cat_final = ($total_items > 0)
+                    ? round(($g * $completed_items) / $total_items, 2)
+                    : round(($g * $comp) / 100, 2);
+                $final_grades_list[] = $cat_final;
+            } else {
+                $cat_final = null;
             }
             $comp_list[] = $comp;
 
@@ -685,13 +689,14 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
                 'completionRate' => $comp,
                 'itemsCompleted' => $completed_items,
                 'totalItems' => $total_items,
-                'finalGrade' => $g,
+                'finalGrade' => $cat_final,
                 'totalEarned' => 0.0,
             ];
         }
 
         $avg_grade = !empty($grades_list) ? round(array_sum($grades_list) / count($grades_list), 2) : 0.0;
         $avg_comp = !empty($comp_list) ? round(array_sum($comp_list) / count($comp_list), 2) : 0.0;
+        $avg_final_grade = !empty($final_grades_list) ? round(array_sum($final_grades_list) / count($final_grades_list), 2) : 0.0;
 
         // Median Grade
         $sorted_grades = $grades_list;
@@ -745,8 +750,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             'medianGradeFormatted' => number_format($median_grade, 2),
             'avgCompletion' => $avg_comp,
             'avgCompFormatted' => number_format($avg_comp, 2),
-            'avgFinalGrade' => $avg_grade,
-            'avgFinalGradeFormatted' => number_format($avg_grade, 2),
+            'avgFinalGrade' => $avg_final_grade,
+            'avgFinalGradeFormatted' => number_format($avg_final_grade, 2),
             'compClass' => get_ba_comp_class((float)$avg_comp),
             'icon_bg' => $style['bg'],
             'icon_svg' => $style['icon'],
@@ -762,8 +767,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             'medianGradeFormatted' => number_format($median_grade, 2),
             'avgCompletion' => $avg_comp,
             'avgCompFormatted' => number_format($avg_comp, 2),
-            'avgFinalGrade' => $avg_grade,
-            'avgFinalGradeFormatted' => number_format($avg_grade, 2),
+            'avgFinalGrade' => $avg_final_grade,
+            'avgFinalGradeFormatted' => number_format($avg_final_grade, 2),
             'isAttendance' => false,
             'studentGrades' => $student_grades,
         ];
@@ -775,6 +780,7 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         // Overall Avg KPI Card
         $course_grades = [];
         $overall_comp_list = [];
+        $overall_final_grades = [];
         $overall_student_grades = [];
         $total_course_items = 0;
 
@@ -789,6 +795,12 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
 
             if ($cg !== null) {
                 $course_grades[] = $cg;
+                $final_cg = ($t_items > 0)
+                    ? round(($cg * $c_items) / $t_items, 2)
+                    : round(($cg * $comp) / 100, 2);
+                $overall_final_grades[] = $final_cg;
+            } else {
+                $final_cg = null;
             }
             $overall_comp_list[] = $comp;
 
@@ -800,7 +812,7 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
                 'completionRate' => $comp,
                 'itemsCompleted' => $c_items,
                 'totalItems' => $t_items,
-                'finalGrade' => $cg,
+                'finalGrade' => $final_cg,
                 'totalEarned' => 0.0,
             ];
         }
@@ -809,6 +821,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         $overall_avg_formatted = number_format($overall_avg, 2);
         $overall_avg_comp = !empty($overall_comp_list) ? round(array_sum($overall_comp_list) / count($overall_comp_list), 2) : 0.0;
         $overall_avg_comp_formatted = number_format($overall_avg_comp, 2);
+        $overall_avg_final = !empty($overall_final_grades) ? round(array_sum($overall_final_grades) / count($overall_final_grades), 2) : 0.0;
+        $overall_avg_final_formatted = number_format($overall_avg_final, 2);
 
         // Overall Median
         $sorted_cg = $course_grades;
@@ -857,8 +871,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             'medianGradeFormatted' => number_format($overall_median, 2),
             'avgCompletion' => $overall_avg_comp,
             'avgCompFormatted' => $overall_avg_comp_formatted,
-            'avgFinalGrade' => $overall_avg,
-            'avgFinalGradeFormatted' => $overall_avg_formatted,
+            'avgFinalGrade' => $overall_avg_final,
+            'avgFinalGradeFormatted' => $overall_avg_final_formatted,
             'isAttendance' => false,
             'studentGrades' => $overall_student_grades,
         ];
@@ -876,8 +890,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
             'medianGradeFormatted' => number_format($overall_median, 2),
             'avgCompletion' => $overall_avg_comp,
             'avgCompFormatted' => $overall_avg_comp_formatted,
-            'avgFinalGrade' => $overall_avg,
-            'avgFinalGradeFormatted' => $overall_avg_formatted,
+            'avgFinalGrade' => $overall_avg_final,
+            'avgFinalGradeFormatted' => $overall_avg_final_formatted,
             'compClass' => get_ba_comp_class((float)$overall_avg_comp),
             'icon_bg' => '#eff6ff',
             'icon_svg' => '<svg width="24" height="24" viewBox="0 0 24 24" fill="#2563eb"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>',
@@ -1211,11 +1225,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <?php else: ?>
       <?php foreach ($module_kpis as $kpi): ?>
         <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>"
-             data-grade="<?= s($kpi['avgFinalGradeFormatted']) ?>%"
+             data-grade="<?= s($kpi['avgGradeFormatted']) ?>%"
              data-percentile="<?= s($kpi['avgCompFormatted']) ?>%"
              data-is-overall="<?= !empty($kpi['isOverall']) ? '1' : '0' ?>"
              role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-          <div class="kv"><?= s($kpi['avgFinalGradeFormatted']) ?>%</div>
+          <div class="kv"><?= s($kpi['avgGradeFormatted']) ?>%</div>
           <div class="kl"><?= !empty($kpi['isOverall']) ? 'Avg Grade' : s($kpi['label']) ?></div>
         </div>
       <?php endforeach; ?>
