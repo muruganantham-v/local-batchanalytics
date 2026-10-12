@@ -49,6 +49,14 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         }
 
         $this->config_write($this->name, json_encode($rules));
+
+        // Automatically sync all existing courses mapped in active class sections to updated group rules
+        try {
+            mentor_activity_service::sync_all_courses_from_class_sections();
+        } catch (\Throwable $e) {
+            // Avoid failing the admin settings save if a background sync issue occurs
+        }
+
         return '';
     }
 
@@ -200,8 +208,17 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         $group = htmlspecialchars((string)($rule['group'] ?? ''), ENT_QUOTES);
         $assigned_acts = (array)($rule['activities'] ?? []);
 
-        $html = '<tr draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
-        $html .= '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>';
+        // Track keys already assigned in this group
+        $assigned_keys = [];
+        foreach ($assigned_acts as $assigned) {
+            $k = is_array($assigned) ? ($assigned['key'] ?? '') : (string)$assigned;
+            if ($k !== '') {
+                $assigned_keys[$k] = true;
+            }
+        }
+
+        $html = '<tr class="ba-group-row" draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
+        $html .= '<td class="ba-group-drag-handle" style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px;cursor:grab;">&#8942;&#8942;</td>';
         $html .= '<td style="padding:6px 8px;vertical-align:top">';
         $html .= '<input type="text" class="ba-mentor-group-name form-control form-control-sm" value="'
             . $group . '" placeholder="e.g. Advanced C" style="font-size:0.88em;font-weight:600;">';
@@ -210,15 +227,23 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
 
         $html .= '<td style="padding:6px 8px;vertical-align:top">';
 
-        // Top toolbar: select activity + due days + add button
+        // Top toolbar: select activity + due days + add button (filter out already-assigned activities)
         $html .= '<div class="ba-act-add-bar" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">';
-        $html .= '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:220px;font-size:0.85em;">';
+        $html .= '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:240px;font-size:0.85em;">';
+
+        $has_available = false;
         foreach ($all_acts as $act) {
             $act_key = htmlspecialchars($act['key'], ENT_QUOTES);
             $act_name = htmlspecialchars($act['name'], ENT_QUOTES);
-            $html .= '<option value="' . $act_key . '" data-name="' . $act_name . '">'
-                . $act_name . ' (' . $act_key . ')'
-                . '</option>';
+            if (!isset($assigned_keys[$act['key']])) {
+                $has_available = true;
+                $html .= '<option value="' . $act_key . '" data-name="' . $act_name . '">'
+                    . $act_name . ' (' . $act_key . ')'
+                    . '</option>';
+            }
+        }
+        if (!$has_available) {
+            $html .= '<option value="" disabled selected>(All activities assigned)</option>';
         }
         $html .= '</select>';
 
@@ -228,13 +253,15 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         $html .= '<span style="font-size:12px;color:#4b5563;">working days</span>';
         $html .= '</div>';
 
-        $html .= '<button type="button" class="btn btn-secondary btn-sm ba-btn-add-activity" onclick="baAddActivityToGroup(this);" style="padding:2px 8px;font-size:12px;">+ Add Activity</button>';
+        $disabled_attr = $has_available ? '' : ' disabled';
+        $html .= '<button type="button" class="btn btn-secondary btn-sm ba-btn-add-activity" onclick="baAddActivityToGroup(this);"' . $disabled_attr . ' style="padding:2px 8px;font-size:12px;">+ Add Activity</button>';
         $html .= '</div>';
 
-        // Assigned activities table
+        // Assigned activities table with drag handle column for reordering
         $html .= '<div class="ba-assigned-acts-wrap" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 6px;">';
         $html .= '<table class="ba-assigned-acts-table" style="width:100%;border-collapse:collapse;">';
         $html .= '<thead><tr style="font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:left;">';
+        $html .= '<th style="width:24px;"></th>';
         $html .= '<th style="padding:3px 6px;">Activity Name (Field API Key)</th>';
         $html .= '<th style="padding:3px 6px;width:140px;">Due Days (Working)</th>';
         $html .= '<th style="width:28px;"></th>';
@@ -246,10 +273,11 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
             $act_key = is_array($assigned) ? ($assigned['key'] ?? mentor_activity_service::slugify_key($act_name)) : mentor_activity_service::slugify_key($act_name);
             $duedays = is_array($assigned) && isset($assigned['duedays']) ? (int)$assigned['duedays'] : 5;
 
-            $html .= '<tr class="ba-assigned-act-row" data-key="' . htmlspecialchars($act_key, ENT_QUOTES) . '" data-name="' . htmlspecialchars($act_name, ENT_QUOTES) . '" style="border-bottom:1px solid #f3f4f6;">';
+            $html .= '<tr class="ba-assigned-act-row" draggable="true" data-key="' . htmlspecialchars($act_key, ENT_QUOTES) . '" data-name="' . htmlspecialchars($act_name, ENT_QUOTES) . '" style="border-bottom:1px solid #f3f4f6;cursor:grab;">';
+            $html .= '<td class="ba-assigned-act-drag" style="text-align:center;color:#bbb;font-size:14px;user-select:none;padding:2px 4px;cursor:grab;">&#8942;&#8942;</td>';
             $html .= '<td style="padding:4px 6px;">';
-            $html .= '<span style="font-weight:600;font-size:12px;color:#1f2937;">' . htmlspecialchars($act_name, ENT_QUOTES) . '</span>';
-            $html .= '<span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' . htmlspecialchars($act_key, ENT_QUOTES) . ')</span>';
+            $html .= '<span class="ba-assigned-act-name" style="font-weight:600;font-size:12px;color:#1f2937;">' . htmlspecialchars($act_name, ENT_QUOTES) . '</span>';
+            $html .= '<span class="ba-assigned-act-key" style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' . htmlspecialchars($act_key, ENT_QUOTES) . ')</span>';
             $html .= '</td>';
             $html .= '<td style="padding:4px 6px;">';
             $html .= '<div style="display:inline-flex;align-items:center;gap:4px;">';
@@ -258,7 +286,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
             $html .= '</div>';
             $html .= '</td>';
             $html .= '<td style="padding:4px 6px;text-align:center;">';
-            $html .= '<button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>';
+            $html .= '<button type="button" class="btn btn-sm btn-outline-danger" onclick="baRemoveActivityFromGroup(this);" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>';
             $html .= '</td>';
             $html .= '</tr>';
         }
@@ -268,7 +296,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         $html .= '</td>';
 
         $html .= '<td style="text-align:center;padding:6px 8px;vertical-align:top">';
-        $html .= '<button type="button" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>';
+        $html .= '<button type="button" onclick="this.closest(\'tr.ba-group-row\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>';
         $html .= '</td>';
         $html .= '</tr>';
 
@@ -290,7 +318,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
 
   function serialize() {
     var result = [];
-    tbody.querySelectorAll('tr[draggable="true"]').forEach(function (row) {
+    tbody.querySelectorAll('tr.ba-group-row').forEach(function (row) {
       var nameInput = row.querySelector('.ba-mentor-group-name');
       if (!nameInput) return;
 
@@ -327,54 +355,171 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', serialize);
 
-  // Hook for live updates when master pool changes above
-  window.baOnMentorActivitiesChanged = function (newActivitiesList) {
-    if (!Array.isArray(newActivitiesList)) return;
-    currentMasterPool = newActivitiesList;
+  // Refresh single group picker to show only unassigned master activities
+  window.baRefreshGroupPicker = function(groupRow) {
+    if (!groupRow) return;
+    var picker = groupRow.querySelector('.ba-group-act-picker');
+    var addBtn = groupRow.querySelector('.ba-btn-add-activity');
+    if (!picker) return;
 
-    tbody.querySelectorAll('tr[draggable="true"]').forEach(function (row) {
-      var picker = row.querySelector('.ba-group-act-picker');
-      if (!picker) return;
+    var assignedKeys = {};
+    groupRow.querySelectorAll('.ba-assigned-act-row').forEach(function(r) {
+      var k = r.getAttribute('data-key');
+      if (k) assignedKeys[k] = true;
+    });
 
-      var curVal = picker.value;
-      picker.innerHTML = '';
+    var curVal = picker.value;
+    picker.innerHTML = '';
+    var hasAvailable = false;
 
-      newActivitiesList.forEach(function (act) {
+    currentMasterPool.forEach(function(act) {
+      if (!assignedKeys[act.key]) {
+        hasAvailable = true;
         var opt = document.createElement('option');
         opt.value = act.key;
         opt.setAttribute('data-name', act.name);
         opt.textContent = act.name + ' (' + act.key + ')';
         if (act.key === curVal) opt.selected = true;
         picker.appendChild(opt);
-      });
+      }
     });
+
+    if (!hasAvailable) {
+      var emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.disabled = true;
+      emptyOpt.selected = true;
+      emptyOpt.textContent = '(All activities assigned)';
+      picker.appendChild(emptyOpt);
+      if (addBtn) addBtn.disabled = true;
+    } else {
+      if (addBtn) addBtn.disabled = false;
+    }
   };
 
-  // ---- HTML5 drag-and-drop reorder for groups ----
-  var dragging = null;
+  function refreshAllGroupPickers() {
+    tbody.querySelectorAll('tr.ba-group-row').forEach(function(row) {
+      window.baRefreshGroupPicker(row);
+    });
+  }
+
+  // Hook for when master activities pool is replaced / re-serialized
+  window.baOnMentorActivitiesChanged = function (newActivitiesList) {
+    if (!Array.isArray(newActivitiesList)) return;
+    currentMasterPool = newActivitiesList;
+    refreshAllGroupPickers();
+  };
+
+  // Hook for when a master activity is edited / renamed in real time
+  window.baOnMasterActivityUpdated = function(oldKey, newKey, newName) {
+    if (!oldKey) return;
+
+    // Update in currentMasterPool array
+    currentMasterPool.forEach(function(act) {
+      if (act.key === oldKey) {
+        if (newKey) act.key = newKey;
+        if (newName) act.name = newName;
+      }
+    });
+
+    // Update all assigned activities across all groups referencing oldKey
+    tbody.querySelectorAll('.ba-assigned-act-row[data-key="' + oldKey.replace(/"/g, '\\"') + '"]').forEach(function(actRow) {
+      if (newKey) actRow.setAttribute('data-key', newKey);
+      if (newName) actRow.setAttribute('data-name', newName);
+
+      var nameSpan = actRow.querySelector('.ba-assigned-act-name');
+      var keySpan = actRow.querySelector('.ba-assigned-act-key');
+      if (nameSpan && newName) nameSpan.textContent = newName;
+      if (keySpan && newKey) keySpan.textContent = '(' + newKey + ')';
+    });
+
+    refreshAllGroupPickers();
+    serialize();
+  };
+
+  // Hook for when a master activity is deleted
+  window.baOnMasterActivityRemoved = function(removedKey) {
+    if (!removedKey) return;
+
+    // Remove from currentMasterPool
+    currentMasterPool = currentMasterPool.filter(function(act) {
+      return act.key !== removedKey;
+    });
+
+    // Remove from all assigned activities across groups
+    tbody.querySelectorAll('.ba-assigned-act-row[data-key="' + removedKey.replace(/"/g, '\\"') + '"]').forEach(function(actRow) {
+      var groupRow = actRow.closest('tr.ba-group-row');
+      actRow.remove();
+      if (groupRow) window.baRefreshGroupPicker(groupRow);
+    });
+
+    refreshAllGroupPickers();
+    serialize();
+  };
+
+  // ---- HTML5 drag-and-drop reorder for GROUPS ----
+  var draggingGroup = null;
 
   tbody.addEventListener('dragstart', function (e) {
-    dragging = e.target.closest('tr[draggable="true"]');
-    if (dragging) {
-      dragging.style.opacity = '0.4';
+    // If dragging an inner assigned activity or inside table wrap, do NOT drag the group
+    if (e.target.closest('.ba-assigned-acts-wrap') || e.target.closest('.ba-assigned-act-row')) {
+      return;
+    }
+    draggingGroup = e.target.closest('tr.ba-group-row');
+    if (draggingGroup) {
+      draggingGroup.style.opacity = '0.4';
       e.dataTransfer.effectAllowed = 'move';
     }
   });
 
-  tbody.addEventListener('dragend', function () {
-    if (dragging) dragging.style.opacity = '';
-    dragging = null;
+  tbody.addEventListener('dragend', function (e) {
+    if (draggingGroup) draggingGroup.style.opacity = '';
+    draggingGroup = null;
     serialize();
   });
 
   tbody.addEventListener('dragover', function (e) {
+    if (!draggingGroup) return;
     e.preventDefault();
-    if (!dragging) return;
-    var target = e.target.closest('tr[draggable="true"]');
-    if (target && target !== dragging && target.parentNode === tbody) {
+    var target = e.target.closest('tr.ba-group-row');
+    if (target && target !== draggingGroup && target.parentNode === tbody) {
       var rect = target.getBoundingClientRect();
       var after = e.clientY > rect.top + rect.height / 2;
-      tbody.insertBefore(dragging, after ? target.nextSibling : target);
+      tbody.insertBefore(draggingGroup, after ? target.nextSibling : target);
+    }
+  });
+
+  // ---- HTML5 drag-and-drop reorder for ASSIGNED ACTIVITIES inside a group ----
+  var draggingAct = null;
+
+  tbody.addEventListener('dragstart', function (e) {
+    var actRow = e.target.closest('.ba-assigned-act-row');
+    if (actRow) {
+      draggingAct = actRow;
+      draggingAct.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+      e.stopPropagation();
+    }
+  });
+
+  tbody.addEventListener('dragend', function (e) {
+    if (draggingAct) {
+      draggingAct.style.opacity = '';
+      draggingAct = null;
+      serialize();
+      e.stopPropagation();
+    }
+  });
+
+  tbody.addEventListener('dragover', function (e) {
+    if (!draggingAct) return;
+    var targetAct = e.target.closest('.ba-assigned-act-row');
+    if (targetAct && targetAct !== draggingAct && targetAct.parentNode === draggingAct.parentNode) {
+      e.preventDefault();
+      e.stopPropagation();
+      var rect = targetAct.getBoundingClientRect();
+      var after = e.clientY > rect.top + rect.height / 2;
+      targetAct.parentNode.insertBefore(draggingAct, after ? targetAct.nextSibling : targetAct);
     }
   });
 
@@ -385,15 +530,19 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
 
 function baAddActivityToGroup(btn) {
   var bar = btn.closest('.ba-act-add-bar');
-  if (!bar) return;
+  var groupRow = btn.closest('tr.ba-group-row');
+  if (!bar || !groupRow) return;
+
   var picker = bar.querySelector('.ba-group-act-picker');
   var daysPicker = bar.querySelector('.ba-group-act-days-picker');
-  var actTbody = bar.parentNode.querySelector('.ba-assigned-acts-tbody');
+  var actTbody = groupRow.querySelector('.ba-assigned-acts-tbody');
 
   if (!picker || !picker.selectedOptions || picker.selectedOptions.length === 0 || !actTbody) return;
 
   var selOpt = picker.selectedOptions[0];
   var key = selOpt.value;
+  if (!key) return; // disabled "(All activities assigned)" placeholder
+
   var name = selOpt.getAttribute('data-name') || key;
   var days = daysPicker ? parseInt(daysPicker.value, 10) : 5;
   if (isNaN(days) || days < 0) days = 5;
@@ -411,13 +560,15 @@ function baAddActivityToGroup(btn) {
 
   var tr = document.createElement('tr');
   tr.className = 'ba-assigned-act-row';
+  tr.setAttribute('draggable', 'true');
   tr.setAttribute('data-key', key);
   tr.setAttribute('data-name', name);
-  tr.style.cssText = 'border-bottom:1px solid #f3f4f6;';
+  tr.style.cssText = 'border-bottom:1px solid #f3f4f6;cursor:grab;';
   tr.innerHTML =
-    '<td style="padding:4px 6px;">'
-    + '<span style="font-weight:600;font-size:12px;color:#1f2937;">' + name.replace(/</g, '&lt;') + '</span>'
-    + '<span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' + key.replace(/</g, '&lt;') + ')</span>'
+    '<td class="ba-assigned-act-drag" style="text-align:center;color:#bbb;font-size:14px;user-select:none;padding:2px 4px;cursor:grab;">&#8942;&#8942;</td>'
+    + '<td style="padding:4px 6px;">'
+    + '<span class="ba-assigned-act-name" style="font-weight:600;font-size:12px;color:#1f2937;">' + name.replace(/</g, '&lt;') + '</span>'
+    + '<span class="ba-assigned-act-key" style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:4px;">(' + key.replace(/</g, '&lt;') + ')</span>'
     + '</td>'
     + '<td style="padding:4px 6px;">'
     + '<div style="display:inline-flex;align-items:center;gap:4px;">'
@@ -426,10 +577,28 @@ function baAddActivityToGroup(btn) {
     + '</div>'
     + '</td>'
     + '<td style="padding:4px 6px;text-align:center;">'
-    + '<button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>'
+    + '<button type="button" class="btn btn-sm btn-outline-danger" onclick="baRemoveActivityFromGroup(this);" style="padding:0 5px;line-height:1.2;font-size:12px;" title="Remove">&times;</button>'
     + '</td>';
 
   actTbody.appendChild(tr);
+
+  // Refresh picker for this group so the added activity is excluded
+  if (typeof window.baRefreshGroupPicker === 'function') {
+    window.baRefreshGroupPicker(groupRow);
+  }
+
+  baTriggerGroupSerialize();
+}
+
+function baRemoveActivityFromGroup(btn) {
+  var row = btn.closest('.ba-assigned-act-row');
+  var groupRow = btn.closest('tr.ba-group-row');
+  if (row) {
+    row.remove();
+  }
+  if (groupRow && typeof window.baRefreshGroupPicker === 'function') {
+    window.baRefreshGroupPicker(groupRow);
+  }
   baTriggerGroupSerialize();
 }
 
@@ -445,19 +614,23 @@ function baMentorGroupingAddRow(id) {
       + act.name.replace(/</g, '&lt;') + ' (' + act.key.replace(/</g, '&lt;') + ')'
       + '</option>';
   });
+  if (!optHtml) {
+    optHtml = '<option value="" disabled selected>(No activities in master pool)</option>';
+  }
 
   var tr = document.createElement('tr');
+  tr.className = 'ba-group-row';
   tr.setAttribute('draggable', 'true');
   tr.style.cssText = 'border-bottom:1px solid #e0e0e0;cursor:grab';
   tr.innerHTML =
-    '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>'
+    '<td class="ba-group-drag-handle" style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px;cursor:grab;">&#8942;&#8942;</td>'
     + '<td style="padding:6px 8px;vertical-align:top">'
     + '<input type="text" class="ba-mentor-group-name form-control form-control-sm" placeholder="e.g. Python Fullstack" style="font-size:0.88em;font-weight:600;">'
     + '<div style="font-size:11px;color:#6b7280;margin-top:4px;">Matches course name keywords or acts as a dropdown option.</div>'
     + '</td>'
     + '<td style="padding:6px 8px;vertical-align:top">'
     + '<div class="ba-act-add-bar" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">'
-    + '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:220px;font-size:0.85em;">'
+    + '<select class="ba-group-act-picker form-control form-control-sm" style="width:auto;min-width:240px;font-size:0.85em;">'
     + optHtml
     + '</select>'
     + '<div style="display:inline-flex;align-items:center;gap:4px;">'
@@ -470,6 +643,7 @@ function baMentorGroupingAddRow(id) {
     + '<div class="ba-assigned-acts-wrap" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 6px;">'
     + '<table class="ba-assigned-acts-table" style="width:100%;border-collapse:collapse;">'
     + '<thead><tr style="font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:left;">'
+    + '<th style="width:24px;"></th>'
     + '<th style="padding:3px 6px;">Activity Name (Field API Key)</th>'
     + '<th style="padding:3px 6px;width:140px;">Due Days (Working)</th>'
     + '<th style="width:28px;"></th>'
@@ -479,7 +653,7 @@ function baMentorGroupingAddRow(id) {
     + '</div>'
     + '</td>'
     + '<td style="text-align:center;padding:6px 8px;vertical-align:top">'
-    + '<button type="button" onclick="this.closest(\'tr\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>'
+    + '<button type="button" onclick="this.closest(\'tr.ba-group-row\').remove(); baTriggerGroupSerialize();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button>'
     + '</td>';
 
   tbody.appendChild(tr);

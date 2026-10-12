@@ -314,11 +314,13 @@ class mentor_activity_service {
             }
         }
 
-        // Always ensure default master activities (including quiz_evaluation & test_evaluation) are included
-        foreach (self::DEFAULT_MASTER_ACTIVITIES as $def) {
-            if (!isset($seen_keys[$def['key']])) {
-                $seen_keys[$def['key']] = true;
-                $activities[] = $def;
+        // Only fallback to defaults if no master activities have been configured
+        if (empty($activities)) {
+            foreach (self::DEFAULT_MASTER_ACTIVITIES as $def) {
+                if (!isset($seen_keys[$def['key']])) {
+                    $seen_keys[$def['key']] = true;
+                    $activities[] = $def;
+                }
             }
         }
 
@@ -389,9 +391,12 @@ class mentor_activity_service {
             }
         }
 
-        foreach (self::DEFAULT_GROUPING_RULES as $def_grp) {
-            if (isset($def_grp['group']) && isset($def_grp['activities']) && !isset($rules[$def_grp['group']])) {
-                $rules[$def_grp['group']] = $def_grp['activities'];
+        // Only fallback to defaults if no grouping rules have been configured
+        if (empty($rules)) {
+            foreach (self::DEFAULT_GROUPING_RULES as $def_grp) {
+                if (isset($def_grp['group']) && isset($def_grp['activities']) && !isset($rules[$def_grp['group']])) {
+                    $rules[$def_grp['group']] = $def_grp['activities'];
+                }
             }
         }
 

@@ -43,12 +43,73 @@ class admin_setting_mentor_master_activities extends \admin_setting {
     }
 
     public function write_setting($data) {
+        global $DB;
+
         $activities = $this->normalise_activities($data);
         if ($activities === null) {
             return get_string('invalidjson', 'error');
         }
 
+        // Detect renamed and removed keys compared to current config
+        $old_raw = $this->config_read($this->name);
+        $old_activities = [];
+        if ($old_raw !== false && trim((string)$old_raw) !== '') {
+            $decoded = json_decode((string)$old_raw, true);
+            if (is_array($decoded)) {
+                $old_activities = $decoded;
+            }
+        }
+
         $this->config_write($this->name, json_encode($activities));
+
+        // If old activities existed, check for renamed keys to migrate saved completions and group mappings
+        if (!empty($old_activities)) {
+            $old_keys = [];
+            foreach ($old_activities as $oa) {
+                if (!empty($oa['key'])) {
+                    $old_keys[$oa['key']] = $oa['name'] ?? $oa['key'];
+                }
+            }
+
+            $new_keys = [];
+            foreach ($activities as $na) {
+                if (!empty($na['key'])) {
+                    $new_keys[$na['key']] = $na['name'] ?? $na['key'];
+                }
+            }
+
+            // Sync with course grouping rules in config
+            $grp_raw = util::get_config_val('mentor_activity_grouping');
+            if ($grp_raw !== false && trim((string)$grp_raw) !== '') {
+                $rules = json_decode((string)$grp_raw, true);
+                if (is_array($rules)) {
+                    $rules_modified = false;
+                    foreach ($rules as &$rule) {
+                        if (!isset($rule['activities']) || !is_array($rule['activities'])) {
+                            continue;
+                        }
+                        $filtered_acts = [];
+                        foreach ($rule['activities'] as $ract) {
+                            $rkey = $ract['key'] ?? '';
+                            if (isset($new_keys[$rkey])) {
+                                // Update name if master name changed
+                                $ract['name'] = $new_keys[$rkey];
+                                $filtered_acts[] = $ract;
+                            } else {
+                                $rules_modified = true;
+                            }
+                        }
+                        $rule['activities'] = $filtered_acts;
+                    }
+                    unset($rule);
+
+                    if ($rules_modified) {
+                        set_config('mentor_activity_grouping', json_encode($rules), 'local_batchanalytics');
+                    }
+                }
+            }
+        }
+
         return '';
     }
 
@@ -134,13 +195,13 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         $key = htmlspecialchars((string)($act['key'] ?? ''), ENT_QUOTES);
         $name = htmlspecialchars((string)($act['name'] ?? ''), ENT_QUOTES);
 
-        $html = '<tr draggable="true" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
+        $html = '<tr draggable="true" data-prev-key="' . $key . '" data-prev-name="' . $name . '" style="border-bottom:1px solid #e0e0e0;cursor:grab">';
         $html .= '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>';
         $html .= '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-key form-control form-control-sm" value="'
             . $key . '" placeholder="e.g. assignment_evaluation" style="font-family:monospace;font-size:0.85em"></td>';
         $html .= '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-name form-control form-control-sm" value="'
             . $name . '" placeholder="e.g. Assignment evaluation" style="font-size:0.88em"></td>';
-        $html .= '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
+        $html .= '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="baMentorMasterRemoveRow(this);" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
         $html .= '</tr>';
         return $html;
     }
@@ -182,13 +243,17 @@ class admin_setting_mentor_master_activities extends \admin_setting {
     });
     hidden.value = JSON.stringify(result);
 
-    // Notify grouping rules setting to sync activities dropdown
+    // Notify grouping rules setting to sync activities dropdown and available options
     if (typeof window.baOnMentorActivitiesChanged === 'function') {
       window.baOnMentorActivitiesChanged(result);
     }
   }
 
-  tbody.addEventListener('change', serialize);
+  tbody.addEventListener('change', function (e) {
+    handleFieldUpdate(e.target);
+    serialize();
+  });
+
   tbody.addEventListener('input', function (e) {
     if (e.target.classList.contains('ba-mentor-master-act-name')) {
       var tr = e.target.closest('tr');
@@ -198,8 +263,57 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         keyInput.dataset.auto = '1';
       }
     }
+    handleFieldUpdate(e.target);
     serialize();
   });
+
+  function handleFieldUpdate(el) {
+    var tr = el ? el.closest('tr') : null;
+    if (!tr) return;
+
+    var keyInput = tr.querySelector('.ba-mentor-master-act-key');
+    var nameInput = tr.querySelector('.ba-mentor-master-act-name');
+    var newKey = keyInput ? keyInput.value.trim() : '';
+    var newName = nameInput ? nameInput.value.trim() : '';
+    var prevKey = tr.getAttribute('data-prev-key') || '';
+    var prevName = tr.getAttribute('data-prev-name') || '';
+
+    if (prevKey && (newKey !== prevKey || newName !== prevName)) {
+      if (typeof window.baOnMasterActivityUpdated === 'function') {
+        window.baOnMasterActivityUpdated(prevKey, newKey, newName);
+      }
+      tr.setAttribute('data-prev-key', newKey);
+      tr.setAttribute('data-prev-name', newName);
+    } else if (!prevKey && newKey) {
+      tr.setAttribute('data-prev-key', newKey);
+      tr.setAttribute('data-prev-name', newName);
+    }
+  }
+
+  window.baMentorMasterRemoveRow = function (btn) {
+    var tr = btn.closest('tr');
+    if (!tr) return;
+
+    var nameInput = tr.querySelector('.ba-mentor-master-act-name');
+    var keyInput = tr.querySelector('.ba-mentor-master-act-key');
+    var actName = nameInput ? nameInput.value.trim() : '';
+    var actKey = keyInput ? keyInput.value.trim() : '';
+    var displayName = actName || actKey || 'this activity';
+
+    var confirmMsg = 'Are you sure you want to delete "' + displayName + '"?\n\nIt will also be removed from all course grouping rules.';
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    var keyToRemove = actKey || tr.getAttribute('data-prev-key') || '';
+    tr.remove();
+
+    if (keyToRemove && typeof window.baOnMasterActivityRemoved === 'function') {
+      window.baOnMasterActivityRemoved(keyToRemove);
+    }
+
+    serialize();
+  };
 
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', serialize);
@@ -237,12 +351,14 @@ function baMentorMasterAddRow(id) {
   var tbody = document.getElementById(id + '_tbody');
   var tr = document.createElement('tr');
   tr.setAttribute('draggable', 'true');
+  tr.setAttribute('data-prev-key', '');
+  tr.setAttribute('data-prev-name', '');
   tr.style.cssText = 'border-bottom:1px solid #e0e0e0;cursor:grab';
   tr.innerHTML =
     '<td style="text-align:center;color:#bbb;font-size:16px;user-select:none;padding:2px 4px">&#8942;&#8942;</td>'
     + '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-key form-control form-control-sm" placeholder="e.g. new_activity" style="font-family:monospace;font-size:0.85em"></td>'
     + '<td style="padding:4px 6px"><input type="text" class="ba-mentor-master-act-name form-control form-control-sm" placeholder="e.g. New Activity" style="font-size:0.88em"></td>'
-    + '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="this.closest(\'tr\').remove();" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
+    + '<td style="text-align:center;padding:4px 6px"><button type="button" onclick="baMentorMasterRemoveRow(this);" class="btn btn-sm btn-danger" style="padding:1px 6px" title="Remove">&times;</button></td>';
   tbody.appendChild(tr);
 
   var nameInput = tr.querySelector('.ba-mentor-master-act-name');
