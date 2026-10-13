@@ -97,6 +97,13 @@ function initNewBatchAnalytics() {
 
     setStatValue("stat-class-mentors", countUnique("classMentors"));
     setStatValue("stat-lab-mentors", countUnique("labMentors"));
+
+    const totalStudents = runningBatches.reduce(
+      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
+      0
+    );
+    setStatValue("stat-total-students", totalStudents.toLocaleString());
+
     renderContextStats(runningBatches);
   }
 
@@ -131,20 +138,10 @@ function initNewBatchAnalytics() {
       { onSchedule: 0, minorSlip: 0, delayed: 0, early: 0 }
     );
 
-    let studentPool = scoped;
-    if (currentScheduleFilter) {
-      studentPool = scoped.filter((b) => b.status === currentScheduleFilter);
-    }
-    const totalStudents = studentPool.reduce(
-      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
-      0
-    );
-
     setStatValue("stat-on-schedule", statusCounts.onSchedule);
     setStatValue("stat-minor-slip", statusCounts.minorSlip);
     setStatValue("stat-delayed", statusCounts.delayed);
     setStatValue("stat-early", statusCounts.early);
-    setStatValue("stat-total-students", totalStudents.toLocaleString());
   }
 
   /**
