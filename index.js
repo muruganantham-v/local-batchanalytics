@@ -304,18 +304,20 @@ function initNewBatchAnalytics() {
     document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
       card.addEventListener("click", function () {
         const filterVal = this.dataset.batchFilter || "running";
+        const targetRunningTab = canViewAll ? "running" : "my_running";
+
+        // Always display on Current Running Batches when card filter is applied
+        if (currentSubTab !== targetRunningTab) {
+          currentSubTab = targetRunningTab;
+          setActiveSubtab();
+          updateTableTitle();
+        }
 
         if (filterVal === "running") {
-          // If currently in a completed tab, switch to active running batches tab
-          if (currentSubTab === "completed" || currentSubTab === "my_completed") {
-            currentSubTab = canViewAll ? "running" : "my_running";
-            setActiveSubtab();
-            updateTableTitle();
-          }
           currentStatFilter = "running";
         } else {
           if (currentStatFilter === filterVal) {
-            currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
+            currentStatFilter = "running";
           } else {
             currentStatFilter = filterVal;
           }
@@ -340,6 +342,14 @@ function initNewBatchAnalytics() {
     document.querySelectorAll(".ba-schedule-status-filter").forEach((card) => {
       card.addEventListener("click", function () {
         const filterVal = this.dataset.scheduleFilter || "";
+        const targetRunningTab = canViewAll ? "running" : "my_running";
+
+        // Always display on Current Running Batches when card filter is applied
+        if (currentSubTab !== targetRunningTab) {
+          currentSubTab = targetRunningTab;
+          setActiveSubtab();
+          updateTableTitle();
+        }
 
         if (currentScheduleFilter === filterVal) {
           currentScheduleFilter = "";
