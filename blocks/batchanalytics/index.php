@@ -941,7 +941,11 @@ echo '      <div class="ba-new-search-row">';
 echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="Search section or batch code (e.g., 26011A, 25002A)..." />';
 echo '        <button id="ba-new-reset-btn" type="button" class="ba-btn-blue-solid" title="Clear all active filters">Reset</button>';
 echo '      </div>';
-echo '      <div class="ba-filters-label">FILTERS</div>';
+echo '      <div class="ba-filters-glance-bar">
+        <span class="ba-glance-indicator" style="background: #6366f1;"></span>
+        <span class="ba-filters-label">FILTERS</span>
+        <span id="ba-tag-filters" class="ba-glance-tag-wrap" style="display:none;"></span>
+      </div>';
 echo '      <div class="ba-new-filters-row">';
 echo '        <select id="ba-filter-year" class="ba-new-select"><option value="">Year — All</option></select>';
 echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">Section / Batch — All</option></select>';

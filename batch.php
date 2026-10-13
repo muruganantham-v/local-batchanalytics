@@ -28,9 +28,14 @@ require_once(__DIR__ . '/../../config.php');
 require_once(__DIR__ . '/classes/batch_notes_service.php');
 require_once(__DIR__ . '/classes/cliq_activity_notifier.php');
 
+global $DB, $PAGE, $OUTPUT, $USER;
+
 require_login();
 
 $context = context_system::instance();
+$PAGE->set_context($context);
+$PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php'));
+
 if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
     if (!\local_batchanalytics\task_service::can_view_dashboard($USER->id)) {
         require_capability('local/batchanalytics:view', $context);

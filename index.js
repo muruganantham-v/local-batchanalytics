@@ -150,6 +150,11 @@ function initNewBatchAnalytics() {
   function getFilteredUniverse() {
     if (!rawData || !rawData.batches) return [];
 
+    let effectiveMode = "";
+    if (currentStatFilter === "offline" || currentStatFilter === "online") {
+      effectiveMode = currentStatFilter;
+    }
+
     return rawData.batches.filter((b) => {
       // 1. Subtab scope
       if (currentSubTab === "completed") {
@@ -164,15 +169,16 @@ function initNewBatchAnalytics() {
       }
 
       // 2. Section 1 filter (Portfolio)
-      if (currentStatFilter === "offline") {
-        if ((b.mode || "").toLowerCase() !== "offline") return false;
-      } else if (currentStatFilter === "online") {
-        if ((b.mode || "").toLowerCase() !== "online") return false;
+      if (effectiveMode === "offline" && (b.mode || "").toLowerCase() !== "offline") {
+        return false;
+      }
+      if (effectiveMode === "online" && (b.mode || "").toLowerCase() !== "online") {
+        return false;
       }
 
       // 3. Section 2 filter (Schedule Health)
-      if (currentScheduleFilter) {
-        if (b.status !== currentScheduleFilter) return false;
+      if (currentScheduleFilter && b.status !== currentScheduleFilter) {
+        return false;
       }
 
       return true;
@@ -204,6 +210,8 @@ function initNewBatchAnalytics() {
       } else if (currentStatFilter === "online") {
         const onOpt = Array.from(modeSelect.options).find((o) => o.value.toLowerCase() === "online");
         if (onOpt) modeSelect.value = onOpt.value;
+      } else {
+        modeSelect.value = "";
       }
     }
   }
@@ -243,6 +251,7 @@ function initNewBatchAnalytics() {
     if (searchInput) {
       searchInput.addEventListener("input", () => {
         currentPage = 1;
+        renderGlanceTags();
         applyAndRender();
       });
     }
@@ -250,7 +259,19 @@ function initNewBatchAnalytics() {
     ["ba-filter-year", "ba-filter-batch", "ba-filter-course", "ba-filter-mode"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
-        el.addEventListener("change", () => {
+        el.addEventListener("change", function () {
+          if (id === "ba-filter-mode") {
+            const val = (this.value || "").toLowerCase();
+            if (val === "offline") {
+              currentStatFilter = "offline";
+            } else if (val === "online") {
+              currentStatFilter = "online";
+            } else {
+              currentStatFilter = (currentSubTab === "completed" || currentSubTab === "my_completed") ? "" : "running";
+            }
+            setActiveStatCard();
+          }
+          renderGlanceTags();
           currentPage = 1;
           applyAndRender();
         });
@@ -310,11 +331,14 @@ function initNewBatchAnalytics() {
           updateTableTitle();
         }
 
+        const modeSelect = document.getElementById("ba-filter-mode");
         if (filterVal === "running") {
           currentStatFilter = "running";
+          if (modeSelect) modeSelect.value = "";
         } else {
           if (currentStatFilter === filterVal) {
             currentStatFilter = "running";
+            if (modeSelect) modeSelect.value = "";
           } else {
             currentStatFilter = filterVal;
           }
@@ -382,6 +406,8 @@ function initNewBatchAnalytics() {
           clearBtn.addEventListener("click", function (e) {
             e.stopPropagation();
             currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
+            const modeSelect = document.getElementById("ba-filter-mode");
+            if (modeSelect) modeSelect.value = "";
             setActiveStatCard();
             renderGlanceTags();
             syncSection3Filters();
@@ -431,6 +457,123 @@ function initNewBatchAnalytics() {
         scheduleTagWrap.style.display = "none";
       }
     }
+
+    // 3. Filters Tag (Section 3 Controls)
+    const filtersTagWrap = document.getElementById("ba-tag-filters");
+    if (filtersTagWrap) {
+      const searchInput = document.getElementById("ba-new-search-input");
+      const searchTerm = (searchInput?.value || "").trim();
+      const yearSelect = document.getElementById("ba-filter-year");
+      const yearVal = yearSelect?.value || "";
+      const batchSelect = document.getElementById("ba-filter-batch");
+      const batchVal = batchSelect?.value || "";
+      const courseSelect = document.getElementById("ba-filter-course");
+      const courseVal = courseSelect?.value || "";
+      const modeSelect = document.getElementById("ba-filter-mode");
+      const modeVal = modeSelect?.value || "";
+
+      const activeChips = [];
+
+      if (searchTerm) {
+        activeChips.push({
+          type: "search",
+          label: `Search: "${searchTerm}"`,
+          clear: () => {
+            if (searchInput) searchInput.value = "";
+          }
+        });
+      }
+
+      if (yearVal) {
+        activeChips.push({
+          type: "year",
+          label: `Year: ${yearVal}`,
+          clear: () => {
+            if (yearSelect) yearSelect.value = "";
+          }
+        });
+      }
+
+      if (batchVal) {
+        activeChips.push({
+          type: "batch",
+          label: `Batch: ${batchVal}`,
+          clear: () => {
+            if (batchSelect) batchSelect.value = "";
+          }
+        });
+      }
+
+      if (courseVal) {
+        activeChips.push({
+          type: "course",
+          label: `Course: ${courseVal}`,
+          clear: () => {
+            if (courseSelect) courseSelect.value = "";
+          }
+        });
+      }
+
+      if (modeVal) {
+        activeChips.push({
+          type: "mode",
+          label: `Mode: ${modeVal}`,
+          clear: () => {
+            if (modeSelect) modeSelect.value = "";
+            currentStatFilter = (currentSubTab === "completed" || currentSubTab === "my_completed") ? "" : "running";
+            setActiveStatCard();
+          }
+        });
+      }
+
+      if (currentScheduleFilter) {
+        const scheduleLabels = {
+          early: "Early",
+          on_schedule: "On Schedule",
+          minor_slip: "Minor Slip",
+          delayed: "Delayed",
+        };
+        const sLabel = scheduleLabels[currentScheduleFilter] || currentScheduleFilter;
+        activeChips.push({
+          type: "schedule",
+          label: `Schedule: ${sLabel}`,
+          clear: () => {
+            currentScheduleFilter = "";
+            setActiveScheduleCard();
+          }
+        });
+      }
+
+      if (activeChips.length > 0) {
+        filtersTagWrap.innerHTML = activeChips
+          .map(
+            (chip, idx) => `
+          <span class="ba-filter-chip chip-filter">
+            <span>${escapeHtml(chip.label)}</span>
+            <button type="button" class="ba-chip-remove" data-chip-idx="${idx}" title="Remove filter" aria-label="Remove filter">&times;</button>
+          </span>
+        `
+          )
+          .join("");
+        filtersTagWrap.style.display = "inline-flex";
+
+        filtersTagWrap.querySelectorAll(".ba-chip-remove").forEach((btn) => {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            const idx = parseInt(this.dataset.chipIdx, 10);
+            if (activeChips[idx] && typeof activeChips[idx].clear === "function") {
+              activeChips[idx].clear();
+              renderGlanceTags();
+              currentPage = 1;
+              applyAndRender();
+            }
+          });
+        });
+      } else {
+        filtersTagWrap.innerHTML = "";
+        filtersTagWrap.style.display = "none";
+      }
+    }
   }
 
   function setActiveSubtab() {
@@ -469,7 +612,16 @@ function initNewBatchAnalytics() {
     const yearVal = document.getElementById("ba-filter-year")?.value || "";
     const batchVal = document.getElementById("ba-filter-batch")?.value || "";
     const courseVal = document.getElementById("ba-filter-course")?.value || "";
-    const modeVal = document.getElementById("ba-filter-mode")?.value || "";
+    const modeSelect = document.getElementById("ba-filter-mode");
+    const modeVal = modeSelect?.value || "";
+
+    // Unified mode check between Section 1 cards and Mode dropdown
+    let effectiveMode = "";
+    if (currentStatFilter === "offline" || currentStatFilter === "online") {
+      effectiveMode = currentStatFilter;
+    } else if (modeVal) {
+      effectiveMode = modeVal.toLowerCase();
+    }
 
     return rawData.batches.filter((b) => {
       // 1. Subtab filter
@@ -484,11 +636,11 @@ function initNewBatchAnalytics() {
         if (b.isCompleted) return false;
       }
 
-      // 2. Section 1 filter
-      if (currentStatFilter === "offline" && (b.mode || "").toLowerCase() !== "offline") {
+      // 2. Mode filter (unified: cards and dropdown)
+      if (effectiveMode === "offline" && (b.mode || "").toLowerCase() !== "offline") {
         return false;
       }
-      if (currentStatFilter === "online" && (b.mode || "").toLowerCase() !== "online") {
+      if (effectiveMode === "online" && (b.mode || "").toLowerCase() !== "online") {
         return false;
       }
 
@@ -509,9 +661,65 @@ function initNewBatchAnalytics() {
 
       // 5. Section 3 Dropdowns
       if (yearVal && String(b.year) !== String(yearVal)) return false;
-      if (batchVal && b.batchId !== batchVal) return false;
-      if (courseVal && b.courseName !== courseVal) return false;
-      if (modeVal && b.mode !== modeVal) return false;
+      if (batchVal && String(b.batchId) !== String(batchVal)) return false;
+      if (courseVal && String(b.courseName) !== String(courseVal)) return false;
+
+      return true;
+    });
+  }
+
+  /**
+   * Determine running batches matching active filters, independent of subtab navigation.
+   * Ensures 'Students (current)' KPI does not change when toggling between subtabs.
+   */
+  function getFilterScopedRunningBatches() {
+    if (!rawData || !rawData.batches) return [];
+
+    const searchTerm = (document.getElementById("ba-new-search-input")?.value || "").toLowerCase().trim();
+    const yearVal = document.getElementById("ba-filter-year")?.value || "";
+    const batchVal = document.getElementById("ba-filter-batch")?.value || "";
+    const courseVal = document.getElementById("ba-filter-course")?.value || "";
+    const modeSelect = document.getElementById("ba-filter-mode");
+    const modeVal = modeSelect?.value || "";
+
+    let effectiveMode = "";
+    if (currentStatFilter === "offline" || currentStatFilter === "online") {
+      effectiveMode = currentStatFilter;
+    } else if (modeVal) {
+      effectiveMode = modeVal.toLowerCase();
+    }
+
+    return rawData.batches.filter((b) => {
+      // Student count card represents active/current enrolled learners in running batches
+      if (b.isCompleted) return false;
+
+      // Mode filter
+      if (effectiveMode === "offline" && (b.mode || "").toLowerCase() !== "offline") {
+        return false;
+      }
+      if (effectiveMode === "online" && (b.mode || "").toLowerCase() !== "online") {
+        return false;
+      }
+
+      // Schedule filter
+      if (currentScheduleFilter && b.status !== currentScheduleFilter) {
+        return false;
+      }
+
+      // Search
+      if (searchTerm) {
+        const matchesName =
+          (b.batchId || "").toString().toLowerCase().includes(searchTerm) ||
+          (b.parentBatchName || "").toString().toLowerCase().includes(searchTerm);
+        const matchesCourse = (b.courseName || "").toLowerCase().includes(searchTerm);
+        const matchesModule = (b.currentModule || "").toLowerCase().includes(searchTerm);
+        if (!matchesName && !matchesCourse && !matchesModule) return false;
+      }
+
+      // Dropdowns
+      if (yearVal && String(b.year) !== String(yearVal)) return false;
+      if (batchVal && String(b.batchId) !== String(batchVal)) return false;
+      if (courseVal && String(b.courseName) !== String(courseVal)) return false;
 
       return true;
     });
@@ -537,8 +745,16 @@ function initNewBatchAnalytics() {
 
     const runningBatches = rawData.batches.filter((b) => !b.isCompleted);
     renderContextStats(runningBatches);
+    renderGlanceTags();
 
     let filtered = getTableFilteredBatches();
+
+    const studentBatches = getFilterScopedRunningBatches();
+    const totalStudents = studentBatches.reduce(
+      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
+      0
+    );
+    setStatValue("stat-total-students", totalStudents.toLocaleString());
 
     // Ensure batches are ordered with oldest date first
     filtered.sort((a, b) => {
@@ -865,9 +1081,7 @@ function initNewBatchAnalytics() {
         "Current Module",
         "Status",
         "Delay (Days)",
-        "Students",
-        "Class Mentors",
-        "Lab Mentors"
+        "Students"
       ];
 
       const getExportStatus = (b) => {
@@ -894,9 +1108,7 @@ function initNewBatchAnalytics() {
         b.currentModule || "",
         getExportStatus(b),
         b.delayDays ?? 0,
-        b.studentCount ?? 0,
-        Array.isArray(b.classMentors) ? b.classMentors.join("; ") : "",
-        Array.isArray(b.labMentors) ? b.labMentors.join("; ") : ""
+        b.studentCount ?? 0
       ]);
 
       const csvLines = [

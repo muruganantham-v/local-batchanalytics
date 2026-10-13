@@ -980,6 +980,18 @@ class util {
         $profileurl = '';
         if ($user) {
             try {
+                global $PAGE;
+                if (!empty($PAGE)) {
+                    try {
+                        $ref = new \ReflectionProperty($PAGE, '_context');
+                        $ref->setAccessible(true);
+                        if ($ref->getValue($PAGE) === null) {
+                            $PAGE->set_context(\context_system::instance());
+                        }
+                    } catch (\Throwable $ignored) {
+                        // Reflection fallback.
+                    }
+                }
                 $up = new \user_picture($user);
                 $up->size = $size;
                 $profileurl = $up->get_url($PAGE)->out(false);
