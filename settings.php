@@ -24,7 +24,7 @@ require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
     // -------------------------------------------------------------------------
-    // Main Settings Category: Batch Analytics (Landing Page)
+    // Main Settings Category: Batch Analytics (Landing Page with 4 links)
     // -------------------------------------------------------------------------
     $ADMIN->add('localplugins', new admin_category('local_batchanalytics', get_string('pluginname', 'local_batchanalytics')));
 
@@ -57,12 +57,13 @@ if ($hassiteconfig) {
 
     // =========================================================================
     // Page 1: Zoho Credential Config (Dedicated Form Page)
+    // Includes: Zoho Configuration, Zoho Cliq Notifications configuration
     // =========================================================================
     $page_zoho = new admin_settingpage(
         'local_batchanalytics_zoho',
         get_string('settings_zoho_credential_config', 'local_batchanalytics'),
         'moodle/site:config',
-        true // Hidden from category overview so form fields do not dump on landing page
+        true // Hidden from category overview
     );
 
     // Section 1.1: Zoho Configuration
@@ -161,6 +162,7 @@ if ($hassiteconfig) {
 
     // =========================================================================
     // Page 2: CRM Field configuration (Dedicated Form Page)
+    // Includes: Student CRM Data only
     // =========================================================================
     $page_crm = new admin_settingpage(
         'local_batchanalytics_crm',
@@ -188,22 +190,11 @@ if ($hassiteconfig) {
         get_string('crm_fields_config_desc', 'local_batchanalytics')
     ));
 
-    // Section 2.2: Module Tracker Categories
-    $page_crm->add(new admin_setting_heading(
-        'local_batchanalytics/module_tracker_configuration',
-        get_string('module_tracker_configuration', 'local_batchanalytics'),
-        ''
-    ));
-    $page_crm->add(new \local_batchanalytics\admin_setting_module_tracker_categories(
-        'local_batchanalytics/module_tracker_categories',
-        get_string('module_tracker_categories', 'local_batchanalytics'),
-        get_string('module_tracker_categories_desc', 'local_batchanalytics')
-    ));
-
     $ADMIN->add('local_batchanalytics', $page_crm);
 
     // =========================================================================
     // Page 3: Mentor Activity Config (Dedicated Form Page)
+    // Includes: Mentor Activities Configuration only
     // =========================================================================
     $page_mentor = new admin_settingpage(
         'local_batchanalytics_mentor',
@@ -229,8 +220,35 @@ if ($hassiteconfig) {
         get_string('mentor_activity_grouping_desc', 'local_batchanalytics')
     ));
 
-    // Section 3.2: Operational Roles & Task Assignments
-    $page_mentor->add(new admin_setting_heading(
+    $ADMIN->add('local_batchanalytics', $page_mentor);
+
+    // =========================================================================
+    // External Sections Placed Directly Under Local Plugins
+    // =========================================================================
+
+    // 1. Module Tracker Categories (Directly in Local plugins)
+    $page_tracker = new admin_settingpage(
+        'local_batchanalytics_tracker',
+        get_string('module_tracker_configuration', 'local_batchanalytics')
+    );
+    $page_tracker->add(new admin_setting_heading(
+        'local_batchanalytics/module_tracker_configuration',
+        get_string('module_tracker_configuration', 'local_batchanalytics'),
+        ''
+    ));
+    $page_tracker->add(new \local_batchanalytics\admin_setting_module_tracker_categories(
+        'local_batchanalytics/module_tracker_categories',
+        get_string('module_tracker_categories', 'local_batchanalytics'),
+        get_string('module_tracker_categories_desc', 'local_batchanalytics')
+    ));
+    $ADMIN->add('localplugins', $page_tracker);
+
+    // 2. Operational Roles & Task Assignments (Directly in Local plugins)
+    $page_roles = new admin_settingpage(
+        'local_batchanalytics_roles',
+        get_string('role_configuration', 'local_batchanalytics')
+    );
+    $page_roles->add(new admin_setting_heading(
         'local_batchanalytics/role_configuration',
         get_string('role_configuration', 'local_batchanalytics'),
         get_string('role_configuration_desc', 'local_batchanalytics')
@@ -243,48 +261,47 @@ if ($hassiteconfig) {
         $role_choices[(string)$r->id] = $rname . ' (' . $r->shortname . ')';
     }
 
-    $page_mentor->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configselect(
         'local_batchanalytics/mentor_roles',
         get_string('mentor_roles', 'local_batchanalytics'),
         get_string('mentor_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
     ));
-    $page_mentor->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configselect(
         'local_batchanalytics/ssexecutive_roles',
         get_string('ssexecutive_roles', 'local_batchanalytics'),
         get_string('ssexecutive_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
     ));
-    $page_mentor->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configselect(
         'local_batchanalytics/sslead_roles',
         get_string('sslead_roles', 'local_batchanalytics'),
         get_string('sslead_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
     ));
-    $page_mentor->add(new admin_setting_configtext(
+    $page_roles->add(new admin_setting_configtext(
         'local_batchanalytics/sslead_email',
         get_string('sslead_email', 'local_batchanalytics'),
         get_string('sslead_email_desc', 'local_batchanalytics'),
         '',
         PARAM_RAW_TRIMMED
     ));
-    $page_mentor->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configselect(
         'local_batchanalytics/program_manager_roles',
         get_string('program_manager_roles', 'local_batchanalytics'),
         get_string('program_manager_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
     ));
-    $page_mentor->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configselect(
         'local_batchanalytics/assistant_manager_roles',
         get_string('assistant_manager_roles', 'local_batchanalytics'),
         get_string('assistant_manager_roles_desc', 'local_batchanalytics'),
         '0',
         $role_choices
     ));
-
-    $ADMIN->add('local_batchanalytics', $page_mentor);
+    $ADMIN->add('localplugins', $page_roles);
 }
