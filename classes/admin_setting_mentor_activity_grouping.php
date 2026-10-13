@@ -198,7 +198,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         }
         $form .= '</tbody></table>';
         $form .= '<button type="button" onclick="baMentorGroupingAddRow(\'' . $id
-            . '\')" class="btn btn-secondary btn-sm">+ Add Group Rule</button>';
+            . '\')" class="btn btn-secondary btn-sm">+ Add Module Schedule</button>';
         $form .= $this->inline_js($id, $master_activities);
 
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
