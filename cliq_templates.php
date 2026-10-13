@@ -65,7 +65,8 @@ $is_enabled = cliq_activity_notifier::is_enabled();
 $cfg_details = cliq_activity_notifier::get_config_details();
 
 $pageurl = new moodle_url('/local/batchanalytics/cliq_templates.php');
-$settingsurl = new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics']);
+$settingsurl = new moodle_url('/admin/category.php', ['category' => 'local_batchanalytics']);
+$zohourl = new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_zoho']);
 
 echo $OUTPUT->header();
 ?>

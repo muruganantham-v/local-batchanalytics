@@ -23,6 +23,13 @@ require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
 require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
+    // Backward compatibility: If accessed directly via admin/settings.php?section=local_batchanalytics,
+    // redirect to the admin category landing page to avoid 'cannotfindadminpage' error.
+    if (optional_param('section', '', PARAM_SAFEDIR) === 'local_batchanalytics' &&
+        !empty($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/admin/settings.php') !== false) {
+        redirect(new moodle_url('/admin/category.php', ['category' => 'local_batchanalytics']));
+    }
+
     // -------------------------------------------------------------------------
     // Main Settings Category: Batch Analytics (Landing Page with 4 links)
     // -------------------------------------------------------------------------
