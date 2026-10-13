@@ -24,17 +24,45 @@ require_once(__DIR__ . '/classes/mentor_activity_service.php');
 
 if ($hassiteconfig) {
     // -------------------------------------------------------------------------
-    // Main Settings Category: Batch Analytics
+    // Main Settings Category: Batch Analytics (Landing Page)
     // -------------------------------------------------------------------------
     $ADMIN->add('localplugins', new admin_category('local_batchanalytics', get_string('pluginname', 'local_batchanalytics')));
 
     // =========================================================================
-    // Page 1: Zoho Credential Config
-    // Includes: Zoho Configuration, Zoho Cliq Notifications configuration
+    // 4 Clean Navigation Links Shown on the Category Landing Page
+    // =========================================================================
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_zoho_link',
+        get_string('settings_zoho_credential_config', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_zoho'])
+    ));
+
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_crm_link',
+        get_string('settings_crm_field_configuration', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_crm'])
+    ));
+
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_mentor_link',
+        get_string('settings_mentor_activity_config', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_mentor'])
+    ));
+
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_cliq_templates',
+        get_string('settings_zoho_cliq_template_config', 'local_batchanalytics'),
+        new moodle_url('/local/batchanalytics/cliq_templates.php')
+    ));
+
+    // =========================================================================
+    // Page 1: Zoho Credential Config (Dedicated Form Page)
     // =========================================================================
     $page_zoho = new admin_settingpage(
         'local_batchanalytics_zoho',
-        get_string('settings_zoho_credential_config', 'local_batchanalytics')
+        get_string('settings_zoho_credential_config', 'local_batchanalytics'),
+        'moodle/site:config',
+        true // Hidden from category overview so form fields do not dump on landing page
     );
 
     // Section 1.1: Zoho Configuration
@@ -132,12 +160,13 @@ if ($hassiteconfig) {
     $ADMIN->add('local_batchanalytics', $page_zoho);
 
     // =========================================================================
-    // Page 2: CRM Field configuration
-    // Includes: Student CRM Data, Module Tracker Categories
+    // Page 2: CRM Field configuration (Dedicated Form Page)
     // =========================================================================
     $page_crm = new admin_settingpage(
         'local_batchanalytics_crm',
-        get_string('settings_crm_field_configuration', 'local_batchanalytics')
+        get_string('settings_crm_field_configuration', 'local_batchanalytics'),
+        'moodle/site:config',
+        true // Hidden from category overview
     );
 
     // Section 2.1: Student CRM Data
@@ -174,12 +203,13 @@ if ($hassiteconfig) {
     $ADMIN->add('local_batchanalytics', $page_crm);
 
     // =========================================================================
-    // Page 3: Mentor Activity Config
-    // Includes: Mentor Activities Configuration, Operational Roles & Task Assignments
+    // Page 3: Mentor Activity Config (Dedicated Form Page)
     // =========================================================================
     $page_mentor = new admin_settingpage(
         'local_batchanalytics_mentor',
-        get_string('settings_mentor_activity_config', 'local_batchanalytics')
+        get_string('settings_mentor_activity_config', 'local_batchanalytics'),
+        'moodle/site:config',
+        true // Hidden from category overview
     );
 
     // Section 3.1: Mentor Activities Configuration
@@ -257,14 +287,4 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('local_batchanalytics', $page_mentor);
-
-    // =========================================================================
-    // Page 4: Zoho Cliq Template config
-    // Redirects to dedicated templates management page
-    // =========================================================================
-    $ADMIN->add('local_batchanalytics', new admin_externalpage(
-        'local_batchanalytics_cliq_templates',
-        get_string('settings_zoho_cliq_template_config', 'local_batchanalytics'),
-        new moodle_url('/local/batchanalytics/cliq_templates.php')
-    ));
 }
