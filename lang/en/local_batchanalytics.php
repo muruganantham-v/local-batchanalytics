@@ -193,3 +193,9 @@ $string['zoho_cliq_manage_templates'] = 'Customize Zoho Cliq Notification Templa
 $string['zoho_cliq_manage_templates_desc'] = 'Open the dedicated collapsible editor to customize Subjects, Message Bodies, and Dynamic Placeholders for Mentor & SS activities.';
 $string['zoho_cliq_open_templates_page'] = 'Open Templates Editor';
 $string['templates_saved_success'] = 'Zoho Cliq notification templates have been updated successfully.';
+
+// Admin Settings Navigation
+$string['settings_zoho_credential_config'] = 'Zoho Credential Config';
+$string['settings_crm_field_configuration'] = 'CRM Field configuration';
+$string['settings_mentor_activity_config'] = 'Mentor Activity Config';
+$string['settings_zoho_cliq_template_config'] = 'Zoho Cliq Template config';
