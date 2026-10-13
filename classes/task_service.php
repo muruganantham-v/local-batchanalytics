@@ -1695,6 +1695,15 @@ class task_service {
         $sec->timemodified = $now;
         $DB->update_record('local_bm_classsection', $sec);
 
+        // Trigger real-time Zoho CRM soft skills sync via local_batchmanagement
+        try {
+            if (is_callable(['\local_batchmanagement\classsection', 'trigger_softskills_sync'])) {
+                \local_batchmanagement\classsection::trigger_softskills_sync($batchid);
+            }
+        } catch (\Throwable $e) {
+            // Silently avoid interrupting the save response
+        }
+
         return [
             'success'      => true,
             'type'         => 'ss_reject',
@@ -1840,6 +1849,15 @@ class task_service {
             $sec->softskillsdata = json_encode($raw_data);
             $sec->timemodified = $now;
             $DB->update_record('local_bm_classsection', $sec);
+
+            // Trigger real-time Zoho CRM soft skills sync via local_batchmanagement
+            try {
+                if (is_callable(['\local_batchmanagement\classsection', 'trigger_softskills_sync'])) {
+                    \local_batchmanagement\classsection::trigger_softskills_sync($batchid);
+                }
+            } catch (\Throwable $e) {
+                // Silently avoid interrupting the save response
+            }
 
             // Trigger real-time Zoho Cliq completion alert
             try {
