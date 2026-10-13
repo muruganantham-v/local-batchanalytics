@@ -21,7 +21,7 @@ function initNewBatchAnalytics() {
   let canViewAll = wrap?.dataset.canViewAllCourses === "1";
   let canViewAssigned = wrap?.dataset.canViewAssignedCourses === "1";
   const initialActiveSubtab = document.querySelector(".ba-new-subtab.active");
-  let defaultSubTab = initialActiveSubtab?.dataset.subtab || (canViewAssigned ? "my_running" : "running");
+  let defaultSubTab = initialActiveSubtab?.dataset.subtab || (canViewAll ? "running" : (canViewAssigned ? "my_running" : "running"));
   let currentSubTab = defaultSubTab;
   let currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
   let currentScheduleFilter = "";
@@ -838,53 +838,91 @@ function initNewBatchAnalytics() {
     if (!exportBtn) return;
 
     exportBtn.addEventListener("click", () => {
-      if (!rawData || !rawData.batches) return;
+      if (!rawData || !rawData.batches) {
+        alert("Batch data is not available yet. Please wait.");
+        return;
+      }
       const batches = getTableFilteredBatches();
-      if (batches.length === 0) {
-        alert("No batches to export.");
+      if (!batches || batches.length === 0) {
+        alert("No batches found to export for the current tab and filter criteria.");
         return;
       }
 
+      // Sort batches using the exact same chronological order as the dashboard table
+      const sortedBatches = [...batches].sort((a, b) => {
+        const tsA = a.startdateTimestamp || 0;
+        const tsB = b.startdateTimestamp || 0;
+        if (tsA === tsB) return (a.id || 0) - (b.id || 0);
+        if (tsA === 0) return 1;
+        if (tsB === 0) return -1;
+        return tsA - tsB;
+      });
+
       const headers = [
-        "Batch ID",
+        "Batch / Section",
+        "Parent Cohort",
         "Course",
         "Mode",
         "Type",
         "Start Date",
         "Current Module",
         "Status",
-        "Delay Days",
-        "Students"
+        "Delay (Days)",
+        "Students",
+        "Class Mentors",
+        "Lab Mentors"
       ];
-      const rows = batches.map((b) => [
+
+      const getExportStatus = (b) => {
+        if (b.isCompleted) return "Completed";
+        const delta = typeof b.delayDays === "number" ? b.delayDays : parseInt(b.delayDays, 10) || 0;
+        if (b.status === "early" || delta < 0) {
+          return `Early (-${Math.abs(delta)}d)`;
+        } else if (b.status === "delayed" || delta >= 24) {
+          return `Delayed (+${delta}d)`;
+        } else if (b.status === "minor_slip" || (delta >= 12 && delta <= 23)) {
+          return `Minor slip (+${delta}d)`;
+        } else {
+          return delta > 0 ? `On schedule (+${delta}d)` : `On schedule (0d)`;
+        }
+      };
+
+      const rows = sortedBatches.map((b) => [
         b.batchId || "",
+        b.parentBatchName || "",
         b.courseName || "",
         b.mode || "",
         b.type || "",
         b.startDate || "",
         b.currentModule || "",
-        b.status || "",
+        getExportStatus(b),
         b.delayDays ?? 0,
-        b.studentCount ?? 0
+        b.studentCount ?? 0,
+        Array.isArray(b.classMentors) ? b.classMentors.join("; ") : "",
+        Array.isArray(b.labMentors) ? b.labMentors.join("; ") : ""
       ]);
 
-      const csvContent =
-        "data:text/csv;charset=utf-8," +
-        [
-          headers.map((h) => `"${h}"`).join(","),
-          ...rows.map((r) =>
-            r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-          )
-        ].join("\n");
+      const csvLines = [
+        headers.map((h) => `"${String(h).replace(/"/g, '""')}"`).join(","),
+        ...rows.map((r) =>
+          r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+        )
+      ];
+      const csvString = csvLines.join("\r\n");
 
-      const encodedUri = encodeURI(csvContent);
+      // Use Blob with UTF-8 BOM so Excel and browsers parse correctly without URL length limits or truncation
+      const blob = new Blob(["\uFEFF" + csvString], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       const dateStr = new Date().toISOString().slice(0, 10);
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `batch_analytics_${currentSubTab}_${dateStr}.csv`);
+      link.href = url;
+      link.download = `batch_analytics_${currentSubTab}_${dateStr}.csv`;
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 150);
     });
   }
 }

@@ -953,8 +953,10 @@ echo '    </div>';
 
 echo '    <!-- Subtabs Navigation -->';
 echo '    <div class="ba-new-subtabs-bar">';
+$running_active = $can_view_all_courses ? ' active' : '';
+$my_running_active = (!$can_view_all_courses && $can_view_assigned_courses) ? ' active' : '';
 if ($can_view_assigned_courses) {
-    echo '      <button type="button" class="ba-new-subtab active" data-subtab="my_running">';
+    echo '      <button type="button" class="ba-new-subtab' . $my_running_active . '" data-subtab="my_running">';
     echo '        My Running Batches';
     echo '      </button>';
     echo '      <button type="button" class="ba-new-subtab" data-subtab="my_completed">';
@@ -962,8 +964,7 @@ if ($can_view_assigned_courses) {
     echo '      </button>';
 }
 if ($can_view_all_courses) {
-    $active_cls = !$can_view_assigned_courses ? ' active' : '';
-    echo '      <button type="button" class="ba-new-subtab' . $active_cls . '" data-subtab="running">';
+    echo '      <button type="button" class="ba-new-subtab' . $running_active . '" data-subtab="running">';
     echo '        Current Running Batches';
     echo '      </button>';
 }
@@ -972,7 +973,7 @@ echo '        Completed Batches';
 echo '      </button>';
 echo '    </div>';
 
-$initial_table_title = $can_view_assigned_courses ? 'My Running Batches' : 'Current Running Batches';
+$initial_table_title = $can_view_all_courses ? 'Current Running Batches' : 'My Running Batches';
 echo '    <!-- Table Section Header -->';
 echo '    <div class="ba-table-header-row">';
 echo '      <div class="ba-table-title-wrap">';
