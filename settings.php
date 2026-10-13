@@ -62,6 +62,18 @@ if ($hassiteconfig) {
         new moodle_url('/local/batchanalytics/cliq_templates.php')
     ));
 
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_tracker_link',
+        get_string('module_tracker_configuration', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_tracker'])
+    ));
+
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_roles_link',
+        get_string('role_configuration', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_roles'])
+    ));
+
     // =========================================================================
     // Page 1: Zoho Credential Config (Dedicated Form Page)
     // Includes: Zoho Configuration, Zoho Cliq Notifications configuration
@@ -230,13 +242,13 @@ if ($hassiteconfig) {
     $ADMIN->add('local_batchanalytics', $page_mentor);
 
     // =========================================================================
-    // External Sections Placed Directly Under Local Plugins
+    // Page 5: Module Tracker Categories (Dedicated Form Page)
     // =========================================================================
-
-    // 1. Module Tracker Categories (Directly in Local plugins)
     $page_tracker = new admin_settingpage(
         'local_batchanalytics_tracker',
-        get_string('module_tracker_configuration', 'local_batchanalytics')
+        get_string('module_tracker_configuration', 'local_batchanalytics'),
+        'moodle/site:config',
+        true // Hidden from category overview so form fields do not dump on landing page
     );
     $page_tracker->add(new admin_setting_heading(
         'local_batchanalytics/module_tracker_configuration',
@@ -248,12 +260,16 @@ if ($hassiteconfig) {
         get_string('module_tracker_categories', 'local_batchanalytics'),
         get_string('module_tracker_categories_desc', 'local_batchanalytics')
     ));
-    $ADMIN->add('localplugins', $page_tracker);
+    $ADMIN->add('local_batchanalytics', $page_tracker);
 
-    // 2. Operational Roles & Task Assignments (Directly in Local plugins)
+    // =========================================================================
+    // Page 6: Operational Roles & Task Assignments (Dedicated Form Page)
+    // =========================================================================
     $page_roles = new admin_settingpage(
         'local_batchanalytics_roles',
-        get_string('role_configuration', 'local_batchanalytics')
+        get_string('role_configuration', 'local_batchanalytics'),
+        'moodle/site:config',
+        true // Hidden from category overview
     );
     $page_roles->add(new admin_setting_heading(
         'local_batchanalytics/role_configuration',
@@ -310,5 +326,5 @@ if ($hassiteconfig) {
         '0',
         $role_choices
     ));
-    $ADMIN->add('localplugins', $page_roles);
+    $ADMIN->add('local_batchanalytics', $page_roles);
 }
