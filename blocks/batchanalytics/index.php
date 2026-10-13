@@ -16,6 +16,8 @@ require_once(__DIR__ . '/../../config.php');
 require_login();
 
 $context = context_system::instance();
+$PAGE->set_context($context);
+$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
 $userid = $USER->id;
 
 // Permission check for viewing local_batchanalytics / dashboard
@@ -355,6 +357,7 @@ if ($action === 'getnewbatchdata') {
         ob_end_clean();
     }
     header('Content-Type: application/json; charset=utf-8');
+    ob_start();
 
     try {
         require_sesskey();
@@ -716,6 +719,9 @@ if ($action === 'getnewbatchdata') {
         $batchnames = array_values(array_unique(array_filter(array_column($batchlist, 'batchId'))));
         sort($batchnames);
 
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         echo json_encode([
             'stats' => [
                 'runningBatches' => $activebatches,
@@ -747,14 +753,15 @@ if ($action === 'getnewbatchdata') {
         ]);
         die();
     } catch (\Throwable $e) {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         echo json_encode(['error' => $e->getMessage()]);
         die();
     }
 }
 
 
-$PAGE->set_context($context);
-$PAGE->set_url(new moodle_url('/local/batchanalytics/index.php'));
 $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
