@@ -792,26 +792,16 @@ echo '    <!-- Header & Portfolio Stat Cards Container -->';
 echo '    <div class="ba-portfolio-card">';
 echo '      <div class="ba-portfolio-header">';
 echo '        <h1 class="ba-portfolio-title">Emertxe <span class="ba-title-dash">–</span> Batch Analytics</h1>';
-echo '        <div class="ba-portfolio-subtitle">Overview of all running batches</div>';
+echo '        <div class="ba-portfolio-subtitle">Overview of batches</div>';
 echo '        <div class="ba-portfolio-glance-bar">';
 echo '          <span class="ba-glance-indicator"></span>';
 echo '          <span class="ba-glance-label">PORTFOLIO AT A GLANCE</span>';
 echo '        </div>';
 echo '      </div>';
 
-echo '      <!-- 10 Stat Cards in 5x2 Grid: Completed, Running, Online, Offline, Class Mentors | Lab Mentors, Early, On Schedule, Delayed, Students -->';
-echo '      <div class="ba-portfolio-grid" id="ba-new-stats-grid">';
-echo '        <!-- Card 1: Completed Batches -->';
-echo '        <div class="ba-stat-box ba-new-stat-filter card-completed" data-batch-filter="completed" role="button" tabindex="0" aria-pressed="false" title="Filter completed cohorts">';
-echo '          <div class="ba-stat-top">';
-echo '            <div class="ba-stat-icon-wrap icon-bg-teal">';
-echo '              <svg class="ba-stat-svg svg-teal" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
-echo '            </div>';
-echo '            <div class="ba-stat-sort-hint">&#x21C5;</div>';
-echo '          </div>';
-echo '          <div class="ba-stat-num" id="stat-completed-batches">--</div>';
-echo '          <div class="ba-stat-lbl">Completed batches</div>';
-echo '        </div>';
+echo '      <!-- Section 1 Stat Cards: Running, Offline, Online, Class Mentors, Lab Mentors -->';
+echo '      <div class="ba-portfolio-grid ba-portfolio-grid-5" id="ba-section1-stats-grid">';
+
 
 echo '        <!-- Card 2: Running Batches -->';
 echo '        <div class="ba-stat-box ba-new-stat-filter card-running is-active" data-batch-filter="running" role="button" tabindex="0" aria-pressed="true" title="Filter active running batches">';
@@ -850,7 +840,7 @@ echo '          <div class="ba-stat-lbl">Offline batches</div>';
 echo '        </div>';
 
 echo '        <!-- Card 5: Class Mentors -->';
-echo '        <div class="ba-stat-box card-class-mentors" title="Assigned classroom instructors">';
+echo '        <div class="ba-stat-box ba-mentor-modal-trigger card-class-mentors" data-mentor-type="class" role="button" tabindex="0" title="Click to view all Class Mentors and assigned batches">';
 echo '          <div class="ba-stat-top">';
 echo '            <div class="ba-stat-icon-wrap icon-bg-purple">';
 echo '              <svg class="ba-stat-svg svg-purple" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
@@ -862,7 +852,7 @@ echo '          <div class="ba-stat-lbl">Class mentors</div>';
 echo '        </div>';
 
 echo '        <!-- Card 6: Lab Mentors -->';
-echo '        <div class="ba-stat-box card-lab-mentors" title="Assigned lab and technical assistants">';
+echo '        <div class="ba-stat-box ba-mentor-modal-trigger card-lab-mentors" data-mentor-type="lab" role="button" tabindex="0" title="Click to view all Lab Mentors and assigned batches">';
 echo '          <div class="ba-stat-top">';
 echo '            <div class="ba-stat-icon-wrap icon-bg-purple">';
 echo '              <svg class="ba-stat-svg svg-purple" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
@@ -872,8 +862,19 @@ echo '          </div>';
 echo '          <div class="ba-stat-num" id="stat-lab-mentors">--</div>';
 echo '          <div class="ba-stat-lbl">Lab mentors</div>';
 echo '        </div>';
-
-echo '        <!-- Card 7: Early (Tinted background & blue text) -->';
+echo '      </div>';
+echo '    </div>';
+echo '';
+echo '    <!-- Section 2: Batch Schedule & Students -->';
+echo '    <div class="ba-portfolio-card ba-schedule-card">';
+echo '      <div class="ba-portfolio-glance-bar" style="margin-top: 0; margin-bottom: 14px;">';
+echo '        <span class="ba-glance-indicator" style="background: #f59e0b;"></span>';
+echo '        <span class="ba-glance-label">BATCH SCHEDULE & STUDENTS</span>';
+echo '      </div>';
+echo '';
+echo '      <div class="ba-portfolio-grid ba-portfolio-grid-5" id="ba-section2-stats-grid">';
+echo '';
+echo '        <!-- Card: Early (Tinted background & blue text) -->';
 echo '        <button type="button" class="ba-stat-box ba-schedule-status-filter card-early" data-schedule-filter="early" aria-pressed="false" title="Filter batches running ahead of schedule">';
 echo '          <div class="ba-stat-top">';
 echo '            <div class="ba-stat-icon-wrap icon-bg-cyan">';
@@ -956,6 +957,9 @@ if ($can_view_assigned_courses) {
     echo '      <button type="button" class="ba-new-subtab active" data-subtab="my_running">';
     echo '        My Running Batches';
     echo '      </button>';
+    echo '      <button type="button" class="ba-new-subtab" data-subtab="my_completed">';
+    echo '        My Completed Batches';
+    echo '      </button>';
 }
 if ($can_view_all_courses) {
     $active_cls = !$can_view_assigned_courses ? ' active' : '';
@@ -975,7 +979,13 @@ echo '      <div class="ba-table-title-wrap">';
 echo '        <span class="ba-glance-indicator"></span>';
 echo '        <h2 class="ba-table-title" id="ba-table-title-text">' . $initial_table_title . '</h2>';
 echo '      </div>';
-echo '      <div class="ba-table-showing-info" id="ba-new-pagination-info">Showing 0 of 0</div>';
+echo '      <div class="ba-table-header-right">';
+echo '        <div class="ba-table-showing-info" id="ba-new-pagination-info">Showing 0 of 0</div>';
+echo '        <button type="button" class="ba-btn-export-csv" id="ba-new-export-btn" title="Export batch table to CSV">';
+echo '          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
+echo '          <span>Export</span>';
+echo '        </button>';
+echo '      </div>';
 echo '    </div>';
 
 echo '    <!-- Main Table Container -->';
@@ -1008,7 +1018,29 @@ echo '        <div class="ba-new-pagination-controls" id="ba-new-pagination-cont
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';
-
+echo '';
+echo '    <!-- Mentor List Modal -->';
+echo '    <div id="ba-mentor-modal" class="ba-mentor-modal-backdrop" aria-hidden="true" style="display:none;">';
+echo '      <div class="ba-mentor-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-mentor-modal-title">';
+echo '        <div class="ba-mentor-modal-header">';
+echo '          <div>';
+echo '            <h3 id="ba-mentor-modal-title" class="ba-mentor-modal-title">Mentors</h3>';
+echo '            <p id="ba-mentor-modal-sub" class="ba-mentor-modal-sub">Assigned mentors and active batches</p>';
+echo '          </div>';
+echo '          <button type="button" class="ba-mentor-modal-close" id="ba-mentor-modal-close-btn" aria-label="Close">&times;</button>';
+echo '        </div>';
+echo '        <div class="ba-mentor-modal-search">';
+echo '          <input type="text" id="ba-mentor-search-input" placeholder="Search mentor name or batch..." />';
+echo '        </div>';
+echo '        <div class="ba-mentor-modal-body" id="ba-mentor-modal-list">';
+echo '          <!-- Mentor items rendered here -->';
+echo '        </div>';
+echo '        <div class="ba-mentor-modal-footer">';
+echo '          <button type="button" class="ba-btn-secondary" id="ba-mentor-modal-cancel-btn">Close</button>';
+echo '        </div>';
+echo '      </div>';
+echo '    </div>';
+echo '';
 echo '  </div>';
 echo '</div>'; // #ba-top-tab-new
 

@@ -23,10 +23,11 @@ function initNewBatchAnalytics() {
   const initialActiveSubtab = document.querySelector(".ba-new-subtab.active");
   let defaultSubTab = initialActiveSubtab?.dataset.subtab || (canViewAssigned ? "my_running" : "running");
   let currentSubTab = defaultSubTab;
-  let currentStatFilter = currentSubTab === "completed" ? "completed" : "running";
+  let currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
   let currentScheduleFilter = "";
   let currentPage = 1;
   const pageSize = 10;
+  let rawData = null;
 
   function escapeHtml(value) {
     return String(value)
@@ -44,7 +45,7 @@ function initNewBatchAnalytics() {
         console.error("Failed to load new batch data:", data.error);
         const tbody = document.getElementById("ba-new-table-body");
         if (tbody) {
-          tbody.innerHTML = `<tr><td colspan="9" class="ba-new-empty" style="color: #ef4444;">Failed to load batch data: ${escapeHtml(data.error)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="ba-new-empty" style="color: #ef4444;">Failed to load batch data: ${escapeHtml(data.error)}</td></tr>`;
         }
         return;
       }
@@ -58,15 +59,17 @@ function initNewBatchAnalytics() {
         }
       }
       renderStats(data.stats, data.batches);
-      populateFilters(data.filters);
+      syncSection3Filters();
       setupEventListeners();
+      setupMentorModal();
+      setupExportCsv();
       applyAndRender();
     })
     .catch((err) => {
       console.error("Error fetching new batch data:", err);
       const tbody = document.getElementById("ba-new-table-body");
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="9" class="ba-new-empty" style="color: #ef4444;">Error fetching batch data. Please try refreshing the page.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="ba-new-empty" style="color: #ef4444;">Error fetching batch data. Please try refreshing the page.</td></tr>`;
       }
     });
 
@@ -78,32 +81,10 @@ function initNewBatchAnalytics() {
     setStatValue("stat-online-batches", stats.onlineBatches);
     setStatValue("stat-offline-batches", stats.offlineBatches);
     setStatValue("stat-completed-batches", stats.completedBatches);
-    renderContextStats(runningBatches);
-  }
-
-  function setStatValue(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val ?? 0;
-  }
-
-  function renderContextStats(batches) {
-    const scopedBatches = Array.isArray(batches) ? batches : [];
-    const statusCounts = scopedBatches.reduce((counts, b) => {
-      if (b.status === "delayed") {
-        counts.delayed += 1;
-      } else if (b.status === "minor_slip") {
-        counts.minorSlip += 1;
-      } else if (b.status === "early") {
-        counts.early += 1;
-      } else {
-        counts.onSchedule += 1;
-      }
-      return counts;
-    }, { onSchedule: 0, minorSlip: 0, delayed: 0, early: 0 });
 
     const countUnique = (field) => {
       const values = new Set();
-      scopedBatches.forEach((b) => {
+      runningBatches.forEach((b) => {
         const items = Array.isArray(b[field]) ? b[field] : [];
         items.forEach((item) => {
           const name = String(item || "").trim();
@@ -113,10 +94,51 @@ function initNewBatchAnalytics() {
       return values.size;
     };
 
-    const totalStudents = scopedBatches.reduce((sum, b) => sum + (parseInt(b.studentCount, 10) || 0), 0);
-
     setStatValue("stat-class-mentors", countUnique("classMentors"));
     setStatValue("stat-lab-mentors", countUnique("labMentors"));
+    renderContextStats(runningBatches);
+  }
+
+  function setStatValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val ?? 0;
+  }
+
+  function renderContextStats(runningBatches) {
+    let scoped = Array.isArray(runningBatches) ? runningBatches : [];
+
+    // Section 2 respects Section 1 filter
+    if (currentStatFilter === "offline") {
+      scoped = scoped.filter((b) => (b.mode || "").toLowerCase() === "offline");
+    } else if (currentStatFilter === "online") {
+      scoped = scoped.filter((b) => (b.mode || "").toLowerCase() === "online");
+    }
+
+    const statusCounts = scoped.reduce(
+      (counts, b) => {
+        if (b.status === "delayed") {
+          counts.delayed += 1;
+        } else if (b.status === "minor_slip") {
+          counts.minorSlip += 1;
+        } else if (b.status === "early") {
+          counts.early += 1;
+        } else {
+          counts.onSchedule += 1;
+        }
+        return counts;
+      },
+      { onSchedule: 0, minorSlip: 0, delayed: 0, early: 0 }
+    );
+
+    let studentPool = scoped;
+    if (currentScheduleFilter) {
+      studentPool = scoped.filter((b) => b.status === currentScheduleFilter);
+    }
+    const totalStudents = studentPool.reduce(
+      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
+      0
+    );
+
     setStatValue("stat-on-schedule", statusCounts.onSchedule);
     setStatValue("stat-minor-slip", statusCounts.minorSlip);
     setStatValue("stat-delayed", statusCounts.delayed);
@@ -124,31 +146,97 @@ function initNewBatchAnalytics() {
     setStatValue("stat-total-students", totalStudents.toLocaleString());
   }
 
-  function populateFilters(filters) {
-    if (!filters) return;
+  /**
+   * Determine available batches under current subtab, Section 1 and Section 2 filters
+   */
+  function getFilteredUniverse() {
+    if (!rawData || !rawData.batches) return [];
 
-    const yearSelect = document.getElementById("ba-filter-year");
-    if (yearSelect && filters.years) {
-      yearSelect.innerHTML = '<option value="">Year — All</option>' +
-        filters.years.map(y => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`).join('');
-    }
+    return rawData.batches.filter((b) => {
+      // 1. Subtab scope
+      if (currentSubTab === "completed") {
+        if (!b.isCompleted) return false;
+        if (!canViewAll && !b.isAssigned) return false;
+      } else if (currentSubTab === "my_completed") {
+        if (!b.isCompleted || !b.isAssigned) return false;
+      } else if (currentSubTab === "my_running") {
+        if (b.isCompleted || !b.isAssigned) return false;
+      } else if (currentSubTab === "running") {
+        if (b.isCompleted) return false;
+      }
 
-    const batchSelect = document.getElementById("ba-filter-batch");
-    if (batchSelect && filters.batchNames) {
-      batchSelect.innerHTML = '<option value="">Batch No — All</option>' +
-        filters.batchNames.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
-    }
+      // 2. Section 1 filter (Portfolio)
+      if (currentStatFilter === "offline") {
+        if ((b.mode || "").toLowerCase() !== "offline") return false;
+      } else if (currentStatFilter === "online") {
+        if ((b.mode || "").toLowerCase() !== "online") return false;
+      }
 
-    const courseSelect = document.getElementById("ba-filter-course");
-    if (courseSelect && filters.courses) {
-      courseSelect.innerHTML = '<option value="">Course — All</option>' +
-        filters.courses.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-    }
+      // 3. Section 2 filter (Schedule Health)
+      if (currentScheduleFilter) {
+        if (b.status !== currentScheduleFilter) return false;
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * Section 3 respects Section 1 and Section 2 filters
+   * Dynamically populates Year, Section/Batch, Course, Mode dropdowns based on active filters
+   */
+  function syncSection3Filters() {
+    const universe = getFilteredUniverse();
+
+    const uniqueYears = [...new Set(universe.map((b) => b.year).filter(Boolean))].sort((a, b) => b - a);
+    const uniqueBatches = [...new Set(universe.map((b) => b.batchId).filter(Boolean))].sort();
+    const uniqueCourses = [...new Set(universe.map((b) => b.courseName).filter(Boolean))].sort();
+    const uniqueModes = [...new Set(universe.map((b) => b.mode).filter(Boolean))].sort();
+
+    updateSelectOptions("ba-filter-year", "Year — All", uniqueYears);
+    updateSelectOptions("ba-filter-batch", "Section / Batch — All", uniqueBatches);
+    updateSelectOptions("ba-filter-course", "Course — All", uniqueCourses);
+    updateSelectOptions("ba-filter-mode", "Mode — All", uniqueModes);
 
     const modeSelect = document.getElementById("ba-filter-mode");
-    if (modeSelect && filters.modes) {
-      modeSelect.innerHTML = '<option value="">Mode — All</option>' +
-        filters.modes.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+    if (modeSelect) {
+      if (currentStatFilter === "offline") {
+        const offOpt = Array.from(modeSelect.options).find((o) => o.value.toLowerCase() === "offline");
+        if (offOpt) modeSelect.value = offOpt.value;
+      } else if (currentStatFilter === "online") {
+        const onOpt = Array.from(modeSelect.options).find((o) => o.value.toLowerCase() === "online");
+        if (onOpt) modeSelect.value = onOpt.value;
+      }
+    }
+  }
+
+  function updateSelectOptions(id, placeholder, values) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const currentVal = select.value;
+    let html = `<option value="">${placeholder}</option>`;
+    values.forEach((v) => {
+      html += `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
+    });
+    select.innerHTML = html;
+    if (currentVal && values.some((v) => String(v) === String(currentVal))) {
+      select.value = currentVal;
+    } else {
+      select.value = "";
+    }
+  }
+
+  function updateTableTitle() {
+    const titleEl = document.getElementById("ba-table-title-text");
+    if (!titleEl) return;
+    if (currentSubTab === "completed") {
+      titleEl.textContent = "Completed Batches";
+    } else if (currentSubTab === "my_completed") {
+      titleEl.textContent = "My Completed Batches";
+    } else if (currentSubTab === "my_running") {
+      titleEl.textContent = "My Running Batches";
+    } else {
+      titleEl.textContent = "Current Running Batches";
     }
   }
 
@@ -179,91 +267,69 @@ function initNewBatchAnalytics() {
           const el = document.getElementById(id);
           if (el) el.value = "";
         });
-        currentSubTab = defaultSubTab;
-        currentStatFilter = currentSubTab === "completed" ? "completed" : "running";
-        const titleEl = document.getElementById("ba-table-title-text");
-        if (titleEl) {
-          if (currentSubTab === "completed") {
-            titleEl.textContent = "Completed Batches";
-          } else if (currentSubTab === "my_running") {
-            titleEl.textContent = "My Running Batches";
-          } else {
-            titleEl.textContent = "Current Running Batches";
-          }
-        }
+        currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
         currentScheduleFilter = "";
-        setActiveSubtab();
         setActiveStatCard();
         setActiveScheduleCard();
+        syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
     }
 
+    // Subtabs Navigation - "dont apply the filter when the subtab is change."
     const subtabs = document.querySelectorAll(".ba-new-subtab");
     subtabs.forEach((tab) => {
       tab.addEventListener("click", function () {
         subtabs.forEach((t) => t.classList.remove("active"));
         this.classList.add("active");
         currentSubTab = this.dataset.subtab;
-        const titleEl = document.getElementById("ba-table-title-text");
-        if (titleEl) {
-          if (currentSubTab === "completed") {
-            titleEl.textContent = "Completed Batches";
-          } else if (currentSubTab === "my_running") {
-            titleEl.textContent = "My Running Batches";
-          } else {
-            titleEl.textContent = "Current Running Batches";
-          }
-        }
-        if (currentSubTab === "completed") {
-          currentStatFilter = "completed";
-          currentScheduleFilter = "";
-        } else {
-          currentStatFilter = "running";
-          currentScheduleFilter = "";
-        }
+        updateTableTitle();
+
+        // Clear card filters when subtab changes
+        currentStatFilter = "";
+        currentScheduleFilter = "";
         setActiveStatCard();
         setActiveScheduleCard();
+
+        // Clear Section 3 search & dropdown values
+        if (searchInput) searchInput.value = "";
+        ["ba-filter-year", "ba-filter-batch", "ba-filter-course", "ba-filter-mode"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+
+        // Re-sync Section 3 filters to match the new subtab scope
+        syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
     });
 
+    // Section 1 Stat Cards (Portfolio At A Glance)
     document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
       card.addEventListener("click", function () {
-        const modeSelect = document.getElementById("ba-filter-mode");
         const filterVal = this.dataset.batchFilter || "running";
-        currentStatFilter = filterVal;
-        currentScheduleFilter = "";
-        if (filterVal === "completed") {
-          currentSubTab = "completed";
-          if (modeSelect) modeSelect.value = "";
+
+        // If currently in a completed tab, switch to active running batches tab
+        if (currentSubTab === "completed" || currentSubTab === "my_completed") {
+          currentSubTab = canViewAll ? "running" : "my_running";
+          setActiveSubtab();
+          updateTableTitle();
+        }
+
+        if (currentStatFilter === filterVal && filterVal !== "running") {
+          currentStatFilter = "running";
         } else {
-          if (currentSubTab === "completed") {
-            currentSubTab = defaultSubTab;
-          }
-          if (modeSelect) {
-            modeSelect.value = currentStatFilter === "running" ? "" :
-              currentStatFilter.charAt(0).toUpperCase() + currentStatFilter.slice(1);
-          }
+          currentStatFilter = filterVal;
         }
-        const titleEl = document.getElementById("ba-table-title-text");
-        if (titleEl) {
-          if (currentSubTab === "completed") {
-            titleEl.textContent = "Completed Batches";
-          } else if (currentSubTab === "my_running") {
-            titleEl.textContent = "My Running Batches";
-          } else {
-            titleEl.textContent = "Current Running Batches";
-          }
-        }
-        setActiveSubtab();
+
         setActiveStatCard();
-        setActiveScheduleCard();
+        syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
+
       card.addEventListener("keydown", function (event) {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -272,30 +338,26 @@ function initNewBatchAnalytics() {
       });
     });
 
+    // Section 2 Stat Cards (Batch Schedule & Students)
     document.querySelectorAll(".ba-schedule-status-filter").forEach((card) => {
       card.addEventListener("click", function () {
         const filterVal = this.dataset.scheduleFilter || "";
+
+        // If in completed tab, switch to active running tab
+        if (currentSubTab === "completed" || currentSubTab === "my_completed") {
+          currentSubTab = canViewAll ? "running" : "my_running";
+          setActiveSubtab();
+          updateTableTitle();
+        }
+
         if (currentScheduleFilter === filterVal) {
           currentScheduleFilter = "";
-          currentStatFilter = "running";
         } else {
           currentScheduleFilter = filterVal;
-          currentStatFilter = "";
         }
-        if (currentSubTab === "completed") {
-          currentSubTab = defaultSubTab;
-          const titleEl = document.getElementById("ba-table-title-text");
-          if (titleEl) {
-            if (currentSubTab === "my_running") {
-              titleEl.textContent = "My Running Batches";
-            } else {
-              titleEl.textContent = "Current Running Batches";
-            }
-          }
-        }
-        setActiveSubtab();
-        setActiveStatCard();
+
         setActiveScheduleCard();
+        syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
@@ -324,8 +386,8 @@ function initNewBatchAnalytics() {
     });
   }
 
-  function applyAndRender() {
-    if (!rawData || !rawData.batches) return;
+  function getTableFilteredBatches() {
+    if (!rawData || !rawData.batches) return [];
 
     const searchTerm = (document.getElementById("ba-new-search-input")?.value || "").toLowerCase().trim();
     const yearVal = document.getElementById("ba-filter-year")?.value || "";
@@ -333,42 +395,43 @@ function initNewBatchAnalytics() {
     const courseVal = document.getElementById("ba-filter-course")?.value || "";
     const modeVal = document.getElementById("ba-filter-mode")?.value || "";
 
-    let runningCount = 0;
-    let completedCount = 0;
-
-    rawData.batches.forEach((b) => {
-      if (b.isCompleted) {
-        if (canViewAll || b.isAssigned) {
-          completedCount++;
-        }
-      } else {
-        runningCount++;
-      }
-    });
-
-    const cntRunningEl = document.getElementById("ba-cnt-running");
-    if (cntRunningEl) cntRunningEl.textContent = runningCount;
-    const cntCompletedEl = document.getElementById("ba-cnt-completed");
-    if (cntCompletedEl) cntCompletedEl.textContent = completedCount;
-    setStatValue("stat-completed-batches", completedCount);
-
-    let filtered = rawData.batches.filter((b) => {
+    return rawData.batches.filter((b) => {
+      // 1. Subtab filter
       if (currentSubTab === "completed") {
         if (!b.isCompleted) return false;
         if (!canViewAll && !b.isAssigned) return false;
+      } else if (currentSubTab === "my_completed") {
+        if (!b.isCompleted || !b.isAssigned) return false;
       } else if (currentSubTab === "my_running") {
         if (b.isCompleted || !b.isAssigned) return false;
       } else if (currentSubTab === "running") {
         if (b.isCompleted) return false;
       }
 
+      // 2. Section 1 filter
+      if (currentStatFilter === "offline" && (b.mode || "").toLowerCase() !== "offline") {
+        return false;
+      }
+      if (currentStatFilter === "online" && (b.mode || "").toLowerCase() !== "online") {
+        return false;
+      }
+
+      // 3. Section 2 filter
+      if (currentScheduleFilter && b.status !== currentScheduleFilter) {
+        return false;
+      }
+
+      // 4. Section 3 Search
       if (searchTerm) {
-        const matchesName = (b.batchId || "").toString().toLowerCase().includes(searchTerm) || (b.parentBatchName || "").toString().toLowerCase().includes(searchTerm);
+        const matchesName =
+          (b.batchId || "").toString().toLowerCase().includes(searchTerm) ||
+          (b.parentBatchName || "").toString().toLowerCase().includes(searchTerm);
         const matchesCourse = (b.courseName || "").toLowerCase().includes(searchTerm);
         const matchesModule = (b.currentModule || "").toLowerCase().includes(searchTerm);
         if (!matchesName && !matchesCourse && !matchesModule) return false;
       }
 
+      // 5. Section 3 Dropdowns
       if (yearVal && String(b.year) !== String(yearVal)) return false;
       if (batchVal && b.batchId !== batchVal) return false;
       if (courseVal && b.courseName !== courseVal) return false;
@@ -376,12 +439,30 @@ function initNewBatchAnalytics() {
 
       return true;
     });
+  }
 
-    renderContextStats(filtered);
+  function applyAndRender() {
+    if (!rawData || !rawData.batches) return;
 
-    if ((currentSubTab === "running" || currentSubTab === "my_running") && currentScheduleFilter) {
-      filtered = filtered.filter((b) => b.status === currentScheduleFilter);
-    }
+    let runningCount = 0;
+    let completedCount = 0;
+    let myRunningCount = 0;
+    let myCompletedCount = 0;
+
+    rawData.batches.forEach((b) => {
+      if (b.isCompleted) {
+        if (canViewAll || b.isAssigned) completedCount++;
+        if (b.isAssigned) myCompletedCount++;
+      } else {
+        runningCount++;
+        if (b.isAssigned) myRunningCount++;
+      }
+    });
+
+    const runningBatches = rawData.batches.filter((b) => !b.isCompleted);
+    renderContextStats(runningBatches);
+
+    let filtered = getTableFilteredBatches();
 
     // Ensure batches are ordered with oldest date first
     filtered.sort((a, b) => {
@@ -390,7 +471,7 @@ function initNewBatchAnalytics() {
       if (tsA === tsB) return (a.id || 0) - (b.id || 0);
       if (tsA === 0) return 1;
       if (tsB === 0) return -1;
-      return tsA - tsB; // Oldest date first
+      return tsA - tsB;
     });
 
     const totalItems = filtered.length;
@@ -412,6 +493,8 @@ function initNewBatchAnalytics() {
       let emptyMsg = "No matching batches found.";
       if (currentSubTab === "my_running") {
         emptyMsg = "No running batches currently assigned to you.";
+      } else if (currentSubTab === "my_completed") {
+        emptyMsg = "No completed batches currently assigned to you.";
       } else if (currentSubTab === "running") {
         emptyMsg = "No running batches found.";
       } else if (currentSubTab === "completed") {
@@ -528,5 +611,201 @@ function initNewBatchAnalytics() {
         });
       });
     }
+  }
+
+  /**
+   * Setup Mentor List Modal (Class Mentors & Lab Mentors)
+   */
+  function setupMentorModal() {
+    const modal = document.getElementById("ba-mentor-modal");
+    const closeBtn = document.getElementById("ba-mentor-modal-close-btn");
+    const cancelBtn = document.getElementById("ba-mentor-modal-cancel-btn");
+    const searchInput = document.getElementById("ba-mentor-search-input");
+    const listEl = document.getElementById("ba-mentor-modal-list");
+    const titleEl = document.getElementById("ba-mentor-modal-title");
+    const subEl = document.getElementById("ba-mentor-modal-sub");
+
+    if (!modal) return;
+
+    let currentMentorsData = [];
+
+    function openModal(type) {
+      const isClass = type === "class";
+      const field = isClass ? "classMentors" : "labMentors";
+      if (subEl) {
+        subEl.textContent = isClass
+          ? "Instructors assigned to active running batches"
+          : "Lab assistants and mentors assigned to active running batches";
+      }
+
+      // Aggregate mentors from running batches
+      const mentorMap = new Map();
+      const runningBatches = (rawData?.batches || []).filter((b) => !b.isCompleted);
+      runningBatches.forEach((b) => {
+        const mentors = Array.isArray(b[field]) ? b[field] : [];
+        mentors.forEach((m) => {
+          const name = String(m || "").trim();
+          if (!name) return;
+          if (!mentorMap.has(name)) {
+            mentorMap.set(name, []);
+          }
+          mentorMap.get(name).push({
+            batchId: b.batchId,
+            courseName: b.courseName,
+            mode: b.mode
+          });
+        });
+      });
+
+      currentMentorsData = Array.from(mentorMap.entries())
+        .map(([name, batches]) => ({ name, batches }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (titleEl) {
+        titleEl.textContent = `${isClass ? "Class Mentors" : "Lab Mentors"} (${currentMentorsData.length})`;
+      }
+      if (searchInput) searchInput.value = "";
+      renderMentorList(currentMentorsData);
+
+      modal.style.display = "flex";
+      requestAnimationFrame(() => modal.classList.add("is-open"));
+      modal.setAttribute("aria-hidden", "false");
+      if (searchInput) searchInput.focus();
+    }
+
+    function closeModal() {
+      modal.classList.remove("is-open");
+      modal.setAttribute("aria-hidden", "true");
+      setTimeout(() => {
+        modal.style.display = "none";
+      }, 200);
+    }
+
+    function renderMentorList(mentors) {
+      if (!listEl) return;
+      if (mentors.length === 0) {
+        listEl.innerHTML = `<div class="ba-mentor-empty">No mentors found.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = mentors
+        .map((m) => {
+          const initial = (m.name.charAt(0) || "M").toUpperCase();
+          const batchPills = m.batches
+            .map(
+              (b) =>
+                `<span class="ba-mentor-batch-chip" title="${escapeHtml(b.courseName || "")} (${escapeHtml(b.mode || "")})">${escapeHtml(b.batchId)}</span>`
+            )
+            .join("");
+          const batchCountText = `${m.batches.length} batch${m.batches.length > 1 ? "es" : ""}`;
+
+          return `
+            <div class="ba-mentor-item">
+              <div class="ba-mentor-avatar">${escapeHtml(initial)}</div>
+              <div class="ba-mentor-info">
+                <div class="ba-mentor-name-row">
+                  <span class="ba-mentor-name">${escapeHtml(m.name)}</span>
+                  <span class="ba-mentor-count-badge">${batchCountText}</span>
+                </div>
+                <div class="ba-mentor-batches-wrap">
+                  ${batchPills}
+                </div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        const q = searchInput.value.toLowerCase().trim();
+        const filtered = currentMentorsData.filter(
+          (m) =>
+            m.name.toLowerCase().includes(q) ||
+            m.batches.some(
+              (b) =>
+                b.batchId.toLowerCase().includes(q) ||
+                (b.courseName || "").toLowerCase().includes(q)
+            )
+        );
+        renderMentorList(filtered);
+      });
+    }
+
+    document.querySelectorAll(".ba-mentor-modal-trigger").forEach((el) => {
+      el.addEventListener("click", function () {
+        openModal(this.dataset.mentorType || "class");
+      });
+    });
+
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.classList.contains("is-open")) {
+        closeModal();
+      }
+    });
+  }
+
+  /**
+   * Setup Export to CSV
+   */
+  function setupExportCsv() {
+    const exportBtn = document.getElementById("ba-new-export-btn");
+    if (!exportBtn) return;
+
+    exportBtn.addEventListener("click", () => {
+      if (!rawData || !rawData.batches) return;
+      const batches = getTableFilteredBatches();
+      if (batches.length === 0) {
+        alert("No batches to export.");
+        return;
+      }
+
+      const headers = [
+        "Batch ID",
+        "Course",
+        "Mode",
+        "Type",
+        "Start Date",
+        "Current Module",
+        "Status",
+        "Delay Days",
+        "Students"
+      ];
+      const rows = batches.map((b) => [
+        b.batchId || "",
+        b.courseName || "",
+        b.mode || "",
+        b.type || "",
+        b.startDate || "",
+        b.currentModule || "",
+        b.status || "",
+        b.delayDays ?? 0,
+        b.studentCount ?? 0
+      ]);
+
+      const csvContent =
+        "data:text/csv;charset=utf-8," +
+        [
+          headers.map((h) => `"${h}"`).join(","),
+          ...rows.map((r) =>
+            r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+          )
+        ].join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `batch_analytics_${currentSubTab}_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
   }
 }
