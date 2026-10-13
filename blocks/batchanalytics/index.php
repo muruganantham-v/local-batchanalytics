@@ -796,6 +796,7 @@ echo '        <div class="ba-portfolio-subtitle">Overview of batches</div>';
 echo '        <div class="ba-portfolio-glance-bar">';
 echo '          <span class="ba-glance-indicator"></span>';
 echo '          <span class="ba-glance-label">PORTFOLIO AT A GLANCE</span>';
+echo '          <span id="ba-tag-portfolio" class="ba-glance-tag-wrap" style="display:none;"></span>';
 echo '        </div>';
 echo '      </div>';
 
@@ -867,6 +868,7 @@ echo '      <!-- Section 2: Batch Schedule & Students (inside same section) -->'
 echo '      <div class="ba-portfolio-glance-bar" style="margin-top: 24px; margin-bottom: 14px; padding-top: 18px; border-top: 1px solid #f1f5f9;">';
 echo '        <span class="ba-glance-indicator" style="background: #f59e0b;"></span>';
 echo '        <span class="ba-glance-label">BATCH SCHEDULE & STUDENTS</span>';
+echo '        <span id="ba-tag-schedule" class="ba-glance-tag-wrap" style="display:none;"></span>';
 echo '      </div>';
 echo '';
 echo '      <div class="ba-portfolio-grid ba-portfolio-grid-5" id="ba-section2-stats-grid">';

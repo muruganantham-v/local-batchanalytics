@@ -59,6 +59,7 @@ function initNewBatchAnalytics() {
         }
       }
       renderStats(data.stats, data.batches);
+      renderGlanceTags();
       syncSection3Filters();
       setupEventListeners();
       setupMentorModal();
@@ -271,13 +272,14 @@ function initNewBatchAnalytics() {
         currentScheduleFilter = "";
         setActiveStatCard();
         setActiveScheduleCard();
+        renderGlanceTags();
         syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
     }
 
-    // Subtabs Navigation - "dont apply the filter when the subtab is change."
+    // Subtabs Navigation - "and also if i click the tabs the filter should not get reset."
     const subtabs = document.querySelectorAll(".ba-new-subtab");
     subtabs.forEach((tab) => {
       tab.addEventListener("click", function () {
@@ -286,18 +288,10 @@ function initNewBatchAnalytics() {
         currentSubTab = this.dataset.subtab;
         updateTableTitle();
 
-        // Clear card filters when subtab changes
-        currentStatFilter = "";
-        currentScheduleFilter = "";
+        // Filters persist across subtab switches
         setActiveStatCard();
         setActiveScheduleCard();
-
-        // Clear Section 3 search & dropdown values
-        if (searchInput) searchInput.value = "";
-        ["ba-filter-year", "ba-filter-batch", "ba-filter-course", "ba-filter-mode"].forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) el.value = "";
-        });
+        renderGlanceTags();
 
         // Re-sync Section 3 filters to match the new subtab scope
         syncSection3Filters();
@@ -311,20 +305,24 @@ function initNewBatchAnalytics() {
       card.addEventListener("click", function () {
         const filterVal = this.dataset.batchFilter || "running";
 
-        // If currently in a completed tab, switch to active running batches tab
-        if (currentSubTab === "completed" || currentSubTab === "my_completed") {
-          currentSubTab = canViewAll ? "running" : "my_running";
-          setActiveSubtab();
-          updateTableTitle();
-        }
-
-        if (currentStatFilter === filterVal && filterVal !== "running") {
+        if (filterVal === "running") {
+          // If currently in a completed tab, switch to active running batches tab
+          if (currentSubTab === "completed" || currentSubTab === "my_completed") {
+            currentSubTab = canViewAll ? "running" : "my_running";
+            setActiveSubtab();
+            updateTableTitle();
+          }
           currentStatFilter = "running";
         } else {
-          currentStatFilter = filterVal;
+          if (currentStatFilter === filterVal) {
+            currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
+          } else {
+            currentStatFilter = filterVal;
+          }
         }
 
         setActiveStatCard();
+        renderGlanceTags();
         syncSection3Filters();
         currentPage = 1;
         applyAndRender();
@@ -343,13 +341,6 @@ function initNewBatchAnalytics() {
       card.addEventListener("click", function () {
         const filterVal = this.dataset.scheduleFilter || "";
 
-        // If in completed tab, switch to active running tab
-        if (currentSubTab === "completed" || currentSubTab === "my_completed") {
-          currentSubTab = canViewAll ? "running" : "my_running";
-          setActiveSubtab();
-          updateTableTitle();
-        }
-
         if (currentScheduleFilter === filterVal) {
           currentScheduleFilter = "";
         } else {
@@ -357,11 +348,82 @@ function initNewBatchAnalytics() {
         }
 
         setActiveScheduleCard();
+        renderGlanceTags();
         syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
     });
+  }
+
+  function renderGlanceTags() {
+    // 1. Portfolio Tag (Section 1)
+    const portfolioTagWrap = document.getElementById("ba-tag-portfolio");
+    if (portfolioTagWrap) {
+      if (currentStatFilter === "offline" || currentStatFilter === "online") {
+        const label = currentStatFilter === "offline" ? "Offline Batches" : "Online Batches";
+        portfolioTagWrap.innerHTML = `
+          <span class="ba-filter-chip chip-portfolio">
+            <span>${escapeHtml(label)}</span>
+            <button type="button" class="ba-chip-remove" id="ba-clear-portfolio-filter" title="Remove filter" aria-label="Remove filter">&times;</button>
+          </span>
+        `;
+        portfolioTagWrap.style.display = "inline-flex";
+
+        const clearBtn = document.getElementById("ba-clear-portfolio-filter");
+        if (clearBtn) {
+          clearBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            currentStatFilter = currentSubTab === "completed" || currentSubTab === "my_completed" ? "" : "running";
+            setActiveStatCard();
+            renderGlanceTags();
+            syncSection3Filters();
+            currentPage = 1;
+            applyAndRender();
+          });
+        }
+      } else {
+        portfolioTagWrap.innerHTML = "";
+        portfolioTagWrap.style.display = "none";
+      }
+    }
+
+    // 2. Schedule Tag (Section 2)
+    const scheduleTagWrap = document.getElementById("ba-tag-schedule");
+    if (scheduleTagWrap) {
+      if (currentScheduleFilter) {
+        const labels = {
+          early: "Early",
+          on_schedule: "On Schedule",
+          minor_slip: "Minor Slip",
+          delayed: "Delayed",
+        };
+        const label = labels[currentScheduleFilter] || currentScheduleFilter;
+        scheduleTagWrap.innerHTML = `
+          <span class="ba-filter-chip chip-schedule">
+            <span>${escapeHtml(label)}</span>
+            <button type="button" class="ba-chip-remove" id="ba-clear-schedule-filter" title="Remove filter" aria-label="Remove filter">&times;</button>
+          </span>
+        `;
+        scheduleTagWrap.style.display = "inline-flex";
+
+        const clearBtn = document.getElementById("ba-clear-schedule-filter");
+        if (clearBtn) {
+          clearBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            currentScheduleFilter = "";
+            setActiveScheduleCard();
+            renderGlanceTags();
+            syncSection3Filters();
+            currentPage = 1;
+            applyAndRender();
+          });
+        }
+      } else {
+        scheduleTagWrap.innerHTML = "";
+        scheduleTagWrap.style.display = "none";
+      }
+    }
   }
 
   function setActiveSubtab() {
@@ -371,8 +433,15 @@ function initNewBatchAnalytics() {
   }
 
   function setActiveStatCard() {
+    const isCompletedTab = currentSubTab === "completed" || currentSubTab === "my_completed";
     document.querySelectorAll(".ba-new-stat-filter").forEach((card) => {
-      const isActive = card.dataset.batchFilter === currentStatFilter;
+      const filter = card.dataset.batchFilter;
+      let isActive = false;
+      if (filter === "running") {
+        isActive = !isCompletedTab && currentStatFilter === "running";
+      } else {
+        isActive = filter === currentStatFilter;
+      }
       card.classList.toggle("is-active", isActive);
       card.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
