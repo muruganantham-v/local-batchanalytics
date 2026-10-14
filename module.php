@@ -801,8 +801,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         $module_kpis[] = [
             'label' => $display_name,
             'clean_name' => $cat_clean_name,
-            'val'   => number_format($avg_grade, 2) . '%',
-            'sub'   => 'Avg Grade · Completion ' . number_format($avg_comp, 2) . '%',
+            'val'   => number_format($avg_final_grade, 2) . '%',
+            'sub'   => 'Final Grade · Completion ' . number_format($avg_comp, 2) . '%',
             'avgGrade' => $avg_grade,
             'avgGradeFormatted' => number_format($avg_grade, 2),
             'medianGrade' => $median_grade,
@@ -941,8 +941,8 @@ if ($courseid > 0 && !empty($performance_columns) && !empty($students_data)) {
         $overall_kpi = [
             'label' => 'Overall Avg',
             'clean_name' => 'overall_avg',
-            'val'   => $overall_avg_formatted . '%',
-            'sub'   => 'Avg Grade · Completion ' . $overall_avg_comp_formatted . '%',
+            'val'   => $overall_avg_final_formatted . '%',
+            'sub'   => 'Final Grade · Completion ' . $overall_avg_comp_formatted . '%',
             'avgGrade' => $overall_avg,
             'avgGradeFormatted' => $overall_avg_formatted,
             'medianGrade' => $overall_median,
@@ -1284,11 +1284,11 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <?php else: ?>
       <?php foreach ($module_kpis as $kpi): ?>
         <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>"
-             data-grade="<?= s($kpi['avgGradeFormatted']) ?>%"
+             data-grade="<?= s($kpi['avgFinalGradeFormatted']) ?>%"
              data-percentile="<?= s($kpi['avgCompFormatted']) ?>%"
              data-is-overall="<?= !empty($kpi['isOverall']) ? '1' : '0' ?>"
              role="button" tabindex="0" title="Click to view student details for <?= s($kpi['label']) ?>" style="cursor:pointer;">
-          <div class="kv"><?= s($kpi['avgGradeFormatted']) ?>%</div>
+          <div class="kv"><?= s($kpi['avgFinalGradeFormatted']) ?>%</div>
           <div class="kl"><?= !empty($kpi['isOverall']) ? 'Avg Grade' : s($kpi['label']) ?></div>
         </div>
       <?php endforeach; ?>

@@ -45,7 +45,7 @@
             if (value === null || value === undefined || value === '') return '<span class="muted">&mdash;</span>';
             var num = parseFloat(value);
             if (isNaN(num)) return '<span class="muted">&mdash;</span>';
-            var precision = column.ismaac ? 1 : 2;
+            var precision = 2;
             var suffix = column.ismaac ? '' : '%';
             return '<b>' + num.toFixed(precision) + suffix + '</b>';
         }
@@ -55,7 +55,7 @@
             if (value === null || value === undefined || value === '') return '-';
             var num = parseFloat(value);
             if (isNaN(num)) return '-';
-            return num.toFixed(column.ismaac ? 1 : 2) + (column.ismaac ? '' : '%');
+            return num.toFixed(2) + (column.ismaac ? '' : '%');
         }
 
         var perfMode = 'grade'; // 'grade' or 'percentile'

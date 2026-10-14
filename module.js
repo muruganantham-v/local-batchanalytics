@@ -239,7 +239,7 @@
             if (value === null || value === undefined || value === '') return '<span class="muted">&mdash;</span>';
             var num = parseFloat(value);
             if (isNaN(num)) return '<span class="muted">&mdash;</span>';
-            var precision = column.ismaac ? 1 : 2;
+            var precision = 2;
             var suffix = column.ismaac ? '' : '%';
             return '<b>' + num.toFixed(precision) + suffix + '</b>';
         }
@@ -249,7 +249,7 @@
             if (value === null || value === undefined || value === '') return '-';
             var num = parseFloat(value);
             if (isNaN(num)) return '-';
-            return num.toFixed(column.ismaac ? 1 : 2) + (column.ismaac ? '' : '%');
+            return num.toFixed(2) + (column.ismaac ? '' : '%');
         }
 
         var perfMode = 'grade'; // 'grade' or 'percentile'
@@ -2014,7 +2014,7 @@
 
                     var displayMetric = (s.percentage === null || s.percentage === undefined)
                         ? '—'
-                        : (isMaac ? parseFloat(s.percentage).toFixed(1) : parseFloat(s.percentage).toFixed(2) + '%');
+                        : (isMaac ? parseFloat(s.percentage).toFixed(2) : parseFloat(s.percentage).toFixed(2) + '%');
 
                     var compText = compFormatted + '%';
                     var compRatio = '';
@@ -2034,7 +2034,7 @@
                     }
                     var displayFinalGrade = (fgVal === null || fgVal === undefined)
                         ? '—'
-                        : (isMaac ? parseFloat(fgVal).toFixed(1) : parseFloat(fgVal).toFixed(2) + '%');
+                        : (isMaac ? parseFloat(fgVal).toFixed(2) : parseFloat(fgVal).toFixed(2) + '%');
 
                     var sortMetric = (s.percentage === null || s.percentage === undefined || isNaN(parseFloat(s.percentage)))
                         ? -1

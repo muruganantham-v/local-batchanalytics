@@ -120,12 +120,17 @@ class student_performance_service {
                 $grade = $metric && $metric['maximum'] > 0
                     ? round(($metric['earned'] / $metric['maximum']) * 100, 2)
                     : null;
-                if ($grade !== null && !empty($column['ismaac'])) {
-                    $grade = round($grade / 10, 1);
+                if (!empty($column['ismaac'])) {
+                    // MAAC rating is based only on grade: ((grade / 100) * 9) and does not toggle
+                    if ($grade !== null) {
+                        $grade = round(($grade / 100) * 9, 2);
+                    }
+                    $completion = $grade;
+                } else {
+                    $completion = $metric && $metric['items'] > 0
+                        ? round(($metric['completed'] / $metric['items']) * 100, 2)
+                        : null;
                 }
-                $completion = $metric && $metric['items'] > 0
-                    ? round(($metric['completed'] / $metric['items']) * 100, 2)
-                    : null;
                 $student['categories'][$key] = [
                     'grade' => $grade,
                     'completion' => $completion,
@@ -145,6 +150,17 @@ class student_performance_service {
                 $student['grade'] = round(($course_totals[$userid]['earned'] / $course_totals[$userid]['maximum']) * 100, 2);
             } else {
                 $student['grade'] = !empty($overall) ? round(array_sum($overall) / count($overall), 2) : null;
+            }
+
+            // Ensure MAAC rating uses student's average grade if course total grade was null
+            foreach ($columns as $key => $column) {
+                if (!empty($column['ismaac'])) {
+                    if ($student['categories'][$key]['grade'] === null && $student['grade'] !== null) {
+                        $maac_rating = round(($student['grade'] / 100) * 9, 2);
+                        $student['categories'][$key]['grade'] = $maac_rating;
+                        $student['categories'][$key]['completion'] = $maac_rating;
+                    }
+                }
             }
             // Overall activity completion percentage across all module activities
             $student['completion'] = $total_items > 0
