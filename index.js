@@ -943,6 +943,7 @@ function initNewBatchAnalytics() {
           }
           mentorMap.get(name).push({
             batchId: b.batchId,
+            currentModule: b.currentModule,
             courseName: b.courseName,
             mode: b.mode
           });
@@ -984,10 +985,12 @@ function initNewBatchAnalytics() {
         .map((m) => {
           const initial = (m.name.charAt(0) || "M").toUpperCase();
           const batchPills = m.batches
-            .map(
-              (b) =>
-                `<span class="ba-mentor-batch-chip" title="${escapeHtml(b.courseName || "")} (${escapeHtml(b.mode || "")})">${escapeHtml(b.batchId)}</span>`
-            )
+            .map((b) => {
+              const label = (b.currentModule && b.currentModule !== "N/A" && b.currentModule !== "Completed")
+                ? `${escapeHtml(b.batchId)} - ${escapeHtml(b.currentModule)}`
+                : escapeHtml(b.batchId);
+              return `<span class="ba-mentor-batch-chip" title="${escapeHtml(b.courseName || "")} (${escapeHtml(b.mode || "")})">${label}</span>`;
+            })
             .join("");
           const batchCountText = `${m.batches.length} batch${m.batches.length > 1 ? "es" : ""}`;
 
@@ -1018,11 +1021,13 @@ function initNewBatchAnalytics() {
             m.batches.some(
               (b) =>
                 b.batchId.toLowerCase().includes(q) ||
+                (b.currentModule || "").toLowerCase().includes(q) ||
                 (b.courseName || "").toLowerCase().includes(q)
             )
         );
         renderMentorList(filtered);
       });
+
     }
 
     document.querySelectorAll(".ba-mentor-modal-trigger").forEach((el) => {

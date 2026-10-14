@@ -535,40 +535,19 @@ if ($action === 'getnewbatchdata') {
                 $has_modules = !empty($modules);
                 $all_completed = $has_modules;
                 $last_valid_module = null;
-                $sec_classmentors = [];
-                $sec_labmentors = [];
+                $current_module_data = null;
+                $current_sec_classmentors = [];
+                $current_sec_labmentors = [];
 
+                // Pass 1: Accumulate completed delta and check completion
                 foreach ($modules as $m) {
                     $last_valid_module = $m;
-
-                    // Class Mentors
-                    foreach (['primarymentor', 'secondarymentor'] as $cmk) {
-                        if (!empty($m[$cmk])) {
-                            $resolved = $resolve_mentor($m[$cmk]);
-                            if ($resolved !== null) {
-                                $classmentors[$resolved] = true;
-                                $sec_classmentors[$resolved] = true;
-                            }
-                        }
-                    }
-
-                    // Lab Mentors
-                    foreach (['labmentor1', 'labmentor2', 'labmentor3'] as $lmk) {
-                        if (!empty($m[$lmk])) {
-                            $resolved = $resolve_mentor($m[$lmk]);
-                            if ($resolved !== null) {
-                                $labmentors[$resolved] = true;
-                                $sec_labmentors[$resolved] = true;
-                            }
-                        }
-                    }
-
                     $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
                     if (!$isdone) {
                         $all_completed = false;
                     }
 
-                    // Accumulate schedule delta only from completed modules (in-progress modules are not finalized)
+                    // Accumulate schedule delta only from completed modules
                     if ($isdone) {
                         if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
                             $totaldelta += (int)$m['scheduledelta'];
@@ -577,22 +556,69 @@ if ($action === 'getnewbatchdata') {
                             $totaldelta += $diffdays;
                         }
                     }
-
-                    if ($currentmodule === 'N/A' && (!$isdone || count($modules) === 1)) {
-                        $mod_name = !empty($m['name']) ? $m['name'] : (!empty($m['courseshortname']) ? $m['courseshortname'] : ('Module ' . $m['module']));
-                        $currentmodule = $mod_name;
-                        $currentmoduleidx = (int)$m['module'];
-                        $currentcourseid = (int)($m['moodlecourseid'] ?? 0);
-                    }
-                }
-
-                if ($has_modules && $currentmodule === 'N/A' && $last_valid_module !== null) {
-                    $currentmodule = !empty($last_valid_module['name']) ? $last_valid_module['name'] : 'Completed';
-                    $currentmoduleidx = (int)$last_valid_module['module'];
-                    $currentcourseid = (int)($last_valid_module['moodlecourseid'] ?? 0);
                 }
 
                 $is_completed = ($has_modules && $all_completed);
+
+                // Pass 2: Identify current active module
+                // Priority A: In-progress module (actualstart > 0 and actualend not set)
+                foreach ($modules as $m) {
+                    $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
+                    $isinprog = (!empty($m['actualstart']) && (int)$m['actualstart'] > 0 && !$isdone);
+                    if ($isinprog) {
+                        $current_module_data = $m;
+                        break;
+                    }
+                }
+                // Priority B: First uncompleted module
+                if ($current_module_data === null) {
+                    foreach ($modules as $m) {
+                        $isdone = (!empty($m['actualend']) && (int)$m['actualend'] > 0);
+                        if (!$isdone) {
+                            $current_module_data = $m;
+                            break;
+                        }
+                    }
+                }
+                // Priority C: Last valid module (if batch is completed or only 1 module)
+                if ($current_module_data === null && $last_valid_module !== null) {
+                    $current_module_data = $last_valid_module;
+                }
+
+                if ($current_module_data !== null) {
+                    $mod_name = !empty($current_module_data['name']) ? $current_module_data['name'] : (!empty($current_module_data['courseshortname']) ? $current_module_data['courseshortname'] : ('Module ' . ($current_module_data['module'] ?? 1)));
+                    $currentmodule = $is_completed ? 'Completed' : $mod_name;
+                    $currentmoduleidx = (int)($current_module_data['module'] ?? 1);
+                    $currentcourseid = (int)($current_module_data['moodlecourseid'] ?? 0);
+
+                    // Extract mentors ONLY for active running batches from the CURRENT module
+                    if (!$is_completed) {
+                        // Class Mentors
+                        foreach (['primarymentor', 'secondarymentor'] as $cmk) {
+                            if (!empty($current_module_data[$cmk])) {
+                                $resolved = $resolve_mentor($current_module_data[$cmk]);
+                                if ($resolved !== null) {
+                                    $current_sec_classmentors[$resolved] = true;
+                                    $classmentors[$resolved] = true;
+                                }
+                            }
+                        }
+
+                        // Lab Mentors
+                        foreach (['labmentor1', 'labmentor2', 'labmentor3'] as $lmk) {
+                            if (!empty($current_module_data[$lmk])) {
+                                $resolved = $resolve_mentor($current_module_data[$lmk]);
+                                if ($resolved !== null) {
+                                    $current_sec_labmentors[$resolved] = true;
+                                    $labmentors[$resolved] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $active_classmentors = array_values(array_keys($current_sec_classmentors));
+                $active_labmentors   = array_values(array_keys($current_sec_labmentors));
 
                 // Determine status based on total accumulated schedule delta
                 $status_info = \local_batchanalytics\util::get_batch_status($totaldelta);
@@ -626,8 +652,9 @@ if ($action === 'getnewbatchdata') {
                     'statusLabel' => $statuslabel,
                     'delayDays' => $delaydays,
                     'studentCount' => $sec_students,
-                    'classMentors' => array_values(array_keys($sec_classmentors)),
-                    'labMentors' => array_values(array_keys($sec_labmentors)),
+                    'classMentors' => $active_classmentors,
+                    'labMentors' => $active_labmentors,
+
                     'isCompleted' => $is_completed,
                     'isAssigned' => $is_assigned,
                     'sectionId' => (int)$sec->id,

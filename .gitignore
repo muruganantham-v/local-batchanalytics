@@ -11,7 +11,7 @@ scripts/
 .claude/
 .playwright-mcp/
 *.png
-scratch/
-PLUGIN_REVIEW.md
 bug_report.md
 deploy_local.sh
+PLUGIN_REVIEW.md
+scratch/
