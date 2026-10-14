@@ -1315,5 +1315,85 @@ class util {
 
         return null;
     }
+
+    /**
+     * Automatically deploy the companion block_batchanalytics into moodle/blocks/batchanalytics
+     * so that administrators do not need to manually copy or symlink files.
+     *
+     * @return bool True if deployed or already present, false on permission error
+     */
+    public static function deploy_companion_block(): bool {
+        global $CFG;
+
+        $src = $CFG->dirroot . '/local/batchanalytics/blocks/batchanalytics';
+        $dest = $CFG->dirroot . '/blocks/batchanalytics';
+
+        if (!is_dir($src)) {
+            return false;
+        }
+
+        // If dest exists, ensure files are synchronized
+        if (file_exists($dest)) {
+            if (is_link($dest)) {
+                $target = @readlink($dest);
+                if ($target === $src || realpath($dest) === realpath($src)) {
+                    return true;
+                }
+            }
+            if (is_dir($dest) && is_writable($dest)) {
+                self::copy_directory_recursive($src, $dest);
+                return true;
+            }
+            return true;
+        }
+
+        // Check if moodle/blocks is writable
+        $blocks_dir = $CFG->dirroot . '/blocks';
+        if (!is_dir($blocks_dir) || !is_writable($blocks_dir)) {
+            return false;
+        }
+
+        // Attempt symlink first
+        if (@symlink($src, $dest)) {
+            return true;
+        }
+
+        // Fallback: recursive copy
+        return self::copy_directory_recursive($src, $dest);
+    }
+
+    /**
+     * Recursively copy files from source directory to destination directory.
+     *
+     * @param string $source
+     * @param string $dest
+     * @return bool
+     */
+    public static function copy_directory_recursive(string $source, string $dest): bool {
+        if (!is_dir($dest)) {
+            if (!@mkdir($dest, 0755, true) && !is_dir($dest)) {
+                return false;
+            }
+        }
+        $dir = @opendir($source);
+        if (!$dir) {
+            return false;
+        }
+        while (($file = readdir($dir)) !== false) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+            $srcpath = $source . '/' . $file;
+            $destpath = $dest . '/' . $file;
+            if (is_dir($srcpath)) {
+                self::copy_directory_recursive($srcpath, $destpath);
+            } else {
+                @copy($srcpath, $destpath);
+                @chmod($destpath, 0644);
+            }
+        }
+        closedir($dir);
+        return true;
+    }
 }
 

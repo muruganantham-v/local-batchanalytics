@@ -21,8 +21,11 @@ require_once(__DIR__ . '/classes/admin_setting_module_tracker_categories.php');
 require_once(__DIR__ . '/classes/admin_setting_mentor_master_activities.php');
 require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
 require_once(__DIR__ . '/classes/mentor_activity_service.php');
+require_once(__DIR__ . '/classes/util.php');
 
 if ($hassiteconfig) {
+    // Automatically ensure the companion block is deployed to moodle/blocks/batchanalytics
+    \local_batchanalytics\util::deploy_companion_block();
     // Backward compatibility: If accessed directly via admin/settings.php?section=local_batchanalytics,
     // redirect to the admin category landing page to avoid 'cannotfindadminpage' error.
     if (optional_param('section', '', PARAM_SAFEDIR) === 'local_batchanalytics' &&

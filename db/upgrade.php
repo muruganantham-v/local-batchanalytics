@@ -399,5 +399,12 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101001, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026101402) {
+        require_once(__DIR__ . '/../classes/util.php');
+        \local_batchanalytics\util::deploy_companion_block();
+
+        upgrade_plugin_savepoint(true, 2026101402, 'local', 'batchanalytics');
+    }
+
     return true;
 }
