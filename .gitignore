@@ -12,3 +12,6 @@ scripts/
 .playwright-mcp/
 *.png
 scratch/
+PLUGIN_REVIEW.md
+bug_report.md
+deploy_local.sh

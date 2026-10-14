@@ -416,34 +416,19 @@ if ($section && $has_bm_student) {
 
 // Fetch and merge enrolled students across all linked courses in the batch.
 $enrolledstudents = [];
-foreach ($performance_courseids as $enrolledcourseid) {
-    $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
-    if (!$coursecontext) {
-        continue;
-    }
-    $course_students = get_enrolled_users($coursecontext, '', 0, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
-    foreach ($course_students as $studentrecord) {
-        $enrolledstudents[(int)$studentrecord->id] = $studentrecord;
-    }
-}
-
-// Also include any section students from local_bm_student not yet in enrolled list
-if (!empty($sec_student_uids)) {
-    $missing_uids = array_diff($sec_student_uids, array_keys($enrolledstudents));
-    if (!empty($missing_uids)) {
-        list($in_missing, $m_params) = $DB->get_in_or_equal($missing_uids, SQL_PARAMS_NAMED, 'mstu');
-        $extra_students = $DB->get_records_select(
-            'user',
-            "id $in_missing AND deleted = 0",
-            $m_params,
-            'firstname ASC, lastname ASC',
-            'id, idnumber, username, firstname, lastname, email'
-        );
-        foreach ($extra_students as $mrec) {
-            $enrolledstudents[(int)$mrec->id] = $mrec;
+if (!empty($performance_courseids)) {
+    foreach ($performance_courseids as $enrolledcourseid) {
+        $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
+        if (!$coursecontext) {
+            continue;
+        }
+        $course_students = get_enrolled_users($coursecontext, '', 0, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
+        foreach ($course_students as $studentrecord) {
+            $enrolledstudents[(int)$studentrecord->id] = $studentrecord;
         }
     }
 }
+
 
 foreach ($enrolledstudents as $studentrecord) {
     $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);

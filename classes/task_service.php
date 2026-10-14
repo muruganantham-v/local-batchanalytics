@@ -207,38 +207,81 @@ class task_service {
 
         $dbman = $DB->get_manager();
         if ($dbman->table_exists('local_bm_classsection')) {
-            $sections = $DB->get_records('local_bm_classsection', null, '', 'id, maacexecutive, maacexecutivename, pmmanager, pmmanagername, moduledata');
+            // Preload user's enrolled course IDs once to avoid context checking in loop (PERF-01).
+            $user_courses = enrol_get_users_courses($userid, true, 'id');
+            $user_course_ids = !empty($user_courses) ? array_map('intval', array_keys($user_courses)) : [];
+
+            // Targeted query: only load sections where the user is directly referenced or their enrolled courses appear
+            $or_conditions = [
+                'maacexecutive = :uid_sse',
+                'pmmanager = :uid_pm',
+            ];
+            $params = [
+                'uid_sse' => (string)$userid,
+                'uid_pm'  => (string)$userid,
+            ];
+            if ($fullname !== '') {
+                $or_conditions[] = 'maacexecutivename = :fn_sse';
+                $or_conditions[] = 'pmmanagername = :fn_pm';
+                $params['fn_sse'] = $fullname;
+                $params['fn_pm'] = $fullname;
+            }
+            if ($email !== '') {
+                $or_conditions[] = 'maacexecutivename = :em_sse';
+                $or_conditions[] = 'pmmanagername = :em_pm';
+                $params['em_sse'] = $email;
+                $params['em_pm'] = $email;
+            }
+
+            if (!empty($user_course_ids)) {
+                foreach ($user_course_ids as $cidx => $cid) {
+                    $or_conditions[] = $DB->sql_like($DB->sql_compare_text('moduledata'), ":likecid$cidx", false, false);
+                    $params["likecid$cidx"] = '%"moodlecourseid":"' . $cid . '"%';
+                    $or_conditions[] = $DB->sql_like($DB->sql_compare_text('moduledata'), ":likeintcid$cidx", false, false);
+                    $params["likeintcid$cidx"] = '%"moodlecourseid":' . $cid . '%';
+                }
+            }
+
+            $wheresql = implode(' OR ', $or_conditions);
+            $sections = $DB->get_records_select('local_bm_classsection', $wheresql, $params, '', 'id, maacexecutive, maacexecutivename, pmmanager, pmmanagername, moduledata');
             foreach ($sections as $sec) {
                 // SS / MAAC Executive check
-                if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename)) {
+                if (!$assigned_sse && ($is_user_match($sec->maacexecutive) || $is_user_match($sec->maacexecutivename))) {
                     $assigned_sse = true;
                 }
                 // Program Manager check
-                if ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername)) {
+                if (!$assigned_pm && ($is_user_match($sec->pmmanager) || $is_user_match($sec->pmmanagername))) {
                     $assigned_pm = true;
                 }
                 // Mentor check in moduledata
-                $modules = util::decode_module_data($sec->moduledata ?? '', true);
-                foreach ($modules as $m) {
-                    $class_mentors = [$m['primarymentor'] ?? '', $m['secondarymentor'] ?? ''];
-                    $lab_mentors   = [$m['labmentor1'] ?? '', $m['labmentor2'] ?? '', $m['labmentor3'] ?? ''];
+                if (!$assigned_class_mentor || !$assigned_lab_mentor) {
+                    $modules = util::decode_module_data($sec->moduledata ?? '', true);
+                    foreach ($modules as $m) {
+                        $cid = (int)($m['moodlecourseid'] ?? 0);
+                        $is_enrolled = ($cid > 0) && in_array($cid, $user_course_ids, true);
 
-                    $cid = (int)($m['moodlecourseid'] ?? 0);
-                    $c_ctx = ($cid > 0) ? \context_course::instance($cid, IGNORE_MISSING) : null;
-                    $is_enrolled = ($c_ctx && is_enrolled($c_ctx, $userid));
-
-                    foreach ($class_mentors as $cm) {
-                        if ($is_user_match($cm) && $is_enrolled) {
-                            $assigned_class_mentor = true;
-                            break;
+                        if ($is_enrolled) {
+                            if (!$assigned_class_mentor) {
+                                foreach ([$m['primarymentor'] ?? '', $m['secondarymentor'] ?? ''] as $cm) {
+                                    if ($is_user_match($cm)) {
+                                        $assigned_class_mentor = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!$assigned_lab_mentor) {
+                                foreach ([$m['labmentor1'] ?? '', $m['labmentor2'] ?? '', $m['labmentor3'] ?? ''] as $lm) {
+                                    if ($is_user_match($lm)) {
+                                        $assigned_lab_mentor = true;
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
-                    foreach ($lab_mentors as $lm) {
-                        if ($is_user_match($lm) && $is_enrolled) {
-                            $assigned_lab_mentor = true;
-                            break;
-                        }
-                    }
+                }
+                if ($assigned_sse && $assigned_pm && $assigned_class_mentor && $assigned_lab_mentor) {
+                    break;
                 }
             }
         }

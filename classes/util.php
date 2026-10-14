@@ -923,9 +923,11 @@ class util {
         global $DB, $PAGE;
 
         static $cache = [];
+        static $str_cache = [];
 
         $user = null;
         $userid = 0;
+        $str_key = '';
 
         if (is_object($userorid) && isset($userorid->id)) {
             $user = $userorid;
@@ -937,6 +939,10 @@ class util {
             if (is_numeric($identifier)) {
                 $userid = (int)$identifier;
             } else {
+                $str_key = mb_strtolower($identifier);
+                if (isset($str_cache[$str_key][$size])) {
+                    return $str_cache[$str_key][$size];
+                }
                 // Try looking up by username or idnumber
                 $matched = $DB->get_record_select(
                     'user',
@@ -967,8 +973,11 @@ class util {
         }
 
         $name = $user ? fullname($user) : '';
+        if ($name === '' && is_string($userorid) && !is_numeric($userorid)) {
+            $name = trim($userorid);
+        }
         $initials = '';
-        if ($name !== '') {
+        if ($name !== '' && $name !== '—') {
             $parts = preg_split('/\s+/', trim($name));
             if (count($parts) >= 2) {
                 $initials = strtoupper(mb_substr($parts[0], 0, 1) . mb_substr(end($parts), 0, 1));
@@ -1010,6 +1019,9 @@ class util {
 
         if ($userid > 0) {
             $cache[$userid][$size] = $data;
+        }
+        if ($str_key !== '') {
+            $str_cache[$str_key][$size] = $data;
         }
 
         return $data;

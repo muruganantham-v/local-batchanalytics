@@ -1366,6 +1366,7 @@ class activity_tracker_service {
         $is_spot_award = (strpos($norm, 'spot award') !== false || strpos($norm, 'spot_award') !== false);
         if ($is_spot_award) {
             $spot = self::check_spot_award_nominations($courseid, $activity_name);
+            $stage_suffix = !empty($spot['stage_label']) ? (' (' . $spot['stage_label'] . ')') : '';
             if (!$spot['nominated']) {
                 return [
                     'has_pending'        => true,
@@ -1381,7 +1382,7 @@ class activity_tracker_service {
                     'nominated_count'    => 0,
                     'nominated_students' => [],
                     'items'              => [],
-                    'message'            => 'No students have been nominated for Spot Award in this course yet. Please nominate at least one student before marking this activity as complete.',
+                    'message'            => 'No students have been nominated for Spot Award' . $stage_suffix . ' in this course yet. Please nominate at least one student before marking this activity as complete.',
                     'details'            => ['reason' => 'spot_award_not_nominated'],
                 ];
             }
@@ -1400,7 +1401,7 @@ class activity_tracker_service {
                 'nominated_count'    => $spot['nominated_count'],
                 'nominated_students' => $spot['nominated_students'],
                 'items'              => [],
-                'message'            => 'Spot Award nomination verified (' . $spot['nominated_count'] . ' student(s) nominated).',
+                'message'            => 'Spot Award nomination' . $stage_suffix . ' verified (' . $spot['nominated_count'] . ' student(s) nominated).',
                 'details'            => ['reason' => 'spot_award_nominated'],
             ];
         }
@@ -1954,27 +1955,26 @@ class activity_tracker_service {
         $is_mid = (strpos($norm, 'mid') !== false);
         $is_end = (strpos($norm, 'end') !== false);
 
-        $filtered_students = $students;
+        $stage_label = '';
         if ($is_mid) {
-            $mid_students = array_values(array_filter($students, function($s) {
+            $stage_label = 'Mid C';
+            $filtered_students = array_values(array_filter($students, static function($s) {
                 return (stripos($s['awardcategory'], 'mid') !== false);
             }));
-            if (!empty($mid_students)) {
-                $filtered_students = $mid_students;
-            }
         } else if ($is_end) {
-            $end_students = array_values(array_filter($students, function($s) {
+            $stage_label = 'End C';
+            $filtered_students = array_values(array_filter($students, static function($s) {
                 return (stripos($s['awardcategory'], 'end') !== false);
             }));
-            if (!empty($end_students)) {
-                $filtered_students = $end_students;
-            }
+        } else {
+            $filtered_students = $students;
         }
 
         $count = count($filtered_students);
 
         return [
             'is_spot_award'      => true,
+            'stage_label'        => $stage_label,
             'nominated'          => ($count > 0),
             'nominated_count'    => $count,
             'nominated_students' => $filtered_students,

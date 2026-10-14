@@ -14,25 +14,11 @@ final class batch_notes_service {
     const TABLE = 'local_batchanalytics_batch_notes';
 
     /**
-     * Ensure the database table exists.
+     * Retained for backward-compatibility.
+     * Schema management is handled exclusively via db/install.xml and db/upgrade.php per Moodle standards (ARCH-02).
      */
     public static function ensure_table_exists(): void {
-        global $DB;
-        $dbman = $DB->get_manager();
-        if (!$dbman->table_exists(self::TABLE)) {
-            $table = new \xmldb_table(self::TABLE);
-            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-            $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-            $table->add_field('author', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
-            $table->add_field('body', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
-            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-
-            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
-            $table->add_index('batchid_ix', XMLDB_INDEX_NOTUNIQUE, ['batchid']);
-
-            $dbman->create_table($table);
-        }
+        // No-op: Table local_batchanalytics_batch_notes is managed via db/install.xml.
     }
 
     /**

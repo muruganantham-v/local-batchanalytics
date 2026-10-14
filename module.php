@@ -70,6 +70,30 @@ if ($action === 'saveactivity') {
         $cid = required_param('courseid', PARAM_INT);
 
         if ($cid > 0) {
+            // Enforce course-level and mentor assignment authorization (SEC-01).
+            $coursecontext = \context_course::instance($cid, IGNORE_MISSING);
+            $can_edit = is_siteadmin($USER->id)
+                || has_capability('local/batchanalytics:manage', $context)
+                || ($coursecontext && has_capability('moodle/course:manageactivities', $coursecontext));
+
+            if (!$can_edit && $requested_batchid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
+                $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $requested_batchid]);
+                if ($sec_obj) {
+                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER);
+                    if (!empty($assignment['is_assigned'])) {
+                        $can_edit = true;
+                    }
+                }
+            } else if (!$can_edit && $coursecontext && is_enrolled($coursecontext, $USER->id)) {
+                $can_edit = has_capability('moodle/course:update', $coursecontext);
+            }
+
+            if (!$can_edit) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'error' => get_string('nopermissions', 'error')]);
+                die();
+            }
+
             if ($completed) {
                 $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, $cmid);
                 if ($pending_check['has_pending']) {
@@ -122,6 +146,31 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         }
 
         if ($cid > 0 && !empty($target_name)) {
+            // Enforce course-level and mentor assignment authorization (SEC-01).
+            $coursecontext = \context_course::instance($cid, IGNORE_MISSING);
+            $can_edit = is_siteadmin($USER->id)
+                || has_capability('local/batchanalytics:manage', $context)
+                || ($coursecontext && has_capability('moodle/course:manageactivities', $coursecontext));
+
+            $sec_check_id = $sectionid > 0 ? $sectionid : $requested_batchid;
+            if (!$can_edit && $sec_check_id > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
+                $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $sec_check_id]);
+                if ($sec_obj) {
+                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER);
+                    if (!empty($assignment['is_assigned'])) {
+                        $can_edit = true;
+                    }
+                }
+            } else if (!$can_edit && $coursecontext && is_enrolled($coursecontext, $USER->id)) {
+                $can_edit = has_capability('moodle/course:update', $coursecontext);
+            }
+
+            if (!$can_edit) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'error' => get_string('nopermissions', 'error')]);
+                die();
+            }
+
             if ($completed) {
                 $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, 0, $target_name, $sectionid);
                 if ($pending_check['has_pending']) {
@@ -546,27 +595,28 @@ if ($section && $has_bm_student) {
 
 $enrolledstudents = [];
 if ($courseid > 0) {
-    $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
     $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
-    if ($studentroleid > 0 && $coursecontext) {
-        $enrolledstudents = get_role_users(
-            $studentroleid,
-            $coursecontext,
-            false,
-            'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
-        );
+    if ($coursecontext) {
+        $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
+        if ($studentroleid > 0) {
+            $enrolledstudents = get_role_users(
+                $studentroleid,
+                $coursecontext,
+                false,
+                'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
+            );
+        }
+        if (empty($enrolledstudents)) {
+            $enrolledstudents = get_enrolled_users(
+                $coursecontext,
+                '',
+                0,
+                'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
+            );
+        }
     }
-} else if (!empty($sec_student_uids)) {
-    // Only if module has no mapped course ($courseid <= 0), fallback to section students.
-    list($in_sec, $sec_params) = $DB->get_in_or_equal($sec_student_uids, SQL_PARAMS_NAMED, 'secstu');
-    $enrolledstudents = $DB->get_records_select(
-        'user',
-        "id $in_sec AND deleted = 0",
-        $sec_params,
-        'firstname ASC, lastname ASC',
-        'id, idnumber, username, firstname, lastname, email'
-    );
 }
+
 
 foreach ($enrolledstudents as $studentrecord) {
     $spot_count = (int)($spot_award_counts[$studentrecord->id] ?? 0);
