@@ -56,79 +56,57 @@ class mentor_activity_service {
     public const DEFAULT_MASTER_ACTIVITIES = [
         ['key' => 'assignment_evaluation', 'name' => 'Assignment Evaluation', 'desc' => 'Assignment evaluation', 'category' => 'Evaluation'],
         ['key' => 'project_evaluation', 'name' => 'Project Evaluation', 'desc' => 'Project evaluation', 'category' => 'Evaluation'],
-        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot Award Nomination - Mid C', 'desc' => 'Spot award nomination - mid c', 'category' => 'Award'],
-        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot Award Nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
-        ['key' => 'spot_award_nomination', 'name' => 'Spot Award Nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
-        ['key' => 'power_track_nomination', 'name' => 'Power Track Nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
+        ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - Mid C', 'desc' => 'Spot award nomination - mid c', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'desc' => 'Spot award nomination - End C', 'category' => 'Award'],
+        ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'desc' => 'Spot award nomination', 'category' => 'Award'],
         ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'desc' => 'Module test evaluation', 'category' => 'Evaluation'],
-        ['key' => 'quiz_evaluation', 'name' => 'Quiz Evaluation', 'desc' => 'Quiz evaluation', 'category' => 'Evaluation'],
+        ['key' => 'power_track_nomination', 'name' => 'Power Track Nomination', 'desc' => 'Power track nomination', 'category' => 'Nomination'],
     ];
 
     /** @var array Default grouping rules with due days */
     public const DEFAULT_GROUPING_RULES = [
         [
-            'group' => 'Linux Systems',
-            'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 3],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 4],
-                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 5],
-            ],
-        ],
-        [
             'group' => 'Advanced C',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
-                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - mid c', 'duedays' => 15],
-                ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 20],
-                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 25],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 30],
+                ['key' => 'spot_award_nomination_mid_c', 'name' => 'Spot award nomination - Mid C', 'duedays' => 35],
+                ['key' => 'power_track_nomination', 'name' => 'Power track nomination', 'duedays' => 35],
+                ['key' => 'spot_award_nomination_end_c', 'name' => 'Spot award nomination - End C', 'duedays' => 64],
+                ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'duedays' => 65],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 77],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 77],
             ],
         ],
         [
             'group' => 'Data Structure',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 15],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 12],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 25],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 25],
+                ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'duedays' => 22],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 22],
             ],
         ],
         [
             'group' => 'MicroController',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 12],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 35],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 32],
+                ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'duedays' => 32],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 34],
             ],
         ],
         [
             'group' => 'C++',
             'activities' => [
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 5],
+                ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'duedays' => 15],
             ],
         ],
         [
             'group' => 'Linux Internals and TCP/IP Networking',
             'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 10],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 15],
-            ],
-        ],
-        [
-            'group' => 'Qt / QML',
-            'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 8],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 7],
-            ],
-        ],
-        [
-            'group' => 'ELARM',
-            'activities' => [
-                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 5],
-                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 8],
-                ['key' => 'quiz_evaluation', 'name' => 'Quiz evaluation', 'duedays' => 7],
+                ['key' => 'assignment_evaluation', 'name' => 'Assignment evaluation', 'duedays' => 27],
+                ['key' => 'project_evaluation', 'name' => 'Project evaluation', 'duedays' => 28],
+                ['key' => 'module_test_evaluation', 'name' => 'Module Test Evaluation', 'duedays' => 26],
+                ['key' => 'spot_award_nomination', 'name' => 'Spot award nomination', 'duedays' => 28],
             ],
         ],
     ];
