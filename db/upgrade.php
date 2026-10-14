@@ -415,5 +415,13 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101403, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026101404) {
+        require_once(__DIR__ . '/../classes/activity_tracker_service.php');
+
+        set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
+
+        upgrade_plugin_savepoint(true, 2026101404, 'local', 'batchanalytics');
+    }
+
     return true;
 }
