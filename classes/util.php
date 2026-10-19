@@ -86,7 +86,7 @@ class util {
     }
 
     /**
-     * Get a plugin configuration value, checking local_batchanalytics first then block_batchanalytics.
+     * Get a plugin configuration value from local_batchanalytics.
      *
      * @param string $name Configuration setting name
      * @param mixed $default Fallback value if setting is not set
@@ -94,9 +94,6 @@ class util {
      */
     public static function get_config_val(string $name, $default = false) {
         $val = get_config('local_batchanalytics', $name);
-        if ($val === false || $val === null || trim((string)$val) === '') {
-            $val = get_config('block_batchanalytics', $name);
-        }
         if ($val === false || $val === null || trim((string)$val) === '') {
             return $default;
         }
@@ -213,12 +210,18 @@ class util {
     /**
      * Check if a given user value (id, name, username, email) matches a Moodle user.
      *
-     * @param mixed $val Value from batch/module record (user id, name, username, email).
+    /**
+     * Check if a record value matches a user ID (Issue #42).
+     * Authorisation and access control MUST match only against immutable user IDs,
+     * not against user-editable display names, usernames or emails.
+     *
+     * @param mixed $val Value from batch/module record (user id, or array/object containing id/userid).
      * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
      * @return bool
      */
-    public static function is_user_match($val, $user_or_id): bool {
-        if ($val === null || $val === '' || $val === '0' || $val === '—') {
+    public static function is_user_match($val, $user_or_id, bool $strict_userid = true): bool {
+        if ($val === null || $val === '' || $val === '0' || $val === 0 || $val === '—') {
             return false;
         }
         if (is_array($val) || is_object($val)) {
@@ -226,10 +229,50 @@ class util {
                 $val = $val->id;
             } else if (is_array($val) && isset($val['id'])) {
                 $val = $val['id'];
+            } else if (is_object($val) && isset($val->userid)) {
+                $val = $val->userid;
             } else if (is_array($val) && isset($val['userid'])) {
                 $val = $val['userid'];
+            } else {
+                return false;
+            }
+        }
+        if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else if (is_object($user_or_id) && isset($user_or_id->id)) {
+            $userid = (int)$user_or_id->id;
+        } else {
+            return false;
+        }
+        if ($userid <= 0) {
+            return false;
+        }
+
+        $v = trim((string)$val);
+        return ($v !== '' && $v === (string)$userid);
+    }
+
+    /**
+     * Check if a display name or email matches a user.
+     * WARNING: Only use this for UI display purposes. Never use for authorisation or access control (Issue #42).
+     *
+     * @param mixed $val Value from batch/module record (display name, username, email).
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_display_name_match($val, $user_or_id): bool {
+        if ($val === null || $val === '' || $val === '0' || $val === '—') {
+            return false;
+        }
+        if (is_array($val) || is_object($val)) {
+            if (is_object($val) && isset($val->name)) {
+                $val = $val->name;
             } else if (is_array($val) && isset($val['name'])) {
                 $val = $val['name'];
+            } else if (is_object($val) && isset($val->fullname)) {
+                $val = $val->fullname;
+            } else if (is_array($val) && isset($val['fullname'])) {
+                $val = $val['fullname'];
             } else {
                 return false;
             }
@@ -243,27 +286,25 @@ class util {
         if (!$user) {
             return false;
         }
-        $u_id = (string)$user->id;
+
+        $lv = strtolower(trim((string)$val));
         $u_name = strtolower(trim(fullname($user)));
         $u_uname = strtolower(trim($user->username ?? ''));
         $u_email = strtolower(trim($user->email ?? ''));
 
-        $v = trim((string)$val);
-        if ($v === $u_id) {
-            return true;
-        }
-        $lv = strtolower($v);
-        return ($lv === $u_name || $lv === $u_uname || ($u_email !== '' && $lv === $u_email));
+        return ($lv === $u_name || ($u_uname !== '' && $lv === $u_uname) || ($u_email !== '' && $lv === $u_email));
     }
 
     /**
      * Check if a user is assigned as mentor in a specific module.
+     * Strictly verifies by user ID (Issue #42).
      *
      * @param array $module Module associative array.
      * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
      * @return bool
      */
-    public static function is_mentor_assigned_to_module(array $module, $user_or_id): bool {
+    public static function is_mentor_assigned_to_module(array $module, $user_or_id, bool $strict_userid = true): bool {
         $mentor_fields = ['primarymentor', 'secondarymentor', 'labmentor1', 'labmentor2', 'labmentor3'];
         foreach ($mentor_fields as $field) {
             if (!empty($module[$field]) && self::is_user_match($module[$field], $user_or_id)) {
@@ -293,25 +334,21 @@ class util {
             $personas = \local_batchanalytics\task_service::resolve_user_personas($userid);
             return !empty($personas['is_sslead']);
         }
-        if (class_exists('\block_batchanalytics\task_service')) {
-            $personas = \block_batchanalytics\task_service::resolve_user_personas($userid);
-            return !empty($personas['is_sslead']);
-        }
         return false;
     }
 
     /**
      * Check if a user is assigned to a section as PM, SSE, SS Lead, or Mentor.
+     * Strictly uses user IDs and stops reading pmmanagername and maacexecutivename columns (Issue #42).
      *
      * @param \stdClass $section Class section object.
      * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
      * @return array{is_pm:bool, is_sse:bool, is_sslead:bool, is_mentor:bool, is_assigned:bool, assigned_modules:array}
      */
-    public static function get_section_user_assignment(\stdClass $section, $user_or_id): array {
-        $is_pm = self::is_user_match($section->pmmanager ?? '', $user_or_id)
-            || self::is_user_match($section->pmmanagername ?? '', $user_or_id);
-        $is_sse = self::is_user_match($section->maacexecutive ?? '', $user_or_id)
-            || self::is_user_match($section->maacexecutivename ?? '', $user_or_id);
+    public static function get_section_user_assignment(\stdClass $section, $user_or_id, bool $strict_userid = true): array {
+        $is_pm = self::is_user_match($section->pmmanager ?? '', $user_or_id);
+        $is_sse = self::is_user_match($section->maacexecutive ?? '', $user_or_id);
         $is_sslead = self::is_user_sslead($user_or_id);
 
         $modules = self::decode_module_data($section->moduledata ?? '', true);
@@ -1314,86 +1351,6 @@ class util {
         }
 
         return null;
-    }
-
-    /**
-     * Automatically deploy the companion block_batchanalytics into moodle/blocks/batchanalytics
-     * so that administrators do not need to manually copy or symlink files.
-     *
-     * @return bool True if deployed or already present, false on permission error
-     */
-    public static function deploy_companion_block(): bool {
-        global $CFG;
-
-        $src = $CFG->dirroot . '/local/batchanalytics/blocks/batchanalytics';
-        $dest = $CFG->dirroot . '/blocks/batchanalytics';
-
-        if (!is_dir($src)) {
-            return false;
-        }
-
-        // If dest exists, ensure files are synchronized
-        if (file_exists($dest)) {
-            if (is_link($dest)) {
-                $target = @readlink($dest);
-                if ($target === $src || realpath($dest) === realpath($src)) {
-                    return true;
-                }
-            }
-            if (is_dir($dest) && is_writable($dest)) {
-                self::copy_directory_recursive($src, $dest);
-                return true;
-            }
-            return true;
-        }
-
-        // Check if moodle/blocks is writable
-        $blocks_dir = $CFG->dirroot . '/blocks';
-        if (!is_dir($blocks_dir) || !is_writable($blocks_dir)) {
-            return false;
-        }
-
-        // Attempt symlink first
-        if (@symlink($src, $dest)) {
-            return true;
-        }
-
-        // Fallback: recursive copy
-        return self::copy_directory_recursive($src, $dest);
-    }
-
-    /**
-     * Recursively copy files from source directory to destination directory.
-     *
-     * @param string $source
-     * @param string $dest
-     * @return bool
-     */
-    public static function copy_directory_recursive(string $source, string $dest): bool {
-        if (!is_dir($dest)) {
-            if (!@mkdir($dest, 0755, true) && !is_dir($dest)) {
-                return false;
-            }
-        }
-        $dir = @opendir($source);
-        if (!$dir) {
-            return false;
-        }
-        while (($file = readdir($dir)) !== false) {
-            if ($file === '.' || $file === '..') {
-                continue;
-            }
-            $srcpath = $source . '/' . $file;
-            $destpath = $dest . '/' . $file;
-            if (is_dir($srcpath)) {
-                self::copy_directory_recursive($srcpath, $destpath);
-            } else {
-                @copy($srcpath, $destpath);
-                @chmod($destpath, 0644);
-            }
-        }
-        closedir($dir);
-        return true;
     }
 }
 

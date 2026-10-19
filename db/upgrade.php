@@ -400,9 +400,6 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
     }
 
     if ($oldversion < 2026101402) {
-        require_once(__DIR__ . '/../classes/util.php');
-        \local_batchanalytics\util::deploy_companion_block();
-
         upgrade_plugin_savepoint(true, 2026101402, 'local', 'batchanalytics');
     }
 
@@ -421,6 +418,239 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
 
         upgrade_plugin_savepoint(true, 2026101404, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101901) {
+        // Authorization enhancements: unified section permission guard applied to batch actions and review notes.
+        upgrade_plugin_savepoint(true, 2026101901, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101902) {
+        // Issue #42: Data migration to resolve existing legacy name strings in local_bm_classsection to user IDs.
+        if ($dbman->table_exists('local_bm_classsection')) {
+            $sections = $DB->get_records('local_bm_classsection', null, '', 'id, pmmanager, pmmanagername, maacexecutive, maacexecutivename, moduledata');
+
+            // Helper to resolve a string/name/email/username to a unique user id.
+            $resolve_unique_userid = function($val) use ($DB) {
+                if ($val === null || $val === '' || $val === '0' || $val === '—') {
+                    return null;
+                }
+                $str = trim((string)$val);
+                if (ctype_digit($str) && (int)$str > 0) {
+                    return (int)$str;
+                }
+
+                // Try exact match on username.
+                $users_by_uname = $DB->get_records_select('user', 'deleted = 0 AND LOWER(username) = :uname', ['uname' => strtolower($str)]);
+                if (count($users_by_uname) === 1) {
+                    return (int)reset($users_by_uname)->id;
+                }
+
+                // Try exact match on email.
+                $users_by_email = $DB->get_records_select('user', 'deleted = 0 AND LOWER(email) = :email', ['email' => strtolower($str)]);
+                if (count($users_by_email) === 1) {
+                    return (int)reset($users_by_email)->id;
+                }
+
+                // Try exact match on full name: firstname || ' ' || lastname.
+                $fullname_sql = $DB->sql_concat('LOWER(firstname)', "' '", 'LOWER(lastname)');
+                $users_by_name = $DB->get_records_select('user', "deleted = 0 AND $fullname_sql = :fullname", ['fullname' => strtolower($str)]);
+                if (count($users_by_name) === 1) {
+                    return (int)reset($users_by_name)->id;
+                }
+
+                return null;
+            };
+
+            foreach ($sections as $sec) {
+                $updated = false;
+                $update_record = new \stdClass();
+                $update_record->id = $sec->id;
+
+                // 1. Resolve pmmanager.
+                if (empty($sec->pmmanager) || !ctype_digit(trim((string)$sec->pmmanager)) || (int)$sec->pmmanager <= 0) {
+                    $cand = !empty($sec->pmmanager) ? $sec->pmmanager : ($sec->pmmanagername ?? '');
+                    $matched_uid = $resolve_unique_userid($cand);
+                    if ($matched_uid) {
+                        $update_record->pmmanager = (string)$matched_uid;
+                        $updated = true;
+                    } else if (!empty($cand)) {
+                        error_log("[local_batchanalytics] Issue #42 upgrade: Unable to resolve PM '{$cand}' on section {$sec->id} to a unique user ID.");
+                    }
+                }
+
+                // 2. Resolve maacexecutive.
+                if (empty($sec->maacexecutive) || !ctype_digit(trim((string)$sec->maacexecutive)) || (int)$sec->maacexecutive <= 0) {
+                    $cand = !empty($sec->maacexecutive) ? $sec->maacexecutive : ($sec->maacexecutivename ?? '');
+                    $matched_uid = $resolve_unique_userid($cand);
+                    if ($matched_uid) {
+                        $update_record->maacexecutive = (string)$matched_uid;
+                        $updated = true;
+                    } else if (!empty($cand)) {
+                        error_log("[local_batchanalytics] Issue #42 upgrade: Unable to resolve SSE '{$cand}' on section {$sec->id} to a unique user ID.");
+                    }
+                }
+
+                // 3. Resolve mentors inside moduledata JSON.
+                if (!empty($sec->moduledata)) {
+                    $modules = json_decode($sec->moduledata, true);
+                    if (is_array($modules)) {
+                        $mod_updated = false;
+                        $mentor_keys = ['primarymentor', 'secondarymentor', 'labmentor1', 'labmentor2', 'labmentor3'];
+                        foreach ($modules as &$mod) {
+                            if (!is_array($mod)) {
+                                continue;
+                            }
+                            foreach ($mentor_keys as $mkey) {
+                                if (!empty($mod[$mkey]) && !is_numeric($mod[$mkey])) {
+                                    $mval = $mod[$mkey];
+                                    $matched_uid = $resolve_unique_userid($mval);
+                                    if ($matched_uid) {
+                                        $mod[$mkey] = (string)$matched_uid;
+                                        $mod_updated = true;
+                                    } else {
+                                        error_log("[local_batchanalytics] Issue #42 upgrade: Unable to resolve mentor '{$mval}' on section {$sec->id} module to a unique user ID.");
+                                    }
+                                }
+                            }
+                        }
+                        unset($mod);
+                        if ($mod_updated) {
+                            $update_record->moduledata = json_encode($modules);
+                            $updated = true;
+                        }
+                    }
+                }
+
+                if ($updated) {
+                    $DB->update_record('local_bm_classsection', $update_record);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026101902, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101903) {
+        // Module schedule date validation, idempotency, and transactional Cliq dispatch (Issues #46 & #47).
+        upgrade_plugin_savepoint(true, 2026101903, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101904) {
+        // Prevent batch leakage to restricted users with no assignments in getnewbatchdata (Issue #40).
+        upgrade_plugin_savepoint(true, 2026101904, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101905) {
+        // Prevent Placement_Company leakage via placed_company in getptfdata (Issue #44).
+        upgrade_plugin_savepoint(true, 2026101905, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101906) {
+        // Repair shared mentor activities converted to section-specific records (Issue #48).
+        $table_name = 'local_batchanalytics_mentor_act';
+        if ($DB->get_manager()->table_exists($table_name)) {
+            $records = $DB->get_records($table_name);
+            foreach ($records as $rec) {
+                if (empty($rec->activitiesdata)) {
+                    continue;
+                }
+                $list = json_decode($rec->activitiesdata, true);
+                if (!is_array($list) || empty($list)) {
+                    continue;
+                }
+
+                $has_template = [];
+                $section_items_by_key = [];
+
+                foreach ($list as $item) {
+                    $key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : (!empty($item['name']) ? mb_strtolower(trim($item['name'])) : '');
+                    if ($key === '') {
+                        continue;
+                    }
+                    $sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                    if ($sec === 0) {
+                        $has_template[$key] = true;
+                    } else {
+                        if (!isset($section_items_by_key[$key])) {
+                            $section_items_by_key[$key] = $item;
+                        }
+                    }
+                }
+
+                $updated = false;
+                foreach ($section_items_by_key as $key => $sample_item) {
+                    if (empty($has_template[$key])) {
+                        $template_entry = [
+                            'key'            => !empty($sample_item['key']) ? $sample_item['key'] : $key,
+                            'name'           => !empty($sample_item['name']) ? $sample_item['name'] : $key,
+                            'completed'      => 0,
+                            'completiondate' => '',
+                            'modifiedby'     => 0,
+                            'is_auto'        => 0,
+                            'modifiedbyname' => '',
+                            'timemodified'   => time(),
+                            'sectionid'      => 0,
+                        ];
+                        if (isset($sample_item['activitytype'])) {
+                            $template_entry['activitytype'] = $sample_item['activitytype'];
+                        }
+                        if (isset($sample_item['group'])) {
+                            $template_entry['group'] = $sample_item['group'];
+                        }
+                        $list[] = $template_entry;
+                        $has_template[$key] = true;
+                        $updated = true;
+                    }
+                }
+
+                if ($updated) {
+                    $rec->activitiesdata = json_encode(array_values($list), JSON_UNESCAPED_UNICODE);
+                    $rec->timemodified = time();
+                    $DB->update_record($table_name, $rec);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026101906, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026101907) {
+        // Decouple companion block: migrate block_batchanalytics settings and mentor activity data to local_batchanalytics (Issue #45).
+        $dbman = $DB->get_manager();
+
+        // 1. Migrate settings from block_batchanalytics if not already set in local_batchanalytics.
+        $block_configs = $DB->get_records('config_plugins', ['plugin' => 'block_batchanalytics']);
+        foreach ($block_configs as $cfg) {
+            $existing = get_config('local_batchanalytics', $cfg->name);
+            if ($existing === false || $existing === null || trim((string)$existing) === '') {
+                set_config($cfg->name, $cfg->value, 'local_batchanalytics');
+            }
+        }
+
+        // 2. Migrate mentor activities from block_batchanalytics_mentor_act if present.
+        if ($dbman->table_exists('block_batchanalytics_mentor_act') && $dbman->table_exists('local_batchanalytics_mentor_act')) {
+            $old_records = $DB->get_records('block_batchanalytics_mentor_act');
+            foreach ($old_records as $rec) {
+                if (empty($rec->courseid)) {
+                    continue;
+                }
+                $exists = $DB->record_exists('local_batchanalytics_mentor_act', [
+                    'courseid' => (int)$rec->courseid,
+                ]);
+                if (!$exists) {
+                    $insert_rec = (object)[
+                        'courseid'       => (int)$rec->courseid,
+                        'selectedgroup'  => isset($rec->selectedgroup) ? (string)$rec->selectedgroup : '',
+                        'activitiesdata' => isset($rec->activitiesdata) ? (string)$rec->activitiesdata : '[]',
+                        'timemodified'   => !empty($rec->timemodified) ? (int)$rec->timemodified : time(),
+                    ];
+                    $DB->insert_record('local_batchanalytics_mentor_act', $insert_rec);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026101907, 'local', 'batchanalytics');
     }
 
     return true;

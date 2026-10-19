@@ -34,7 +34,7 @@ $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php'));
 
-if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
+if (!has_capability('local/batchanalytics:view', $context)) {
     if (!\local_batchanalytics\task_service::can_view_dashboard($USER->id)) {
         require_capability('local/batchanalytics:view', $context);
     }
@@ -79,7 +79,7 @@ if ($action === 'saveactivity') {
             if (!$can_edit && $requested_batchid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
                 $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $requested_batchid]);
                 if ($sec_obj) {
-                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER);
+                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
                     if (!empty($assignment['is_assigned'])) {
                         $can_edit = true;
                     }
@@ -156,7 +156,7 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
             if (!$can_edit && $sec_check_id > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
                 $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $sec_check_id]);
                 if ($sec_obj) {
-                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER);
+                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
                     if (!empty($assignment['is_assigned'])) {
                         $can_edit = true;
                     }

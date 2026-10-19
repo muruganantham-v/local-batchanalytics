@@ -36,20 +36,7 @@ class mentor_activity_service {
      * @return string
      */
     public static function get_table_name(): string {
-        global $DB;
-        static $tbl = null;
-        if ($tbl !== null) {
-            return $tbl;
-        }
-        $dbman = $DB->get_manager();
-        if ($dbman->table_exists('local_batchanalytics_mentor_act')) {
-            $tbl = 'local_batchanalytics_mentor_act';
-        } else if ($dbman->table_exists('block_batchanalytics_mentor_act')) {
-            $tbl = 'block_batchanalytics_mentor_act';
-        } else {
-            $tbl = 'local_batchanalytics_mentor_act';
-        }
-        return $tbl;
+        return 'local_batchanalytics_mentor_act';
     }
 
     /** @var array Default pool of master mentor activities with field API keys */
@@ -828,27 +815,43 @@ class mentor_activity_service {
             if ($rec && !empty($rec->activitiesdata)) {
                 $raw_list = json_decode($rec->activitiesdata, true);
                 if (is_array($raw_list)) {
+                    $templates = [];
+                    $section_items = [];
                     foreach ($raw_list as $item) {
                         $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
-                        if ($sectionid > 0) {
-                            if ($item_sec === $sectionid || ($item_sec === 0 && !isset($saved_map[mb_strtolower(trim($item['key'] ?? ''))]))) {
-                                if (!empty($item['key'])) {
-                                    $saved_map[mb_strtolower(trim($item['key']))] = $item;
-                                }
-                                if (!empty($item['name'])) {
-                                    $saved_map[mb_strtolower(trim($item['name']))] = $item;
-                                }
-                            }
-                        } else {
-                            if (!empty($item['key'])) {
-                                $saved_map[mb_strtolower(trim($item['key']))] = $item;
-                            }
-                            if (!empty($item['name'])) {
-                                $saved_map[mb_strtolower(trim($item['name']))] = $item;
-                            }
-                        }
                         if (!empty($item['modifiedby'])) {
                             $modifier_ids[] = (int)$item['modifiedby'];
+                        }
+                        if ($sectionid > 0) {
+                            if ($item_sec === $sectionid) {
+                                $section_items[] = $item;
+                            } else if ($item_sec === 0) {
+                                $templates[] = $item;
+                            }
+                        } else {
+                            if ($item_sec === 0) {
+                                $templates[] = $item;
+                            }
+                        }
+                    }
+
+                    // Populate templates first
+                    foreach ($templates as $t) {
+                        if (!empty($t['key'])) {
+                            $saved_map[mb_strtolower(trim($t['key']))] = $t;
+                        }
+                        if (!empty($t['name'])) {
+                            $saved_map[mb_strtolower(trim($t['name']))] = $t;
+                        }
+                    }
+
+                    // Overwrite with section-specific items so section items always take precedence
+                    foreach ($section_items as $s) {
+                        if (!empty($s['key'])) {
+                            $saved_map[mb_strtolower(trim($s['key']))] = $s;
+                        }
+                        if (!empty($s['name'])) {
+                            $saved_map[mb_strtolower(trim($s['name']))] = $s;
                         }
                     }
                 }
@@ -992,44 +995,95 @@ class mentor_activity_service {
         $updated_item = null;
         $target_key = mb_strtolower(self::slugify_key($activityname));
         $target_name = mb_strtolower($activityname);
+        $template_item = null;
 
-        foreach ($activities_list as &$item) {
-            $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
-            $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
-            $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+        if ($sectionid > 0) {
+            // Case 1: Saving for a specific section.
+            // Look for an exact match for this section.
+            foreach ($activities_list as &$item) {
+                $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
+                $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+                $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
 
-            $sec_match = ($sectionid <= 0) || ($item_sec === $sectionid) || ($item_sec === 0);
-
-            if (($item_key === $target_key || $item_name === $target_name || $item_key === $target_name) && $sec_match) {
-                $item['completed'] = $completed ? 1 : 0;
-                $item['completiondate'] = $date_val;
-                $item['modifiedby'] = $is_auto ? 0 : $userid;
-                $item['is_auto'] = $is_auto ? 1 : 0;
-                $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
-                $item['timemodified'] = $now;
-                if ($sectionid > 0) {
-                    $item['sectionid'] = $sectionid;
+                if ($key_matches) {
+                    if ($item_sec === $sectionid) {
+                        $item['completed'] = $completed ? 1 : 0;
+                        $item['completiondate'] = $date_val;
+                        $item['modifiedby'] = $is_auto ? 0 : $userid;
+                        $item['is_auto'] = $is_auto ? 1 : 0;
+                        $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
+                        $item['timemodified'] = $now;
+                        $item['sectionid'] = $sectionid;
+                        $updated_item = $item;
+                        $found = true;
+                        break;
+                    } else if ($item_sec === 0 && $template_item === null) {
+                        // Keep a reference to the template without modifying it.
+                        $template_item = $item;
+                    }
                 }
-                $updated_item = $item;
-                $found = true;
-                break;
             }
-        }
-        unset($item);
+            unset($item);
 
-        if (!$found) {
-            $updated_item = [
-                'key'            => self::slugify_key($activityname),
-                'name'           => $activityname,
-                'completed'      => $completed ? 1 : 0,
-                'completiondate' => $date_val,
-                'modifiedby'     => $is_auto ? 0 : $userid,
-                'is_auto'        => $is_auto ? 1 : 0,
-                'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
-                'timemodified'   => $now,
-                'sectionid'      => $sectionid,
-            ];
-            $activities_list[] = $updated_item;
+            // If not found for this section, append a new section entry. Never mutate the template in-place!
+            if (!$found) {
+                $updated_item = [
+                    'key'            => !empty($template_item['key']) ? $template_item['key'] : self::slugify_key($activityname),
+                    'name'           => !empty($template_item['name']) ? $template_item['name'] : $activityname,
+                    'completed'      => $completed ? 1 : 0,
+                    'completiondate' => $date_val,
+                    'modifiedby'     => $is_auto ? 0 : $userid,
+                    'is_auto'        => $is_auto ? 1 : 0,
+                    'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
+                    'timemodified'   => $now,
+                    'sectionid'      => $sectionid,
+                ];
+                if (isset($template_item['activitytype'])) {
+                    $updated_item['activitytype'] = $template_item['activitytype'];
+                }
+                if (isset($template_item['group'])) {
+                    $updated_item['group'] = $template_item['group'];
+                }
+                $activities_list[] = $updated_item;
+            }
+        } else {
+            // Case 2: Saving course-wide template (sectionid <= 0).
+            foreach ($activities_list as &$item) {
+                $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
+                $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+                $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
+
+                if ($key_matches && $item_sec === 0) {
+                    $item['completed'] = $completed ? 1 : 0;
+                    $item['completiondate'] = $date_val;
+                    $item['modifiedby'] = $is_auto ? 0 : $userid;
+                    $item['is_auto'] = $is_auto ? 1 : 0;
+                    $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
+                    $item['timemodified'] = $now;
+                    $item['sectionid'] = 0;
+                    $updated_item = $item;
+                    $found = true;
+                    break;
+                }
+            }
+            unset($item);
+
+            if (!$found) {
+                $updated_item = [
+                    'key'            => self::slugify_key($activityname),
+                    'name'           => $activityname,
+                    'completed'      => $completed ? 1 : 0,
+                    'completiondate' => $date_val,
+                    'modifiedby'     => $is_auto ? 0 : $userid,
+                    'is_auto'        => $is_auto ? 1 : 0,
+                    'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
+                    'timemodified'   => $now,
+                    'sectionid'      => 0,
+                ];
+                $activities_list[] = $updated_item;
+            }
         }
 
         $json_data = json_encode(array_values($activities_list), JSON_UNESCAPED_UNICODE);

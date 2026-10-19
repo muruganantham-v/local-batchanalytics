@@ -2,7 +2,7 @@
 
 `local_batchanalytics` is an advanced, high-performance Moodle local plugin designed for training academies, corporate bootcamps, and educational institutions. It provides end-to-end cohort tracking, module schedule variance monitoring, real-time LMS Gradebook analytics, student performance banding, operational checklist workflows, automated Zoho Cliq bot alerting, and Zoho CRM student placement synchronization.
 
-**Current Release:** `2.2.25` | **Plugin Version:** `2026101402` | **Moodle Compatibility:** `4.4+` (`2024042200`)
+**Current Release:** `2.2.34` | **Plugin Version:** `2026101907` | **Moodle Compatibility:** `4.4+` (`2024042200`)
 
 ---
 
@@ -72,14 +72,6 @@ local/batchanalytics/
 │   │   └── evaluate_activity_due_task.php      # Scheduled task for automated alerts
 │   ├── task_service.php                        # Task aggregation for companion block widget
 │   └── util.php                                # Common profile, date, and formatting utilities
-├── blocks/                                     # Companion Moodle Block Plugin
-│   └── batchanalytics/                         # User dashboard (/my/) To-Do widget
-│       ├── block_batchanalytics.php
-│       ├── block_task_dashboard.css
-│       ├── block_task_dashboard.js
-│       ├── version.php
-│       ├── db/access.php
-│       └── lang/en/block_batchanalytics.php
 ├── db/                                         # Database schema & Moodle specifications
 │   ├── access.php                              # Capability definitions
 │   ├── caches.php                              # MUC definitions
@@ -92,9 +84,10 @@ local/batchanalytics/
 │   ├── issue_report.md                         # Release change logs and bugfix register
 │   └── phase_1_documentation.md                # Functional specifications & design docs
 └── lang/en/                                    # Localized language strings
-    ├── block_batchanalytics.php
     └── local_batchanalytics.php
 ```
+
+> **Note on Companion Block:** The companion dashboard widget is packaged and maintained independently as [`block_batchanalytics`](https://github.com/EmertxeInfoTech/Moodle-Block-Batchanalytics) (`blocks/batchanalytics`). It depends strictly on `local_batchanalytics`.
 
 ---
 
@@ -157,8 +150,15 @@ The plugin maintains 4 core persistent tables defined in [`db/install.xml`](db/i
 ## Installation & Upgrading
 
 1. **Deploy Plugin Files:**
-   - Clone or copy this directory into `moodle/local/batchanalytics`.
-   - *Note:* The plugin includes a built-in auto-deployer. Upon running Moodle install/upgrade, it automatically deploys the companion block (`blocks/batchanalytics`) into `moodle/blocks/batchanalytics` seamlessly.
+   - **Local Plugin:** Clone or copy this repository into `moodle/local/batchanalytics`:
+     ```bash
+     git clone https://github.com/EmertxeInfoTech/moodle-local-batchanalytics.git moodle/local/batchanalytics
+     ```
+   - **Companion Dashboard Block (Optional):** Clone or copy the block repository into `moodle/blocks/batchanalytics`:
+     ```bash
+     git clone https://github.com/EmertxeInfoTech/Moodle-Block-Batchanalytics.git moodle/blocks/batchanalytics
+     ```
+     *Note:* The block plugin declares `local_batchanalytics` as a version dependency, ensuring Moodle installs and loads them in the correct sequence.
 2. **Execute Database Upgrades:**
    - Run the Moodle CLI upgrade tool:
      ```bash

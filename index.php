@@ -22,7 +22,6 @@ $userid = $USER->id;
 
 // Permission check for viewing local_batchanalytics / dashboard
 $can_view = has_capability('local/batchanalytics:view', $context)
-    || has_capability('block/batchanalytics:view', $context)
     || \local_batchanalytics\task_service::can_view_dashboard($userid);
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
@@ -136,6 +135,10 @@ if ($action === 'complete_task') {
             'act_name'     => optional_param('act_name', '', PARAM_RAW),
             'act_key'      => optional_param('act_key', '', PARAM_RAW),
             'review_notes' => optional_param('review_notes', '', PARAM_RAW),
+            'mentorid'     => optional_param('mentorid', 0, PARAM_INT),
+            'plannedstart' => optional_param('plannedstart', 0, PARAM_RAW_TRIMMED),
+            'actualend'    => optional_param('actualend', 0, PARAM_RAW_TRIMMED),
+            'actualstart'  => optional_param('actualstart', 0, PARAM_RAW_TRIMMED),
         ];
         $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
         if (!empty($res['success'])) {
@@ -269,28 +272,12 @@ if ($action === 'getptfdata') {
             foreach ($usernameList as $u) {
                 $lookup = strtolower($u);
                 $record = $records[$lookup] ?? null;
-                $company = 'Not Placed';
-                if (!empty($record['Placement_Company'])) {
-                    if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
-                        $company = $record['Placement_Company']['name'];
-                    } elseif (is_string($record['Placement_Company'])) {
-                        $company = $record['Placement_Company'];
-                    }
-                }
-                $rec_data = $record;
-                $rec_ctc = $rec_data['CTC'] ?? '-';
-                if (!$can_manage && !empty($restricted_crm_fields)) {
-                    $rec_data = \local_batchanalytics\crm_fields_helper::filter_crm_fields($rec_data, $restricted_crm_fields);
-                    if (in_array('CTC', $restricted_crm_fields)) {
-                        $rec_ctc = null;
-                    }
-                }
-                $output[] = [
-                    'username' => $u,
-                    'placed_company' => $company,
-                    'CTC' => $rec_ctc,
-                    'data' => $rec_data
-                ];
+                $output[] = \local_batchanalytics\crm_fields_helper::format_student_crm_data(
+                    $u,
+                    $record,
+                    $can_manage,
+                    $restricted_crm_fields
+                );
             }
 
             echo json_encode(['students' => $output]);
@@ -309,38 +296,23 @@ if ($action === 'getptfdata') {
         $record = $crm->get_student_details($username);
 
         if (empty($record) || !is_array($record)) {
-            echo json_encode([
-                'username' => $username,
-                'placed_company' => 'Not Placed',
-                'CTC' => '-',
-                'error' => get_string('crmconfigmissing', 'local_batchanalytics')
-            ]);
+            $data = \local_batchanalytics\crm_fields_helper::format_single_student_payload(
+                $username,
+                null,
+                $can_manage,
+                $restricted_crm_fields
+            );
+            $data['error'] = get_string('crmconfigmissing', 'local_batchanalytics');
+            echo json_encode($data);
             die();
         }
 
-        // Handle Placement Company (Extract name if it's an object)
-        $company = 'Not Placed';
-        if (!empty($record['Placement_Company'])) {
-            if (is_array($record['Placement_Company']) && isset($record['Placement_Company']['name'])) {
-                $company = $record['Placement_Company']['name'];
-            } elseif (is_string($record['Placement_Company'])) {
-                $company = $record['Placement_Company'];
-            }
-        }
-
-        // Build response dynamically from configured API fields.
-        $data = ['username' => $username, 'placed_company' => $company];
-        foreach (\local_batchanalytics\crm_fields_helper::get_api_field_keys() as $field_key) {
-            if ($field_key === 'College_Name') {
-                $data[$field_key] = $record['College_Name'] ?? ($record['Other_College_Name'] ?? '-');
-            } else {
-                $data[$field_key] = $record[$field_key] ?? '-';
-            }
-        }
-
-        if (!$can_manage && !empty($restricted_crm_fields)) {
-            $data = \local_batchanalytics\crm_fields_helper::filter_crm_fields($data, $restricted_crm_fields);
-        }
+        $data = \local_batchanalytics\crm_fields_helper::format_single_student_payload(
+            $username,
+            $record,
+            $can_manage,
+            $restricted_crm_fields
+        );
 
         echo json_encode($data);
     } catch (\Throwable $e) {
@@ -396,6 +368,7 @@ if ($action === 'getnewbatchdata') {
 
         // Fetch all class sections as primary records
         $sections = $has_bm_section ? $DB->get_records('local_bm_classsection', null, 'id ASC') : [];
+        $has_any_sections = !empty($sections);
 
         // Fetch parent batches for metadata (coursename, deliverymode, startdate)
         $batches = $has_bm_batch ? $DB->get_records('local_bm_batch', null, 'startdate ASC, id ASC') : [];
@@ -662,7 +635,7 @@ if ($action === 'getnewbatchdata') {
                     'parentBatchName' => $parent ? (string)$parent->name : ''
                 ];
             }
-        } else if (!empty($batches)) {
+        } else if (!$has_any_sections && !empty($batches) && $can_view_all_courses) {
             // Fallback for batches if no class sections exist in table
             foreach ($batches as $b) {
                 $mode = trim((string)($b->deliverymode ?? ''));

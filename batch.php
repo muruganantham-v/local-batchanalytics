@@ -36,7 +36,7 @@ $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php'));
 
-if (!has_capability('local/batchanalytics:view', $context) && !has_capability('block/batchanalytics:view', $context)) {
+if (!has_capability('local/batchanalytics:view', $context)) {
     if (!\local_batchanalytics\task_service::can_view_dashboard($USER->id)) {
         require_capability('local/batchanalytics:view', $context);
     }
@@ -51,12 +51,34 @@ if ($action === 'addnote') {
     try {
         $batchid = required_param('batchid', PARAM_INT);
         $note = required_param('note', PARAM_RAW);
+
+        global $DB;
+        $sec = null;
+        if ($DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                $sec = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
+            }
+        }
+        if (!$sec) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Batch not found']);
+            exit;
+        }
+
+        // Enforce batch assignment scoping for review notes (Issue #43).
+        \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'addnote');
+
         // Strictly use the authenticated logged-in user
         $author = fullname($USER);
 
         $saved = \local_batchanalytics\batch_notes_service::add_note($batchid, (int)$USER->id, $author, $note);
         echo json_encode(['success' => true, 'note' => $saved]);
+    } catch (\moodle_exception $e) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     } catch (\Throwable $e) {
+        http_response_code(400);
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;

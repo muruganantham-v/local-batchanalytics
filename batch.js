@@ -1754,11 +1754,16 @@
 
             // Fill a single row with CRM data
             function _fillRow(tr, data) {
-                var company = data.placed_company || 'Not Placed';
-                var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
-                var statusHtml = isPlaced
-                    ? '<span class="st st-g">Placed</span>'
-                    : '<span class="st st-r">Not Placed</span>';
+                var company = (data.placed_company !== null && data.placed_company !== undefined) ? data.placed_company : null;
+                var isPlaced = company && company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                var statusHtml;
+                if (company === null) {
+                    statusHtml = '<span class="st" style="background:#f1f5f9;color:#64748b;">—</span>';
+                } else {
+                    statusHtml = isPlaced
+                        ? '<span class="st st-g">Placed</span>'
+                        : '<span class="st st-r">Not Placed</span>';
+                }
 
                 // Remove all cells after the sticky student cell
                 while (tr.children.length > 1) tr.removeChild(tr.lastChild);
@@ -1926,9 +1931,13 @@
 
                     var data = s.username ? PTF_CACHE[s.username] : null;
                     if (show && data) {
-                        var company = data.placed_company || 'Not Placed';
-                        var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
-                        if (placement && placement !== (isPlaced ? 'Placed' : 'Not Placed')) show = false;
+                        var company = (data.placed_company !== null && data.placed_company !== undefined) ? data.placed_company : null;
+                        if (company === null) {
+                            if (placement) show = false;
+                        } else {
+                            var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                            if (placement && placement !== (isPlaced ? 'Placed' : 'Not Placed')) show = false;
+                        }
                         if (show && pet && data.Placement_Eli !== pet) show = false;
                         var maac = parseFloat(data.MAAC_Rating) || 0;
                         if (show && (maac < maacMin || maac > maacMax)) show = false;
@@ -2096,8 +2105,8 @@
                             if (data) {
                                 if (c.type === 'lookup') val = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || '-');
                                 else if (c.type === 'date') val = data[c.k] ? _formatCrmDate(data[c.k]) : '-';
-                                else if (c.k === 'CALC_STATUS') val = (data.placed_company && data.placed_company !== 'Not Placed') ? 'Placed' : 'Not Placed';
-                                else val = data[c.k] || '-';
+                                else if (c.k === 'CALC_STATUS') val = data.placed_company === null ? '—' : ((data.placed_company && data.placed_company !== 'Not Placed') ? 'Placed' : 'Not Placed');
+                                else val = (data[c.k] !== null && data[c.k] !== undefined) ? data[c.k] : '-';
                             }
                             row.push('"' + String(val).replace(/"/g, '""') + '"');
                         });

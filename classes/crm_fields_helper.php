@@ -104,13 +104,62 @@ class crm_fields_helper {
     }
 
     /**
+     * Map of derived output fields to their underlying CRM source fields.
+     */
+    public const DERIVED_FIELD_MAP = [
+        'placed_company' => 'Placement_Company',
+        'CTC'            => 'CTC',
+    ];
+
+    /**
+     * Return all restricted keys, including derived counterparts.
+     *
+     * If Placement_Company is restricted, placed_company is also restricted.
+     * If placed_company is restricted, Placement_Company is also restricted.
+     *
+     * @param array|null $restricted_keys Optional specific restricted keys to expand. If null, loads from config.
+     * @return array
+     */
+    public static function get_all_restricted_keys(?array $restricted_keys = null): array {
+        if ($restricted_keys === null) {
+            $restricted_keys = self::get_restricted_keys();
+        }
+        $all = $restricted_keys;
+        foreach (self::DERIVED_FIELD_MAP as $derived => $source) {
+            if (in_array($source, $restricted_keys, true) && !in_array($derived, $all, true)) {
+                $all[] = $derived;
+            }
+            if (in_array($derived, $restricted_keys, true) && !in_array($source, $all, true)) {
+                $all[] = $source;
+            }
+        }
+        return array_values(array_unique($all));
+    }
+
+    /**
+     * Check if a field or its counterpart in DERIVED_FIELD_MAP is restricted.
+     *
+     * @param string $field Field name to check.
+     * @param array $restricted_fields Configured restricted fields.
+     * @return bool
+     */
+    public static function is_field_restricted(string $field, array $restricted_fields): bool {
+        if (empty($restricted_fields)) {
+            return false;
+        }
+        $all = self::get_all_restricted_keys($restricted_fields);
+        return in_array($field, $all, true);
+    }
+
+    /**
      * Strip restricted CRM fields from a data array.
      */
     public static function filter_crm_fields($data, $restricted_fields) {
         if (empty($data) || !is_array($data)) {
             return $data;
         }
-        foreach ($restricted_fields as $field) {
+        $all_restricted = self::get_all_restricted_keys((array)$restricted_fields);
+        foreach ($all_restricted as $field) {
             unset($data[$field]);
         }
         // Always strip debug fields for non-managers.
@@ -118,6 +167,105 @@ class crm_fields_helper {
         unset($data['_debug_api_response']);
         return $data;
     }
+
+    /**
+     * Extract placement company string from a raw CRM record.
+     *
+     * @param array|null $record
+     * @return string
+     */
+    public static function extract_placement_company(?array $record): string {
+        if (empty($record) || empty($record['Placement_Company'])) {
+            return 'Not Placed';
+        }
+        $val = $record['Placement_Company'];
+        if (is_array($val) && isset($val['name'])) {
+            return (string)$val['name'];
+        }
+        if (is_string($val)) {
+            return $val;
+        }
+        return 'Not Placed';
+    }
+
+    /**
+     * Build the filtered student CRM data array for bulk API responses.
+     *
+     * @param string $username Student username.
+     * @param array|null $record Raw Zoho record.
+     * @param bool $can_manage Whether user has management/full CRM capability.
+     * @param array $restricted_fields Array of restricted field keys.
+     * @return array{username:string, placed_company:?string, CTC:?string, data:array}
+     */
+    public static function format_student_crm_data(
+        string $username,
+        ?array $record,
+        bool $can_manage,
+        array $restricted_fields = []
+    ): array {
+        $company = self::extract_placement_company($record);
+        $rec_data = is_array($record) ? $record : [];
+        $rec_ctc = $rec_data['CTC'] ?? '-';
+
+        if (!$can_manage && !empty($restricted_fields)) {
+            $rec_data = self::filter_crm_fields($rec_data, $restricted_fields);
+            if (self::is_field_restricted('Placement_Company', $restricted_fields)) {
+                $company = null;
+            }
+            if (self::is_field_restricted('CTC', $restricted_fields)) {
+                $rec_ctc = null;
+            }
+        }
+
+        return [
+            'username'       => $username,
+            'placed_company' => $company,
+            'CTC'            => $rec_ctc,
+            'data'           => $rec_data,
+        ];
+    }
+
+    /**
+     * Build the single-student CRM response array.
+     *
+     * @param string $username Student username.
+     * @param array|null $record Raw Zoho record.
+     * @param bool $can_manage Whether user has management/full CRM capability.
+     * @param array $restricted_fields Array of restricted field keys.
+     * @return array
+     */
+    public static function format_single_student_payload(
+        string $username,
+        ?array $record,
+        bool $can_manage,
+        array $restricted_fields = []
+    ): array {
+        $company = self::extract_placement_company($record);
+        $data = ['username' => $username, 'placed_company' => $company];
+
+        if (is_array($record)) {
+            foreach (self::get_api_field_keys() as $field_key) {
+                if ($field_key === 'College_Name') {
+                    $data[$field_key] = $record['College_Name'] ?? ($record['Other_College_Name'] ?? '-');
+                } else {
+                    $data[$field_key] = $record[$field_key] ?? '-';
+                }
+            }
+        }
+
+        if (!$can_manage && !empty($restricted_fields)) {
+            $data = self::filter_crm_fields($data, $restricted_fields);
+            if (self::is_field_restricted('Placement_Company', $restricted_fields)) {
+                $data['placed_company'] = null;
+            }
+            if (self::is_field_restricted('CTC', $restricted_fields)) {
+                $data['CTC'] = null;
+            }
+        }
+
+        return $data;
+    }
+
     /**
      * Return the configured student CRM module API name.
      */
