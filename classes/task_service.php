@@ -1626,9 +1626,9 @@ class task_service {
         }
 
         // 8. Action: Batch review notes (Issue #43).
-        if ($action_type === 'addnote') {
+        if ($action_type === 'addnote' || $action_type === 'editnote') {
             if (!util::can_view_all_batches($sys_ctx, $userid) && empty($assignment['is_assigned'])) {
-                throw new \moodle_exception('nopermissions', 'error', '', 'add review note to this batch');
+                throw new \moodle_exception('nopermissions', 'error', '', 'add or edit review note for this batch');
             }
             return;
         }

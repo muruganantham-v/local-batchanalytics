@@ -190,6 +190,44 @@ final class batch_notes_service {
     }
 
     /**
+     * Update an existing review note by ID.
+     *
+     * @param int $noteid
+     * @param string $body
+     * @return array
+     */
+    public static function update_note(int $noteid, string $body): array {
+        global $DB;
+        self::ensure_table_exists();
+
+        $body = trim($body);
+        if ($body === '') {
+            throw new \invalid_parameter_exception('Review note cannot be empty.');
+        }
+        if ($noteid <= 0) {
+            throw new \invalid_parameter_exception('Invalid note ID.');
+        }
+
+        $record = $DB->get_record(self::TABLE, ['id' => $noteid]);
+        if (!$record) {
+            throw new \moodle_exception('Note not found.');
+        }
+
+        $record->body = $body;
+        $DB->update_record(self::TABLE, $record);
+
+        return [
+            'id'          => (int)$record->id,
+            'batchid'     => (int)$record->batchid,
+            'userid'      => (int)$record->userid,
+            'who'         => (string)$record->author,
+            'date'        => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
+            'timecreated' => (int)$record->timecreated,
+            'body'        => $body,
+        ];
+    }
+
+    /**
      * Delete a review note by ID.
      *
      * @param int $noteid

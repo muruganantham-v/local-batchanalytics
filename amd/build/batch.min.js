@@ -1606,6 +1606,148 @@ define([], function() {
         var noteList = document.getElementById('ba-note-list');
         var batchContainer = document.getElementById('ba-batch-detail-container');
 
+        function createEditButtonHtml(noteId) {
+            return '<button type="button" class="ba-btn-edit-note" data-note-id="' + escapeHtml(noteId) + '" title="Edit">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;">' +
+                '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+                '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
+                '</svg>Edit</button>';
+        }
+
+        function attachEditListener(editBtn) {
+            if (!editBtn) return;
+            editBtn.addEventListener('click', function() {
+                var noteItem = editBtn.closest('.note-item');
+                if (!noteItem) return;
+
+                // Prevent opening multiple edit boxes on the same note
+                if (noteItem.querySelector('.note-edit-box')) {
+                    return;
+                }
+
+                var noteId = editBtn.getAttribute('data-note-id') || noteItem.getAttribute('data-note-id');
+                var bodyEl = noteItem.querySelector('.body');
+                if (!bodyEl) return;
+
+                // Extract plain text
+                var currentText = bodyEl.getAttribute('data-raw-text');
+                if (currentText === null || currentText === undefined) {
+                    currentText = bodyEl.innerHTML
+                        .replace(/<br\s*[\/]?>/gi, '\n')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>')
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'")
+                        .trim();
+                }
+
+                bodyEl.style.display = 'none';
+                editBtn.style.display = 'none';
+
+                var editBox = document.createElement('div');
+                editBox.className = 'note-edit-box';
+                editBox.innerHTML = '<textarea class="ba-edit-note-textarea">' + escapeHtml(currentText) + '</textarea>' +
+                    '<div class="note-edit-actions">' +
+                    '<button type="button" class="ba-btn-save-note">Save</button>' +
+                    '<button type="button" class="ba-btn-cancel-note">Cancel</button>' +
+                    '</div>';
+
+                noteItem.appendChild(editBox);
+
+                var textarea = editBox.querySelector('.ba-edit-note-textarea');
+                var saveBtn = editBox.querySelector('.ba-btn-save-note');
+                var cancelBtn = editBox.querySelector('.ba-btn-cancel-note');
+
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+                function cleanup() {
+                    editBox.remove();
+                    bodyEl.style.display = '';
+                    editBtn.style.display = '';
+                }
+
+                cancelBtn.addEventListener('click', function() {
+                    cleanup();
+                });
+
+                textarea.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        saveBtn.click();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelBtn.click();
+                    }
+                });
+
+                saveBtn.addEventListener('click', function() {
+                    var newText = textarea.value.trim();
+                    if (!newText) {
+                        textarea.focus();
+                        return;
+                    }
+
+                    var batchId = (batchContainer && batchContainer.getAttribute('data-batchid')) || '1';
+                    var sessKey = (batchContainer && batchContainer.getAttribute('data-sesskey')) || '';
+                    if (!sessKey && typeof M !== 'undefined' && M.cfg && M.cfg.sesskey) {
+                        sessKey = M.cfg.sesskey;
+                    }
+
+                    var origSaveText = saveBtn.textContent;
+                    saveBtn.disabled = true;
+                    cancelBtn.disabled = true;
+                    saveBtn.textContent = 'Saving…';
+
+                    var formData = new FormData();
+                    formData.append('action', 'editnote');
+                    formData.append('batchid', batchId);
+                    formData.append('noteid', noteId);
+                    formData.append('sesskey', sessKey);
+                    formData.append('note', newText);
+
+                    fetch(window.location.href, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(function(res) {
+                        if (!res.ok) {
+                            throw new Error('Server returned ' + res.status);
+                        }
+                        return res.json();
+                    })
+                    .then(function(data) {
+                        saveBtn.disabled = false;
+                        cancelBtn.disabled = false;
+                        saveBtn.textContent = origSaveText;
+
+                        if (data && data.success && data.note) {
+                            bodyEl.setAttribute('data-raw-text', data.note.body);
+                            bodyEl.innerHTML = escapeHtml(data.note.body).replace(/\n/g, '<br>');
+                            cleanup();
+                        } else {
+                            alert((data && data.message) ? data.message : 'Failed to update review note.');
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('Error updating note:', err);
+                        saveBtn.disabled = false;
+                        cancelBtn.disabled = false;
+                        saveBtn.textContent = origSaveText;
+                        alert('Network error while updating review note. Please try again.');
+                    });
+                });
+            });
+        }
+
+        if (noteList) {
+            var initialEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
+            initialEditBtns.forEach(function(btn) {
+                attachEditListener(btn);
+            });
+        }
+
         if (noteBtn && noteText && noteList) {
             noteBtn.addEventListener('click', function() {
                 var text = noteText.value.trim();
@@ -1654,13 +1796,27 @@ define([], function() {
                             el.remove();
                         });
 
+                        // Remove edit buttons from older notes so only the newest/latest note has the edit button
+                        var oldEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
+                        oldEditBtns.forEach(function(btn) {
+                            btn.remove();
+                        });
+
                         var noteItem = document.createElement('div');
                         noteItem.className = 'note-item';
-                        noteItem.innerHTML = '<div class="meta"><b>' + escapeHtml(data.note.who) + '</b> · ' + escapeHtml(data.note.date) + '</div>' +
-                            '<div class="body">' + escapeHtml(data.note.body).replace(/\n/g, '<br>') + '</div>';
+                        noteItem.setAttribute('data-note-id', data.note.id);
+                        noteItem.innerHTML = '<div class="meta">' +
+                            '<div class="meta-left"><b>' + escapeHtml(data.note.who) + '</b> · <span class="note-date">' + escapeHtml(data.note.date) + '</span></div>' +
+                            createEditButtonHtml(data.note.id) +
+                            '</div>' +
+                            '<div class="body" data-raw-text="' + escapeHtml(data.note.body) + '">' + escapeHtml(data.note.body).replace(/\n/g, '<br>') + '</div>';
 
                         noteList.insertBefore(noteItem, noteList.firstChild);
                         noteText.value = '';
+
+                        // Attach edit listener to the latest note's edit button
+                        var newEditBtn = noteItem.querySelector('.ba-btn-edit-note');
+                        attachEditListener(newEditBtn);
                     } else {
                         alert((data && data.message) ? data.message : 'Failed to save review note.');
                     }

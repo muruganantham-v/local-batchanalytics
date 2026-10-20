@@ -83,6 +83,63 @@ if ($action === 'addnote') {
     exit;
 }
 
+if ($action === 'editnote') {
+    require_sesskey();
+    require_capability('local/batchanalytics:editreviewnotes', $context);
+
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        $batchid = required_param('batchid', PARAM_INT);
+        $noteid = required_param('noteid', PARAM_INT);
+        $note = required_param('note', PARAM_RAW);
+
+        global $DB;
+        $sec = null;
+        if ($DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                $sec = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
+            }
+        }
+        if (!$sec) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Batch not found']);
+            exit;
+        }
+
+        // Enforce batch assignment scoping for review notes (Issue #43).
+        \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'editnote');
+
+        // Verify note exists
+        $existing = $DB->get_record(\local_batchanalytics\batch_notes_service::TABLE, ['id' => $noteid]);
+        if (!$existing) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Note not found']);
+            exit;
+        }
+
+        // Author or manager/admin check
+        $is_mgr = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
+        if (!is_siteadmin() && !has_capability('moodle/site:config', $context) && !$is_mgr) {
+            if ((int)$existing->userid !== (int)$USER->id) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'You can only edit your own notes']);
+                exit;
+            }
+        }
+
+        $saved = \local_batchanalytics\batch_notes_service::update_note($noteid, $note);
+        echo json_encode(['success' => true, 'note' => $saved]);
+    } catch (\moodle_exception $e) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 $id = optional_param('id', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
 
 $is_manager = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
@@ -993,9 +1050,21 @@ echo $OUTPUT->header();
 
           <?php if ($can_view_notes): ?>
           <div id="ba-note-list">
-            <?php foreach ($display_notes as $nt): ?>
-              <div class="note-item<?= empty($has_real_notes) ? ' note-item-demo' : '' ?>">
-                <div class="meta"><b><?= s($nt['who']) ?></b> · <?= s($nt['date']) ?></div>
+            <?php 
+            $first_note = true;
+            foreach ($display_notes as $nt): 
+                $is_latest = $first_note && !empty($has_real_notes);
+                $first_note = false;
+            ?>
+              <div class="note-item<?= empty($has_real_notes) ? ' note-item-demo' : '' ?>" data-note-id="<?= s($nt['id']) ?>">
+                <div class="meta">
+                  <div class="meta-left"><b><?= s($nt['who']) ?></b> · <span class="note-date"><?= s($nt['date']) ?></span></div>
+                  <?php if ($can_edit_notes && $is_latest): ?>
+                    <button type="button" class="ba-btn-edit-note" data-note-id="<?= s($nt['id']) ?>" title="<?= s(get_string('btn_edit_note', 'local_batchanalytics')) ?>">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><?= s(get_string('btn_edit_note', 'local_batchanalytics')) ?>
+                    </button>
+                  <?php endif; ?>
+                </div>
                 <div class="body"><?= nl2br(s($nt['body'])) ?></div>
               </div>
             <?php endforeach; ?>
