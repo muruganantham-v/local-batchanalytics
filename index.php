@@ -128,6 +128,7 @@ if ($action === 'complete_task') {
     try {
         require_sesskey();
         $type = required_param('type', PARAM_ALPHANUMEXT);
+        $selected_date = optional_param('selected_date', 0, PARAM_RAW_TRIMMED);
         $params = [
             'courseid'     => optional_param('courseid', 0, PARAM_INT),
             'cmid'         => optional_param('cmid', 0, PARAM_INT),
@@ -136,9 +137,9 @@ if ($action === 'complete_task') {
             'act_key'      => optional_param('act_key', '', PARAM_RAW),
             'review_notes' => optional_param('review_notes', '', PARAM_RAW),
             'mentorid'     => optional_param('mentorid', 0, PARAM_INT),
-            'plannedstart' => optional_param('plannedstart', 0, PARAM_RAW_TRIMMED),
-            'actualend'    => optional_param('actualend', 0, PARAM_RAW_TRIMMED),
-            'actualstart'  => optional_param('actualstart', 0, PARAM_RAW_TRIMMED),
+            'plannedstart' => optional_param('plannedstart', $selected_date, PARAM_RAW_TRIMMED),
+            'actualend'    => optional_param('actualend', $selected_date, PARAM_RAW_TRIMMED),
+            'actualstart'  => optional_param('actualstart', $selected_date, PARAM_RAW_TRIMMED),
         ];
         $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
         if (!empty($res['success'])) {
