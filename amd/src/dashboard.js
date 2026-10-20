@@ -152,7 +152,7 @@ function initNewBatchAnalytics() {
   }
 
   /**
-   * Determine available batches under current subtab, Section 1 and Section 2 filters
+   * Determine available batches under Section 1 and Section 2 filters
    */
   function getFilteredUniverse() {
     if (!rawData || !rawData.batches) return [];
@@ -163,19 +163,10 @@ function initNewBatchAnalytics() {
     }
 
     return rawData.batches.filter((b) => {
-      // 1. Subtab scope
-      if (currentSubTab === "completed") {
-        if (!b.isCompleted) return false;
-        if (!canViewAll && !b.isAssigned) return false;
-      } else if (currentSubTab === "my_completed") {
-        if (!b.isCompleted || !b.isAssigned) return false;
-      } else if (currentSubTab === "my_running") {
-        if (b.isCompleted || !b.isAssigned) return false;
-      } else if (currentSubTab === "running") {
-        if (b.isCompleted) return false;
-      }
+      // Respect user capability (only see assigned batches if canViewAll is false)
+      if (!canViewAll && !b.isAssigned) return false;
 
-      // 2. Section 1 filter (Portfolio)
+      // Section 1 filter (Portfolio)
       if (effectiveMode === "offline" && (b.mode || "").toLowerCase() !== "offline") {
         return false;
       }
@@ -183,7 +174,7 @@ function initNewBatchAnalytics() {
         return false;
       }
 
-      // 3. Section 2 filter (Schedule Health)
+      // Section 2 filter (Schedule Health)
       if (currentScheduleFilter && b.status !== currentScheduleFilter) {
         return false;
       }
@@ -213,12 +204,26 @@ function initNewBatchAnalytics() {
     if (modeSelect) {
       if (currentStatFilter === "offline") {
         const offOpt = Array.from(modeSelect.options).find((o) => o.value.toLowerCase() === "offline");
-        if (offOpt) modeSelect.value = offOpt.value;
+        if (offOpt) {
+          modeSelect.value = offOpt.value;
+        } else {
+          const opt = document.createElement("option");
+          opt.value = "Offline";
+          opt.textContent = "Offline";
+          modeSelect.appendChild(opt);
+          modeSelect.value = "Offline";
+        }
       } else if (currentStatFilter === "online") {
         const onOpt = Array.from(modeSelect.options).find((o) => o.value.toLowerCase() === "online");
-        if (onOpt) modeSelect.value = onOpt.value;
-      } else {
-        modeSelect.value = "";
+        if (onOpt) {
+          modeSelect.value = onOpt.value;
+        } else {
+          const opt = document.createElement("option");
+          opt.value = "Online";
+          opt.textContent = "Online";
+          modeSelect.appendChild(opt);
+          modeSelect.value = "Online";
+        }
       }
     }
   }
@@ -231,8 +236,12 @@ function initNewBatchAnalytics() {
     values.forEach((v) => {
       html += `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
     });
+    // Preserve existing selected value if not in values array
+    if (currentVal && !values.some((v) => String(v) === String(currentVal))) {
+      html += `<option value="${escapeHtml(currentVal)}">${escapeHtml(currentVal)}</option>`;
+    }
     select.innerHTML = html;
-    if (currentVal && values.some((v) => String(v) === String(currentVal))) {
+    if (currentVal) {
       select.value = currentVal;
     } else {
       select.value = "";
@@ -304,7 +313,7 @@ function initNewBatchAnalytics() {
       });
     }
 
-    // Subtabs Navigation - "and also if i click the tabs the filter should not get reset."
+    // Subtabs Navigation - "in the filter section we have pill if i select the diffrent tab below this the pill should not be changed if the filter is applyed."
     const subtabs = document.querySelectorAll(".ba-new-subtab");
     subtabs.forEach((tab) => {
       tab.addEventListener("click", function () {
@@ -313,13 +322,9 @@ function initNewBatchAnalytics() {
         currentSubTab = this.dataset.subtab;
         updateTableTitle();
 
-        // Filters persist across subtab switches
+        // Filters and pills persist across subtab switches without being wiped
         setActiveStatCard();
         setActiveScheduleCard();
-        renderGlanceTags();
-
-        // Re-sync Section 3 filters to match the new subtab scope
-        syncSection3Filters();
         currentPage = 1;
         applyAndRender();
       });
@@ -521,10 +526,11 @@ function initNewBatchAnalytics() {
         });
       }
 
-      if (modeVal) {
+      const effectiveModeVal = modeVal || (currentStatFilter === "offline" ? "Offline" : (currentStatFilter === "online" ? "Online" : ""));
+      if (effectiveModeVal) {
         activeChips.push({
           type: "mode",
-          label: `Mode: ${modeVal}`,
+          label: `Mode: ${effectiveModeVal}`,
           clear: () => {
             if (modeSelect) modeSelect.value = "";
             currentStatFilter = (currentSubTab === "completed" || currentSubTab === "my_completed") ? "" : "running";
@@ -789,15 +795,28 @@ function initNewBatchAnalytics() {
     if (!tbody) return;
 
     if (items.length === 0) {
+      const searchInput = document.getElementById("ba-new-search-input");
+      const searchTerm = (searchInput?.value || "").trim();
+      const yearVal = document.getElementById("ba-filter-year")?.value || "";
+      const batchVal = document.getElementById("ba-filter-batch")?.value || "";
+      const courseVal = document.getElementById("ba-filter-course")?.value || "";
+      const modeVal = document.getElementById("ba-filter-mode")?.value || "";
+      const hasActiveFilters = Boolean(
+        searchTerm || yearVal || batchVal || courseVal || modeVal || currentScheduleFilter ||
+        (currentStatFilter === "offline" || currentStatFilter === "online")
+      );
+
       let emptyMsg = "No matching batches found.";
-      if (currentSubTab === "my_running") {
-        emptyMsg = "No running batches currently assigned to you.";
-      } else if (currentSubTab === "my_completed") {
-        emptyMsg = "No completed batches currently assigned to you.";
-      } else if (currentSubTab === "running") {
-        emptyMsg = "No running batches found.";
-      } else if (currentSubTab === "completed") {
-        emptyMsg = "No completed batches found.";
+      if (!hasActiveFilters) {
+        if (currentSubTab === "my_running") {
+          emptyMsg = "No running batches currently assigned to you.";
+        } else if (currentSubTab === "my_completed") {
+          emptyMsg = "No completed batches currently assigned to you.";
+        } else if (currentSubTab === "running") {
+          emptyMsg = "No running batches found.";
+        } else if (currentSubTab === "completed") {
+          emptyMsg = "No completed batches found.";
+        }
       }
       tbody.innerHTML = `<tr><td colspan="8" class="ba-new-empty">${emptyMsg}</td></tr>`;
       return;
