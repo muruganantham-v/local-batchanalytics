@@ -25,8 +25,7 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
-require_once(__DIR__ . '/classes/batch_notes_service.php');
-require_once(__DIR__ . '/classes/cliq_activity_notifier.php');
+
 
 global $DB, $PAGE, $OUTPUT, $USER;
 
@@ -565,13 +564,9 @@ $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]))
 $PAGE->set_title('Batch ' . $batchid_label . ' – Batch Analytics');
 $PAGE->set_heading('');
 
-// Load Plugin CSS and JavaScript
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$scripturl = new moodle_url('/local/batchanalytics/batch.js', ['v' => filemtime(__DIR__ . '/batch.js')]);
-$PAGE->requires->css($styleurl);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
 $PAGE->requires->css($dashboardstyleurl);
-$PAGE->requires->js($scripturl);
+$PAGE->requires->js_call_amd('local_batchanalytics/batch', 'init');
 
 // Use the same configured CRM field list and explicit capability check as index.php.
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
@@ -583,10 +578,6 @@ $batch_can_view_crm = $batch_can_manage
 $crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
 
 echo $OUTPUT->header();
-
-echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
-echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
-echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
 
 ?>
 
@@ -632,7 +623,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- Constant Roles: Program Manager and SS / MAAC Executive -->
         <div class="people">
           <div class="person">
-            <div class="role">Program Manager</div>
+            <div class="role"><?= s(get_string('role_program_manager', 'local_batchanalytics')) ?></div>
             <div class="pwrap">
               <div class="pav">
                 <?= \local_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
@@ -641,7 +632,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             </div>
           </div>
           <div class="person">
-            <div class="role">SS / MAAC Executive</div>
+            <div class="role"><?= s(get_string('role_ss_executive', 'local_batchanalytics')) ?></div>
             <div class="pwrap">
               <div class="pav">
                 <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
@@ -654,14 +645,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
       <!-- Navigation Tabs in Prototype Underline Style -->
       <div class="tabs ba-batch-tabs">
-        <button type="button" class="tab active" data-tab="sched">Schedule</button>
-        <button type="button" class="tab" data-tab="ss">SS Activities</button>
-        <button type="button" class="tab" data-tab="students">Student Performance</button>
+        <button type="button" class="tab active" data-tab="sched"><?= s(get_string('tab_schedule', 'local_batchanalytics')) ?></button>
+        <button type="button" class="tab" data-tab="ss"><?= s(get_string('tab_ss_activities', 'local_batchanalytics')) ?></button>
+        <button type="button" class="tab" data-tab="students"><?= s(get_string('tab_student_performance', 'local_batchanalytics')) ?></button>
         <?php if ($can_view_notes || $can_edit_notes): ?>
-          <button type="button" class="tab" data-tab="notes">Review Notes</button>
+          <button type="button" class="tab" data-tab="notes"><?= s(get_string('tab_review_notes', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
         <?php if ($batch_can_view_crm): ?>
-          <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn">CRM Data</button>
+          <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn"><?= s(get_string('tab_crm_data', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
       </div>
 
@@ -671,26 +662,26 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 1. Schedule Panel -->
         <div id="panel-sched" class="panel active">
           <div class="panel-note">
-            One row per module in the batch's configured sequence. <b>Delay</b> is colour-coded. Open any module for its detail.
+            <?= get_string('sched_panel_note', 'local_batchanalytics') ?>
           </div>
           <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
             <table style="min-width:880px;">
               <thead>
                 <tr>
-                  <th>Module</th>
-                  <th>Class Mentor</th>
-                  <th>Lab Mentor</th>
-                  <th>Plan Start</th>
-                  <th>Plan End</th>
-                  <th>Actual Start</th>
-                  <th>Actual End</th>
-                  <th>Delay</th>
+                  <th><?= s(get_string('col_module', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_class_mentor', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_lab_mentor', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_plan_start', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_plan_end', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_actual_start', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_actual_end', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_delay', 'local_batchanalytics')) ?></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 <?php if (empty($schedule_rows)): ?>
-                  <tr><td colspan="9" class="muted" style="text-align:center; padding:24px;">No modules configured for this batch.</td></tr>
+                  <tr><td colspan="9" class="muted" style="text-align:center; padding:24px;"><?= s(get_string('no_modules_configured', 'local_batchanalytics')) ?></td></tr>
                 <?php else: ?>
                   <?php foreach ($schedule_rows as $idx => $r): ?>
                     <?php
@@ -750,9 +741,9 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                       <td><?= format_delay_chip($r['delay'], $r['name'], $r['days']) ?></td>
                       <td class="actioncell">
                         <?php if ($course_linked): ?>
-                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn">View Module</a>
+                          <a href="<?= s($module_tracker_url) ?>" class="viewbtn"><?= s(get_string('view_module', 'local_batchanalytics')) ?></a>
                         <?php else: ?>
-                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module">View Module</button>
+                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module"><?= s(get_string('view_module', 'local_batchanalytics')) ?></button>
                         <?php endif; ?>
                       </td>
                     </tr>
@@ -766,21 +757,21 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 2. SS Activities Panel -->
         <div id="panel-ss" class="panel">
           <div class="panel-note">
-            Batch-level soft skill activities from Batch Management. Displays planned date, actual completion date, and current status.
+            <?= get_string('ss_panel_note', 'local_batchanalytics') ?>
           </div>
           <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
             <table style="min-width:600px;">
               <thead>
                 <tr>
-                  <th>Activity</th>
-                  <th>Planned Date</th>
-                  <th>Actual Date</th>
-                  <th>Status</th>
+                  <th><?= s(get_string('col_activity', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_planned_date', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_actual_date', 'local_batchanalytics')) ?></th>
+                  <th><?= s(get_string('col_status', 'local_batchanalytics')) ?></th>
                 </tr>
               </thead>
               <tbody>
                 <?php if (empty($ss_activities)): ?>
-                  <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;">No SS activities are configured for this batch.</td></tr>
+                  <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;"><?= s(get_string('no_ss_activities', 'local_batchanalytics')) ?></td></tr>
                 <?php else: ?>
                 <?php foreach ($ss_activities as $act): ?>
                   <tr>
@@ -799,14 +790,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 3. Student Performance Panel -->
         <div id="panel-students" class="panel">
           <div class="panel-note">
-            Two ways to band the same students: <b>Grade</b> (by actual score) or <b>Completion %</b> (default 15/70/15 by rank). Merit and core signals stay the same; only the banding changes.
+            <?= get_string('perf_panel_note', 'local_batchanalytics') ?>
           </div>
           <div class="filterbar">
             <div class="toggle">
               <span class="on" id="tg-grade">Grade</span>
               <span id="tg-pct">Completion %</span>
             </div>
-            <button type="button" class="exp" id="ba-btn-export">Export Filtered</button>
+            <button type="button" class="exp" id="ba-btn-export"><?= s(get_string('btn_export_filtered', 'local_batchanalytics')) ?></button>
           </div>
 
           <!-- Dynamic Banding Cards -->
@@ -818,14 +809,14 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               <table>
               <thead>
                 <tr>
-                  <th class="sortable" data-sort="band" title="Sort by Band">Band</th>
-                  <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
-                  <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
-                  <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
+                  <th class="sortable" data-sort="band" title="Sort by Band"><?= s(get_string('col_band', 'local_batchanalytics')) ?></th>
+                  <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name"><?= s(get_string('col_student', 'local_batchanalytics')) ?></th>
+                  <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade"><?= s(get_string('col_grade', 'local_batchanalytics')) ?></th>
+                  <th class="sortable" data-sort="attendance" title="Sort by Attendance"><?= s(get_string('col_attendance', 'local_batchanalytics')) ?></th>
                   <?php foreach ($performance_columns as $column): ?>
                     <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
                   <?php endforeach; ?>
-                  <th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th>
+                  <th class="sortable" data-sort="merit" title="Sort by Merit"><?= s(get_string('col_merit', 'local_batchanalytics')) ?></th>
                 </tr>
               </thead>
               <tbody id="ba-stuBody">
@@ -841,7 +832,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
               </div>
               <div class="ba-pagination-actions">
                 <div class="ba-pagination-size-box">
-                  <label for="ba-page-size">Rows per page:</label>
+                  <label for="ba-page-size"><?= s(get_string('rows_per_page', 'local_batchanalytics')) ?></label>
                   <select id="ba-page-size" class="ba-pagination-select">
                     <option value="10" selected>10</option>
                     <option value="25">25</option>
@@ -861,7 +852,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 5. CRM Data Panel -->
         <div id="panel-crm" class="panel">
           <div class="panel-note">
-            CRM data for all students in this batch, fetched live from Zoho CRM. Use the filters to narrow by placement status, PET eligibility, scores, and more.
+            <?= get_string('crm_panel_note', 'local_batchanalytics') ?>
           </div>
 
           <!-- CRM Filter + Table Layout -->
@@ -870,20 +861,20 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <!-- Filter Sidebar -->
             <div class="ba-crm-sidebar" style="min-width:220px; max-width:240px; flex-shrink:0; background:var(--card,#fff); border:1px solid var(--line,#e2e8f0); border-radius:10px; padding:16px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-weight:700; font-size:13px; color:var(--txt,#1e293b);">Filters</span>
-                <span onclick="baBatchCrm.resetFilters()" style="cursor:pointer; color:var(--accent,#4f46e5); font-size:12px; font-weight:600;">Reset All</span>
+                <span style="font-weight:700; font-size:13px; color:var(--txt,#1e293b);"><?= s(get_string('filters', 'local_batchanalytics')) ?></span>
+                <span onclick="baBatchCrm.resetFilters()" style="cursor:pointer; color:var(--accent,#4f46e5); font-size:12px; font-weight:600;"><?= s(get_string('filters_reset_all', 'local_batchanalytics')) ?></span>
               </div>
 
               <!-- Search -->
               <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Search Name / ID</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('search_name_id', 'local_batchanalytics')) ?></label>
                 <input type="text" id="ba-crm-f-search" placeholder="Search..." oninput="baBatchCrm.applyFilters()"
                   style="width:100%; box-sizing:border-box; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
               </div>
 
               <!-- Placement Status -->
               <div style="margin-bottom:12px;" id="ba-crm-placement-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Placement Status</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('placement_status', 'local_batchanalytics')) ?></label>
                 <select id="ba-crm-f-placement" onchange="baBatchCrm.applyFilters()"
                   style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
                   <option value="">All</option>
@@ -894,7 +885,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
               <!-- PET Status -->
               <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">PET Status</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('pet_status', 'local_batchanalytics')) ?></label>
                 <select id="ba-crm-f-pet" onchange="baBatchCrm.applyFilters()"
                   style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
                   <option value="">All</option>
@@ -903,7 +894,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
               <!-- MAAC Rating Range -->
               <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">MAAC Rating</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('maac_rating', 'local_batchanalytics')) ?></label>
                 <div style="display:flex; gap:6px; align-items:center;">
                   <input type="number" id="ba-crm-f-maac-min" value="0" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()"
                     style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
@@ -915,7 +906,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
               <!-- Adv C Mock Score -->
               <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Adv C Mock Score</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('adv_c_mock_score', 'local_batchanalytics')) ?></label>
                 <div style="display:flex; gap:6px; align-items:center;">
                   <input type="number" id="ba-crm-f-advc-min" value="0" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()"
                     style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
@@ -927,17 +918,17 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
               <!-- Year of Passing -->
               <div style="margin-bottom:12px;" id="ba-crm-yop-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Year of Passing</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('year_of_passing', 'local_batchanalytics')) ?></label>
                 <div id="ba-crm-f-yop-list" style="max-height:110px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
-                  <span style="color:#94a3b8;">Loading CRM data...</span>
+                  <span style="color:#94a3b8;"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
                 </div>
               </div>
 
               <!-- Home State -->
               <div style="margin-bottom:4px;" id="ba-crm-state-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">Home State</label>
+                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('home_state', 'local_batchanalytics')) ?></label>
                 <div id="ba-crm-f-state-list" style="max-height:130px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
-                  <span style="color:#94a3b8;">Loading CRM data...</span>
+                  <span style="color:#94a3b8;"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
                 </div>
               </div>
             </div>
@@ -945,17 +936,17 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
             <!-- Main Table Area -->
             <div style="flex:1; min-width:0;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span id="ba-crm-count" style="font-weight:600; font-size:13px; color:#64748b;">Loading students...</span>
+                <span id="ba-crm-count" style="font-weight:600; font-size:13px; color:#64748b;"><?= s(get_string('loading_students', 'local_batchanalytics')) ?></span>
                 <div style="display:flex; gap:8px;">
-                  <button type="button" id="ba-crm-retry-btn" onclick="baBatchCrm.retryCrm()" class="viewbtn disabled" style="display:none;">Retry CRM Data</button>
-                  <button type="button" id="ba-crm-export-btn" onclick="baBatchCrm.exportCsv()" class="exp">Export CSV</button>
+                  <button type="button" id="ba-crm-retry-btn" onclick="baBatchCrm.retryCrm()" class="viewbtn disabled" style="display:none;"><?= s(get_string('retry_crm_data', 'local_batchanalytics')) ?></button>
+                  <button type="button" id="ba-crm-export-btn" onclick="baBatchCrm.exportCsv()" class="exp"><?= s(get_string('export_csv', 'local_batchanalytics')) ?></button>
                 </div>
               </div>
               <div class="tablecard" style="overflow-x:auto;">
                 <table id="ba-crm-table" style="min-width:700px;">
-                  <thead id="ba-crm-thead"><tr><th>Student</th></tr></thead>
+                  <thead id="ba-crm-thead"><tr><th><?= s(get_string('col_student', 'local_batchanalytics')) ?></th></tr></thead>
                   <tbody id="ba-crm-tbody">
-                    <tr><td colspan="20" style="text-align:center; padding:24px; color:#94a3b8;">Click the CRM Data tab to load student CRM data.</td></tr>
+                    <tr><td colspan="20" style="text-align:center; padding:24px; color:#94a3b8;"><?= s(get_string('click_crm_tab_to_load', 'local_batchanalytics')) ?></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -965,7 +956,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
                 </div>
                 <div class="ba-pagination-actions">
                   <div class="ba-pagination-size-box">
-                    <label for="ba-crm-page-size">Rows per page:</label>
+                    <label for="ba-crm-page-size"><?= s(get_string('rows_per_page', 'local_batchanalytics')) ?></label>
                     <select id="ba-crm-page-size" class="ba-pagination-select">
                       <option value="10" selected>10</option>
                       <option value="25">25</option>
@@ -987,15 +978,15 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         <!-- 4. Review Notes Panel -->
         <div id="panel-notes" class="panel">
           <div class="panel-note">
-            Notes captured by the Program Manager during batch reviews. Newest first. Each note is timestamped with the author.
+            <?= get_string('notes_panel_note', 'local_batchanalytics') ?>
           </div>
 
           <?php if ($can_edit_notes): ?>
           <div class="addnote">
-            <textarea id="ba-note-text" placeholder="Add a review note for this batch…"></textarea>
+            <textarea id="ba-note-text" placeholder="<?= s(get_string('add_review_note_placeholder', 'local_batchanalytics')) ?>"></textarea>
             <div class="row addnote-row">
               <span class="who">Posting as <b><?= s($current_author_name) ?></b> · <?= s($current_author_role) ?></span>
-              <button type="button" id="ba-btn-addnote" data-author="<?= s($current_author_name) ?>">Add note</button>
+              <button type="button" id="ba-btn-addnote" data-author="<?= s($current_author_name) ?>"><?= s(get_string('btn_add_note', 'local_batchanalytics')) ?></button>
             </div>
           </div>
           <?php endif; ?>

@@ -1334,12 +1334,15 @@ class util {
             $params = array_merge($params, $uparams);
         }
 
+        $attendlike = $DB->sql_like('gi.itemname', ':attname', false, false);
+        $params['attname'] = '%attend%';
+
         $sql = "
             SELECT gi.id, AVG(gg.finalgrade) as avg_grade, gi.grademax, gi.grademin
             FROM {grade_items} gi
             JOIN {grade_grades} gg ON gg.itemid = gi.id
             WHERE gi.courseid = :cid
-              AND (gi.itemmodule = 'attendance' OR LOWER(gi.itemname) LIKE '%attend%')
+              AND (gi.itemmodule = 'attendance' OR $attendlike)
               $user_filter
               AND gg.finalgrade IS NOT NULL
             GROUP BY gi.id, gi.grademax, gi.grademin

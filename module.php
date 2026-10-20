@@ -1044,18 +1044,11 @@ $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', $page_params))
 $PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$scripturl = new moodle_url('/local/batchanalytics/module.js', ['v' => filemtime(__DIR__ . '/module.js')]);
-$PAGE->requires->css($styleurl);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
 $PAGE->requires->css($dashboardstyleurl);
-$PAGE->requires->js($scripturl);
+$PAGE->requires->js_call_amd('local_batchanalytics/module', 'init');
 
 echo $OUTPUT->header();
-
-echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
-echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
-echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
 
 ?>
 
@@ -1154,7 +1147,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     <!-- People Row: PM and SSE -->
     <div class="people">
       <div class="person">
-        <div class="role">Program Manager</div>
+        <div class="role"><?= s(get_string('role_program_manager', 'local_batchanalytics')) ?></div>
         <div class="pwrap">
           <div class="pav">
             <?= \local_batchanalytics\util::render_user_avatar($pmuser, 38, 'pav-avatar', $pmname) ?>
@@ -1163,7 +1156,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
         </div>
       </div>
       <div class="person">
-        <div class="role">SS / MAAC Executive</div>
+        <div class="role"><?= s(get_string('role_ss_executive', 'local_batchanalytics')) ?></div>
         <div class="pwrap">
           <div class="pav">
             <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
@@ -1175,10 +1168,10 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
   </div>
 
   <!-- Module Schedule Grid (8-Cells) -->
-  <div class="sec-label">Schedule</div>
+  <div class="sec-label"><?= s(get_string('schedule', 'local_batchanalytics')) ?></div>
   <div class="schedgrid">
     <div class="sc">
-      <div class="k">Class Mentor<?= count($class_mentors) > 1 ? 's' : '' ?></div>
+      <div class="k"><?= s(get_string('col_class_mentor', 'local_batchanalytics')) ?><?= count($class_mentors) > 1 ? 's' : '' ?></div>
       <?php if (empty($class_mentors)): ?>
         <div class="v muted">—</div>
       <?php else: ?>
@@ -1199,7 +1192,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </div>
 
     <div class="sc">
-      <div class="k">Lab Mentor<?= count($lab_mentors) > 1 ? 's' : '' ?></div>
+      <div class="k"><?= s(get_string('col_lab_mentor', 'local_batchanalytics')) ?><?= count($lab_mentors) > 1 ? 's' : '' ?></div>
       <?php if (empty($lab_mentors)): ?>
         <div class="v muted">—</div>
       <?php else: ?>
@@ -1220,32 +1213,32 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </div>
 
     <div class="sc">
-      <div class="k">Planned Start</div>
+      <div class="k"><?= s(get_string('planned_start', 'local_batchanalytics')) ?></div>
       <div class="v"><?= s($p_start) ?></div>
     </div>
 
     <div class="sc">
-      <div class="k">Planned End</div>
+      <div class="k"><?= s(get_string('planned_end', 'local_batchanalytics')) ?></div>
       <div class="v"><?= s($p_end) ?></div>
     </div>
 
     <div class="sc">
-      <div class="k">Actual Start</div>
+      <div class="k"><?= s(get_string('actual_start', 'local_batchanalytics')) ?></div>
       <div class="v"><?= $a_start === '—' ? '<span class="muted">—</span>' : s($a_start) ?></div>
     </div>
 
     <div class="sc">
-      <div class="k">Actual End</div>
+      <div class="k"><?= s(get_string('actual_end', 'local_batchanalytics')) ?></div>
       <div class="v <?= $a_end === '—' ? 'muted' : '' ?>">
-        <?= $a_end === '—' ? ($is_in_progress ? '— (in progress)' : '—') : s($a_end) ?>
+        <?= $a_end === '—' ? ($is_in_progress ? '— (' . s(get_string('in_progress', 'local_batchanalytics')) . ')' : '—') : s($a_end) ?>
       </div>
     </div>
 
     <div class="sc">
-      <div class="k">Delay</div>
+      <div class="k"><?= s(get_string('delay', 'local_batchanalytics')) ?></div>
       <div class="v">
         <?php if (($cur_mod['scheduledelta'] ?? null) === 'prog' || ($is_in_progress && ($delta === null || $delta === 0))): ?>
-          <span class="st st-a">In progress</span>
+          <span class="st st-a"><?= s(get_string('in_progress', 'local_batchanalytics')) ?></span>
         <?php elseif ($delta === null): ?>
           <span class="muted">—</span>
         <?php else: ?>
@@ -1255,7 +1248,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
     </div>
 
     <div class="sc">
-      <div class="k">Attendance</div>
+      <div class="k"><?= s(get_string('attendance', 'local_batchanalytics')) ?></div>
       <div class="v">
         <?php if ($course_attendance_pct !== null): ?>
           <span class="st st-<?= $course_attendance_pct >= 80 ? 'g' : ($course_attendance_pct >= 60 ? 'a' : 'r') ?>"><?= $course_attendance_pct ?>%</span>
@@ -1268,10 +1261,10 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
 
   <!-- Module KPIs (Gradebook category performance) -->
   <div class="ba-kpi-section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-    <div class="sec-label" style="margin-bottom:0;">Module KPIs <span class="subx">· auto-pulled from LMS · common to mentors &amp; SS team</span></div>
+    <div class="sec-label" style="margin-bottom:0;"><?= s(get_string('module_kpis', 'local_batchanalytics')) ?> <span class="subx"><?= get_string('module_kpis_sub', 'local_batchanalytics') ?></span></div>
     <div class="toggle ba-kpi-toggle" id="ba-kpi-toggle" style="margin:0;">
-      <span class="on" id="ba-kpi-tg-grade" role="button" tabindex="0">Grade</span>
-      <span id="ba-kpi-tg-pct" role="button" tabindex="0">Completion %</span>
+      <span class="on" id="ba-kpi-tg-grade" role="button" tabindex="0"><?= s(get_string('grade', 'local_batchanalytics')) ?></span>
+      <span id="ba-kpi-tg-pct" role="button" tabindex="0"><?= s(get_string('completion_pct', 'local_batchanalytics')) ?></span>
     </div>
   </div>
   <?php
@@ -1280,7 +1273,7 @@ echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;
   ?>
   <div class="kpirow <?= $kpi_count === 1 ? 'kpirow-single' : '' ?>" id="kpirow" style="--kpi-desktop-cols: <?= (int)$desktop_cols ?>;">
     <?php if (empty($module_kpis)): ?>
-      <div class="ba-kpi-empty-msg">No data available for this module.</div>
+      <div class="ba-kpi-empty-msg"><?= s(get_string('no_data_available_module', 'local_batchanalytics')) ?></div>
     <?php else: ?>
       <?php foreach ($module_kpis as $kpi): ?>
         <div class="kpi" data-category-modal="1" data-category-name="<?= s($kpi['label']) ?>"

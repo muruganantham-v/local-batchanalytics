@@ -16,12 +16,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once(__DIR__ . '/classes/admin_setting_crm_fields.php');
-require_once(__DIR__ . '/classes/admin_setting_module_tracker_categories.php');
-require_once(__DIR__ . '/classes/admin_setting_mentor_master_activities.php');
-require_once(__DIR__ . '/classes/admin_setting_mentor_activity_grouping.php');
-require_once(__DIR__ . '/classes/mentor_activity_service.php');
-require_once(__DIR__ . '/classes/util.php');
+
 
 if ($hassiteconfig) {
     // Backward compatibility: If accessed directly via admin/settings.php?section=local_batchanalytics,

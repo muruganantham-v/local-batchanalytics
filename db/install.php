@@ -30,8 +30,6 @@ defined('MOODLE_INTERNAL') || die();
 function xmldb_local_batchanalytics_install() {
     global $CFG;
 
-    require_once(__DIR__ . '/../classes/activity_tracker_service.php');
-    require_once(__DIR__ . '/../classes/mentor_activity_service.php');
 
     set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
     set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');

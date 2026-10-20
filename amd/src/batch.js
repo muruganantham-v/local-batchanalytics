@@ -1,215 +1,29 @@
 /**
- * Client-side functionality for Module Detail Screen in local_batchanalytics
+ * Client-side functionality for Batch Detail Screen in local_batchanalytics
  *
  * @package    local_batchanalytics
  * @copyright  2026 Emertxe Information Technologies
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-(function() {
+define([], function() {
     'use strict';
 
-    document.addEventListener('DOMContentLoaded', function() {
-        var container = document.getElementById('ba-module-detail-container');
+    function init() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initBatchDetail);
+        } else {
+            initBatchDetail();
+        }
+    }
+
+    function initBatchDetail() {
+        var container = document.getElementById('ba-batch-detail-container');
         if (!container) {
             return;
         }
 
-        var courseId = container.getAttribute('data-courseid') || '0';
-        var batchId = container.getAttribute('data-batchid') || '0';
-        var sesskey = container.getAttribute('data-sesskey') || '';
-
-        // 1. Tab Switching (Mentor Activities, SS Activities, Student Performance)
-        var tabs = container.querySelectorAll('.ba-module-tabs .tab');
-        var panels = container.querySelectorAll('.ba-module-panels .panel');
-
-        tabs.forEach(function(tab) {
-            tab.addEventListener('click', function() {
-                var targetId = this.getAttribute('data-tab');
-                tabs.forEach(function(t) { t.classList.remove('active'); });
-                panels.forEach(function(p) { p.classList.remove('active'); });
-
-                this.classList.add('active');
-                var activePanel = document.getElementById('panel-' + targetId);
-                if (activePanel) {
-                    activePanel.classList.add('active');
-                }
-            });
-        });
-
-        // 2. Mentor Activities Checklist UI
-        var mentorStatusMsg = document.getElementById('ba-mentor-status-msg');
-
-        function updateMentorActionBadge(actName, isCompleted, plannedTs) {
-            var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
-            var badge = container.querySelector('.ba-mentor-action-badge[data-actname="' + escapedName + '"]');
-            if (!badge) return;
-
-            if (isCompleted) {
-                badge.className = 'ba-mentor-action-badge st st-g';
-                badge.textContent = 'Completed';
-                return;
-            }
-
-            var pts = parseInt(plannedTs, 10) || 0;
-            if (pts <= 0) {
-                badge.className = 'ba-mentor-action-badge st st-b';
-                badge.textContent = 'Upcoming';
-                return;
-            }
-
-            var now = new Date();
-            var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
-            var todayEnd = todayMidnight + 86400;
-
-            if (pts >= todayMidnight && pts < todayEnd) {
-                badge.className = 'ba-mentor-action-badge st st-a';
-                badge.textContent = 'Due Today';
-            } else if (pts >= todayEnd) {
-                badge.className = 'ba-mentor-action-badge st st-b';
-                badge.textContent = 'Upcoming';
-            } else {
-                var diffSec = todayMidnight - pts;
-                var overdueDays = Math.round(diffSec / 86400);
-                if (overdueDays < 5) {
-                    badge.className = 'ba-mentor-action-badge st st-a';
-                    badge.textContent = 'Pending';
-                } else {
-                    var daysStr = overdueDays === 1 ? '1 day' : overdueDays + ' days';
-                    badge.className = 'ba-mentor-action-badge st st-r';
-                    badge.textContent = 'Overdue (' + daysStr + ')';
-                }
-            }
-        }
-
-        // Checkbox & Date picker auto-fill and save
-        container.querySelectorAll('.ba-mentor-check').forEach(function(chk) {
-            chk.addEventListener('change', function() {
-                var actName = this.getAttribute('data-actname') || '';
-                var plannedTs = this.getAttribute('data-planned-ts') || 0;
-                var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
-                var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
-                if (this.checked && dateInput && !dateInput.value) {
-                    var now = new Date();
-                    var localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-                    dateInput.value = localNow.toISOString().slice(0, 10);
-                }
-                if (dateInput) {
-                    dateInput.disabled = !this.checked;
-                }
-                updateMentorActionBadge(actName, this.checked, plannedTs);
-                saveMentorActivity(actName);
-            });
-        });
-
-        container.querySelectorAll('.ba-mentor-date').forEach(function(dateInput) {
-            dateInput.addEventListener('change', function() {
-                var actName = this.getAttribute('data-actname') || '';
-                saveMentorActivity(actName);
-            });
-        });
-
-        function saveMentorActivity(actName) {
-            var escapedName = window.CSS && CSS.escape ? CSS.escape(actName) : actName.replace(/["\\]/g, '\\$&');
-            var chk = container.querySelector('.ba-mentor-check[data-actname="' + escapedName + '"]');
-            var dateInput = container.querySelector('.ba-mentor-date[data-actname="' + escapedName + '"]');
-            var updatedBySpan = container.querySelector('.ba-mentor-updatedby[data-actname="' + escapedName + '"]');
-            var actionBadge = container.querySelector('.ba-mentor-action-badge[data-actname="' + escapedName + '"]');
-            if (!chk) return;
-
-            var isCompleted = chk.checked ? 1 : 0;
-            var compDate = dateInput ? dateInput.value : '';
-            var actKey = chk.getAttribute('data-actkey') || '';
-            var plannedTs = chk.getAttribute('data-planned-ts') || 0;
-
-            if (mentorStatusMsg) {
-                mentorStatusMsg.textContent = 'Saving activity status…';
-                mentorStatusMsg.style.color = '#1b6ec2';
-            }
-
-            var formData = new FormData();
-            formData.append('action', 'save_mentor_activity');
-            formData.append('sesskey', sesskey);
-            formData.append('courseid', courseId);
-            formData.append('sectionid', batchId);
-            formData.append('activityname', actName);
-            formData.append('activitykey', actKey);
-            formData.append('completed', isCompleted);
-            formData.append('completiondate', compDate);
-            formData.append('plannedts', plannedTs);
-
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            })
-            .then(function(res) {
-                return res.text().then(function(text) {
-                    var data;
-                    try {
-                        data = JSON.parse(text);
-                    } catch (e) {
-                        throw new Error('Server returned invalid response (Status ' + res.status + ')');
-                    }
-                    if (!res.ok || data.error) {
-                        throw new Error(data.error || ('HTTP Error ' + res.status));
-                    }
-                    return data;
-                });
-            })
-            .then(function(data) {
-                if (mentorStatusMsg) {
-                    mentorStatusMsg.textContent = '✓ Activity updated successfully';
-                    mentorStatusMsg.style.color = '#1e8e4e';
-                    setTimeout(function() {
-                        mentorStatusMsg.textContent = '';
-                    }, 3000);
-                }
-                if (data && data.modifiedbyname && updatedBySpan) {
-                    updatedBySpan.textContent = data.modifiedbyname;
-                }
-                if (data && data.action_label && data.action_class && actionBadge) {
-                    actionBadge.className = 'ba-mentor-action-badge st ' + data.action_class;
-                    actionBadge.textContent = data.action_label;
-                }
-                try {
-                    localStorage.setItem('ba_task_updated', Date.now().toString());
-                } catch (e) {}
-            })
-            .catch(function(err) {
-                console.warn('Mentor activity save error:', err);
-                if (mentorStatusMsg) {
-                    mentorStatusMsg.textContent = '✗ ' + (err.message || 'Error saving activity');
-                    mentorStatusMsg.style.color = '#d93025';
-                    setTimeout(function() {
-                        mentorStatusMsg.textContent = '';
-                    }, 5000);
-                }
-                // Revert checkbox and input states on validation error
-                if (chk) {
-                    chk.checked = !isCompleted;
-                }
-                if (dateInput) {
-                    dateInput.disabled = !chk.checked;
-                    if (!chk.checked) {
-                        dateInput.value = '';
-                    }
-                }
-                updateMentorActionBadge(actName, chk ? chk.checked : false, plannedTs);
-            });
-        }
-
-
-        // 3. Student Performance: Banding & Pagination (Matching Prototype & Batch Detail)
-        var stuData = [];
-        try {
-            var rawStu = container.getAttribute('data-students');
-            if (rawStu) {
-                stuData = JSON.parse(rawStu);
-            }
-        } catch (e) {
-            console.error('Error parsing module students data:', e);
-        }
-
+        // Initialize state
         var performanceColumns = [];
         try {
             performanceColumns = JSON.parse(container.getAttribute('data-performance-columns') || '[]');
@@ -253,13 +67,98 @@
         }
 
         var perfMode = 'grade'; // 'grade' or 'percentile'
+        var studentsData = [];
+
+        try {
+            var rawData = container.getAttribute('data-students');
+            if (rawData) {
+                studentsData = JSON.parse(rawData);
+            }
+        } catch (e) {
+            console.error('Error parsing students data:', e);
+        }
+
+        // 1. Tab Switching
+        var tabs = container.querySelectorAll('.ba-batch-tabs .tab');
+        var panels = container.querySelectorAll('.ba-batch-panels .panel');
+
+        // ===================== CRM Data State =====================
+        var CRM_INDEX_URL = container.getAttribute('data-crm-index-url') || '';
+        var CRM_SESSKEY  = container.getAttribute('data-sesskey') || '';
+        var CRM_CAN_MANAGE = container.getAttribute('data-can-manage') === '1';
+        var CRM_FIELDS = [];
+        try {
+            var rawCrmFields = container.getAttribute('data-crm-fields');
+            var parsedFields = (rawCrmFields && rawCrmFields !== 'null') ? JSON.parse(rawCrmFields) : [];
+            CRM_FIELDS = Array.isArray(parsedFields) ? parsedFields : [];
+        } catch(e) {
+            CRM_FIELDS = [];
+        }
+        var CRM_RESTRICTED = Array.isArray(CRM_FIELDS)
+            ? CRM_FIELDS.filter(function(f){ return f && f.restricted; }).map(function(f){ return f.key; })
+            : [];
+        var CRM_COLS = (CRM_CAN_MANAGE ? CRM_FIELDS : CRM_FIELDS.filter(function(f){ return f && !f.restricted; }))
+            .map(function(f){ return { h: f.label || f.key, k: f.key, num: !!f.numeric, type: f.type || 'text' }; });
+
+        var PTF_CACHE  = {};
+        var PTF_PENDING = {};
+        var PTF_FAILED  = {};
+        var CRM_FAILURE_SHOWN = false;
+        var CRM_PANEL_BUILT  = false;
+        var CRM_CURRENT_PAGE = 1;
+        var CRM_PAGE_SIZE = '10';
+        // ==========================================================
+
+        tabs.forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var targetId = this.getAttribute('data-tab');
+                tabs.forEach(function(t) { t.classList.remove('active'); });
+                panels.forEach(function(p) { p.classList.remove('active'); });
+
+                this.classList.add('active');
+                var activePanel = document.getElementById('panel-' + targetId);
+                if (activePanel) {
+                    activePanel.classList.add('active');
+                }
+
+                // Trigger CRM panel build on first open
+                if (targetId === 'crm') {
+                    baBatchCrm.render();
+                }
+            });
+        });
+
+        // Auto-activate tab from URL parameter (?tab=notes) or hash (#panel-notes)
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            var reqTab = urlParams.get('tab');
+            if (!reqTab && window.location.hash) {
+                reqTab = window.location.hash.replace('#panel-', '').replace('#', '');
+            }
+            if (reqTab) {
+                var tabToClick = container.querySelector('.ba-batch-tabs .tab[data-tab="' + reqTab + '"]');
+                if (tabToClick) {
+                    tabToClick.click();
+                }
+            }
+        } catch (e) {
+            // Silently continue
+        }
+
+        // 2. Performance Banding & Pagination Logic
+        var tgGrade = document.getElementById('tg-grade');
+        var tgPct = document.getElementById('tg-pct');
+        var bandrow = document.getElementById('ba-bandrow');
+        var stuBody = document.getElementById('ba-stuBody');
+        var expBtn = document.getElementById('ba-btn-export');
+
         var currentPage = 1;
         var pageSize = 10;
         var sortColumn = '';
         var sortDirection = 'asc';
+        var selectedBand = null;
 
-        var performanceCollapsedGroups = { module: false };
-        var performanceTable = container.querySelector('#panel-mstudents table');
+        var performanceTable = container.querySelector('#panel-students table');
 
         function groupToggle(label, key, collapsed) {
             return '<button type="button" class="ba-maac-group-toggle" data-performance-group-toggle="' + escapeHtml(key) + '" aria-expanded="' + (!collapsed) + '">' +
@@ -833,11 +732,7 @@
         }
 
         function getVisiblePerformanceColumnCount() {
-            var count = 5 + performanceColumns.length;
-            performanceCustomGroups.forEach(function(group) {
-                count += performanceCollapsedGroups[group.key] ? 1 : (group.columns || []).length;
-            });
-            return count;
+            return 5 + performanceColumns.length;
         }
 
         function renderPerformanceHeaders() {
@@ -847,38 +742,27 @@
             var overallLabel = perfMode === 'grade' ? 'Grade' : 'Completion %';
             var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             var html = '<tr>' +
-                '<th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>' +
+                '<th class="sortable" data-sort="band" title="Sort by Band">Band</th>' +
                 '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
                 '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>' +
                 '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
             performanceColumns.forEach(function(column) {
                 html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
-            performanceCustomGroups.forEach(function(group) {
-                var columns = group.columns || [];
-                if (!columns.length) return;
-                if (performanceCollapsedGroups[group.key]) {
-                    html += '<th class="ba-maac-group-head ba-performance-group-collapsed">' + groupToggle(group.label, group.key, true) + '</th>';
-                } else {
-                    columns.forEach(function(column) {
-                        html += '<th class="ba-performance-custom-col ba-performance-group-' + escapeHtml(group.key) + (column.key === 'trend' ? ' ba-performance-custom-trend' : '') + '" data-custom-key="' + escapeHtml(column.key) + '">' + escapeHtml(column.label) + '</th>';
-                    });
-                }
-            });
             html += '<th class="sortable" data-sort="merit" title="Sort by Merit">Merit</th></tr>';
             thead.innerHTML = html;
         }
 
         function togglePerformanceGroup(key) {
-            var tableWrap = container.querySelector('#panel-mstudents .tablecard');
+            var tableWrap = container.querySelector('#panel-students .tablecard');
             var scrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
             performanceCollapsedGroups[key] = !performanceCollapsedGroups[key];
             renderPerformanceHeaders();
             renderPerformance();
             if (tableWrap) tableWrap.scrollLeft = scrollLeft;
         }
-        // Tag initial order for stable secondary sorting
-        stuData.forEach(function(s, idx) {
+        // Tag initial order for stable tie-breaking
+        studentsData.forEach(function(s, idx) {
             if (s._origIdx === undefined) {
                 s._origIdx = idx;
             }
@@ -887,7 +771,7 @@
         function applySort() {
             if (!sortColumn) return;
 
-            stuData.sort(function(a, b) {
+            studentsData.sort(function(a, b) {
                 var mult = (sortDirection === 'desc') ? -1 : 1;
                 var res = 0;
 
@@ -957,7 +841,7 @@
         }
 
         function updateSortHeaders() {
-            var ths = container.querySelectorAll('#panel-mstudents th.sortable');
+            var ths = container.querySelectorAll('#panel-students th.sortable');
             ths.forEach(function(th) {
                 var col = th.getAttribute('data-sort');
                 th.classList.remove('sort-asc', 'sort-desc');
@@ -969,14 +853,9 @@
             });
         }
 
-        var tgGrade = document.getElementById('ba-mod-tg-grade');
-        var tgPct = document.getElementById('ba-mod-tg-pct');
-        var bandrow = document.getElementById('ba-mod-bandrow');
-        var stuBody = document.getElementById('ba-mod-stu-body');
-        var expBtn = document.getElementById('ba-mod-export-btn');
-        var stuPageSizeSelect = document.getElementById('ba-mod-page-size');
-        var paginationInfo = document.getElementById('ba-mod-pagination-info');
-        var paginationBtns = document.getElementById('ba-mod-pagination-btns');
+        var stuPageSizeSelect = document.getElementById('ba-page-size');
+        var paginationInfo = document.getElementById('ba-pagination-info');
+        var paginationBtns = document.getElementById('ba-pagination-btns');
 
         function getPercentileValues(students) {
             var ordered = students.slice().sort(function(a, b) {
@@ -1073,8 +952,8 @@
             var existing = document.getElementById('ba-band-detail-modal');
             if (existing) existing.remove();
 
-            var bandStudents = stuData.filter(function(s) { return s._band === bandKey; });
-            var percentileValues = getPercentileValues(stuData);
+            var bandStudents = studentsData.filter(function(s) { return s._band === bandKey; });
+            var percentileValues = getPercentileValues(studentsData);
 
             var meta = {
                 top: {
@@ -1346,7 +1225,7 @@
                     var link = document.createElement('a');
                     var url = URL.createObjectURL(blob);
                     link.setAttribute('href', url);
-                    link.setAttribute('download', 'module_' + bandKey + '_performers.csv');
+                    link.setAttribute('download', 'batch_' + bandKey + '_performers.csv');
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
@@ -1355,21 +1234,36 @@
         }
 
         function renderPerformance() {
-            if (!stuData) return;
+            if (!studentsData || studentsData.length === 0) {
+                if (bandrow) {
+                    bandrow.innerHTML =
+                        '<div class="band top" style="cursor:default;">' +
+                            '<div class="pct">0</div><div class="lbl">Top Performers</div><div class="cnt">grade &gt; 70</div>' +
+                        '</div>' +
+                        '<div class="band mid" style="cursor:default;">' +
+                            '<div class="pct">0</div><div class="lbl">Middle Performers</div><div class="cnt">grade 40–70</div>' +
+                        '</div>' +
+                        '<div class="band bot" style="cursor:default;">' +
+                            '<div class="pct">0</div><div class="lbl">Low Performers</div><div class="cnt">grade &lt; 40</div>' +
+                        '</div>';
+                }
+                if (stuBody) {
+                    stuBody.innerHTML = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
+                }
+                if (paginationInfo) paginationInfo.textContent = 'No students to display';
+                if (paginationBtns) paginationBtns.innerHTML = '';
+                return;
+            }
 
-            var totalItems = stuData.length;
-            var bands = computeBands(stuData, perfMode);
-            stuData.forEach(function(s, idx) {
-                s._band = bands[idx];
-                s._origIdx = idx;
-            });
-            var percentileValues = getPercentileValues(stuData);
+            // Always compute bands across the entire dataset for accurate KPI numbers
+            var allBands = computeBands(studentsData, perfMode);
+            var percentileValues = getPercentileValues(studentsData);
             updateOverallHeading();
 
-            // 1. Render 3 Banding Cards
             var counts = { top: 0, mid: 0, bot: 0 };
-            bands.forEach(function(b) {
-                if (counts[b] !== undefined) counts[b]++;
+            studentsData.forEach(function(s, idx) {
+                s._band = allBands[idx] || 'mid';
+                if (counts[s._band] !== undefined) counts[s._band]++;
             });
 
             var labels = perfMode === 'grade' ? {
@@ -1400,7 +1294,7 @@
                         '<div class="cnt">' + labels.bot[1] + '</div>' +
                     '</div>';
 
-                // Attach click listeners to KPI cards
+                // Attach click and keyboard listeners to KPI cards to open modal window
                 var cards = bandrow.querySelectorAll('.band[data-band]');
                 cards.forEach(function(card) {
                     card.addEventListener('click', function() {
@@ -1417,7 +1311,9 @@
                 });
             }
 
-            // 2. Compute Pagination Bounds
+            var totalItems = studentsData.length;
+
+            // Compute Pagination Bounds
             var isAll = (pageSize === 'all');
             var sizeNum = isAll ? (totalItems || 1) : parseInt(pageSize, 10);
             var totalPages = Math.max(1, Math.ceil(totalItems / sizeNum));
@@ -1438,10 +1334,10 @@
                     : ('Showing ' + startIdx + '–' + endIdx + ' of ' + totalItems + ' students');
             }
 
-            // 3. Slice and Render Student Rows
+            // Slice and Render Student Rows
             var pagedStudents = isAll
-                ? stuData
-                : stuData.slice((currentPage - 1) * sizeNum, currentPage * sizeNum);
+                ? studentsData
+                : studentsData.slice((currentPage - 1) * sizeNum, currentPage * sizeNum);
 
             var html = '';
             var dotColors = {
@@ -1450,9 +1346,8 @@
                 bot: 'var(--red, #c0392b)'
             };
 
-            pagedStudents.forEach(function(s, pageIdx) {
-                var globalIdx = isAll ? pageIdx : ((currentPage - 1) * sizeNum + pageIdx);
-                var b = bands[globalIdx] || 'mid';
+            pagedStudents.forEach(function(s) {
+                var b = s._band || 'mid';
 
                 var meritHtml = '';
                 var spotCount = Number(s.spot_count || 0);
@@ -1492,13 +1387,12 @@
                     performanceColumns.map(function(column) {
                         return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
                     }).join('') +
-                    customGroupCells(s) +
                     '<td><span class="merit">' + meritHtml + '</span></td>' +
                     '</tr>';
             });
 
             if (pagedStudents.length === 0) {
-                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this module.</td></tr>';
+                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this filter.</td></tr>';
             }
 
             if (stuBody) {
@@ -1508,7 +1402,7 @@
             // Update sort indicators on table headers
             updateSortHeaders();
 
-            // 4. Render Pagination Controls
+            // Render Pagination Buttons
             renderPaginationButtons(totalPages);
         }
 
@@ -1523,7 +1417,7 @@
             var btnsHtml = '';
 
             // Previous Button
-            btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-mod-pg-prev" ' +
+            btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-pg-prev" ' +
                 (currentPage <= 1 ? 'disabled' : '') + ' aria-label="Previous page">‹ Prev</button>';
 
             // Page numbers with smart ellipsis
@@ -1558,13 +1452,13 @@
             });
 
             // Next Button
-            btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-mod-pg-next" ' +
+            btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-pg-next" ' +
                 (currentPage >= totalPages ? 'disabled' : '') + ' aria-label="Next page">Next ›</button>';
 
             paginationBtns.innerHTML = btnsHtml;
 
             // Attach event listeners
-            var prevBtn = document.getElementById('ba-mod-pg-prev');
+            var prevBtn = document.getElementById('ba-pg-prev');
             if (prevBtn && !prevBtn.disabled) {
                 prevBtn.addEventListener('click', function() {
                     if (currentPage > 1) {
@@ -1574,7 +1468,7 @@
                 });
             }
 
-            var nextBtn = document.getElementById('ba-mod-pg-next');
+            var nextBtn = document.getElementById('ba-pg-next');
             if (nextBtn && !nextBtn.disabled) {
                 nextBtn.addEventListener('click', function() {
                     if (currentPage < totalPages) {
@@ -1584,37 +1478,17 @@
                 });
             }
 
-            paginationBtns.querySelectorAll('button[data-page]').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var targetP = parseInt(this.getAttribute('data-page'), 10);
-                    if (targetP && targetP !== currentPage) {
-                        currentPage = targetP;
+            paginationBtns.querySelectorAll('button[data-page]').forEach(function(pageBtn) {
+                pageBtn.addEventListener('click', function() {
+                    var p = parseInt(this.getAttribute('data-page'), 10);
+                    if (p && p !== currentPage) {
+                        currentPage = p;
                         renderPerformance();
                     }
                 });
             });
         }
 
-        // Toggle Grade vs Percentile
-        if (tgGrade && tgPct) {
-            tgGrade.addEventListener('click', function() {
-                perfMode = 'grade';
-                tgGrade.classList.add('on');
-                tgPct.classList.remove('on');
-                currentPage = 1;
-                renderPerformance();
-            });
-
-            tgPct.addEventListener('click', function() {
-                perfMode = 'percentile';
-                tgPct.classList.add('on');
-                tgGrade.classList.remove('on');
-                currentPage = 1;
-                renderPerformance();
-            });
-        }
-
-        // Page Size Selector
         if (stuPageSizeSelect) {
             stuPageSizeSelect.addEventListener('change', function() {
                 pageSize = this.value;
@@ -1630,7 +1504,7 @@
                 if (trendButton) {
                     event.preventDefault();
                     var trendUserId = Number(trendButton.getAttribute('data-performance-trend-userid'));
-                    var trendStudent = stuData.find(function(student) { return Number(student.userid) === trendUserId; });
+                    var trendStudent = studentsData.find(function(student) { return Number(student.userid) === trendUserId; });
                     if (trendStudent) openTrendModal(trendStudent);
                     return;
                 }
@@ -1640,7 +1514,7 @@
                     var fbUserId = Number(feedbackButton.getAttribute('data-feedback-userid'));
                     var fbColKey = feedbackButton.getAttribute('data-feedback-colkey');
                     var fbColLabel = feedbackButton.getAttribute('data-feedback-collabel') || 'Feedback';
-                    var fbStudent = stuData.find(function(student) { return Number(student.userid) === fbUserId; });
+                    var fbStudent = studentsData.find(function(student) { return Number(student.userid) === fbUserId; });
                     if (fbStudent) openFeedbackModal(fbStudent, fbColKey, fbColLabel);
                     return;
                 }
@@ -1666,28 +1540,42 @@
                 renderPerformance();
             });
         }
-        // CSV Export
-        if (expBtn) {
+        if (tgGrade && tgPct) {
+            tgGrade.addEventListener('click', function() {
+                perfMode = 'grade';
+                tgGrade.classList.add('on');
+                tgPct.classList.remove('on');
+                currentPage = 1;
+                renderPerformance();
+            });
+
+            tgPct.addEventListener('click', function() {
+                perfMode = 'percentile';
+                tgPct.classList.add('on');
+                tgGrade.classList.remove('on');
+                currentPage = 1;
+                renderPerformance();
+            });
+        }
+
+        // Export Filtered Students to CSV
+        if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
                 var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
-                if (!performanceCollapsedGroups.module) {
-                    performanceColumns.forEach(function(column) {
-                        var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
-                        csvHeaders.push(column.label + suffix);
-                    });
-                }
-                performanceCustomGroups.forEach(function(group) {
-                    if (!performanceCollapsedGroups[group.key]) {
-                        (group.columns || []).forEach(function(column) { csvHeaders.push(column.label); });
-                    }
+                performanceColumns.forEach(function(column) {
+                    var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
+                    csvHeaders.push(column.label + suffix);
                 });
                 csvHeaders.push('Merit');
                 var csv = [csvHeaders.map(function(value) { return '"' + value.replace(/"/g, '""') + '"'; }).join(',')];
-                var bands = computeBands(stuData, perfMode);
-                var percentileValues = getPercentileValues(stuData);
+                var percentileValues = getPercentileValues(studentsData);
 
-                stuData.forEach(function(s, idx) {
-                    var rawBand = (bands[idx] || s._band || 'mid').toLowerCase();
+                var exportStudents = selectedBand
+                    ? studentsData.filter(function(s) { return s._band === selectedBand; })
+                    : studentsData;
+
+                exportStudents.forEach(function(s) {
+                    var rawBand = (s._band || 'mid').toLowerCase();
                     var band = (rawBand === 'top') ? 'top' : ((rawBand === 'bot' || rawBand === 'bottom' || rawBand === 'low') ? 'low' : 'mid');
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
@@ -1695,56 +1583,7 @@
                     var attVal = (s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? s.attendance + '%' : '—';
                     var merit = (s.merit_text || '').replace(/"/g, '""');
                     var row = [band, name, id, grade, attVal];
-                    if (!performanceCollapsedGroups.module) {
-                        performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
-                    }
-                    performanceCustomGroups.forEach(function(group) {
-                        if (!performanceCollapsedGroups[group.key]) {
-                            (group.columns || []).forEach(function(column) {
-                                var val = s.custom ? s.custom[column.key] : null;
-                                var isFeedback = (column.type === 'multi_feedback') ||
-                                                 (column.key && column.key.indexOf('feedback') !== -1) ||
-                                                 (column.label && column.label.toLowerCase().indexOf('feedback') !== -1);
-                                var isBoolean = (column.type === 'boolean') ||
-                                                (column.datatype === 'checkbox');
-                                if (isFeedback) {
-                                    var feedbacks = normalizeFeedbackList(val);
-                                    row.push(feedbacks.length ? feedbacks.map(function(f) { return (f.date ? f.date + ': ' : '') + f.text; }).join(' | ') : '-');
-                                } else if (isBoolean) {
-                                    var isTrue = false;
-                                    if (Array.isArray(val)) {
-                                        isTrue = val.some(function(v) {
-                                            return v === 1 || v === '1' || v === true || v === 'true' || String(v).toLowerCase() === 'yes';
-                                        });
-                                    } else {
-                                        isTrue = (val === 1 || val === '1' || val === true || val === 'true' || String(val).toLowerCase() === 'yes');
-                                    }
-                                    row.push(isTrue ? 'Yes' : 'No');
-                                } else if (Array.isArray(val)) {
-                                    var items = val.map(function(item) {
-                                        return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
-                                    }).filter(function(str) { return str.trim() !== ''; });
-                                    row.push(items.length ? items.join(' | ') : '-');
-                                } else if (typeof val === 'string' && val.trim().startsWith('[') && val.trim().endsWith(']')) {
-                                    try {
-                                        var parsed = JSON.parse(val.trim());
-                                        if (Array.isArray(parsed)) {
-                                            var items = parsed.map(function(item) {
-                                                return (item && typeof item === 'object') ? (item.text || item.label || item.value || '') : String(item);
-                                            }).filter(function(str) { return str.trim() !== ''; });
-                                            row.push(items.length ? items.join(' | ') : '-');
-                                        } else {
-                                            row.push(val || '-');
-                                        }
-                                    } catch(e) {
-                                        row.push(val || '-');
-                                    }
-                                } else {
-                                    row.push((val !== undefined && val !== null && val !== '') ? String(val) : '-');
-                                }
-                            });
-                        }
-                    });
+                    performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     row.push(merit);
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
                 });
@@ -1753,7 +1592,7 @@
                 var link = document.createElement('a');
                 var url = URL.createObjectURL(blob);
                 link.setAttribute('href', url);
-                link.setAttribute('download', 'module_students_performance.csv');
+                link.setAttribute('download', 'batch_students_performance.csv');
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
@@ -1761,8 +1600,82 @@
             });
         }
 
+        // 3. Review Notes Section
+        var noteBtn = document.getElementById('ba-btn-addnote');
+        var noteText = document.getElementById('ba-note-text');
+        var noteList = document.getElementById('ba-note-list');
+        var batchContainer = document.getElementById('ba-batch-detail-container');
+
+        if (noteBtn && noteText && noteList) {
+            noteBtn.addEventListener('click', function() {
+                var text = noteText.value.trim();
+                if (!text) {
+                    noteText.focus();
+                    return;
+                }
+
+                var author = noteBtn.getAttribute('data-author') || 'Program Manager';
+                var batchId = (batchContainer && batchContainer.getAttribute('data-batchid')) || '1';
+                var sessKey = (batchContainer && batchContainer.getAttribute('data-sesskey')) || '';
+
+                if (!sessKey && typeof M !== 'undefined' && M.cfg && M.cfg.sesskey) {
+                    sessKey = M.cfg.sesskey;
+                }
+
+                var originalBtnText = noteBtn.textContent;
+                noteBtn.disabled = true;
+                noteBtn.textContent = 'Saving…';
+
+                var formData = new FormData();
+                formData.append('action', 'addnote');
+                formData.append('batchid', batchId);
+                formData.append('sesskey', sessKey);
+                formData.append('author', author);
+                formData.append('note', text);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) {
+                    if (!res.ok) {
+                        throw new Error('Server returned ' + res.status);
+                    }
+                    return res.json();
+                })
+                .then(function(data) {
+                    noteBtn.disabled = false;
+                    noteBtn.textContent = originalBtnText;
+
+                    if (data && data.success && data.note) {
+                        // Remove demo notes if this is the first real note
+                        var demoNotes = noteList.querySelectorAll('.note-item-demo');
+                        demoNotes.forEach(function(el) {
+                            el.remove();
+                        });
+
+                        var noteItem = document.createElement('div');
+                        noteItem.className = 'note-item';
+                        noteItem.innerHTML = '<div class="meta"><b>' + escapeHtml(data.note.who) + '</b> · ' + escapeHtml(data.note.date) + '</div>' +
+                            '<div class="body">' + escapeHtml(data.note.body).replace(/\n/g, '<br>') + '</div>';
+
+                        noteList.insertBefore(noteItem, noteList.firstChild);
+                        noteText.value = '';
+                    } else {
+                        alert((data && data.message) ? data.message : 'Failed to save review note.');
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Error saving note:', err);
+                    noteBtn.disabled = false;
+                    noteBtn.textContent = originalBtnText;
+                    alert('Network error while saving review note. Please try again.');
+                });
+            });
+        }
+
         function escapeHtml(str) {
-            return String(str || '')
+            return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
@@ -1770,461 +1683,475 @@
                 .replace(/'/g, '&#39;');
         }
 
-        // 4. Module KPIs Underlying Data Modal (Matching index.php Course Metrics modal)
-        var kpiCategoriesData = {};
-        try {
-            var rawKpi = container.getAttribute('data-kpi-data');
-            if (rawKpi) {
-                kpiCategoriesData = JSON.parse(rawKpi);
-            }
-        } catch (e) {
-            console.error('Error parsing KPI categories data:', e);
-        }
+        // ===================== CRM DATA TAB =====================
+        /**
+         * baBatchCrm — self-contained CRM Data tab controller for batch.php.
+         * Mirrors renderPtf() / fetchUnifiedData() from simple.js but scoped
+         * to the students already loaded on this batch page.
+         */
+        var baBatchCrm = (function() {
 
-        // 4. Module KPIs Section Grade/Percentile Toggle & Modal Dialog
-        var kpiSectionMode = 'grade'; // 'grade' | 'percentile'
-        var kpiTgGrade = container.querySelector('#ba-kpi-tg-grade');
-        var kpiTgPct = container.querySelector('#ba-kpi-tg-pct');
-        var kpiRow = container.querySelector('#kpirow');
-
-        function updateKpiCards() {
-            if (!kpiRow) return;
-            var cards = kpiRow.querySelectorAll('.kpi[data-category-modal]');
-            cards.forEach(function(card) {
-                var kv = card.querySelector('.kv');
-                if (!kv) return;
-                if (kpiSectionMode === 'percentile') {
-                    kv.textContent = card.getAttribute('data-percentile') || '0.00%';
-                } else {
-                    kv.textContent = card.getAttribute('data-grade') || '0.00%';
-                }
-                if (card.getAttribute('data-is-overall') === '1') {
-                    var kl = card.querySelector('.kl');
-                    if (kl) {
-                        kl.textContent = kpiSectionMode === 'percentile' ? 'Avg Completion' : 'Avg Grade';
-                    }
-                }
-            });
-        }
-
-        if (kpiTgGrade && kpiTgPct) {
-            kpiTgGrade.addEventListener('click', function() {
-                kpiSectionMode = 'grade';
-                kpiTgGrade.classList.add('on');
-                kpiTgPct.classList.remove('on');
-                updateKpiCards();
-            });
-            kpiTgPct.addEventListener('click', function() {
-                kpiSectionMode = 'percentile';
-                kpiTgPct.classList.add('on');
-                kpiTgGrade.classList.remove('on');
-                updateKpiCards();
-            });
-        }
-
-        container.querySelectorAll('[data-category-modal="1"]').forEach(function(card) {
-            var catName = card.getAttribute('data-category-name');
-            card.addEventListener('click', function() {
-                openModuleCategoryModal(catName);
-            });
-            card.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openModuleCategoryModal(catName);
-                }
-            });
-        });
-
-        function openModuleCategoryModal(cname) {
-            var cat = kpiCategoriesData[cname];
-            var studentGrades = (cat && Array.isArray(cat.studentGrades)) ? cat.studentGrades : [];
-            var hasStudentData = studentGrades.length > 0;
-
-            var isMaac = (cname === 'MAAC Ratings' || (cat && cat.isMaac));
-            var isAtt = (cname.toLowerCase().indexOf('attendance') !== -1 || (cat && cat.isAttendance));
-
-            var avgG = (cat && cat.avgGrade !== undefined) ? parseFloat(cat.avgGrade).toFixed(2) : '0.00';
-            var avgC = (cat && cat.avgCompletion !== undefined) ? parseFloat(cat.avgCompletion).toFixed(2) : '0.00';
-            var totalStudents = studentGrades.length;
-
-            var safeId = 'kpi-cat-' + cname.replace(/[^a-zA-Z0-9]/g, '') + '-data';
-
-            // Modal overlay
-            var overlay = document.createElement('div');
-            overlay.className = 'ba-modal-overlay';
-            overlay.setAttribute('role', 'dialog');
-            overlay.setAttribute('aria-modal', 'true');
-
-            // Modal container
-            var modalContainer = document.createElement('div');
-            modalContainer.className = 'ba-modal-container ba-category-modal-dialog';
-
-            // Modal header
-            var header = document.createElement('div');
-            header.className = 'ba-modal-header';
-
-            var titleEl = document.createElement('h3');
-            var catDisplayTitle = escapeHtml(cname);
-            var titleMatch = cname.match(/^(.*?)\s*\((\d+)\)$/);
-            if (titleMatch) {
-                catDisplayTitle = escapeHtml(titleMatch[1]) + ' <span class="ba-modal-badge">' + escapeHtml(titleMatch[2]) + '</span>';
-            }
-            titleEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> ' + catDisplayTitle;
-
-            var closeBtn = document.createElement('button');
-            closeBtn.className = 'ba-modal-close';
-            closeBtn.type = 'button';
-            closeBtn.setAttribute('aria-label', 'Close');
-            closeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-
-            header.appendChild(titleEl);
-            header.appendChild(closeBtn);
-
-            // Modal toolbar
-            var toolbar = document.createElement('div');
-            toolbar.className = 'ba-modal-toolbar';
-
-            // Total items count for category
-            var catTotalItems = 0;
-            if (cat && cat.totalItems !== undefined && parseInt(cat.totalItems, 10) > 0) {
-                catTotalItems = parseInt(cat.totalItems, 10);
-            } else if (hasStudentData && studentGrades[0].totalItems !== undefined && parseInt(studentGrades[0].totalItems, 10) > 0) {
-                catTotalItems = parseInt(studentGrades[0].totalItems, 10);
-            } else {
-                var catCountMatch = cname.match(/\((\d+)\)$/);
-                if (catCountMatch) {
-                    catTotalItems = parseInt(catCountMatch[1], 10) || 0;
-                }
+            function _formatCrmDate(val) {
+                if (!val || val === '-') return '-';
+                var d = new Date(val);
+                return isNaN(d.getTime()) ? val : d.toLocaleDateString();
             }
 
-            var fgSum = 0;
-            var fgCount = 0;
-            studentGrades.forEach(function(s) {
-                var totItems = (s.totalItems !== undefined && s.totalItems > 0) ? s.totalItems : catTotalItems;
-                var itemsComp = s.itemsCompleted !== undefined ? s.itemsCompleted : 0;
-                var fg = s.finalGrade;
-                if (fg === undefined || fg === null) {
-                    if (s.percentage !== null && s.percentage !== undefined && totItems > 0) {
-                        fg = (parseFloat(s.percentage) * itemsComp) / totItems;
-                    } else if (s.percentage !== null && s.percentage !== undefined) {
-                        fg = parseFloat(s.percentage);
-                    } else {
-                        fg = 0;
-                    }
-                }
-                if (fg !== null && fg !== undefined && !isNaN(parseFloat(fg))) {
-                    fgSum += parseFloat(fg);
-                    fgCount++;
-                }
-            });
-            var avgFinalG = (cat && cat.avgFinalGrade !== undefined && cat.avgFinalGrade !== null)
-                ? parseFloat(cat.avgFinalGrade).toFixed(2)
-                : (fgCount > 0 ? (fgSum / fgCount).toFixed(2) : '0.00');
-
-            var leftStats = document.createElement('div');
-            leftStats.className = 'ba-mt-stats';
-
-            var statsHtml = '<div class="ba-kpi-pill-group">' +
-                '<div class="ba-kpi-pill">' +
-                    '<span class="ba-kpi-pill-label">Enrolled</span>' +
-                    '<span class="ba-kpi-pill-val"><strong id="modal-stu-count">' + totalStudents + '</strong> Students</span>' +
-                '</div>' +
-                '<div class="ba-kpi-pill">' +
-                    '<span class="ba-kpi-pill-label">Completion</span>' +
-                    '<span class="ba-kpi-pill-val ba-val-comp">' + avgC + '%</span>' +
-                '</div>' +
-                '<div class="ba-kpi-pill">' +
-                    '<span class="ba-kpi-pill-label">Final Grade</span>' +
-                    '<span class="ba-kpi-pill-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</span>' +
-                '</div>' +
-            '</div>';
-            leftStats.innerHTML = statsHtml;
-
-            var rightActions = document.createElement('div');
-            rightActions.className = 'ba-mt-actions';
-            rightActions.style.display = 'flex';
-            rightActions.style.alignItems = 'center';
-            rightActions.style.gap = '10px';
-
-            var searchWrapper = document.createElement('div');
-            searchWrapper.className = 'ba-modal-search-wrapper';
-            searchWrapper.innerHTML = '<svg class="ba-modal-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>' +
-                '<input type="text" id="ba-kpi-modal-search" class="ba-modal-search-input" placeholder="Search student...">';
-
-            var searchInput = searchWrapper.querySelector('input');
-
-            var downloadBtn = document.createElement('button');
-            downloadBtn.type = 'button';
-            downloadBtn.id = 'ba-kpi-modal-download';
-            downloadBtn.className = 'ba-btn-download-sm';
-            downloadBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> <span>Download CSV</span>';
-            if (!hasStudentData) {
-                downloadBtn.disabled = true;
+            function _uid(username) {
+                return (username || '').replace(/[^a-z0-9]/gi, '');
             }
 
-            rightActions.appendChild(searchWrapper);
-            rightActions.appendChild(downloadBtn);
+            // Build the table header once
+            function _buildHeader() {
+                var thead = document.getElementById('ba-crm-thead');
+                if (!thead) return;
+                var html = '<tr><th style="position:sticky;left:0;background:#f1f5f9;z-index:2;border-right:2px solid #e2e8f0;">Student</th>';
+                CRM_COLS.forEach(function(c) {
+                    html += '<th>' + escapeHtml(c.h) + '</th>';
+                });
+                html += '</tr>';
+                thead.innerHTML = html;
+            }
 
-            toolbar.appendChild(leftStats);
-            toolbar.appendChild(rightActions);
+            // Build all student rows (or rebuild after filter reset)
+            function _buildRows() {
+                var tbody = document.getElementById('ba-crm-tbody');
+                if (!tbody) return;
 
-            // Modal body
-            var body = document.createElement('div');
-            body.className = 'ba-modal-body';
-
-            function renderTableContent() {
-                if (!hasStudentData) {
-                    body.innerHTML = '<div class="ba-modal-empty-state" style="padding:40px; text-align:center; color:#64748b;">There is no data available here.</div>';
+                if (!studentsData.length) {
+                    tbody.innerHTML = '<tr><td colspan="' + (CRM_COLS.length + 1) + '" style="text-align:center;padding:24px;color:#94a3b8;">No students found for this batch.</td></tr>';
                     return;
                 }
 
-                var colGroupHtml = '<colgroup>' +
-                    '<col style="width: 28.57%;">' +
-                    '<col style="width: 28.57%;">' +
-                    '<col style="width: 14.28%;">' +
-                    '<col style="width: 14.28%;">' +
-                    '<col style="width: 14.30%;">' +
-                    '</colgroup>';
+                var toFetch = [];
+                var html = '';
+                studentsData.forEach(function(s) {
+                    var u = s.username || '';
+                    var uid = _uid(u);
+                    html += '<tr id="ba-crm-row-' + escapeHtml(uid) + '">';
+                    html += '<td style="position:sticky;left:0;background:#fff;z-index:1;border-right:1px solid #eee;min-width:160px;">' +
+                            '<b>' + escapeHtml(s.name) + '</b><br>' +
+                            '<small style="color:#888;">' + escapeHtml(u || s.id || '-') + '</small></td>';
 
-                var metricHeaderTitle = isMaac ? 'Rating' : (isAtt ? 'Attendance' : 'Progress Grade');
-
-                var thHtml = '<th class="sortable" data-col="0" data-type="text" style="width:28.57%;">Username</th>' +
-                    '<th class="sortable" data-col="1" data-type="text" style="width:28.57%;">Student</th>' +
-                    '<th class="sortable" data-col="2" data-type="num" style="width:14.28%; text-align:center;" id="ba-modal-th-metric">' + metricHeaderTitle + '</th>' +
-                    '<th class="sortable" data-col="3" data-type="num" style="width:14.28%; text-align:center;">Completion</th>' +
-                    '<th class="sortable" data-col="4" data-type="num" style="width:14.30%; text-align:center;">Final Grade</th>';
-
-                var tfHtml = '<tr><td colspan="2" style="width:57.14%;"><div class="ba-tfoot-total-label" id="ba-modal-tf-label">TOTAL AVERAGE:</div></td>' +
-                    '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-progress" id="ba-modal-tf-val">' + (isMaac ? avgG : avgG + '%') + '</strong></td>' +
-                    '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-comp">' + avgC + '%</strong></td>' +
-                    '<td style="width:14.30%; text-align:center;"><strong class="ba-tfoot-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</strong></td>' +
-                    '</tr>';
-
-                var rowsHtml = '';
-                studentGrades.forEach(function(s) {
-                    var compNum = s.completionRate !== undefined ? parseFloat(s.completionRate) : 0;
-                    var compFormatted = (compNum % 1 === 0) ? compNum.toFixed(0) : compNum.toFixed(2);
-                    var totItems = (s.totalItems !== undefined && parseInt(s.totalItems, 10) > 0) ? parseInt(s.totalItems, 10) : catTotalItems;
-                    var itemsComp = (s.itemsCompleted !== undefined && s.itemsCompleted !== null && parseInt(s.itemsCompleted, 10) >= 0 && (s.totalItems !== undefined && parseInt(s.totalItems, 10) > 0))
-                        ? parseInt(s.itemsCompleted, 10)
-                        : (totItems > 0 ? Math.round((compNum / 100) * totItems) : 0);
-                    if (compNum === 0) {
-                        itemsComp = 0;
+                    if (PTF_FAILED[u]) {
+                        CRM_COLS.forEach(function() { html += '<td style="color:#e53e3e;font-size:12px;">CRM unavailable</td>'; });
+                    } else if (PTF_CACHE[u]) {
+                        // Will be filled after innerHTML, see _fillCachedRows()
+                        CRM_COLS.forEach(function() { html += '<td class="ba-crm-loading">...</td>'; });
+                    } else {
+                        CRM_COLS.forEach(function() { html += '<td class="ba-crm-loading">...</td>'; });
+                        if (u) toFetch.push(u);
                     }
+                    html += '</tr>';
+                });
+                tbody.innerHTML = html;
 
-                    var displayMetric = (s.percentage === null || s.percentage === undefined)
-                        ? '—'
-                        : (isMaac ? parseFloat(s.percentage).toFixed(2) : parseFloat(s.percentage).toFixed(2) + '%');
-
-                    var compText = compFormatted + '%';
-                    var compRatio = '';
-                    if (totItems > 0) {
-                        compRatio = ' <span class="ba-comp-sub">(' + itemsComp + '/' + totItems + ')</span>';
+                // Fill already-cached rows immediately
+                studentsData.forEach(function(s) {
+                    var u = s.username || '';
+                    if (PTF_CACHE[u]) {
+                        var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                        if (tr) _fillRow(tr, PTF_CACHE[u]);
                     }
-
-                    var fgVal = s.finalGrade;
-                    if (fgVal === undefined || fgVal === null) {
-                        if (s.percentage !== null && s.percentage !== undefined && totItems > 0) {
-                            fgVal = (parseFloat(s.percentage) * itemsComp) / totItems;
-                        } else if (s.percentage !== null && s.percentage !== undefined) {
-                            fgVal = parseFloat(s.percentage);
-                        } else {
-                            fgVal = 0;
-                        }
-                    }
-                    var displayFinalGrade = (fgVal === null || fgVal === undefined)
-                        ? '—'
-                        : (isMaac ? parseFloat(fgVal).toFixed(2) : parseFloat(fgVal).toFixed(2) + '%');
-
-                    var sortMetric = (s.percentage === null || s.percentage === undefined || isNaN(parseFloat(s.percentage)))
-                        ? -1
-                        : parseFloat(s.percentage);
-                    var sortFinal = (fgVal === null || fgVal === undefined || isNaN(parseFloat(fgVal)))
-                        ? -1
-                        : parseFloat(fgVal);
-
-                    rowsHtml += '<tr>' +
-                        '<td style="width:28.57%;" data-sort-value="' + escapeHtml(s.username || '') + '"><span class="ba-mono-id">' + escapeHtml(s.username || '—') + '</span></td>' +
-                        '<td style="width:28.57%;" data-sort-value="' + escapeHtml(s.fullname || '') + '"><span class="ba-student-name">' + escapeHtml(s.fullname || '') + '</span></td>' +
-                        '<td style="width:14.28%; text-align:center;" data-sort-value="' + sortMetric + '"><span class="ba-grade-text">' + escapeHtml(displayMetric) + '</span></td>' +
-                        '<td style="width:14.28%; text-align:center;" data-sort-value="' + compNum + '"><span class="ba-comp-text">' + escapeHtml(compText) + '</span>' + compRatio + '</td>' +
-                        '<td style="width:14.30%; text-align:center;" data-sort-value="' + sortFinal + '"><strong class="ba-final-grade">' + escapeHtml(displayFinalGrade) + '</strong></td>' +
-                        '</tr>';
                 });
 
-                body.innerHTML = '<div class="table-scroll">' +
-                    '<table class="ba-table" id="' + safeId + '">' +
-                    colGroupHtml +
-                    '<thead><tr>' + thHtml + '</tr></thead>' +
-                    '<tbody id="' + safeId + '-tbody">' + rowsHtml + '</tbody>' +
-                    '<tfoot>' + tfHtml + '</tfoot>' +
-                    '</table>' +
-                    '</div>';
+                _updateFilterOptions();
+                _applyFilters();
+                if (toFetch.length) _fetch(toFetch);
             }
 
-            renderTableContent();
-
-            modalContainer.appendChild(header);
-            modalContainer.appendChild(toolbar);
-            modalContainer.appendChild(body);
-            overlay.appendChild(modalContainer);
-            document.body.appendChild(overlay);
-
-            // Event Listeners for Modal
-            function closeModal() {
-                document.removeEventListener('keydown', handleKeyDown);
-                overlay.remove();
-            }
-
-            function handleKeyDown(e) {
-                if (e.key === 'Escape') {
-                    closeModal();
+            // Fill a single row with CRM data
+            function _fillRow(tr, data) {
+                var company = (data.placed_company !== null && data.placed_company !== undefined) ? data.placed_company : null;
+                var isPlaced = company && company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                var statusHtml;
+                if (company === null) {
+                    statusHtml = '<span class="st" style="background:#f1f5f9;color:#64748b;">—</span>';
+                } else {
+                    statusHtml = isPlaced
+                        ? '<span class="st st-g">Placed</span>'
+                        : '<span class="st st-r">Not Placed</span>';
                 }
+
+                // Remove all cells after the sticky student cell
+                while (tr.children.length > 1) tr.removeChild(tr.lastChild);
+
+                CRM_COLS.forEach(function(c) {
+                    var td = document.createElement('td');
+                    if (c.k === 'CALC_STATUS') {
+                        td.innerHTML = statusHtml;
+                    } else if (c.type === 'lookup') {
+                        td.textContent = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || '-');
+                    } else if (c.type === 'date') {
+                        td.textContent = data[c.k] ? _formatCrmDate(data[c.k]) : '-';
+                    } else {
+                        td.textContent = data[c.k] || '-';
+                    }
+                    tr.appendChild(td);
+                });
             }
 
-            closeBtn.addEventListener('click', closeModal);
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    closeModal();
-                }
-            });
-            document.addEventListener('keydown', handleKeyDown);
+            // Fetch CRM data in chunks of 10 from index.php
+            function _fetch(users) {
+                var chunkSize = 10;
+                var uncached = users.filter(function(u) {
+                    return u && !PTF_CACHE[u] && !PTF_PENDING[u] && !PTF_FAILED[u];
+                });
+                if (!uncached.length) return;
 
-            function attachTableEvents() {
-                if (!hasStudentData) return;
-                var table = modalContainer.querySelector('table');
-                var tbody = modalContainer.querySelector('tbody');
-                var stuCountBadge = modalContainer.querySelector('#modal-stu-count');
-                if (!table || !tbody) return;
+                for (var i = 0; i < uncached.length; i += chunkSize) {
+                    (function(chunk) {
+                        var body = 'sesskey=' + encodeURIComponent(CRM_SESSKEY) +
+                                   '&payload=' + encodeURIComponent(JSON.stringify({ usernames: chunk }));
 
-                if (searchInput) {
-                    searchInput.value = '';
-                    searchInput.oninput = function() {
-                        var q = this.value.trim().toLowerCase();
-                        var trs = tbody.querySelectorAll('tr');
-                        var visibleCount = 0;
-
-                        trs.forEach(function(tr) {
-                            var text = tr.innerText.toLowerCase();
-                            if (!q || text.indexOf(q) !== -1) {
-                                tr.style.display = '';
-                                visibleCount++;
-                            } else {
-                                tr.style.display = 'none';
+                        var p = fetch(CRM_INDEX_URL + '?action=getptfdata', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: body
+                        })
+                        .then(function(res) { return res.json(); })
+                        .then(function(result) {
+                            if (!result || result.error) {
+                                _markFailed(chunk, result ? result.error : 'CRM data unavailable');
+                                return;
                             }
-                        });
-
-                        if (stuCountBadge) {
-                            stuCountBadge.textContent = visibleCount + (visibleCount !== totalStudents ? ' / ' + totalStudents : '');
-                        }
-                    };
-                }
-
-                // Sortable Table
-                var currentSortCol = -1;
-                var currentSortAsc = false;
-
-                table.querySelectorAll('thead th.sortable').forEach(function(th) {
-                    th.style.cursor = 'pointer';
-                    th.addEventListener('click', function() {
-                        var col = parseInt(this.getAttribute('data-col'), 10);
-                        var isNum = this.getAttribute('data-type') === 'num';
-                        // For numbers, initial click sorts descending (highest first).
-                        // For text, initial click sorts ascending (A-Z).
-                        var isAsc;
-                        if (currentSortCol === col) {
-                            isAsc = !currentSortAsc;
-                        } else {
-                            isAsc = !isNum;
-                        }
-                        currentSortCol = col;
-                        currentSortAsc = isAsc;
-
-                        table.querySelectorAll('thead th.sortable').forEach(function(h) {
-                            h.classList.remove('sort-asc', 'sort-desc');
-                        });
-                        this.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-
-                        var trs = Array.from(tbody.querySelectorAll('tr'));
-                        trs.sort(function(a, b) {
-                            var cellA = a.cells[col];
-                            var cellB = b.cells[col];
-                            if (!cellA || !cellB) return 0;
-
-                            if (isNum) {
-                                var rawA = cellA.getAttribute('data-sort-value');
-                                var rawB = cellB.getAttribute('data-sort-value');
-                                var valA = (rawA !== null && rawA !== '') ? parseFloat(rawA) : NaN;
-                                var valB = (rawB !== null && rawB !== '') ? parseFloat(rawB) : NaN;
-
-                                if (isNaN(valA)) {
-                                    var matchA = cellA.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
-                                    valA = matchA ? parseFloat(matchA[0]) : -1;
-                                }
-                                if (isNaN(valB)) {
-                                    var matchB = cellB.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
-                                    valB = matchB ? parseFloat(matchB[0]) : -1;
-                                }
-
-                                // Always keep missing (-1) values at the bottom
-                                if (valA === -1 && valB !== -1) return 1;
-                                if (valB === -1 && valA !== -1) return -1;
-
-                                if (valA !== valB) {
-                                    return (valA - valB) * (isAsc ? 1 : -1);
-                                }
-                                // Tie breaker by student name
-                                var nameA = (a.cells[1] ? a.cells[1].innerText : '').trim();
-                                var nameB = (b.cells[1] ? b.cells[1].innerText : '').trim();
-                                return nameA.localeCompare(nameB);
-                            } else {
-                                var strA = (cellA.getAttribute('data-sort-value') || cellA.innerText).trim();
-                                var strB = (cellB.getAttribute('data-sort-value') || cellB.innerText).trim();
-                                return strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' }) * (isAsc ? 1 : -1);
+                            if (!result.students) {
+                                _markFailed(chunk, 'CRM returned an invalid response');
+                                return;
                             }
+                            result.students.forEach(function(d) {
+                                var u = d.username;
+                                PTF_CACHE[u] = d.data
+                                    ? Object.assign({}, d.data, { placed_company: d.placed_company, CTC: d.CTC })
+                                    : d;
+                                var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                                if (tr) _fillRow(tr, PTF_CACHE[u]);
+                            });
+                            _updateFilterOptions();
+                            _applyFilters();
+                        })
+                        .catch(function(e) {
+                            _markFailed(chunk, e.message || 'CRM request failed');
+                        })
+                        .finally(function() {
+                            chunk.forEach(function(u) { delete PTF_PENDING[u]; });
                         });
 
-                        trs.forEach(function(tr) {
-                            tbody.appendChild(tr);
-                        });
+                        chunk.forEach(function(u) { PTF_PENDING[u] = p; });
+                    })(uncached.slice(i, i + chunkSize));
+                }
+            }
+
+            function _markFailed(chunk, msg) {
+                chunk.forEach(function(u) { PTF_FAILED[u] = msg || 'CRM unavailable'; });
+                if (!CRM_FAILURE_SHOWN) {
+                    CRM_FAILURE_SHOWN = true;
+                    var retryBtn = document.getElementById('ba-crm-retry-btn');
+                    if (retryBtn) { retryBtn.style.display = ''; retryBtn.classList.remove('disabled'); }
+                }
+                // Refresh failed row cells
+                chunk.forEach(function(u) {
+                    var tr = document.getElementById('ba-crm-row-' + _uid(u));
+                    if (!tr) return;
+                    while (tr.children.length > 1) tr.removeChild(tr.lastChild);
+                    CRM_COLS.forEach(function() {
+                        var td = document.createElement('td');
+                        td.style.cssText = 'color:#e53e3e;font-size:12px;';
+                        td.textContent = 'CRM unavailable';
+                        tr.appendChild(td);
                     });
                 });
+            }
 
-                // Download CSV
-                if (downloadBtn) {
-                    downloadBtn.onclick = function() {
-                        var csv = [];
-                        var trs = table.querySelectorAll('tr');
+            function _updateFilterOptions() {
+                var yopSet = new Set();
+                var stateSet = new Set();
+                var petSet = new Set();
 
-                        trs.forEach(function(tr) {
-                            if (tr.style.display === 'none') return;
-                            var row = [];
-                            tr.querySelectorAll('td, th').forEach(function(cell) {
-                                var cellText = cell.innerText.replace(/(\r\n|\n|\r)/gm, '').trim().replace(/"/g, '""');
-                                row.push('"' + cellText + '"');
-                            });
-                            if (row.length > 0) {
-                                csv.push(row.join(','));
-                            }
-                        });
+                Object.values(PTF_CACHE).forEach(function(d) {
+                    if (d.BE_BTech_YoP && d.BE_BTech_YoP !== '-') yopSet.add(d.BE_BTech_YoP);
+                    if (d.ME_MTech_YoP && d.ME_MTech_YoP !== '-') yopSet.add(d.ME_MTech_YoP);
+                    if (d.Home_State && d.Home_State !== '-') stateSet.add(d.Home_State);
+                    if (d.Placement_Eli && d.Placement_Eli !== '-') petSet.add(d.Placement_Eli);
+                });
 
-                        var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-                        var link = document.createElement('a');
-                        link.href = URL.createObjectURL(blob);
-                        link.setAttribute('download', cname.replace(/[^a-zA-Z0-9_-]/g, '_') + '_grades.csv');
-                        link.style.visibility = 'hidden';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    };
+                var renderCbList = function(id, items) {
+                    var c = document.getElementById(id);
+                    if (!c) return;
+                    var checked = Array.from(c.querySelectorAll('input:checked')).map(function(cb){ return cb.value; });
+                    if (!items.length) { c.innerHTML = '<span style="color:#94a3b8;">No data yet</span>'; return; }
+                    var html = '';
+                    Array.from(items).sort().forEach(function(item) {
+                        var chk = checked.indexOf(item) !== -1 ? 'checked' : '';
+                        html += '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:5px;font-size:12px;">'
+                              + '<input type="checkbox" value="' + escapeHtml(item) + '" class="' + id.replace('ba-crm-f-', 'ba-crm-cb-') + '" onchange="baBatchCrm.applyFilters()" ' + chk + '> '
+                              + escapeHtml(item) + '</label>';
+                    });
+                    c.innerHTML = html;
+                };
+
+                renderCbList('ba-crm-f-yop-list', yopSet);
+                renderCbList('ba-crm-f-state-list', stateSet);
+
+                // PET dropdown
+                var petSel = document.getElementById('ba-crm-f-pet');
+                if (petSel) {
+                    var cur = petSel.value;
+                    var opts = '<option value="">All</option>';
+                    Array.from(petSet).sort().forEach(function(p) {
+                        opts += '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
+                    });
+                    petSel.innerHTML = opts;
+                    petSel.value = cur;
                 }
             }
 
-            attachTableEvents();
+            function _applyFilters() {
+                var searchEl   = document.getElementById('ba-crm-f-search');
+                var placEl     = document.getElementById('ba-crm-f-placement');
+                var petEl      = document.getElementById('ba-crm-f-pet');
+                var maacMinEl  = document.getElementById('ba-crm-f-maac-min');
+                var maacMaxEl  = document.getElementById('ba-crm-f-maac-max');
+                var advcMinEl  = document.getElementById('ba-crm-f-advc-min');
+                var advcMaxEl  = document.getElementById('ba-crm-f-advc-max');
+
+                var search    = searchEl  ? searchEl.value.toLowerCase() : '';
+                var placement = placEl    ? placEl.value : '';
+                var pet       = petEl     ? petEl.value : '';
+                var maacMin   = maacMinEl ? (parseFloat(maacMinEl.value) || 0)  : 0;
+                var maacMax   = maacMaxEl ? (parseFloat(maacMaxEl.value) || 10) : 10;
+                var advcMin   = advcMinEl ? (parseFloat(advcMinEl.value) || 0)  : 0;
+                var advcMax   = advcMaxEl ? (parseFloat(advcMaxEl.value) || 100): 100;
+
+                var yopChecked   = Array.from(document.querySelectorAll('.ba-crm-cb-yop-list:checked')).map(function(cb){ return cb.value; });
+                var stateChecked = Array.from(document.querySelectorAll('.ba-crm-cb-state-list:checked')).map(function(cb){ return cb.value; });
+
+                var matchingRows = [];
+                studentsData.forEach(function(s) {
+                    var uid = _uid(s.username || '');
+                    var tr  = document.getElementById('ba-crm-row-' + uid);
+                    if (!tr) return;
+
+                    var show = true;
+                    var name = (s.name || '').toLowerCase();
+                    var uname = (s.username || '').toLowerCase();
+                    if (search && name.indexOf(search) === -1 && uname.indexOf(search) === -1) show = false;
+
+                    var data = s.username ? PTF_CACHE[s.username] : null;
+                    if (show && data) {
+                        var company = (data.placed_company !== null && data.placed_company !== undefined) ? data.placed_company : null;
+                        if (company === null) {
+                            if (placement) show = false;
+                        } else {
+                            var isPlaced = company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
+                            if (placement && placement !== (isPlaced ? 'Placed' : 'Not Placed')) show = false;
+                        }
+                        if (show && pet && data.Placement_Eli !== pet) show = false;
+                        var maac = parseFloat(data.MAAC_Rating) || 0;
+                        if (show && (maac < maacMin || maac > maacMax)) show = false;
+                        var advc = parseFloat(data.Advanced_C_Score) || 0;
+                        if (show && (advc < advcMin || advc > advcMax)) show = false;
+                        if (show && yopChecked.length) {
+                            if (yopChecked.indexOf(data.BE_BTech_YoP) === -1 && yopChecked.indexOf(data.ME_MTech_YoP) === -1) show = false;
+                        }
+                        if (show && stateChecked.length) {
+                            if (stateChecked.indexOf(data.Home_State) === -1) show = false;
+                        }
+                    } else if (show && !data) {
+                        // While loading, hide from strict filter pass
+                        if (placement || pet || yopChecked.length || stateChecked.length || maacMin > 0 || advcMin > 0) show = false;
+                    }
+
+                    tr.setAttribute('data-crm-filter-match', show ? '1' : '0');
+                    if (show) matchingRows.push(tr);
+                });
+
+                var matchCount = matchingRows.length;
+                var isAll = (CRM_PAGE_SIZE === 'all');
+                var sizeNum = isAll ? (matchCount || 1) : parseInt(CRM_PAGE_SIZE, 10);
+                var totalPages = Math.max(1, Math.ceil(matchCount / sizeNum));
+                CRM_CURRENT_PAGE = Math.min(Math.max(CRM_CURRENT_PAGE, 1), totalPages);
+
+                var startIdx = matchCount === 0 ? 0 : (CRM_CURRENT_PAGE - 1) * sizeNum;
+                var endIdx = isAll ? matchCount : Math.min(startIdx + sizeNum, matchCount);
+                studentsData.forEach(function(s) {
+                    var tr = document.getElementById('ba-crm-row-' + _uid(s.username || ''));
+                    if (tr) tr.style.display = 'none';
+                });
+                matchingRows.slice(startIdx, endIdx).forEach(function(tr) {
+                    tr.style.display = '';
+                });
+
+                var summary = matchCount === 0
+                    ? 'No students to display'
+                    : ('Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + matchCount + ' students');
+                var countEl = document.getElementById('ba-crm-count');
+                if (countEl) countEl.textContent = summary;
+                var paginationInfo = document.getElementById('ba-crm-pagination-info');
+                if (paginationInfo) paginationInfo.textContent = summary;
+                _renderPaginationButtons(totalPages);
+            }
+
+            function _renderPaginationButtons(totalPages) {
+                var paginationBtns = document.getElementById('ba-crm-pagination-btns');
+                if (!paginationBtns) return;
+
+                if (totalPages <= 1 || CRM_PAGE_SIZE === 'all') {
+                    paginationBtns.innerHTML = '';
+                    return;
+                }
+
+                var btnsHtml = '<button type="button" class="ba-pg-btn" id="ba-crm-pg-prev" ' +
+                    (CRM_CURRENT_PAGE <= 1 ? 'disabled' : '') + ' aria-label="Previous page">‹ Prev</button>';
+                var pages = [];
+                if (totalPages <= 7) {
+                    for (var i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                    pages.push(1);
+                    if (CRM_CURRENT_PAGE > 3) pages.push('...');
+                    var startP = Math.max(2, CRM_CURRENT_PAGE - 1);
+                    var endP = Math.min(totalPages - 1, CRM_CURRENT_PAGE + 1);
+                    for (var j = startP; j <= endP; j++) pages.push(j);
+                    if (CRM_CURRENT_PAGE < totalPages - 2) pages.push('...');
+                    pages.push(totalPages);
+                }
+
+                pages.forEach(function(p) {
+                    if (p === '...') {
+                        btnsHtml += '<span class="ba-pg-ellipsis">…</span>';
+                    } else {
+                        btnsHtml += '<button type="button" class="ba-pg-btn ' + (p === CRM_CURRENT_PAGE ? 'active' : '') +
+                            '" data-crm-page="' + p + '">' + p + '</button>';
+                    }
+                });
+                btnsHtml += '<button type="button" class="ba-pg-btn" id="ba-crm-pg-next" ' +
+                    (CRM_CURRENT_PAGE >= totalPages ? 'disabled' : '') + ' aria-label="Next page">Next ›</button>';
+                paginationBtns.innerHTML = btnsHtml;
+
+                var prevBtn = document.getElementById('ba-crm-pg-prev');
+                if (prevBtn && !prevBtn.disabled) prevBtn.addEventListener('click', function() {
+                    CRM_CURRENT_PAGE--;
+                    _applyFilters();
+                });
+                var nextBtn = document.getElementById('ba-crm-pg-next');
+                if (nextBtn && !nextBtn.disabled) nextBtn.addEventListener('click', function() {
+                    CRM_CURRENT_PAGE++;
+                    _applyFilters();
+                });
+                paginationBtns.querySelectorAll('button[data-crm-page]').forEach(function(pageBtn) {
+                    pageBtn.addEventListener('click', function() {
+                        CRM_CURRENT_PAGE = parseInt(this.getAttribute('data-crm-page'), 10);
+                        _applyFilters();
+                    });
+                });
+            }
+
+            // -------- Public API --------
+            return {
+                render: function() {
+                    if (!CRM_PANEL_BUILT) {
+                        CRM_PANEL_BUILT = true;
+                        _buildHeader();
+                        _buildRows();
+                    } else {
+                        _applyFilters();
+                    }
+                },
+
+                applyFilters: function() {
+                    CRM_CURRENT_PAGE = 1;
+                    _applyFilters();
+                },
+
+                resetFilters: function() {
+                    var ids = ['ba-crm-f-search', 'ba-crm-f-placement', 'ba-crm-f-pet'];
+                    ids.forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = '';
+                    });
+                    var ranges = {
+                        'ba-crm-f-maac-min': 0,  'ba-crm-f-maac-max': 10,
+                        'ba-crm-f-advc-min': 0,  'ba-crm-f-advc-max': 100
+                    };
+                    Object.keys(ranges).forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = ranges[id];
+                    });
+                    document.querySelectorAll('.ba-crm-cb-yop-list, .ba-crm-cb-state-list').forEach(function(cb){ cb.checked = false; });
+                    CRM_CURRENT_PAGE = 1;
+                    _applyFilters();
+                },
+
+                retryCrm: function() {
+                    var failed = Object.keys(PTF_FAILED);
+                    if (!failed.length) return;
+                    PTF_FAILED = {};
+                    CRM_FAILURE_SHOWN = false;
+                    var retryBtn = document.getElementById('ba-crm-retry-btn');
+                    if (retryBtn) retryBtn.style.display = 'none';
+                    CRM_CURRENT_PAGE = 1;
+                    _buildRows();
+                },
+
+                exportCsv: function() {
+                    var headers = ['Student Name', 'Username'];
+                    CRM_COLS.forEach(function(c) { headers.push(c.h); });
+                    var rows = [headers.map(function(h){ return '"' + h.replace(/"/g, '""') + '"'; }).join(',')];
+
+                    studentsData.forEach(function(s) {
+                        var uid = _uid(s.username || '');
+                        var tr = document.getElementById('ba-crm-row-' + uid);
+                        if (tr && tr.getAttribute('data-crm-filter-match') !== '1') return;
+
+                        var row = [
+                            '"' + (s.name || '').replace(/"/g, '""') + '"',
+                            '"' + (s.username || '').replace(/"/g, '""') + '"'
+                        ];
+                        var data = s.username ? PTF_CACHE[s.username] : null;
+                        CRM_COLS.forEach(function(c) {
+                            var val = '-';
+                            if (data) {
+                                if (c.type === 'lookup') val = (data[c.k] && data[c.k].name) ? data[c.k].name : (data[c.k] || '-');
+                                else if (c.type === 'date') val = data[c.k] ? _formatCrmDate(data[c.k]) : '-';
+                                else if (c.k === 'CALC_STATUS') val = data.placed_company === null ? '—' : ((data.placed_company && data.placed_company !== 'Not Placed') ? 'Placed' : 'Not Placed');
+                                else val = (data[c.k] !== null && data[c.k] !== undefined) ? data[c.k] : '-';
+                            }
+                            row.push('"' + String(val).replace(/"/g, '""') + '"');
+                        });
+                        rows.push(row.join(','));
+                    });
+
+                    var blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    var link = document.createElement('a');
+                    link.setAttribute('href', URL.createObjectURL(blob));
+                    link.setAttribute('download', 'batch_crm_data.csv');
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+        })();
+
+        var crmPageSizeSelect = document.getElementById('ba-crm-page-size');
+        if (crmPageSizeSelect) {
+            crmPageSizeSelect.addEventListener('change', function() {
+                CRM_PAGE_SIZE = this.value;
+                CRM_CURRENT_PAGE = 1;
+                baBatchCrm.render();
+            });
         }
 
-        // Initialize table
+        // Expose to global scope so inline onclick handlers in the CRM panel can reach it
+        window.baBatchCrm = baBatchCrm;
+        // ===========================================================
+
+        // Initial render
         renderPerformanceHeaders();
         renderPerformance();
-    });
-})();
+    }
+
+    return {
+        init: init
+    };
+});

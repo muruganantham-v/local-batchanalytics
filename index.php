@@ -765,19 +765,11 @@ if ($action === 'getnewbatchdata') {
 $PAGE->set_title(get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => filemtime(__DIR__ . '/styles.css')]);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => filemtime(__DIR__ . '/dashboard.css')]);
-$indexscripturl = new moodle_url('/local/batchanalytics/index.js', ['v' => filemtime(__DIR__ . '/index.js')]);
-
-$PAGE->requires->css($styleurl);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
 $PAGE->requires->css($dashboardstyleurl);
-$PAGE->requires->js($indexscripturl);
+$PAGE->requires->js_call_amd('local_batchanalytics/dashboard', 'init');
 
 echo $OUTPUT->header();
-
-echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
-echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
-echo '<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">';
 
 
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
@@ -939,19 +931,19 @@ echo '    </div>';
 echo '    <!-- Search & Filters Controls Card -->';
 echo '    <div class="ba-new-card ba-new-controls-card">';
 echo '      <div class="ba-new-search-row">';
-echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="Search section or batch code (e.g., 26011A, 25002A)..." />';
-echo '        <button id="ba-new-reset-btn" type="button" class="ba-btn-blue-solid" title="Clear all active filters">Reset</button>';
+echo '        <input type="text" id="ba-new-search-input" class="ba-search-input-field" placeholder="' . s(get_string('search_placeholder', 'local_batchanalytics')) . '" />';
+echo '        <button id="ba-new-reset-btn" type="button" class="ba-btn-blue-solid" title="Clear all active filters">' . s(get_string('reset', 'local_batchanalytics')) . '</button>';
 echo '      </div>';
 echo '      <div class="ba-filters-glance-bar">
         <span class="ba-glance-indicator" style="background: #6366f1;"></span>
-        <span class="ba-filters-label">FILTERS</span>
+        <span class="ba-filters-label">' . s(get_string('filters', 'local_batchanalytics')) . '</span>
         <span id="ba-tag-filters" class="ba-glance-tag-wrap" style="display:none;"></span>
       </div>';
 echo '      <div class="ba-new-filters-row">';
-echo '        <select id="ba-filter-year" class="ba-new-select"><option value="">Year — All</option></select>';
-echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">Section / Batch — All</option></select>';
-echo '        <select id="ba-filter-course" class="ba-new-select"><option value="">Course — All</option></select>';
-echo '        <select id="ba-filter-mode" class="ba-new-select"><option value="">Mode — All</option></select>';
+echo '        <select id="ba-filter-year" class="ba-new-select"><option value="">' . s(get_string('filter_year_all', 'local_batchanalytics')) . '</option></select>';
+echo '        <select id="ba-filter-batch" class="ba-new-select"><option value="">' . s(get_string('filter_batch_all', 'local_batchanalytics')) . '</option></select>';
+echo '        <select id="ba-filter-course" class="ba-new-select"><option value="">' . s(get_string('filter_course_all', 'local_batchanalytics')) . '</option></select>';
+echo '        <select id="ba-filter-mode" class="ba-new-select"><option value="">' . s(get_string('filter_mode_all', 'local_batchanalytics')) . '</option></select>';
 echo '      </div>';
 echo '    </div>';
 
@@ -961,34 +953,34 @@ $running_active = $can_view_all_courses ? ' active' : '';
 $my_running_active = (!$can_view_all_courses && $can_view_assigned_courses) ? ' active' : '';
 if ($can_view_assigned_courses) {
     echo '      <button type="button" class="ba-new-subtab' . $my_running_active . '" data-subtab="my_running">';
-    echo '        My Running Batches';
+    echo '        ' . s(get_string('my_running_batches', 'local_batchanalytics'));
     echo '      </button>';
     echo '      <button type="button" class="ba-new-subtab" data-subtab="my_completed">';
-    echo '        My Completed Batches';
+    echo '        ' . s(get_string('my_completed_batches', 'local_batchanalytics'));
     echo '      </button>';
 }
 if ($can_view_all_courses) {
     echo '      <button type="button" class="ba-new-subtab' . $running_active . '" data-subtab="running">';
-    echo '        Current Running Batches';
+    echo '        ' . s(get_string('current_running_batches', 'local_batchanalytics'));
     echo '      </button>';
 }
 echo '      <button type="button" class="ba-new-subtab" data-subtab="completed">';
-echo '        Completed Batches';
+echo '        ' . s(get_string('completed_batches', 'local_batchanalytics'));
 echo '      </button>';
 echo '    </div>';
 
-$initial_table_title = $can_view_all_courses ? 'Current Running Batches' : 'My Running Batches';
+$initial_table_title = $can_view_all_courses ? get_string('current_running_batches', 'local_batchanalytics') : get_string('my_running_batches', 'local_batchanalytics');
 echo '    <!-- Table Section Header -->';
 echo '    <div class="ba-table-header-row">';
 echo '      <div class="ba-table-title-wrap">';
 echo '        <span class="ba-glance-indicator"></span>';
-echo '        <h2 class="ba-table-title" id="ba-table-title-text">' . $initial_table_title . '</h2>';
+echo '        <h2 class="ba-table-title" id="ba-table-title-text">' . s($initial_table_title) . '</h2>';
 echo '      </div>';
 echo '      <div class="ba-table-header-right">';
-echo '        <div class="ba-table-showing-info" id="ba-new-pagination-info">Showing 0 of 0</div>';
+echo '        <div class="ba-table-showing-info" id="ba-new-pagination-info">' . s(get_string('showing_zero_info', 'local_batchanalytics')) . '</div>';
 echo '        <button type="button" class="ba-btn-export-csv" id="ba-new-export-btn" title="Export batch table to CSV">';
 echo '          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
-echo '          <span>Export</span>';
+echo '          <span>' . s(get_string('export_csv', 'local_batchanalytics')) . '</span>';
 echo '        </button>';
 echo '      </div>';
 echo '    </div>';
@@ -999,19 +991,19 @@ echo '      <div class="ba-new-table-wrapper">';
 echo '        <table class="ba-new-table" id="ba-new-batch-table">';
 echo '          <thead>';
 echo '            <tr>';
-echo '              <th>BATCH / SECTION</th>';
-echo '              <th>COURSE</th>';
-echo '              <th>MODE</th>';
-echo '              <th>TYPE</th>';
-echo '              <th>START</th>';
-echo '              <th>CURRENT MODULE</th>';
-echo '              <th>STATUS</th>';
+echo '              <th>' . s(get_string('col_batch_section', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_course', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_mode', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_type', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_start', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_current_module', 'local_batchanalytics')) . '</th>';
+echo '              <th>' . s(get_string('col_status', 'local_batchanalytics')) . '</th>';
 echo '              <th style="text-align:right;"></th>';
 echo '            </tr>';
 echo '          </thead>';
 echo '          <tbody id="ba-new-table-body">';
 echo '            <tr>';
-echo '              <td colspan="8" class="ba-new-loading">Loading batch analytics...</td>';
+echo '              <td colspan="8" class="ba-new-loading">' . s(get_string('loading_batch_analytics', 'local_batchanalytics')) . '</td>';
 echo '            </tr>';
 echo '          </tbody>';
 echo '        </table>';
@@ -1029,19 +1021,19 @@ echo '    <div id="ba-mentor-modal" class="ba-mentor-modal-backdrop" aria-hidden
 echo '      <div class="ba-mentor-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-mentor-modal-title">';
 echo '        <div class="ba-mentor-modal-header">';
 echo '          <div>';
-echo '            <h3 id="ba-mentor-modal-title" class="ba-mentor-modal-title">Mentors</h3>';
-echo '            <p id="ba-mentor-modal-sub" class="ba-mentor-modal-sub">Assigned mentors and active batches</p>';
+echo '            <h3 id="ba-mentor-modal-title" class="ba-mentor-modal-title">' . s(get_string('modal_mentors_title', 'local_batchanalytics')) . '</h3>';
+echo '            <p id="ba-mentor-modal-sub" class="ba-mentor-modal-sub">' . s(get_string('modal_mentors_sub', 'local_batchanalytics')) . '</p>';
 echo '          </div>';
 echo '          <button type="button" class="ba-mentor-modal-close" id="ba-mentor-modal-close-btn" aria-label="Close">&times;</button>';
 echo '        </div>';
 echo '        <div class="ba-mentor-modal-search">';
-echo '          <input type="text" id="ba-mentor-search-input" placeholder="Search mentor name or batch..." />';
+echo '          <input type="text" id="ba-mentor-search-input" placeholder="' . s(get_string('modal_search_placeholder', 'local_batchanalytics')) . '" />';
 echo '        </div>';
 echo '        <div class="ba-mentor-modal-body" id="ba-mentor-modal-list">';
 echo '          <!-- Mentor items rendered here -->';
 echo '        </div>';
 echo '        <div class="ba-mentor-modal-footer">';
-echo '          <button type="button" class="ba-btn-secondary" id="ba-mentor-modal-cancel-btn">Close</button>';
+echo '          <button type="button" class="ba-btn-secondary" id="ba-mentor-modal-cancel-btn">' . s(get_string('close', 'local_batchanalytics')) . '</button>';
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';

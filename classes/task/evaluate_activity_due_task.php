@@ -10,7 +10,6 @@ namespace local_batchanalytics\task;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once(__DIR__ . '/../cliq_activity_notifier.php');
 
 /**
  * Scheduled task to evaluate Mentor activities and SS activities due dates and dispatch Zoho Cliq notifications.

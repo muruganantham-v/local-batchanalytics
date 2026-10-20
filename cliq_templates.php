@@ -25,7 +25,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
-require_once(__DIR__ . '/classes/cliq_activity_notifier.php');
+
 
 use local_batchanalytics\cliq_activity_notifier;
 
