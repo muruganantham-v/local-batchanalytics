@@ -199,7 +199,11 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
         $form .= '</tbody></table>';
         $form .= '<button type="button" onclick="baMentorGroupingAddRow(\'' . $id
             . '\')" class="btn btn-secondary btn-sm">+ Add Module Schedule</button>';
-        $form .= $this->inline_js($id, $master_activities);
+
+        global $PAGE;
+        if ($PAGE) {
+            $PAGE->requires->js_amd_inline($this->inline_js($id, $master_activities));
+        }
 
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
     }
@@ -306,7 +310,6 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
     private function inline_js(string $id, array $master_activities): string {
         $master_json = json_encode($master_activities);
         return <<<ENDJS
-<script>
 (function () {
   var tbody = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
@@ -528,7 +531,7 @@ class admin_setting_mentor_activity_grouping extends \admin_setting {
   };
 })();
 
-function baAddActivityToGroup(btn) {
+window.baAddActivityToGroup = function (btn) {
   var bar = btn.closest('.ba-act-add-bar');
   var groupRow = btn.closest('tr.ba-group-row');
   if (!bar || !groupRow) return;
@@ -588,9 +591,9 @@ function baAddActivityToGroup(btn) {
   }
 
   baTriggerGroupSerialize();
-}
+};
 
-function baRemoveActivityFromGroup(btn) {
+window.baRemoveActivityFromGroup = function (btn) {
   var row = btn.closest('.ba-assigned-act-row');
   var groupRow = btn.closest('tr.ba-group-row');
   if (row) {
@@ -600,9 +603,9 @@ function baRemoveActivityFromGroup(btn) {
     window.baRefreshGroupPicker(groupRow);
   }
   baTriggerGroupSerialize();
-}
+};
 
-function baMentorGroupingAddRow(id) {
+window.baMentorGroupingAddRow = function (id) {
   var tbody = document.getElementById(id + '_tbody');
   var masterPool = typeof window.baGetMasterActivitiesPool === 'function'
     ? window.baGetMasterActivitiesPool()
@@ -659,8 +662,7 @@ function baMentorGroupingAddRow(id) {
   tbody.appendChild(tr);
   tr.querySelector('.ba-mentor-group-name').focus();
   baTriggerGroupSerialize();
-}
-</script>
+};
 ENDJS;
     }
 }

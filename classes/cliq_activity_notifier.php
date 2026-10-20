@@ -12,9 +12,6 @@ defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
 require_once($CFG->libdir . '/filelib.php');
-require_once(__DIR__ . '/util.php');
-require_once(__DIR__ . '/mentor_activity_service.php');
-require_once(__DIR__ . '/batch_notes_service.php');
 
 /**
  * Service to evaluate and dispatch Zoho Cliq notifications for
@@ -1148,10 +1145,8 @@ class cliq_activity_notifier {
         }
 
         if ($batchid <= 0 && $courseid > 0) {
-            $matching_sections = $DB->get_records_sql(
-                "SELECT id FROM {local_bm_classsection} WHERE moduledata LIKE :pattern LIMIT 1",
-                ['pattern' => '%' . $courseid . '%']
-            );
+            $sql = "SELECT id FROM {local_bm_classsection} WHERE " . $DB->sql_like('moduledata', ':pattern');
+            $matching_sections = $DB->get_records_sql($sql, ['pattern' => '%' . $courseid . '%'], 0, 1);
             if (!empty($matching_sections)) {
                 $sec_found = reset($matching_sections);
                 $batchid = (int)$sec_found->id;

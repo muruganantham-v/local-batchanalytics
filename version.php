@@ -24,9 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026102000;
+$plugin->version   = 2026102001;
 $plugin->requires  = 2024100700;
 $plugin->component = 'local_batchanalytics';
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '2.2.35';
+$plugin->release   = '2.2.36';
 

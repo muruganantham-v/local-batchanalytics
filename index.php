@@ -224,7 +224,7 @@ if ($action === 'getptfdata') {
         ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
 
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    if (!data_submitted()) {
         echo json_encode(['error' => 'Method not allowed. Please use POST.']);
         die();
     }

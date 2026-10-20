@@ -642,12 +642,15 @@ class student_performance_service {
         list($uin_sql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'attuser');
         $attparams = array_merge($cparams, $uparams);
 
+        $attlike = $DB->sql_like('gi.itemname', ':attlike', false);
+        $attparams['attlike'] = '%attend%';
+
         $attsql = "
             SELECT gg.userid, gg.finalgrade, gi.grademin, gi.grademax
               FROM {grade_items} gi
               JOIN {grade_grades} gg ON gg.itemid = gi.id
              WHERE gi.courseid $cin_sql
-               AND (gi.itemmodule = 'attendance' OR LOWER(gi.itemname) LIKE '%attend%')
+               AND (gi.itemmodule = 'attendance' OR $attlike)
                AND gi.hidden = 0
                AND gg.finalgrade IS NOT NULL
                AND gg.excluded = 0

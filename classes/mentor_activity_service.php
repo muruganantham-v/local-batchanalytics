@@ -804,7 +804,6 @@ class mentor_activity_service {
             // Automatically synchronize evaluation completion & reversion based on gradebook setup and submissions.
             if ($sync_evaluations) {
                 try {
-                    require_once(__DIR__ . '/activity_tracker_service.php');
                     activity_tracker_service::sync_mentor_evaluation_status($courseid, $sectionid);
                 } catch (\Throwable $e) {
                     // Graceful fallback if sync fails.
@@ -1103,7 +1102,6 @@ class mentor_activity_service {
 
         if ($completed) {
             try {
-                require_once(__DIR__ . '/cliq_activity_notifier.php');
                 cliq_activity_notifier::send_completion_alert('mentor', $sectionid, $courseid, $activityname, $userid);
             } catch (\Throwable $e) {
                 // Silently avoid interrupting the save response

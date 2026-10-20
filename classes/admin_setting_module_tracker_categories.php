@@ -56,7 +56,11 @@ class admin_setting_module_tracker_categories extends \admin_setting {
         $form .= '</tbody></table>';
         $form .= '<button type="button" onclick="baModuleTrackerAddCategory(\'' . $id
             . '\')" class="btn btn-secondary btn-sm">+ Add Category</button>';
-        $form .= $this->inline_js($id);
+
+        global $PAGE;
+        if ($PAGE) {
+            $PAGE->requires->js_amd_inline($this->inline_js($id));
+        }
 
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
     }
@@ -130,7 +134,6 @@ class admin_setting_module_tracker_categories extends \admin_setting {
      */
     private function inline_js(string $id): string {
         return <<<ENDJS
-<script>
 (function () {
   var tbody = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
@@ -182,7 +185,7 @@ class admin_setting_module_tracker_categories extends \admin_setting {
   });
 })();
 
-function baModuleTrackerAddCategory(id) {
+window.baModuleTrackerAddCategory = function (id) {
   var tbody = document.getElementById(id + '_tbody');
   var tr = document.createElement('tr');
   tr.setAttribute('draggable', 'true');
@@ -201,8 +204,7 @@ function baModuleTrackerAddCategory(id) {
   tr.addEventListener('input', function () {
     tbody.dispatchEvent(new Event('input', { bubbles: true }));
   });
-}
-</script>
+};
 ENDJS;
     }
 }

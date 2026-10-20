@@ -186,7 +186,11 @@ class admin_setting_mentor_master_activities extends \admin_setting {
         $form .= '</tbody></table>';
         $form .= '<button type="button" onclick="baMentorMasterAddRow(\'' . $id
             . '\')" class="btn btn-secondary btn-sm">+ Add Activity</button>';
-        $form .= $this->inline_js($id);
+
+        global $PAGE;
+        if ($PAGE) {
+            $PAGE->requires->js_amd_inline($this->inline_js($id));
+        }
 
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
     }
@@ -208,7 +212,6 @@ class admin_setting_mentor_master_activities extends \admin_setting {
 
     private function inline_js(string $id): string {
         return <<<ENDJS
-<script>
 (function () {
   var tbody = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
@@ -373,7 +376,6 @@ window.baMentorMasterAddRow = function (id) {
     tbody.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
-</script>
 ENDJS;
     }
 }

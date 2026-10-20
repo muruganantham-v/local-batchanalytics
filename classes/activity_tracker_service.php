@@ -30,8 +30,26 @@ class activity_tracker_service {
         global $DB;
 
         $this->require_table();
+        if ($courseid <= 0) {
+            return [
+                'categories' => [],
+                'total_completed' => 0,
+                'total_pending' => 0,
+                'total_activities' => 0,
+                'progress_pct' => 0,
+            ];
+        }
+        $course = $DB->get_record('course', ['id' => $courseid]);
+        if (!$course) {
+            return [
+                'categories' => [],
+                'total_completed' => 0,
+                'total_pending' => 0,
+                'total_activities' => 0,
+                'progress_pct' => 0,
+            ];
+        }
         $this->sync_course_module_activities($courseid, $sectionid);
-        $course = get_course($courseid);
         $activities = $this->get_course_activities($course);
         $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
             'id, cmid, completed, completiondate, modifiedby, timemodified');
@@ -126,7 +144,10 @@ class activity_tracker_service {
         global $DB;
 
         $this->require_table();
-        $course = get_course($courseid);
+        $course = $DB->get_record('course', ['id' => $courseid]);
+        if (!$course) {
+            throw new \moodle_exception('invalidcourseid', 'error');
+        }
         $activities = $this->get_course_activities($course);
         $available = array_column($activities, null, 'cmid');
         if (!isset($available[$cmid])) {

@@ -101,7 +101,10 @@ class admin_setting_crm_fields extends \admin_setting {
         $form .= '<button type="button" onclick="baCrmAddRow(\'' . $id . '\')" ';
         $form .= 'class="btn btn-secondary btn-sm">+ Add Field</button>';
 
-        $form .= $this->inline_js($id);
+        global $PAGE;
+        if ($PAGE) {
+            $PAGE->requires->js_amd_inline($this->inline_js($id));
+        }
 
         return format_admin_setting($this, $this->visiblename, $form, $this->description, false, '', null, $query);
     }
@@ -143,7 +146,6 @@ class admin_setting_crm_fields extends \admin_setting {
     private function inline_js(string $id): string {
         // Using heredoc — the $id variable is interpolated, all JS is literal.
         return <<<ENDJS
-<script>
 (function () {
   var tbody  = document.getElementById('{$id}_tbody');
   var hidden = document.getElementById('{$id}');
@@ -201,7 +203,7 @@ class admin_setting_crm_fields extends \admin_setting {
   });
 })();
 
-function baCrmAddRow(id) {
+window.baCrmAddRow = function (id) {
   var tbody = document.getElementById(id + '_tbody');
   var tr    = document.createElement('tr');
   tr.setAttribute('draggable', 'true');
@@ -229,8 +231,7 @@ function baCrmAddRow(id) {
   tr.addEventListener('input', function () {
     tr.closest('tbody').dispatchEvent(new Event('input', { bubbles: true }));
   });
-}
-</script>
+};
 ENDJS;
     }
 }

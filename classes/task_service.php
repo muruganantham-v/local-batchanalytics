@@ -18,10 +18,6 @@ namespace local_batchanalytics;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once(__DIR__ . '/util.php');
-require_once(__DIR__ . '/mentor_activity_service.php');
-require_once(__DIR__ . '/activity_tracker_service.php');
-require_once(__DIR__ . '/batch_notes_service.php');
 
 /**
  * Service for operational role resolution, To-Do task generation,
@@ -1970,7 +1966,6 @@ class task_service {
 
             // Trigger real-time Zoho Cliq completion alert
             try {
-                require_once(__DIR__ . '/cliq_activity_notifier.php');
                 cliq_activity_notifier::send_completion_alert('ss', $batchid, 0, $act_key, $userid);
             } catch (\Throwable $e) {
                 // Silently avoid interrupting the save response
@@ -2105,14 +2100,12 @@ class task_service {
             // Dispatch external Cliq notifications AFTER successful database commit in safe try/catch (Issue #47).
             if ($should_send_start_alert) {
                 try {
-                    require_once(__DIR__ . '/cliq_activity_notifier.php');
                     cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $modules, $saved_ts);
                 } catch (\Throwable $e) {
                     debugging('Cliq module start alert failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
                 }
             } else if ($should_send_mentor_alert) {
                 try {
-                    require_once(__DIR__ . '/cliq_activity_notifier.php');
                     cliq_activity_notifier::send_module_assigned_mentor_alert(
                         $batchid,
                         $modules[$mod_key]['name'] ?? 'Module',

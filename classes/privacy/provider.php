@@ -94,6 +94,7 @@ class provider implements
      * @return contextlist
      */
     public static function get_contexts_for_userid(int $userid): contextlist {
+        global $DB;
         $contextlist = new contextlist();
 
         // Course contexts where user modified activity tracking records.
@@ -110,6 +111,16 @@ class provider implements
                         JOIN {local_batchanalytics_batch_notes} bn ON c.contextlevel = :syslevel
                        WHERE bn.userid = :userid";
         $contextlist->add_from_sql($notes_sql, ['syslevel' => CONTEXT_SYSTEM, 'userid' => $userid]);
+
+        // Zoho Cliq notification logs for this user's email at system context level.
+        $user = $DB->get_record('user', ['id' => $userid], 'id, email');
+        if ($user && !empty($user->email)) {
+            $cliq_sql = "SELECT c.id
+                           FROM {context} c
+                           JOIN {local_batchanalytics_cliq_log} cl ON c.contextlevel = :syslevel
+                          WHERE cl.recipient_email = :email";
+            $contextlist->add_from_sql($cliq_sql, ['syslevel' => CONTEXT_SYSTEM, 'email' => $user->email]);
+        }
 
         return $contextlist;
     }
@@ -132,6 +143,12 @@ class provider implements
                       FROM {local_batchanalytics_batch_notes}
                      WHERE userid > 0";
             $userlist->add_from_sql('userid', $sql, []);
+
+            $cliq_sql = "SELECT u.id AS userid
+                           FROM {local_batchanalytics_cliq_log} cl
+                           JOIN {user} u ON u.email = cl.recipient_email
+                          WHERE u.deleted = 0";
+            $userlist->add_from_sql('userid', $cliq_sql, []);
         }
     }
 
@@ -164,6 +181,27 @@ class provider implements
                         (object)['notes' => $export_notes]
                     );
                 }
+
+                // Export Cliq notification dispatch records for this user.
+                if (!empty($user->email)) {
+                    $logs = $DB->get_records('local_batchanalytics_cliq_log', ['recipient_email' => $user->email]);
+                    if (!empty($logs)) {
+                        $export_logs = [];
+                        foreach ($logs as $l) {
+                            $export_logs[] = [
+                                'activity_type' => $l->activity_type,
+                                'activity_key'  => $l->activity_key,
+                                'stage'         => $l->stage,
+                                'timesent'      => transform::datetime($l->timesent),
+                                'status'        => $l->status,
+                            ];
+                        }
+                        writer::with_context($context)->export_data(
+                            [get_string('pluginname', 'local_batchanalytics'), get_string('cliqnotifications', 'local_batchanalytics')],
+                            (object)['notifications' => $export_logs]
+                        );
+                    }
+                }
             } else if ($context instanceof \context_course) {
                 // Export activity tracking completion stamps by this user.
                 $tracker = $DB->get_records('local_batchanalytics_activity_tracker', [
@@ -181,7 +219,7 @@ class provider implements
                         ];
                     }
                     writer::with_context($context)->export_data(
-                        [get_string('pluginname', 'local_batchanalytics'), 'ActivityTracker'],
+                        [get_string('pluginname', 'local_batchanalytics'), get_string('activitytracker', 'local_batchanalytics')],
                         (object)['activities' => $export_tracker]
                     );
                 }
@@ -201,6 +239,7 @@ class provider implements
             $DB->delete_records('local_batchanalytics_activity_tracker', ['courseid' => $context->instanceid]);
         } else if ($context instanceof \context_system) {
             $DB->delete_records('local_batchanalytics_batch_notes');
+            $DB->delete_records('local_batchanalytics_cliq_log');
         }
     }
 
@@ -212,11 +251,15 @@ class provider implements
     public static function delete_data_for_user(approved_contextlist $contextlist) {
         global $DB;
 
-        $userid = $contextlist->get_user()->id;
+        $user = $contextlist->get_user();
+        $userid = $user->id;
 
         foreach ($contextlist->get_contexts() as $context) {
             if ($context instanceof \context_system) {
                 $DB->delete_records('local_batchanalytics_batch_notes', ['userid' => $userid]);
+                if (!empty($user->email)) {
+                    $DB->delete_records('local_batchanalytics_cliq_log', ['recipient_email' => $user->email]);
+                }
             } else if ($context instanceof \context_course) {
                 $DB->set_field(
                     'local_batchanalytics_activity_tracker',
@@ -247,6 +290,11 @@ class provider implements
 
         if ($context instanceof \context_system) {
             $DB->delete_records_select('local_batchanalytics_batch_notes', "userid $insql", $inparams);
+            $emails = $DB->get_fieldset_select('user', 'email', "id $insql AND email IS NOT NULL AND email != ''", $inparams);
+            if (!empty($emails)) {
+                [$emailsql, $emailparams] = $DB->get_in_or_equal($emails, SQL_PARAMS_NAMED, 'clqmail');
+                $DB->delete_records_select('local_batchanalytics_cliq_log', "recipient_email $emailsql", $emailparams);
+            }
         } else if ($context instanceof \context_course) {
             $inparams['courseid'] = $context->instanceid;
             $DB->execute(

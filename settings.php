@@ -22,7 +22,7 @@ if ($hassiteconfig) {
     // Backward compatibility: If accessed directly via admin/settings.php?section=local_batchanalytics,
     // redirect to the admin category landing page to avoid 'cannotfindadminpage' error.
     if (optional_param('section', '', PARAM_SAFEDIR) === 'local_batchanalytics' &&
-        !empty($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/admin/settings.php') !== false) {
+        $PAGE->has_set_url() && str_contains($PAGE->url->get_path(), '/admin/settings.php')) {
         redirect(new moodle_url('/admin/category.php', ['category' => 'local_batchanalytics']));
     }
 

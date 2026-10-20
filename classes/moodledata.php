@@ -174,9 +174,11 @@ class moodledata
         if ($can_manage) {
             list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'skw');
 
+            $fn_like = $DB->sql_like('fullname', ':keyword1', false);
+            $sn_like = $DB->sql_like('shortname', ':keyword2', false);
             $sql = "SELECT id, fullname, shortname
                     FROM {course}
-                    WHERE (fullname LIKE :keyword1 OR shortname LIKE :keyword2)
+                    WHERE ($fn_like OR $sn_like)
                     AND visible = 1
                     AND id > 1
                     $kw_sql
@@ -337,9 +339,11 @@ class moodledata
         if ($can_manage) {
             list($kw_sql, $kw_params) = $this->build_keywords_sql($allowed_keywords, 'ckw');
 
+            $fn_like = $DB->sql_like('fullname', ':batchcode1', false);
+            $sn_like = $DB->sql_like('shortname', ':batchcode2', false);
             $sql = "SELECT id, fullname, shortname
                     FROM {course}
-                    WHERE (fullname LIKE :batchcode1 OR shortname LIKE :batchcode2)
+                    WHERE ($fn_like OR $sn_like)
                     AND visible = 1
                     AND id > 1
                     $kw_sql
