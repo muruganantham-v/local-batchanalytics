@@ -621,6 +621,8 @@ $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]))
 $PAGE->set_title('Batch ' . $batchid_label . ' – Batch Analytics');
 $PAGE->set_heading('');
 
+$styleurl = new moodle_url('/local/batchanalytics/styles.css');
+$PAGE->requires->css($styleurl);
 $dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/batch', 'init');
@@ -1057,10 +1059,17 @@ echo $OUTPUT->header();
                 $first_note = false;
             ?>
               <div class="note-item<?= empty($has_real_notes) ? ' note-item-demo' : '' ?>" data-note-id="<?= s($nt['id']) ?>">
-                <div class="meta">
-                  <div class="meta-left"><b><?= s($nt['who']) ?></b> · <span class="note-date"><?= s($nt['date']) ?></span></div>
+                <div class="meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 8px;">
+                  <div class="meta-left" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span class="note-who" style="font-weight: 700; color: #1e293b;"><?= s($nt['who']) ?></span>
+                    <span class="note-sep" style="color: #94a3b8;">·</span>
+                    <span class="note-date" style="color: #64748b; font-size: 12px;"><?= s($nt['date']) ?></span>
+                    <?php if ($is_latest): ?>
+                      <span class="ba-latest-badge" style="display: inline-flex; align-items: center; background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; border-radius: 9999px; font-size: 10.5px; font-weight: 700; padding: 2px 8px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.3px;"><?= s(get_string('latest_note', 'local_batchanalytics')) ?></span>
+                    <?php endif; ?>
+                  </div>
                   <?php if ($can_edit_notes && $is_latest): ?>
-                    <button type="button" class="ba-btn-edit-note" data-note-id="<?= s($nt['id']) ?>" title="<?= s(get_string('btn_edit_note', 'local_batchanalytics')) ?>">
+                    <button type="button" class="ba-btn-edit-note" data-note-id="<?= s($nt['id']) ?>" title="<?= s(get_string('btn_edit_note', 'local_batchanalytics')) ?>" style="display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 11px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; line-height: 1.3; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-left: auto;">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><?= s(get_string('btn_edit_note', 'local_batchanalytics')) ?>
                     </button>
                   <?php endif; ?>

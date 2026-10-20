@@ -1607,7 +1607,7 @@ define([], function() {
         var batchContainer = document.getElementById('ba-batch-detail-container');
 
         function createEditButtonHtml(noteId) {
-            return '<button type="button" class="ba-btn-edit-note" data-note-id="' + escapeHtml(noteId) + '" title="Edit">' +
+            return '<button type="button" class="ba-btn-edit-note" data-note-id="' + escapeHtml(noteId) + '" title="Edit" style="display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 11px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; line-height: 1.3; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-left: auto;">' +
                 '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;">' +
                 '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
                 '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
@@ -1647,10 +1647,21 @@ define([], function() {
 
                 var editBox = document.createElement('div');
                 editBox.className = 'note-edit-box';
-                editBox.innerHTML = '<textarea class="ba-edit-note-textarea">' + escapeHtml(currentText) + '</textarea>' +
-                    '<div class="note-edit-actions">' +
-                    '<button type="button" class="ba-btn-save-note">Save</button>' +
-                    '<button type="button" class="ba-btn-cancel-note">Cancel</button>' +
+                editBox.style.cssText = 'margin-top: 10px; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;';
+                editBox.innerHTML = '<textarea class="ba-edit-note-textarea" style="width: 100%; box-sizing: border-box; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; font-size: 13.5px; font-family: inherit; resize: vertical; min-height: 85px; outline: none; background: #ffffff; color: #1e293b; line-height: 1.55;">' + escapeHtml(currentText) + '</textarea>' +
+                    '<div class="note-edit-actions" style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;">' +
+                    '  <span class="ba-edit-hint" style="font-size: 11.5px; color: #94a3b8; display: inline-flex; align-items: center; gap: 4px;">' +
+                    '    <kbd style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1.5px 5px; font-size: 10.5px; font-family: inherit; color: #64748b; font-weight: 600;">Ctrl+Enter</kbd> to save · ' +
+                    '    <kbd style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1.5px 5px; font-size: 10.5px; font-family: inherit; color: #64748b; font-weight: 600;">Esc</kbd> to cancel' +
+                    '  </span>' +
+                    '  <div class="note-edit-actions-btns" style="display: inline-flex; align-items: center; gap: 8px; margin-left: auto;">' +
+                    '    <button type="button" class="ba-btn-cancel-note" style="background: #ffffff; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; line-height: 1.3;">' +
+                    '      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Cancel' +
+                    '    </button>' +
+                    '    <button type="button" class="ba-btn-save-note" style="background: #552a80; color: #ffffff; border: 1px solid #552a80; border-radius: 6px; padding: 7px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; line-height: 1.3; box-shadow: 0 1px 3px rgba(85,42,128,0.25);">' +
+                    '      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;"><polyline points="20 6 9 17 4 12"></polyline></svg>Save' +
+                    '    </button>' +
+                    '  </div>' +
                     '</div>';
 
                 noteItem.appendChild(editBox);
@@ -1695,7 +1706,7 @@ define([], function() {
                         sessKey = M.cfg.sesskey;
                     }
 
-                    var origSaveText = saveBtn.textContent;
+                    var origSaveHtml = saveBtn.innerHTML;
                     saveBtn.disabled = true;
                     cancelBtn.disabled = true;
                     saveBtn.textContent = 'Saving…';
@@ -1720,7 +1731,7 @@ define([], function() {
                     .then(function(data) {
                         saveBtn.disabled = false;
                         cancelBtn.disabled = false;
-                        saveBtn.textContent = origSaveText;
+                        saveBtn.innerHTML = origSaveHtml;
 
                         if (data && data.success && data.note) {
                             bodyEl.setAttribute('data-raw-text', data.note.body);
@@ -1734,7 +1745,7 @@ define([], function() {
                         console.error('Error updating note:', err);
                         saveBtn.disabled = false;
                         cancelBtn.disabled = false;
-                        saveBtn.textContent = origSaveText;
+                        saveBtn.innerHTML = origSaveHtml;
                         alert('Network error while updating review note. Please try again.');
                     });
                 });
@@ -1796,17 +1807,26 @@ define([], function() {
                             el.remove();
                         });
 
-                        // Remove edit buttons from older notes so only the newest/latest note has the edit button
+                        // Remove edit buttons and latest note badges from older notes
                         var oldEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
                         oldEditBtns.forEach(function(btn) {
                             btn.remove();
+                        });
+                        var oldBadges = noteList.querySelectorAll('.ba-latest-badge');
+                        oldBadges.forEach(function(badge) {
+                            badge.remove();
                         });
 
                         var noteItem = document.createElement('div');
                         noteItem.className = 'note-item';
                         noteItem.setAttribute('data-note-id', data.note.id);
-                        noteItem.innerHTML = '<div class="meta">' +
-                            '<div class="meta-left"><b>' + escapeHtml(data.note.who) + '</b> · <span class="note-date">' + escapeHtml(data.note.date) + '</span></div>' +
+                        noteItem.innerHTML = '<div class="meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 8px;">' +
+                            '<div class="meta-left" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">' +
+                            '  <span class="note-who" style="font-weight: 700; color: #1e293b;">' + escapeHtml(data.note.who) + '</span>' +
+                            '  <span class="note-sep" style="color: #94a3b8; font-size: 12px;">·</span>' +
+                            '  <span class="note-date" style="font-size: 12px; color: #64748b;">' + escapeHtml(data.note.date) + '</span>' +
+                            '  <span class="ba-latest-badge" style="display: inline-flex; align-items: center; background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; border-radius: 9999px; font-size: 10.5px; font-weight: 700; padding: 2px 8px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.3px;">Latest Note</span>' +
+                            '</div>' +
                             createEditButtonHtml(data.note.id) +
                             '</div>' +
                             '<div class="body" data-raw-text="' + escapeHtml(data.note.body) + '">' + escapeHtml(data.note.body).replace(/\n/g, '<br>') + '</div>';

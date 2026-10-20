@@ -4467,3 +4467,347 @@ body#page-local-batchanalytics-module #page-header h1,
     background-color: #f8fafc !important;
 }
 
+/* ==================== REVIEW NOTES (BATCH DETAIL SCREEN) ==================== */
+.ba-batch-page .panel-note {
+  font-size: 13px !important;
+  color: #64748b !important;
+  margin-bottom: 16px !important;
+  line-height: 1.5 !important;
+}
+.ba-batch-page .panel-note b {
+  color: #1e293b !important;
+}
+
+.ba-batch-page .addnote {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 18px !important;
+  background: #fbfcfd !important;
+  margin-bottom: 24px !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+}
+
+.ba-batch-page .addnote textarea {
+  width: 100% !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+  font-size: 13.5px !important;
+  font-family: inherit !important;
+  resize: vertical !important;
+  min-height: 75px !important;
+  outline: none !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+  color: #1e293b !important;
+  line-height: 1.5 !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.ba-batch-page .addnote textarea:focus {
+  border-color: #552a80 !important;
+  box-shadow: 0 0 0 3px rgba(85, 42, 128, 0.12) !important;
+}
+
+.ba-batch-page .addnote .addnote-row,
+.ba-batch-page .addnote .row {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-top: 12px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+.ba-batch-page .addnote .addnote-row > *,
+.ba-batch-page .addnote .row > * {
+  width: auto !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.ba-batch-page .addnote .who {
+  font-size: 12.5px !important;
+  color: #64748b !important;
+  line-height: 1.4 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.ba-batch-page .addnote .who b {
+  color: #1e293b !important;
+}
+
+.ba-batch-page .addnote button,
+.ba-batch-page .addnote #ba-btn-addnote {
+  width: auto !important;
+  min-width: 95px !important;
+  padding: 8px 18px !important;
+  border: none !important;
+  background: #552a80 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  margin: 0 !important;
+  box-shadow: 0 2px 4px rgba(85, 42, 128, 0.2) !important;
+  line-height: 1.3 !important;
+  flex-shrink: 0 !important;
+}
+
+.ba-batch-page .addnote button:hover,
+.ba-batch-page .addnote #ba-btn-addnote:hover {
+  background: #441f69 !important;
+  box-shadow: 0 4px 8px rgba(85, 42, 128, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.ba-batch-page .note-item {
+  border: 1px solid #e2e8f0 !important;
+  border-left: 4px solid #db2777 !important;
+  border-radius: 10px !important;
+  padding: 14px 18px !important;
+  margin-bottom: 14px !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
+}
+
+.ba-batch-page .note-item:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06) !important;
+}
+
+.ba-batch-page .note-item .meta {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  width: 100% !important;
+  margin-bottom: 8px !important;
+  line-height: 1.4 !important;
+  gap: 12px !important;
+}
+
+.ba-batch-page .note-item .meta .meta-left {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+}
+
+.ba-batch-page .note-item .meta .note-who {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+}
+
+.ba-batch-page .note-item .meta .note-sep {
+  color: #94a3b8 !important;
+  font-size: 12px !important;
+}
+
+.ba-batch-page .note-item .meta .note-date {
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+
+.ba-batch-page .note-item .meta .ba-latest-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  background: #fdf2f8 !important;
+  color: #db2777 !important;
+  border: 1px solid #fbcfe8 !important;
+  border-radius: 9999px !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  padding: 2px 8px !important;
+  margin-left: 6px !important;
+  letter-spacing: 0.3px !important;
+  text-transform: uppercase !important;
+}
+
+.ba-batch-page .note-item .ba-btn-edit-note {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  padding: 4px 11px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  line-height: 1.3 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  margin-left: auto !important;
+}
+
+.ba-batch-page .note-item .ba-btn-edit-note svg {
+  color: #64748b !important;
+  transition: color 0.15s ease !important;
+}
+
+.ba-batch-page .note-item .ba-btn-edit-note:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #552a80 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+}
+
+.ba-batch-page .note-item .ba-btn-edit-note:hover svg {
+  color: #552a80 !important;
+}
+
+.ba-batch-page .note-item .body {
+  font-size: 13.5px !important;
+  color: #334155 !important;
+  line-height: 1.6 !important;
+  word-break: break-word !important;
+}
+
+.ba-batch-page .note-item .note-edit-box {
+  margin-top: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  animation: fadeIn 0.15s ease !important;
+}
+
+.ba-batch-page .note-item .ba-edit-note-textarea {
+  width: 100% !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+  font-size: 13.5px !important;
+  font-family: inherit !important;
+  resize: vertical !important;
+  min-height: 85px !important;
+  outline: none !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+  color: #1e293b !important;
+  line-height: 1.55 !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.ba-batch-page .note-item .ba-edit-note-textarea:focus {
+  border-color: #552a80 !important;
+  box-shadow: 0 0 0 3px rgba(85, 42, 128, 0.12) !important;
+}
+
+.ba-batch-page .note-item .note-edit-actions {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.ba-batch-page .note-item .note-edit-actions-btns {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-left: auto !important;
+}
+
+.ba-batch-page .note-item .ba-edit-hint {
+  font-size: 11.5px !important;
+  color: #94a3b8 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.ba-batch-page .note-item .ba-edit-hint kbd {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 4px !important;
+  padding: 1.5px 5px !important;
+  font-size: 10.5px !important;
+  font-family: inherit !important;
+  color: #64748b !important;
+  font-weight: 600 !important;
+}
+
+.ba-batch-page .note-item .ba-btn-save-note {
+  background: #552a80 !important;
+  color: #ffffff !important;
+  border: 1px solid #552a80 !important;
+  border-radius: 6px !important;
+  padding: 7px 16px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1.3 !important;
+  box-shadow: 0 1px 3px rgba(85, 42, 128, 0.25) !important;
+}
+
+.ba-batch-page .note-item .ba-btn-save-note svg {
+  vertical-align: -1px !important;
+}
+
+.ba-batch-page .note-item .ba-btn-save-note:hover {
+  background: #441f69 !important;
+  border-color: #441f69 !important;
+  box-shadow: 0 3px 6px rgba(85, 42, 128, 0.35) !important;
+  transform: translateY(-1px) !important;
+}
+
+.ba-batch-page .note-item .ba-btn-save-note:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+.ba-batch-page .note-item .ba-btn-cancel-note {
+  background: #ffffff !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  padding: 7px 14px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  line-height: 1.3 !important;
+}
+
+.ba-batch-page .note-item .ba-btn-cancel-note svg {
+  vertical-align: -1px !important;
+}
+
+.ba-batch-page .note-item .ba-btn-cancel-note:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #1e293b !important;
+}
+
