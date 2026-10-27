@@ -98,6 +98,7 @@ $string['mentor_activity_grouping_desc'] = 'Define activities grouped by course 
 $string['mentor_activity_grouping_hdr'] = 'Module Schedule Grouping';
 $string['mentor_activity_group_select'] = 'Mentor Activity Group';
 $string['mentor_activity_group_select_desc'] = 'Select which group of mentor activities applies to this course, or choose None.';
+$string['mentor_activity_group_select_help'] = 'Select which group of mentor activities applies to this course, or choose None. If not set, the course title is automatically matched against the configured grouping rules.';
 $string['mentor_activity_none'] = 'None (No Mentor Activity)';
 $string['mentor_activity_autodetect'] = 'None (No Mentor Activity)';
 $string['mentor_activities_empty'] = 'For this module there is no mentor activity.';

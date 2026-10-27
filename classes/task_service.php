@@ -1766,6 +1766,7 @@ class task_service {
         $now = time();
         $target_base = strtolower(trim($act_key));
         $updated = false;
+        $sync_key = '';
 
         // Check key-based format: ${base}_Planned / ${base}_Actual
         foreach ($raw_data as $k => $v) {
@@ -1777,6 +1778,7 @@ class task_service {
                     $raw_data[$m[1] . '_RejectedAt'] = $now;
                     $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
                     $raw_data[$m[1] . '_Actual'] = 0;
+                    $sync_key = $m[1] . '_Actual';
                     $updated = true;
                     break;
                 }
@@ -1795,6 +1797,8 @@ class task_service {
                         $item['rejected_at'] = $now;
                         $item['review_notes'] = $review_notes;
                         $item['actual'] = 0;
+                        $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
+                        $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
                         $updated = true;
                         break;
                     }
@@ -1811,10 +1815,19 @@ class task_service {
         $sec->timemodified = $now;
         $DB->update_record('local_bm_classsection', $sec);
 
-        // Trigger real-time Zoho CRM soft skills sync via local_batchmanagement
+        if (empty($sync_key)) {
+            $sync_key = preg_match('/_actual$/i', $act_key) ? $act_key : ($act_key . '_Actual');
+        }
+
+        // Define only the specific key and value that changed (null to clear upon rejection):
+        $changed_data = [
+            $sync_key => null,
+        ];
+
+        // Trigger targeted real-time Zoho CRM soft skills sync via local_batchmanagement
         try {
             if (is_callable(['\local_batchmanagement\classsection', 'trigger_softskills_sync'])) {
-                \local_batchmanagement\classsection::trigger_softskills_sync($batchid);
+                \local_batchmanagement\classsection::trigger_softskills_sync($batchid, $changed_data);
             }
         } catch (\Throwable $e) {
             // Silently avoid interrupting the save response
@@ -1922,6 +1935,7 @@ class task_service {
             $now = time();
             $target_base = strtolower(trim($act_key));
             $updated = false;
+            $sync_key = '';
 
             // Check key-based format: ${base}_Actual
             foreach ($raw_data as $k => $v) {
@@ -1935,6 +1949,7 @@ class task_service {
                         if ($review_notes !== '') {
                             $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
                         }
+                        $sync_key = $m[1] . '_Actual';
                         $updated = true;
                         break;
                     }
@@ -1954,6 +1969,8 @@ class task_service {
                             if ($review_notes !== '') {
                                 $item['review_notes'] = $review_notes;
                             }
+                            $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
+                            $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
                             $updated = true;
                             break;
                         }
@@ -1970,10 +1987,19 @@ class task_service {
             $sec->timemodified = $now;
             $DB->update_record('local_bm_classsection', $sec);
 
-            // Trigger real-time Zoho CRM soft skills sync via local_batchmanagement
+            if (empty($sync_key)) {
+                $sync_key = preg_match('/_actual$/i', $act_key) ? $act_key : ($act_key . '_Actual');
+            }
+
+            // 1. Define only the specific key and value that changed:
+            $changed_data = [
+                $sync_key => $now,
+            ];
+
+            // 2. Trigger targeted real-time Zoho CRM soft skills sync via local_batchmanagement
             try {
                 if (is_callable(['\local_batchmanagement\classsection', 'trigger_softskills_sync'])) {
-                    \local_batchmanagement\classsection::trigger_softskills_sync($batchid);
+                    \local_batchmanagement\classsection::trigger_softskills_sync($batchid, $changed_data);
                 }
             } catch (\Throwable $e) {
                 // Silently avoid interrupting the save response
