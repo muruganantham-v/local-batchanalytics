@@ -38,9 +38,6 @@ $string['viewreviewnotes'] = 'View review notes';
 $string['batchanalytics:editreviewnotes'] = 'Edit review notes';
 $string['editreviewnotes'] = 'Edit review notes';
 $string['reviewnotes'] = 'Review Notes';
-$string['btn_edit_note'] = 'Edit';
-$string['btn_save_note'] = 'Save';
-$string['btn_cancel_note'] = 'Cancel';
 $string['edit_review_note'] = 'Edit review note';
 $string['batchanalytics:viewcrmdata'] = 'View CRM Data (non restricted fields)';
 $string['viewcrmdata'] = 'View CRM Data (non restricted fields)';
@@ -163,6 +160,8 @@ $string['cliq_tpl_mentor_t_plus_3'] = 'Mentor Activity: 3 Days Overdue Template'
 $string['cliq_tpl_mentor_t_plus_3_desc'] = 'Warning message sent to the assigned mentor when the activity is 3 days overdue.';
 $string['cliq_tpl_mentor_t_plus_5'] = 'Mentor Activity: 5th Day PM Escalation Template';
 $string['cliq_tpl_mentor_t_plus_5_desc'] = 'Escalation message sent to the Program Manager when the mentor activity is 5+ days overdue.';
+$string['cliq_tpl_mentor_t_plus_10'] = 'Mentor Activity: 10th Day PM Final Escalation Template';
+$string['cliq_tpl_mentor_t_plus_10_desc'] = 'Final escalation message sent to the Program Manager when the mentor activity is 10+ days overdue.';
 $string['cliq_tpl_mentor_completed'] = 'Mentor Activity: Completion Confirmation Template';
 $string['cliq_tpl_mentor_completed_desc'] = 'Instant confirmation message sent to the PM and Mentor when the activity is marked complete.';
 
@@ -177,6 +176,8 @@ $string['cliq_tpl_ss_t_plus_3'] = 'SS Activity: 3 Days Overdue Template';
 $string['cliq_tpl_ss_t_plus_3_desc'] = 'Warning message sent to the SSE / MAAC Executive when the activity is 3 days overdue.';
 $string['cliq_tpl_ss_t_plus_5'] = 'SS Activity: 5th Day SS Lead Escalation Template';
 $string['cliq_tpl_ss_t_plus_5_desc'] = 'Escalation message sent to the SS Lead and SS Executive when the SS activity is 5+ days overdue.';
+$string['cliq_tpl_ss_t_plus_10'] = 'SS Activity: 10th Day SS Lead Final Escalation Template';
+$string['cliq_tpl_ss_t_plus_10_desc'] = 'Final escalation message sent to the SS Lead when the SS activity is 10+ days overdue.';
 $string['cliq_tpl_ss_completed'] = 'SS Activity: Completion Confirmation Template';
 $string['cliq_tpl_ss_completed_desc'] = 'Instant confirmation message sent to the SS Executive, SS Lead, and Current Module Mentors when the SS activity is marked complete.';
 
@@ -213,9 +214,16 @@ $string['privacy:metadata:batch_notes:timecreated'] = 'The timestamp when the no
 $string['privacy:metadata:activity_tracker'] = 'Stores manual activity delivery status stamps completed by mentors or teachers.';
 $string['privacy:metadata:activity_tracker:courseid'] = 'The course ID containing the activity.';
 $string['privacy:metadata:activity_tracker:cmid'] = 'The course module ID of the tracked activity.';
+$string['privacy:metadata:activity_tracker:sectionid'] = 'The class section ID (batch) for which the activity delivery status is tracked.';
 $string['privacy:metadata:activity_tracker:completed'] = 'Whether the activity was marked complete.';
 $string['privacy:metadata:activity_tracker:modifiedby'] = 'The user ID who marked the activity as completed.';
 $string['privacy:metadata:activity_tracker:timemodified'] = 'The timestamp when the status was last updated.';
+
+$string['privacy:metadata:mentor_act'] = 'Stores mentor operational activity status, completion data, and modifier records for courses.';
+$string['privacy:metadata:mentor_act:courseid'] = 'The course ID for which mentor activities are recorded.';
+$string['privacy:metadata:mentor_act:selectedgroup'] = 'The activity grouping rule configured for the course.';
+$string['privacy:metadata:mentor_act:activitiesdata'] = 'JSON data containing mentor activities, completion statuses, modifier user IDs, and names.';
+$string['privacy:metadata:mentor_act:timemodified'] = 'The timestamp when mentor activities were last updated.';
 
 $string['privacy:metadata:cliq_log'] = 'Stores dispatch logs for Zoho Cliq notifications and reminders.';
 $string['privacy:metadata:cliq_log:batchid'] = 'The batch ID associated with the notification.';
@@ -224,8 +232,18 @@ $string['privacy:metadata:cliq_log:activity_type'] = 'The type of activity (ment
 $string['privacy:metadata:cliq_log:activity_key'] = 'The unique activity identifier.';
 $string['privacy:metadata:cliq_log:stage'] = 'The notification trigger stage.';
 $string['privacy:metadata:cliq_log:recipient_email'] = 'The email address of the notification recipient.';
+$string['privacy:metadata:cliq_log:userid'] = 'The user ID of the notification recipient.';
 $string['privacy:metadata:cliq_log:timesent'] = 'The timestamp when the alert was dispatched.';
 $string['privacy:metadata:cliq_log:status'] = 'The dispatch delivery status.';
+
+$string['privacy:metadata:zohocliq'] = 'Zoho Cliq messaging integration.';
+$string['privacy:metadata:zohocliq:summary'] = 'The plugin sends notification messages, recipient names, and recipient email addresses to the Zoho Cliq webhook/bot API for operational alerts.';
+$string['privacy:metadata:zohocliq:name'] = 'The recipient full name sent in Zoho Cliq message cards.';
+$string['privacy:metadata:zohocliq:email'] = 'The recipient email address used to route direct bot messages in Zoho Cliq.';
+
+$string['privacy:metadata:zohocrm'] = 'Zoho CRM integration.';
+$string['privacy:metadata:zohocrm:summary'] = 'The plugin queries Zoho CRM to fetch student admissions, placement statuses, and enrollment details matching student IDs.';
+$string['privacy:metadata:zohocrm:studentid'] = 'The student admission ID or identifier sent to Zoho CRM to retrieve student information.';
 
 // Dashboard UI Strings
 $string['search_placeholder'] = 'Search section or batch code (e.g., 26011A, 25002A)...';
@@ -324,24 +342,31 @@ $string['in_progress'] = 'In progress';
 // Privacy Subsystem strings.
 $string['cliqnotifications'] = 'Cliq Notifications';
 $string['activitytracker'] = 'Activity Tracker';
-$string['privacy:metadata:batch_notes'] = 'Stores batch review notes written by users';
-$string['privacy:metadata:batch_notes:batchid'] = 'The ID of the batch being reviewed';
-$string['privacy:metadata:batch_notes:userid'] = 'The ID of the author who created the review note';
-$string['privacy:metadata:batch_notes:author'] = 'The name of the author';
-$string['privacy:metadata:batch_notes:body'] = 'The content of the review note';
-$string['privacy:metadata:batch_notes:timecreated'] = 'The timestamp when the note was created';
-$string['privacy:metadata:activity_tracker'] = 'Stores module activity completion tracking data';
-$string['privacy:metadata:activity_tracker:courseid'] = 'The ID of the course';
-$string['privacy:metadata:activity_tracker:cmid'] = 'The ID of the course module';
-$string['privacy:metadata:activity_tracker:completed'] = 'Whether the activity was completed';
-$string['privacy:metadata:activity_tracker:modifiedby'] = 'The ID of the user who modified the completion status';
-$string['privacy:metadata:activity_tracker:timemodified'] = 'The timestamp when the completion status was modified';
-$string['privacy:metadata:cliq_log'] = 'Stores records of Zoho Cliq notification dispatches';
-$string['privacy:metadata:cliq_log:batchid'] = 'The ID of the batch';
-$string['privacy:metadata:cliq_log:courseid'] = 'The ID of the course';
-$string['privacy:metadata:cliq_log:activity_type'] = 'The type of activity';
-$string['privacy:metadata:cliq_log:activity_key'] = 'The key identifying the activity';
-$string['privacy:metadata:cliq_log:stage'] = 'The stage of the notification';
-$string['privacy:metadata:cliq_log:recipient_email'] = 'The email address of the notification recipient';
-$string['privacy:metadata:cliq_log:timesent'] = 'The timestamp when the notification was dispatched';
-$string['privacy:metadata:cliq_log:status'] = 'The status of the notification dispatch';
+$string['mentoractivities'] = 'Mentor Activities';
+
+// Task strings.
+$string['task_send_cliq_notification'] = 'Send deferred Zoho Cliq notification';
+
+// Zoho Cliq Template Editor Strings.
+$string['cliq_tpl_banner_title'] = 'Zoho Cliq Notification Templates';
+$string['cliq_tpl_banner_desc'] = 'Configure customizable message subjects and bodies for automated Zoho Cliq bot notifications. Cadence triggers include 3 Days Before (T-3), Due Today (T-0), 3 Days Overdue (T+3), 5th Day PM Escalation (T+5), and Instant Completion Confirmation.';
+$string['cliq_tpl_status'] = 'Status:';
+$string['cliq_tpl_active'] = 'Zoho Cliq Active';
+$string['cliq_tpl_disabled'] = 'Notifications Disabled';
+$string['cliq_tpl_cron_schedule'] = 'Cron: 09:00 AM Weekdays';
+$string['cliq_tpl_plugin_settings'] = 'Plugin Settings';
+$string['cliq_tpl_expand_all'] = 'Expand All';
+$string['cliq_tpl_collapse_all'] = 'Collapse All';
+$string['cliq_tpl_save_all'] = 'Save All Changes';
+$string['cliq_tpl_triggers'] = 'Triggers';
+$string['cliq_tpl_field_subject'] = 'Message Subject / Cliq Card Title';
+$string['cliq_tpl_field_subject_hint'] = 'Rendered as bold card title header in Zoho Cliq';
+$string['cliq_tpl_field_body'] = 'Message Body';
+$string['cliq_tpl_field_body_hint'] = 'Supports full multiline text and dynamic placeholders';
+$string['cliq_tpl_tokens_label'] = 'Click placeholder to insert at cursor position:';
+$string['cliq_tpl_btn_reset'] = 'Reset to Default';
+$string['cliq_tpl_btn_preview'] = 'Live Cliq Preview';
+$string['cliq_tpl_footer_note'] = 'Changes take effect immediately on next scheduled evaluation and completion alerts.';
+$string['cliq_tpl_btn_cancel'] = 'Cancel';
+$string['cliq_tpl_btn_save_bottom'] = 'Save All Templates';
+

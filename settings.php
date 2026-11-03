@@ -19,13 +19,6 @@ defined('MOODLE_INTERNAL') || die();
 
 
 if ($hassiteconfig) {
-    // Backward compatibility: If accessed directly via admin/settings.php?section=local_batchanalytics,
-    // redirect to the admin category landing page to avoid 'cannotfindadminpage' error.
-    if (optional_param('section', '', PARAM_SAFEDIR) === 'local_batchanalytics' &&
-        $PAGE->has_set_url() && str_contains($PAGE->url->get_path(), '/admin/settings.php')) {
-        redirect(new moodle_url('/admin/category.php', ['category' => 'local_batchanalytics']));
-    }
-
     // -------------------------------------------------------------------------
     // Main Settings Category: Batch Analytics (Landing Page with 4 links)
     // -------------------------------------------------------------------------
@@ -273,32 +266,32 @@ if ($hassiteconfig) {
         get_string('role_configuration_desc', 'local_batchanalytics')
     ));
 
-    $role_choices = ['0' => get_string('none')];
+    $role_choices = [];
     $all_roles = $DB->get_records('role', null, 'sortorder ASC', 'id, name, shortname');
     foreach ($all_roles as $r) {
         $rname = !empty($r->name) ? format_string($r->name) : $r->shortname;
         $role_choices[(string)$r->id] = $rname . ' (' . $r->shortname . ')';
     }
 
-    $page_roles->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/mentor_roles',
         get_string('mentor_roles', 'local_batchanalytics'),
         get_string('mentor_roles_desc', 'local_batchanalytics'),
-        '0',
+        [],
         $role_choices
     ));
-    $page_roles->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/ssexecutive_roles',
         get_string('ssexecutive_roles', 'local_batchanalytics'),
         get_string('ssexecutive_roles_desc', 'local_batchanalytics'),
-        '0',
+        [],
         $role_choices
     ));
-    $page_roles->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/sslead_roles',
         get_string('sslead_roles', 'local_batchanalytics'),
         get_string('sslead_roles_desc', 'local_batchanalytics'),
-        '0',
+        [],
         $role_choices
     ));
     $page_roles->add(new admin_setting_configtext(
@@ -306,20 +299,20 @@ if ($hassiteconfig) {
         get_string('sslead_email', 'local_batchanalytics'),
         get_string('sslead_email_desc', 'local_batchanalytics'),
         '',
-        PARAM_RAW_TRIMMED
+        PARAM_EMAIL
     ));
-    $page_roles->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/program_manager_roles',
         get_string('program_manager_roles', 'local_batchanalytics'),
         get_string('program_manager_roles_desc', 'local_batchanalytics'),
-        '0',
+        [],
         $role_choices
     ));
-    $page_roles->add(new admin_setting_configselect(
+    $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/assistant_manager_roles',
         get_string('assistant_manager_roles', 'local_batchanalytics'),
         get_string('assistant_manager_roles_desc', 'local_batchanalytics'),
-        '0',
+        [],
         $role_choices
     ));
     $ADMIN->add('local_batchanalytics', $page_roles);

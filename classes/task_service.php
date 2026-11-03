@@ -55,31 +55,60 @@ class task_service {
     }
 
     /**
-     * Check if a user holds any of the configured roles in system or course contexts.
+     * Check if a user holds any of the configured roles in system or category contexts.
+     * Restricting to system and course-category levels prevents course-level privilege escalation.
      *
      * @param int $userid
      * @param string $setting_name
+     * @param int[] $allowed_contextlevels Context levels where the role assignment is valid. Defaults to SYSTEM and COURSECAT.
      * @return bool
      */
-    public static function user_has_configured_role(int $userid, string $setting_name): bool {
+    public static function user_has_configured_role(
+        int $userid,
+        string $setting_name,
+        array $allowed_contextlevels = [CONTEXT_SYSTEM, CONTEXT_COURSECAT]
+    ): bool {
         global $DB;
+        if ($userid <= 0) {
+            return false;
+        }
         $roleids = self::get_configured_role_ids($setting_name);
         if (empty($roleids)) {
             return false;
         }
         [$in_sql, $params] = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'r');
         $params['uid'] = $userid;
+
+        if (!empty($allowed_contextlevels)) {
+            [$ctx_in_sql, $ctx_params] = $DB->get_in_or_equal($allowed_contextlevels, SQL_PARAMS_NAMED, 'ctx');
+            $params = array_merge($params, $ctx_params);
+            return $DB->record_exists_sql("
+                SELECT ra.id
+                  FROM {role_assignments} ra
+                  JOIN {context} ctx ON ctx.id = ra.contextid
+                 WHERE ra.userid = :uid
+                   AND ra.roleid $in_sql
+                   AND ctx.contextlevel $ctx_in_sql
+            ", $params);
+        }
+
         return $DB->record_exists_select('role_assignments', "userid = :uid AND roleid $in_sql", $params);
     }
 
     /**
-     * Check if a user holds a role by shortname or name across any context.
+     * Check if a user holds a role by shortname or name across system or category contexts.
      *
+     * @deprecated since version 2.0 - Role-name heuristics are fragile; configure explicit roles in plugin settings instead.
      * @param int $userid
      * @param string[] $terms
+     * @param int[] $allowed_contextlevels Context levels where the role assignment is valid. Defaults to SYSTEM and COURSECAT.
      * @return bool
      */
-    public static function user_has_role_by_shortnames_or_names(int $userid, array $terms): bool {
+    public static function user_has_role_by_shortnames_or_names(
+        int $userid,
+        array $terms,
+        array $allowed_contextlevels = [CONTEXT_SYSTEM, CONTEXT_COURSECAT]
+    ): bool {
         global $DB;
         if ($userid <= 0 || empty($terms)) {
             return false;
@@ -88,12 +117,22 @@ class task_service {
         [$in_sql1, $params1] = $DB->get_in_or_equal($lowers, SQL_PARAMS_NAMED, 'sn');
         [$in_sql2, $params2] = $DB->get_in_or_equal($lowers, SQL_PARAMS_NAMED, 'nm');
         $params = array_merge($params1, $params2, ['uid' => $userid]);
+
+        $context_sql = '';
+        if (!empty($allowed_contextlevels)) {
+            [$ctx_in_sql, $ctx_params] = $DB->get_in_or_equal($allowed_contextlevels, SQL_PARAMS_NAMED, 'ctx');
+            $params = array_merge($params, $ctx_params);
+            $context_sql = "AND ctx.contextlevel $ctx_in_sql";
+        }
+
         return $DB->record_exists_sql("
             SELECT ra.id
               FROM {role_assignments} ra
               JOIN {role} r ON r.id = ra.roleid
+              JOIN {context} ctx ON ctx.id = ra.contextid
              WHERE ra.userid = :uid
                AND (LOWER(r.shortname) $in_sql1 OR LOWER(r.name) $in_sql2)
+               $context_sql
         ", $params);
     }
 
@@ -143,38 +182,16 @@ class task_service {
         $is_manager = is_siteadmin($userid)
             || has_capability('local/batchanalytics:manage', $context, $userid);
 
-        // Role config matches
+        // Role config matches (strictly at system or category level to prevent course-level privilege escalation)
         $has_mentor_role = self::user_has_configured_role($userid, 'mentor_roles');
         $has_sse_role    = self::user_has_configured_role($userid, 'ssexecutive_roles');
         $has_sslead_role = self::user_has_configured_role($userid, 'sslead_roles');
         $has_pm_role     = self::user_has_configured_role($userid, 'program_manager_roles');
         $has_asst_role   = self::user_has_configured_role($userid, 'assistant_manager_roles');
 
-        // Fallback by role shortnames or names in Moodle
-        if (!$has_sse_role) {
-            $has_sse_role = self::user_has_role_by_shortnames_or_names($userid, [
-                'ss_team_member', 'ss_executive', 'sse', 'ssexecutive', 'ss team member', 'ss executive', 'student success executive'
-            ]);
-        }
-        if (!$has_sslead_role) {
-            $has_sslead_role = self::user_has_role_by_shortnames_or_names($userid, [
-                'ss_team_lead', 'sslead', 'ss_lead', 'student_success_lead', 'ss team lead', 'ss lead', 'student success lead'
-            ]);
-        }
-
-        // Check SS Lead configured email
-        $cfg_sslead_email = trim((string)get_config('local_batchanalytics', 'sslead_email'));
-        $email_matches_sslead = false;
-        if ($cfg_sslead_email !== '' && $email !== '') {
-            $parts = array_map('trim', explode(',', $cfg_sslead_email));
-            foreach ($parts as $p) {
-                if (strcasecmp($p, $email) === 0) {
-                    $email_matches_sslead = true;
-                    break;
-                }
-            }
-        }
-        $is_sslead = $has_sslead_role || $email_matches_sslead;
+        // SS Lead status is strictly based on holding the configured SS Lead role at system/category level.
+        // Fragile role-name and email heuristics have been removed to eliminate privilege escalation.
+        $is_sslead = $has_sslead_role;
 
         // Check Batch Management direct assignments in local_bm_classsection (Issue #42: strictly by user ID)
         $assigned_sse = false;
@@ -188,24 +205,20 @@ class task_service {
             $user_courses = enrol_get_users_courses($userid, true, 'id');
             $user_course_ids = !empty($user_courses) ? array_map('intval', array_keys($user_courses)) : [];
 
-            // Targeted query: only load sections where the user is directly referenced by user ID or their enrolled courses appear
+            // Targeted query: only load sections where the user is directly referenced by user ID (Finding 27 / PERF-01).
+            // Checking for the user ID in moduledata replaces generating 2*N dynamic LIKE clauses on the TEXT column.
             $or_conditions = [
                 'maacexecutive = :uid_sse',
                 'pmmanager = :uid_pm',
+                $DB->sql_like($DB->sql_compare_text('moduledata'), ':likemoduid_str', false, false),
+                $DB->sql_like($DB->sql_compare_text('moduledata'), ':likemoduid_num', false, false),
             ];
             $params = [
-                'uid_sse' => (string)$userid,
-                'uid_pm'  => (string)$userid,
+                'uid_sse'        => (string)$userid,
+                'uid_pm'         => (string)$userid,
+                'likemoduid_str' => '%"' . $userid . '"%',
+                'likemoduid_num' => '%:' . $userid . '%',
             ];
-
-            if (!empty($user_course_ids)) {
-                foreach ($user_course_ids as $cidx => $cid) {
-                    $or_conditions[] = $DB->sql_like($DB->sql_compare_text('moduledata'), ":likecid$cidx", false, false);
-                    $params["likecid$cidx"] = '%"moodlecourseid":"' . $cid . '"%';
-                    $or_conditions[] = $DB->sql_like($DB->sql_compare_text('moduledata'), ":likeintcid$cidx", false, false);
-                    $params["likeintcid$cidx"] = '%"moodlecourseid":' . $cid . '%';
-                }
-            }
 
             $wheresql = implode(' OR ', $or_conditions);
             $sections = $DB->get_records_select('local_bm_classsection', $wheresql, $params, '', 'id, maacexecutive, pmmanager, moduledata');
@@ -474,6 +487,7 @@ class task_service {
             }
 
             if ($match) {
+                $sec->clean_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $filtered_sections[$sec->id] = $sec;
                 $assigned_section_ids[(int)$sec->id] = true;
                 if (!empty($sec->batchid)) {
@@ -489,8 +503,8 @@ class task_service {
             $student_count = (int)$DB->count_records_select('local_bm_student', "classsectionid $sec_sql", $sec_params);
         }
 
-        $today_midnight = strtotime('today midnight');
-        $today_end      = $today_midnight + 86400;
+        $today_midnight = util::get_user_today_midnight();
+        $today_end      = util::get_user_today_end() + 1;
         $next_week_end  = $today_midnight + (7 * 86400);
 
         $todo_list = [];
@@ -502,6 +516,7 @@ class task_service {
         // ---------------------------------------------------------------------
         if ($active_role === 'mentors' || $active_role === 'pm' || $active_role === 'admin') {
             foreach ($filtered_sections as $sec) {
+                $batch_name = $sec->clean_name;
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
                     $courseid = (int)($sm['moodlecourseid'] ?? 0);
@@ -559,7 +574,6 @@ class task_service {
                             }
 
                             $act_name = util::format_activity_title($act['name']);
-                            $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
                             $dest_url = (new \moodle_url('/local/batchanalytics/module.php', [
                                 'courseid'  => $courseid,
@@ -685,7 +699,7 @@ class task_service {
                 }
 
                 $ss_list = util::decode_softskills_activities($sec->softskillsdata);
-                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
+                $batch_name = $sec->clean_name;
                 $dest_url = (new \moodle_url('/local/batchanalytics/batch.php', ['id' => $sec->id]))->out(false);
 
                 foreach ($ss_list as $ss) {
@@ -910,7 +924,7 @@ class task_service {
                     continue;
                 }
 
-                $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
+                $batch_name = $sec->clean_name;
                 $edit_tracker_url = (new \moodle_url('/local/batchmanagement/edit_moduletracker.php', ['id' => $sec->id]))->out(false);
 
                 $module_keys = array_keys($modules);
@@ -1243,7 +1257,7 @@ class task_service {
                     }
 
                     $due_ts = (int)$rev_info['due_ts'];
-                    $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
+                    $batch_name = $sec->clean_name;
                     $notes_url = (new \moodle_url('/local/batchanalytics/batch.php', [
                         'id'  => $sec->id,
                         'tab' => 'notes',
@@ -1425,7 +1439,7 @@ class task_service {
         }
         foreach ($filtered_sections as $sec) {
             $bid = (string)$sec->id;
-            $bname = util::clean_section_name(trim((string)($sec->name ?: ('Batch ' . $sec->id))));
+            $bname = $sec->clean_name;
             if (!isset($batch_options[$bid])) {
                 $batch_options[$bid] = [
                     'id'   => (int)$sec->id,
@@ -1592,10 +1606,16 @@ class task_service {
             return;
         }
 
-        // 4. Action: Mentor operational activities (Issue #39).
+        // 4. Action: Mentor operational activities (Issue #39 / Finding 13).
         if ($action_type === 'mentor') {
             $can_edit = false;
             if ($courseid > 0) {
+                // Verify that the course actually belongs to this batch (Finding 13).
+                $matched_module = util::get_section_module_by_course($sec, $courseid);
+                if (!$matched_module) {
+                    throw new \moodle_exception('nopermissions', 'error', '', 'The specified course does not belong to this batch');
+                }
+
                 $cctx = \context_course::instance($courseid, IGNORE_MISSING);
                 if ($cctx) {
                     if (has_capability('moodle/course:manageactivities', $cctx, $userid)) {
@@ -1604,10 +1624,21 @@ class task_service {
                         $can_edit = true;
                     }
                 }
+
+                // If not authorized at course context, check batch PM or module-assigned mentor.
+                if (!$can_edit) {
+                    if (!empty($assignment['is_pm'])) {
+                        $can_edit = true;
+                    } else if (util::is_mentor_assigned_to_module($matched_module, $userid)) {
+                        $can_edit = true;
+                    }
+                }
+            } else {
+                if (!empty($assignment['is_pm']) || !empty($assignment['is_mentor'])) {
+                    $can_edit = true;
+                }
             }
-            if (!$can_edit && (!empty($assignment['is_mentor']) || !empty($assignment['is_pm']))) {
-                $can_edit = true;
-            }
+
             if (!$can_edit) {
                 throw new \moodle_exception('nopermissions', 'error', '', 'complete mentor activities for this batch');
             }
@@ -1675,54 +1706,73 @@ class task_service {
         // Enforce assigned SSE authorization on this batch (Issue #41).
         self::require_section_permission($userid, $sec, 'request_ss_approval');
 
-        $raw_data = json_decode($sec->softskillsdata ?? '', true);
-        if (!is_array($raw_data)) {
-            throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+        $lock = util::get_lock('classsection_' . $batchid, 15);
+        if (!$lock) {
+            throw new \moodle_exception('locktimeout', 'local_batchanalytics', '', 'Could not acquire lock for batch section.');
         }
 
-        $now = time();
-        $target_base = strtolower(trim($act_key));
-        $updated = false;
+        try {
+            $transaction = $DB->start_delegated_transaction();
 
-        // Check key-based format: ${base}_Planned / ${base}_Actual
-        foreach ($raw_data as $k => $v) {
-            if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
-                $base = strtolower($m[1]);
-                if ($base === $target_base) {
-                    $raw_data[$m[1] . '_ApprovalStatus'] = 'pending_approval';
-                    $raw_data[$m[1] . '_RequestedBy'] = $userid;
-                    $raw_data[$m[1] . '_RequestedAt'] = $now;
-                    $updated = true;
-                    break;
-                }
+            // Re-read fresh record inside lock and transaction
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
             }
-        }
 
-        // Check object list format: [{activity: ..., planned: ...}]
-        if (!$updated) {
-            foreach ($raw_data as &$item) {
-                if (is_array($item)) {
-                    $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
-                    $key  = strtolower(trim($item['key'] ?? ''));
-                    if ($key === $target_base || $name === $target_base) {
-                        $item['approval_status'] = 'pending_approval';
-                        $item['requested_by'] = $userid;
-                        $item['requested_at'] = $now;
+            $raw_data = json_decode($sec->softskillsdata ?? '', true);
+            if (!is_array($raw_data)) {
+                throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+            }
+
+            $now = time();
+            $target_base = strtolower(trim($act_key));
+            $updated = false;
+
+            // Check key-based format: ${base}_Planned / ${base}_Actual
+            foreach ($raw_data as $k => $v) {
+                if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                    $base = strtolower($m[1]);
+                    if ($base === $target_base) {
+                        $raw_data[$m[1] . '_ApprovalStatus'] = 'pending_approval';
+                        $raw_data[$m[1] . '_RequestedBy'] = $userid;
+                        $raw_data[$m[1] . '_RequestedAt'] = $now;
                         $updated = true;
                         break;
                     }
                 }
             }
-            unset($item);
-        }
 
-        if (!$updated) {
-            throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
-        }
+            // Check object list format: [{activity: ..., planned: ...}]
+            if (!$updated) {
+                foreach ($raw_data as &$item) {
+                    if (is_array($item)) {
+                        $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                        $key  = strtolower(trim($item['key'] ?? ''));
+                        if ($key === $target_base || $name === $target_base) {
+                            $item['approval_status'] = 'pending_approval';
+                            $item['requested_by'] = $userid;
+                            $item['requested_at'] = $now;
+                            $updated = true;
+                            break;
+                        }
+                    }
+                }
+                unset($item);
+            }
 
-        $sec->softskillsdata = json_encode($raw_data);
-        $sec->timemodified = $now;
-        $DB->update_record('local_bm_classsection', $sec);
+            if (!$updated) {
+                throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
+            }
+
+            $sec->softskillsdata = json_encode($raw_data);
+            $sec->timemodified = $now;
+            $DB->update_record('local_bm_classsection', $sec);
+
+            $transaction->allow_commit();
+        } finally {
+            util::release_lock($lock);
+        }
 
         return [
             'success'      => true,
@@ -1758,62 +1808,82 @@ class task_service {
         // Enforce SS Lead authorization (Issue #41).
         self::require_section_permission($userid, $sec, 'reject_ss_approval');
 
-        $raw_data = json_decode($sec->softskillsdata ?? '', true);
-        if (!is_array($raw_data)) {
-            throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+        $lock = util::get_lock('classsection_' . $batchid, 15);
+        if (!$lock) {
+            throw new \moodle_exception('locktimeout', 'local_batchanalytics', '', 'Could not acquire lock for batch section.');
         }
 
         $now = time();
-        $target_base = strtolower(trim($act_key));
-        $updated = false;
         $sync_key = '';
 
-        // Check key-based format: ${base}_Planned / ${base}_Actual
-        foreach ($raw_data as $k => $v) {
-            if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
-                $base = strtolower($m[1]);
-                if ($base === $target_base) {
-                    $raw_data[$m[1] . '_ApprovalStatus'] = 'rejected';
-                    $raw_data[$m[1] . '_RejectedBy'] = $userid;
-                    $raw_data[$m[1] . '_RejectedAt'] = $now;
-                    $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
-                    $raw_data[$m[1] . '_Actual'] = 0;
-                    $sync_key = $m[1] . '_Actual';
-                    $updated = true;
-                    break;
-                }
-            }
-        }
+        try {
+            $transaction = $DB->start_delegated_transaction();
 
-        // Check object list format: [{activity: ..., planned: ...}]
-        if (!$updated) {
-            foreach ($raw_data as &$item) {
-                if (is_array($item)) {
-                    $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
-                    $key  = strtolower(trim($item['key'] ?? ''));
-                    if ($key === $target_base || $name === $target_base) {
-                        $item['approval_status'] = 'rejected';
-                        $item['rejected_by'] = $userid;
-                        $item['rejected_at'] = $now;
-                        $item['review_notes'] = $review_notes;
-                        $item['actual'] = 0;
-                        $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
-                        $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
+            // Re-read fresh record inside lock and transaction
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
+            }
+
+            $raw_data = json_decode($sec->softskillsdata ?? '', true);
+            if (!is_array($raw_data)) {
+                throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+            }
+
+            $target_base = strtolower(trim($act_key));
+            $updated = false;
+
+            // Check key-based format: ${base}_Planned / ${base}_Actual
+            foreach ($raw_data as $k => $v) {
+                if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                    $base = strtolower($m[1]);
+                    if ($base === $target_base) {
+                        $raw_data[$m[1] . '_ApprovalStatus'] = 'rejected';
+                        $raw_data[$m[1] . '_RejectedBy'] = $userid;
+                        $raw_data[$m[1] . '_RejectedAt'] = $now;
+                        $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
+                        $raw_data[$m[1] . '_Actual'] = 0;
+                        $sync_key = $m[1] . '_Actual';
                         $updated = true;
                         break;
                     }
                 }
             }
-            unset($item);
-        }
 
-        if (!$updated) {
-            throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
-        }
+            // Check object list format: [{activity: ..., planned: ...}]
+            if (!$updated) {
+                foreach ($raw_data as &$item) {
+                    if (is_array($item)) {
+                        $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                        $key  = strtolower(trim($item['key'] ?? ''));
+                        if ($key === $target_base || $name === $target_base) {
+                            $item['approval_status'] = 'rejected';
+                            $item['rejected_by'] = $userid;
+                            $item['rejected_at'] = $now;
+                            $item['review_notes'] = $review_notes;
+                            $item['actual'] = 0;
+                            $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
+                            $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
+                            $updated = true;
+                            break;
+                        }
+                    }
+                }
+                unset($item);
+            }
 
-        $sec->softskillsdata = json_encode($raw_data);
-        $sec->timemodified = $now;
-        $DB->update_record('local_bm_classsection', $sec);
+            if (!$updated) {
+                throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
+            }
+
+            $sec->softskillsdata = json_encode($raw_data);
+            $sec->timemodified = $now;
+            $DB->update_record('local_bm_classsection', $sec);
+
+            $transaction->allow_commit();
+        } finally {
+            util::release_lock($lock);
+        }
 
         if (empty($sync_key)) {
             $sync_key = preg_match('/_actual$/i', $act_key) ? $act_key : ($act_key . '_Actual');
@@ -1865,17 +1935,16 @@ class task_service {
                 throw new \moodle_exception('invalidparams', 'local_batchanalytics');
             }
 
-            // Enforce course-level and batch/section assignment authorization (SEC-01 / Issue #39).
+            // Enforce course-level and batch/section assignment authorization (SEC-01 / Finding 13).
             if ($batchid > 0) {
                 $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
                 if (!$sec) {
                     $sec = $DB->get_record('local_bm_classsection', ['batchid' => $batchid]);
                 }
-                if ($sec) {
-                    self::require_section_permission($userid, $sec, 'mentor', $courseid);
-                } else {
-                    self::require_course_mentor_permission($userid, $courseid);
+                if (!$sec) {
+                    throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
                 }
+                self::require_section_permission($userid, $sec, 'mentor', $courseid);
             } else {
                 self::require_course_mentor_permission($userid, $courseid);
             }
@@ -1927,65 +1996,85 @@ class task_service {
             // Enforce section and role authorization (Issue #41).
             self::require_section_permission($userid, $sec, $action_type);
 
-            $raw_data = json_decode($sec->softskillsdata ?? '', true);
-            if (!is_array($raw_data)) {
-                throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+            $lock = util::get_lock('classsection_' . $batchid, 15);
+            if (!$lock) {
+                throw new \moodle_exception('locktimeout', 'local_batchanalytics', '', 'Could not acquire lock for batch section.');
             }
 
             $now = time();
-            $target_base = strtolower(trim($act_key));
-            $updated = false;
             $sync_key = '';
 
-            // Check key-based format: ${base}_Actual
-            foreach ($raw_data as $k => $v) {
-                if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
-                    $base = strtolower($m[1]);
-                    if ($base === $target_base) {
-                        $raw_data[$m[1] . '_Actual'] = $now;
-                        $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
-                        $raw_data[$m[1] . '_ApprovedBy'] = $userid;
-                        $raw_data[$m[1] . '_ApprovedAt'] = $now;
-                        if ($review_notes !== '') {
-                            $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
-                        }
-                        $sync_key = $m[1] . '_Actual';
-                        $updated = true;
-                        break;
-                    }
+            try {
+                $transaction = $DB->start_delegated_transaction();
+
+                // Re-read fresh record inside lock and transaction
+                $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+                if (!$sec) {
+                    throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
                 }
-            }
-            // Check object list format: [{activity: ..., actual: ...}]
-            if (!$updated) {
-                foreach ($raw_data as &$item) {
-                    if (is_array($item)) {
-                        $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
-                        $key  = strtolower(trim($item['key'] ?? ''));
-                        if ($key === $target_base || $name === $target_base) {
-                            $item['actual'] = $now;
-                            $item['approval_status'] = 'approved';
-                            $item['approved_by'] = $userid;
-                            $item['approved_at'] = $now;
+
+                $raw_data = json_decode($sec->softskillsdata ?? '', true);
+                if (!is_array($raw_data)) {
+                    throw new \moodle_exception('invalidsoftskillsdata', 'local_batchanalytics', '', 'Soft skills data is empty or invalid.');
+                }
+
+                $target_base = strtolower(trim($act_key));
+                $updated = false;
+
+                // Check key-based format: ${base}_Actual
+                foreach ($raw_data as $k => $v) {
+                    if (preg_match('/^(.+)_(planned|actual)$/i', (string)$k, $m)) {
+                        $base = strtolower($m[1]);
+                        if ($base === $target_base) {
+                            $raw_data[$m[1] . '_Actual'] = $now;
+                            $raw_data[$m[1] . '_ApprovalStatus'] = 'approved';
+                            $raw_data[$m[1] . '_ApprovedBy'] = $userid;
+                            $raw_data[$m[1] . '_ApprovedAt'] = $now;
                             if ($review_notes !== '') {
-                                $item['review_notes'] = $review_notes;
+                                $raw_data[$m[1] . '_ReviewNotes'] = $review_notes;
                             }
-                            $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
-                            $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
+                            $sync_key = $m[1] . '_Actual';
                             $updated = true;
                             break;
                         }
                     }
                 }
-                unset($item);
-            }
+                // Check object list format: [{activity: ..., actual: ...}]
+                if (!$updated) {
+                    foreach ($raw_data as &$item) {
+                        if (is_array($item)) {
+                            $name = strtolower(trim($item['activity'] ?? $item['name'] ?? ''));
+                            $key  = strtolower(trim($item['key'] ?? ''));
+                            if ($key === $target_base || $name === $target_base) {
+                                $item['actual'] = $now;
+                                $item['approval_status'] = 'approved';
+                                $item['approved_by'] = $userid;
+                                $item['approved_at'] = $now;
+                                if ($review_notes !== '') {
+                                    $item['review_notes'] = $review_notes;
+                                }
+                                $item_raw_key = !empty($item['key']) ? trim((string)$item['key']) : trim($act_key);
+                                $sync_key = preg_match('/_actual$/i', $item_raw_key) ? $item_raw_key : ($item_raw_key . '_Actual');
+                                $updated = true;
+                                break;
+                            }
+                        }
+                    }
+                    unset($item);
+                }
 
-            if (!$updated) {
-                throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
-            }
+                if (!$updated) {
+                    throw new \moodle_exception('invalidactivity', 'local_batchanalytics', '', 'Soft skills activity not found.');
+                }
 
-            $sec->softskillsdata = json_encode($raw_data);
-            $sec->timemodified = $now;
-            $DB->update_record('local_bm_classsection', $sec);
+                $sec->softskillsdata = json_encode($raw_data);
+                $sec->timemodified = $now;
+                $DB->update_record('local_bm_classsection', $sec);
+
+                $transaction->allow_commit();
+            } finally {
+                util::release_lock($lock);
+            }
 
             if (empty($sync_key)) {
                 $sync_key = preg_match('/_actual$/i', $act_key) ? $act_key : ($act_key . '_Actual');
@@ -2035,113 +2124,122 @@ class task_service {
             // Enforce section PM authorization: only the assigned PM can alter module schedules (Issue #38).
             self::require_section_permission($userid, $sec, $action_type, 0, $mod_key);
 
-            $modules = json_decode($sec->moduledata ?? '', true);
-            if (!is_array($modules) || !isset($modules[$mod_key])) {
-                throw new \moodle_exception('invalidmodule', 'local_batchanalytics');
+            $lock = util::get_lock('classsection_' . $batchid, 15);
+            if (!$lock) {
+                throw new \moodle_exception('locktimeout', 'local_batchanalytics', '', 'Could not acquire lock for batch section.');
             }
 
-            // Helper to parse date inputs (timestamp int or YYYY-MM-DD string)
+            // Helper to parse date inputs (timestamp int or YYYY-MM-DD string) in user's timezone.
             $parse_date_param = static function($val): int {
-                if (empty($val)) {
-                    return 0;
-                }
-                if (is_numeric($val)) {
-                    return (int)$val;
-                }
-                $ts = strtotime((string)$val);
-                return ($ts !== false && $ts > 0) ? (int)$ts : 0;
+                return util::parse_user_date($val);
             };
 
             $now = time();
             $should_send_start_alert = false;
             $should_send_mentor_alert = false;
             $saved_ts = $now;
+            $today_end = util::get_user_today_end();
+            $today_start = util::get_user_today_midnight();
+            $ret_modules = [];
 
-            // Use database transaction for concurrency safety and atomicity (Issue #47).
-            $transaction = $DB->start_delegated_transaction();
+            try {
+                // Use database transaction for concurrency safety and atomicity (Issue #47).
+                $transaction = $DB->start_delegated_transaction();
 
-            if ($action_type === 'am_start') {
-                // Idempotency: if module is already started, return success without resetting timestamp or re-sending alerts (Issue #47).
-                if (!empty($modules[$mod_key]['actualstart'])) {
-                    $transaction->allow_commit();
-                    return [
-                        'success'         => true,
-                        'already_started' => true,
-                        'type'            => $action_type,
-                        'batchid'         => $batchid,
-                        'mod_key'         => $mod_key,
-                        'actualstart'     => (int)$modules[$mod_key]['actualstart'],
-                    ];
+                // Re-read fresh section inside lock and transaction
+                $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+                if (!$sec) {
+                    throw new \moodle_exception('invalidbatch', 'local_batchanalytics');
                 }
 
-                $start_ts = $parse_date_param($params['actualstart'] ?? 0);
-                if ($start_ts <= 0) {
-                    $start_ts = $now;
-                }
-                $today_end = strtotime('tomorrow midnight') - 1;
-                if ($start_ts > $today_end) {
-                    throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual start date cannot be in the future.');
+                $modules = json_decode($sec->moduledata ?? '', true);
+                if (!is_array($modules) || !isset($modules[$mod_key])) {
+                    throw new \moodle_exception('invalidmodule', 'local_batchanalytics');
                 }
 
-                $modules[$mod_key]['actualstart'] = $start_ts;
-                $saved_ts = $start_ts;
-                $should_send_start_alert = true;
+                if ($action_type === 'am_start') {
+                    // Idempotency: if module is already started, return success without resetting timestamp or re-sending alerts (Issue #47).
+                    if (!empty($modules[$mod_key]['actualstart'])) {
+                        $transaction->allow_commit();
+                        return [
+                            'success'         => true,
+                            'already_started' => true,
+                            'type'            => $action_type,
+                            'batchid'         => $batchid,
+                            'mod_key'         => $mod_key,
+                            'actualstart'     => (int)$modules[$mod_key]['actualstart'],
+                        ];
+                    }
 
-            } else if ($action_type === 'am_end' || $action_type === 'am_closer') {
-                $closer_ts = $parse_date_param($params['actualend'] ?? 0);
-                if ($closer_ts <= 0) {
-                    $closer_ts = $now;
-                }
-                $today_end = strtotime('tomorrow midnight') - 1;
-                if ($closer_ts > $today_end) {
-                    throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual closer date cannot be in the future.');
-                }
-                $mod_actualstart = (int)($modules[$mod_key]['actualstart'] ?? 0);
-                if ($mod_actualstart > 0 && $closer_ts < $mod_actualstart) {
-                    throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual closer date cannot be earlier than the module actual start date.');
+                    $start_ts = $parse_date_param($params['actualstart'] ?? 0);
+                    if ($start_ts <= 0) {
+                        $start_ts = $now;
+                    }
+                    if ($start_ts > $today_end) {
+                        throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual start date cannot be in the future.');
+                    }
+
+                    $modules[$mod_key]['actualstart'] = $start_ts;
+                    $saved_ts = $start_ts;
+                    $should_send_start_alert = true;
+
+                } else if ($action_type === 'am_end' || $action_type === 'am_closer') {
+                    $closer_ts = $parse_date_param($params['actualend'] ?? 0);
+                    if ($closer_ts <= 0) {
+                        $closer_ts = $now;
+                    }
+                    if ($closer_ts > $today_end) {
+                        throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual closer date cannot be in the future.');
+                    }
+                    $mod_actualstart = (int)($modules[$mod_key]['actualstart'] ?? 0);
+                    if ($mod_actualstart > 0 && $closer_ts < $mod_actualstart) {
+                        throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Actual closer date cannot be earlier than the module actual start date.');
+                    }
+
+                    $modules[$mod_key]['actualend'] = $closer_ts;
+                    if (empty($modules[$mod_key]['actualstart'])) {
+                        $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $closer_ts);
+                    }
+                    $saved_ts = $closer_ts;
+
+                } else if ($action_type === 'am_mentor') {
+                    $assign_uid = !empty($params['mentorid']) ? (int)$params['mentorid'] : 0;
+                    if ($assign_uid <= 0) {
+                        throw new \moodle_exception('invalidparams', 'local_batchanalytics', '', 'A valid mentor ID is required to assign a module mentor.');
+                    }
+                    if (!$DB->record_exists('user', ['id' => $assign_uid, 'deleted' => 0])) {
+                        throw new \moodle_exception('invaliduser', 'local_batchanalytics');
+                    }
+                    $modules[$mod_key]['primarymentor'] = (string)$assign_uid;
+                    $should_send_mentor_alert = true;
+
+                } else if ($action_type === 'am_sched') {
+                    $sched_ts = $parse_date_param($params['plannedstart'] ?? 0);
+                    if ($sched_ts <= 0) {
+                        throw new \moodle_exception('invalidparams', 'local_batchanalytics', '', 'A valid planned start date is required.');
+                    }
+                    if ($sched_ts < $today_start) {
+                        throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Planned start date cannot be in the past.');
+                    }
+                    $modules[$mod_key]['plannedstart'] = $sched_ts;
+                    $saved_ts = $sched_ts;
                 }
 
-                $modules[$mod_key]['actualend'] = $closer_ts;
-                if (empty($modules[$mod_key]['actualstart'])) {
-                    $modules[$mod_key]['actualstart'] = (int)($modules[$mod_key]['plannedstart'] ?? $closer_ts);
-                }
-                $saved_ts = $closer_ts;
+                // Save database changes first (Issue #47).
+                $sec->moduledata = json_encode($modules);
+                $sec->timemodified = $now;
+                $DB->update_record('local_bm_classsection', $sec);
 
-            } else if ($action_type === 'am_mentor') {
-                $assign_uid = !empty($params['mentorid']) ? (int)$params['mentorid'] : 0;
-                if ($assign_uid <= 0) {
-                    throw new \moodle_exception('invalidparams', 'local_batchanalytics', '', 'A valid mentor ID is required to assign a module mentor.');
-                }
-                if (!$DB->record_exists('user', ['id' => $assign_uid, 'deleted' => 0])) {
-                    throw new \moodle_exception('invaliduser', 'local_batchanalytics');
-                }
-                $modules[$mod_key]['primarymentor'] = (string)$assign_uid;
-                $should_send_mentor_alert = true;
-
-            } else if ($action_type === 'am_sched') {
-                $sched_ts = $parse_date_param($params['plannedstart'] ?? 0);
-                if ($sched_ts <= 0) {
-                    throw new \moodle_exception('invalidparams', 'local_batchanalytics', '', 'A valid planned start date is required.');
-                }
-                $today_start = strtotime('today midnight');
-                if ($sched_ts < $today_start) {
-                    throw new \moodle_exception('invaliddate', 'local_batchanalytics', '', 'Planned start date cannot be in the past.');
-                }
-                $modules[$mod_key]['plannedstart'] = $sched_ts;
-                $saved_ts = $sched_ts;
+                $transaction->allow_commit();
+                $ret_modules = $modules;
+            } finally {
+                util::release_lock($lock);
             }
 
-            // Save database changes first (Issue #47).
-            $sec->moduledata = json_encode($modules);
-            $sec->timemodified = $now;
-            $DB->update_record('local_bm_classsection', $sec);
-
-            $transaction->allow_commit();
-
-            // Dispatch external Cliq notifications AFTER successful database commit in safe try/catch (Issue #47).
+            // Dispatch external Cliq notifications AFTER successful database commit and lock release in safe try/catch (Issue #47).
             if ($should_send_start_alert) {
                 try {
-                    cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $modules, $saved_ts);
+                    cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $ret_modules, $saved_ts);
                 } catch (\Throwable $e) {
                     debugging('Cliq module start alert failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
                 }
@@ -2149,8 +2247,8 @@ class task_service {
                 try {
                     cliq_activity_notifier::send_module_assigned_mentor_alert(
                         $batchid,
-                        $modules[$mod_key]['name'] ?? 'Module',
-                        $modules[$mod_key]
+                        $ret_modules[$mod_key]['name'] ?? 'Module',
+                        $ret_modules[$mod_key]
                     );
                 } catch (\Throwable $e) {
                     debugging('Cliq mentor assignment alert failed: ' . $e->getMessage(), DEBUG_DEVELOPER);

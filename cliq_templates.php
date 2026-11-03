@@ -79,45 +79,44 @@ echo $OUTPUT->header();
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
-            Zoho Cliq Notification Templates
+            <?php echo get_string('cliq_tpl_banner_title', 'local_batchanalytics'); ?>
         </h2>
         <p>
-            Configure customizable message subjects and bodies for automated Zoho Cliq bot notifications.
-            Cadence triggers include <strong>3 Days Before (T-3)</strong>, <strong>Due Today (T-0)</strong>, <strong>3 Days Overdue (T+3)</strong>, <strong>5th Day PM Escalation (T+5)</strong>, and <strong>Instant Completion Confirmation</strong>.
+            <?php echo get_string('cliq_tpl_banner_desc', 'local_batchanalytics'); ?>
         </p>
     </div>
 
     <!-- Status & Master Controls -->
     <div class="cliq-status-bar">
         <div class="cliq-status-badges">
-            <span><strong>Status:</strong></span>
+            <span><strong><?php echo get_string('cliq_tpl_status', 'local_batchanalytics'); ?></strong></span>
             <?php if ($is_enabled): ?>
                 <span class="cliq-badge-pill cliq-badge-success">
                     <span style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a; display: inline-block;"></span>
-                    Zoho Cliq Active
+                    <?php echo get_string('cliq_tpl_active', 'local_batchanalytics'); ?>
                 </span>
             <?php else: ?>
                 <span class="cliq-badge-pill cliq-badge-warning">
                     <span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706; display: inline-block;"></span>
-                    Notifications Disabled
+                    <?php echo get_string('cliq_tpl_disabled', 'local_batchanalytics'); ?>
                 </span>
             <?php endif; ?>
             <span class="cliq-badge-pill cliq-badge-secondary">
-                Cron: 09:00 AM Weekdays
+                <?php echo get_string('cliq_tpl_cron_schedule', 'local_batchanalytics'); ?>
             </span>
             <a href="<?php echo $settingsurl->out(); ?>" class="btn btn-sm btn-link text-decoration-none">
-                ⚙️ Plugin Settings
+                ⚙️ <?php echo get_string('cliq_tpl_plugin_settings', 'local_batchanalytics'); ?>
             </a>
         </div>
         <div class="cliq-top-actions">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-expand-all">
-                📂 Expand All
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-expand-all" data-action="expand-all">
+                📂 <?php echo get_string('cliq_tpl_expand_all', 'local_batchanalytics'); ?>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-collapse-all">
-                📁 Collapse All
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-collapse-all" data-action="collapse-all">
+                📁 <?php echo get_string('cliq_tpl_collapse_all', 'local_batchanalytics'); ?>
             </button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="document.getElementById('cliq-templates-form').submit();">
-                💾 Save All Changes
+            <button type="button" class="btn btn-sm btn-primary" data-action="submit-form">
+                💾 <?php echo get_string('cliq_tpl_save_all', 'local_batchanalytics'); ?>
             </button>
         </div>
     </div>
@@ -129,7 +128,7 @@ echo $OUTPUT->header();
         <?php foreach ($defs as $cat_key => $cat): ?>
             <div class="cliq-section-card" id="section-<?php echo $cat_key; ?>">
                 <!-- Section Header (Collapsible) -->
-                <div class="cliq-section-header" onclick="toggleSection('<?php echo $cat_key; ?>')">
+                <div class="cliq-section-header" data-action="toggle-section" data-target="<?php echo $cat_key; ?>" style="cursor: pointer;">
                     <div class="cliq-section-title-group">
                         <h3>
                             <?php if ($cat_key === 'mentor'): ?>
@@ -138,7 +137,7 @@ echo $OUTPUT->header();
                                 💼 <?php echo htmlspecialchars($cat['title']); ?>
                             <?php endif; ?>
                             <span class="badge badge-secondary" style="font-size: 11px; font-weight: normal; vertical-align: middle;">
-                                <?php echo count($cat['stages']); ?> Triggers
+                                <?php echo count($cat['stages']); ?> <?php echo get_string('cliq_tpl_triggers', 'local_batchanalytics'); ?>
                             </span>
                         </h3>
                         <p><?php echo htmlspecialchars($cat['description']); ?></p>
@@ -162,7 +161,7 @@ echo $OUTPUT->header();
                              data-scope="<?php echo $cat['scope']; ?>">
 
                             <!-- Stage Card Header -->
-                            <div class="cliq-stage-header" onclick="toggleStage('<?php echo $k; ?>')">
+                            <div class="cliq-stage-header" data-action="toggle-stage" data-target="<?php echo $k; ?>" style="cursor: pointer;">
                                 <div class="cliq-stage-left">
                                     <span class="cliq-timing-tag" style="background-color: <?php echo $stg['badge_color']; ?>;">
                                         <?php echo htmlspecialchars($stg['timing_badge']); ?>
@@ -184,13 +183,14 @@ echo $OUTPUT->header();
                                 <!-- Subject Field -->
                                 <div class="cliq-form-group">
                                     <label for="tpl-sub-<?php echo $k; ?>">
-                                        <span>Message Subject / Cliq Card Title</span>
-                                        <span class="cliq-field-hint">Rendered as bold card title header in Zoho Cliq</span>
+                                        <span><?php echo get_string('cliq_tpl_field_subject', 'local_batchanalytics'); ?></span>
+                                        <span class="cliq-field-hint"><?php echo get_string('cliq_tpl_field_subject_hint', 'local_batchanalytics'); ?></span>
                                     </label>
                                     <input type="text"
                                            class="cliq-input-subject cliq-active-target"
                                            id="tpl-sub-<?php echo $k; ?>"
                                            name="templates[<?php echo $k; ?>][subject]"
+                                           data-stage-key="<?php echo $k; ?>"
                                            value="<?php echo htmlspecialchars($cur_subject); ?>"
                                            placeholder="<?php echo htmlspecialchars($stg['default_subject']); ?>">
                                 </div>
@@ -198,24 +198,27 @@ echo $OUTPUT->header();
                                 <!-- Body Field -->
                                 <div class="cliq-form-group">
                                     <label for="tpl-bod-<?php echo $k; ?>">
-                                        <span>Message Body</span>
-                                        <span class="cliq-field-hint">Supports full multiline text and dynamic placeholders</span>
+                                        <span><?php echo get_string('cliq_tpl_field_body', 'local_batchanalytics'); ?></span>
+                                        <span class="cliq-field-hint"><?php echo get_string('cliq_tpl_field_body_hint', 'local_batchanalytics'); ?></span>
                                     </label>
                                     <textarea class="cliq-textarea-body cliq-active-target"
                                               id="tpl-bod-<?php echo $k; ?>"
                                               name="templates[<?php echo $k; ?>][body]"
+                                              data-stage-key="<?php echo $k; ?>"
                                               rows="6"
                                               placeholder="<?php echo htmlspecialchars($stg['default_body']); ?>"><?php echo htmlspecialchars($cur_body); ?></textarea>
                                 </div>
 
                                 <!-- Dynamic Placeholders Tokens -->
                                 <div class="cliq-tokens-box">
-                                    <span class="cliq-tokens-label">Click placeholder to insert at cursor position:</span>
+                                    <span class="cliq-tokens-label"><?php echo get_string('cliq_tpl_tokens_label', 'local_batchanalytics'); ?></span>
                                     <div class="cliq-token-chips">
                                         <?php foreach ($stg['placeholders'] as $ph): ?>
                                             <button type="button"
                                                     class="cliq-token-chip"
-                                                    onclick="insertPlaceholder('<?php echo $k; ?>', '<?php echo $ph; ?>')">
+                                                    data-action="insert-placeholder"
+                                                    data-target="<?php echo $k; ?>"
+                                                    data-token="<?php echo htmlspecialchars($ph); ?>">
                                                 + <?php echo htmlspecialchars($ph); ?>
                                             </button>
                                         <?php endforeach; ?>
@@ -227,15 +230,17 @@ echo $OUTPUT->header();
                                     <div>
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-danger"
-                                                onclick="resetStageToDefault('<?php echo $k; ?>')">
-                                            🔄 Reset to Default
+                                                data-action="reset-stage"
+                                                data-target="<?php echo $k; ?>">
+                                            🔄 <?php echo get_string('cliq_tpl_btn_reset', 'local_batchanalytics'); ?>
                                         </button>
                                     </div>
                                     <div>
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-info"
-                                                onclick="toggleLivePreview('<?php echo $k; ?>')">
-                                            👁️ Live Cliq Preview
+                                                data-action="toggle-preview"
+                                                data-target="<?php echo $k; ?>">
+                                            👁️ <?php echo get_string('cliq_tpl_btn_preview', 'local_batchanalytics'); ?>
                                         </button>
                                     </div>
                                 </div>
@@ -243,10 +248,10 @@ echo $OUTPUT->header();
                                 <!-- Mock Cliq Card Preview -->
                                 <div class="cliq-preview-card" id="preview-<?php echo $k; ?>" style="border-left-color: <?php echo $stg['badge_color']; ?>;">
                                     <div class="cliq-preview-title" id="preview-title-<?php echo $k; ?>">
-                                        <!-- Rendered dynamically via JS -->
+                                        <!-- Rendered dynamically via AMD -->
                                     </div>
                                     <div class="cliq-preview-body" id="preview-body-<?php echo $k; ?>">
-                                        <!-- Rendered dynamically via JS -->
+                                        <!-- Rendered dynamically via AMD -->
                                     </div>
                                 </div>
                             </div>
@@ -259,14 +264,14 @@ echo $OUTPUT->header();
         <!-- Sticky Bottom Bar -->
         <div class="cliq-bottom-bar">
             <div class="cliq-bottom-left">
-                💡 Changes take effect immediately on next scheduled evaluation and completion alerts.
+                💡 <?php echo get_string('cliq_tpl_footer_note', 'local_batchanalytics'); ?>
             </div>
             <div class="cliq-bottom-right">
                 <a href="<?php echo $settingsurl->out(); ?>" class="btn btn-outline-light btn-sm">
-                    Cancel
+                    <?php echo get_string('cliq_tpl_btn_cancel', 'local_batchanalytics'); ?>
                 </a>
                 <button type="submit" class="btn btn-primary btn-sm px-4" style="font-weight: 600;">
-                    💾 Save All Templates
+                    💾 <?php echo get_string('cliq_tpl_btn_save_bottom', 'local_batchanalytics'); ?>
                 </button>
             </div>
         </div>
@@ -275,159 +280,6 @@ echo $OUTPUT->header();
 </div>
 
 <?php
-$cliq_js = <<<JS
-var lastFocusedElement = null;
-
-var targets = document.querySelectorAll('.cliq-active-target');
-targets.forEach(function(el) {
-    el.addEventListener('focus', function() {
-        lastFocusedElement = this;
-    });
-});
-
-var btnExpand = document.getElementById('btn-expand-all');
-if (btnExpand) {
-    btnExpand.addEventListener('click', function() {
-        document.querySelectorAll('.cliq-stage-card').forEach(function(card) {
-            card.classList.add('expanded');
-        });
-        document.querySelectorAll('.cliq-section-body').forEach(function(sec) {
-            sec.style.display = 'block';
-        });
-    });
-}
-
-var btnCollapse = document.getElementById('btn-collapse-all');
-if (btnCollapse) {
-    btnCollapse.addEventListener('click', function() {
-        document.querySelectorAll('.cliq-stage-card').forEach(function(card) {
-            card.classList.remove('expanded');
-        });
-    });
-}
-
-window.toggleStage = function(key) {
-    var card = document.getElementById('stage-card-' + key);
-    if (card) {
-        card.classList.toggle('expanded');
-    }
-};
-
-window.toggleSection = function(catKey) {
-    var body = document.getElementById('section-body-' + catKey);
-    var chevron = document.getElementById('section-chevron-' + catKey);
-    if (body) {
-        if (body.style.display === 'none') {
-            body.style.display = 'block';
-            if (chevron) chevron.textContent = '▼';
-        } else {
-            body.style.display = 'none';
-            if (chevron) chevron.textContent = '▶';
-        }
-    }
-};
-
-window.insertPlaceholder = function(stageKey, token) {
-    var target = lastFocusedElement;
-    var subEl = document.getElementById('tpl-sub-' + stageKey);
-    var bodEl = document.getElementById('tpl-bod-' + stageKey);
-
-    if (!target || (target !== subEl && target !== bodEl)) {
-        target = bodEl;
-    }
-    if (!target) return;
-
-    var start = target.selectionStart || 0;
-    var end = target.selectionEnd || 0;
-    var val = target.value;
-
-    target.value = val.substring(0, start) + token + val.substring(end);
-    target.focus();
-    target.selectionStart = target.selectionEnd = start + token.length;
-
-    var preview = document.getElementById('preview-' + stageKey);
-    if (preview && preview.classList.contains('visible')) {
-        window.updateLivePreview(stageKey);
-    }
-};
-
-window.resetStageToDefault = function(key) {
-    var card = document.getElementById('stage-card-' + key);
-    if (!card) return;
-
-    var defSub = card.getAttribute('data-default-subject');
-    var defBod = card.getAttribute('data-default-body');
-
-    var subEl = document.getElementById('tpl-sub-' + key);
-    var bodEl = document.getElementById('tpl-bod-' + key);
-
-    if (subEl) subEl.value = defSub;
-    if (bodEl) bodEl.value = defBod;
-
-    card.style.transition = 'box-shadow 0.3s ease';
-    card.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.4)';
-    setTimeout(function() {
-        card.style.boxShadow = '';
-    }, 800);
-
-    window.updateLivePreview(key);
-};
-
-var mockData = {
-    '{batch_name}': '25002A',
-    '{module_name}': 'Advance C Programming',
-    '{task_name}': 'Quiz 1 Evaluation',
-    '{activity_name}': 'Group Discussion 1',
-    '{due_date}': '15 Oct 2026',
-    '{mentor_name}': 'Prakash Narayanan',
-    '{sse_name}': 'Divya Krishnan',
-    '{pm_name}': 'Muruganantham V',
-    '{overdue_days}': '5',
-    '{completed_by}': 'Prakash Narayanan',
-    '{completion_date}': '12 Oct 2026',
-    '{link}': 'https://lms.example.com/local/batchanalytics/module.php?courseid=25',
-    '{url}': 'https://lms.example.com/local/batchanalytics/module.php?courseid=25'
-};
-
-function renderMockText(str) {
-    if (!str) return '';
-    var res = str;
-    for (var k in mockData) {
-        if (mockData.hasOwnProperty(k)) {
-            res = res.split(k).join(mockData[k]);
-        }
-    }
-    return res;
-}
-
-window.toggleLivePreview = function(key) {
-    var preview = document.getElementById('preview-' + key);
-    if (!preview) return;
-
-    if (preview.classList.contains('visible')) {
-        preview.classList.remove('visible');
-    } else {
-        window.updateLivePreview(key);
-        preview.classList.add('visible');
-    }
-};
-
-window.updateLivePreview = function(key) {
-    var subEl = document.getElementById('tpl-sub-' + key);
-    var bodEl = document.getElementById('tpl-bod-' + key);
-
-    var rawSub = subEl ? subEl.value : '';
-    var rawBod = bodEl ? bodEl.value : '';
-
-    var renderedSub = renderMockText(rawSub);
-    var renderedBod = renderMockText(rawBod);
-
-    var titleEl = document.getElementById('preview-title-' + key);
-    var bodyEl = document.getElementById('preview-body-' + key);
-
-    if (titleEl) titleEl.textContent = renderedSub;
-    if (bodyEl) bodyEl.textContent = renderedBod;
-};
-JS;
-$PAGE->requires->js_amd_inline($cliq_js);
+$PAGE->requires->js_call_amd('local_batchanalytics/cliq_templates', 'init');
+echo $OUTPUT->footer();
 echo $OUTPUT->footer();

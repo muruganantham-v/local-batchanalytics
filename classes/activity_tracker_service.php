@@ -22,6 +22,24 @@ class activity_tracker_service {
     }
 
     /**
+     * Check whether local_batchanalytics_activity_tracker table has sectionid field.
+     *
+     * @return bool
+     */
+    public static function has_sectionid_field(): bool {
+        global $DB;
+        static $has_sec = null;
+        if ($has_sec === null) {
+            try {
+                $has_sec = $DB->get_manager()->field_exists('local_batchanalytics_activity_tracker', 'sectionid');
+            } catch (\Throwable $e) {
+                $has_sec = false;
+            }
+        }
+        return (bool)$has_sec;
+    }
+
+    /**
      * @param int $courseid
      * @param int $sectionid Optional class section ID
      * @return array
@@ -51,8 +69,26 @@ class activity_tracker_service {
         }
         $this->sync_course_module_activities($courseid, $sectionid);
         $activities = $this->get_course_activities($course);
-        $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
-            'id, cmid, completed, completiondate, modifiedby, timemodified');
+        if (self::has_sectionid_field()) {
+            if ($sectionid > 0) {
+                // Section-specific tracker records take precedence over template records (sectionid = 0).
+                $saved = $DB->get_records_select(
+                    'local_batchanalytics_activity_tracker',
+                    'courseid = :cid AND (sectionid = :secid OR sectionid = 0)',
+                    ['cid' => $courseid, 'secid' => $sectionid],
+                    'sectionid ASC, id ASC',
+                    'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid'
+                );
+            } else {
+                $saved = $DB->get_records('local_batchanalytics_activity_tracker', [
+                    'courseid' => $courseid,
+                    'sectionid' => 0,
+                ], '', 'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid');
+            }
+        } else {
+            $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
+                'id, cmid, completed, completiondate, modifiedby, timemodified');
+        }
         $savedbycmid = [];
         $modifier_ids = [];
         foreach ($saved as $record) {
@@ -137,10 +173,11 @@ class activity_tracker_service {
      * @param int $cmid
      * @param bool $completed
      * @param string $completiondate
+     * @param int $sectionid Optional class section ID
      * @return array
      */
     public function save_activity_status(int $courseid, int $userid, int $cmid, bool $completed,
-            string $completiondate): array {
+            string $completiondate, int $sectionid = 0): array {
         global $DB;
 
         $this->require_table();
@@ -156,10 +193,15 @@ class activity_tracker_service {
 
         $completiondate = $this->normalise_date($completiondate);
         $now = time();
-        $record = $DB->get_record('local_batchanalytics_activity_tracker', [
+        $criteria = [
             'courseid' => $courseid,
             'cmid' => $cmid,
-        ], '*', IGNORE_MISSING);
+        ];
+        if (self::has_sectionid_field()) {
+            $criteria['sectionid'] = $sectionid;
+        }
+
+        $record = $DB->get_record('local_batchanalytics_activity_tracker', $criteria, '*', IGNORE_MISSING);
         if ($record) {
             $record->completed = $completed ? 1 : 0;
             $record->completiondate = $completiondate;
@@ -175,6 +217,9 @@ class activity_tracker_service {
                 'modifiedby' => $userid,
                 'timemodified' => $now,
             ];
+            if (self::has_sectionid_field()) {
+                $record->sectionid = $sectionid;
+            }
             $record->id = $DB->insert_record('local_batchanalytics_activity_tracker', $record);
         }
 
@@ -183,6 +228,7 @@ class activity_tracker_service {
             'completed' => !empty($record->completed),
             'completiondate' => (string)$record->completiondate,
             'timemodified' => (int)$record->timemodified,
+            'sectionid' => isset($record->sectionid) ? (int)$record->sectionid : $sectionid,
         ];
     }
 
@@ -996,15 +1042,19 @@ class activity_tracker_service {
                         0,
                         $sectionid
                     );
+                    if ($sectionid > 0) {
+                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_name);
+                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_key);
+                    }
                     $results[$act_key] = 'reverted_to_incomplete';
                 }
             }
             // Case B: All submissions evaluated -> automatically mark completed
             else if ($metrics['total_pending'] === 0 && $metrics['total_evaluated'] > 0) {
-                if (!$is_currently_complete || !empty($current_saved['is_auto']) || empty($current_saved['modifiedby'])) {
-                    $eval_time = $metrics['latest_graded_time'] > 0 ? $metrics['latest_graded_time'] : time();
-                    $eval_date = date('Y-m-d', $eval_time);
+                $eval_time = $metrics['latest_graded_time'] > 0 ? $metrics['latest_graded_time'] : time();
+                $eval_date = date('Y-m-d', $eval_time);
 
+                if (!$is_currently_complete) {
                     \local_batchanalytics\mentor_activity_service::save_activity_status(
                         $courseid,
                         $act_name,
@@ -1015,6 +1065,19 @@ class activity_tracker_service {
                         true
                     );
                     $results[$act_key] = 'auto_completed';
+                } else if (!empty($current_saved['is_auto']) && !empty($current_saved['completiondate']) && $current_saved['completiondate'] !== $eval_date) {
+                    // Date update only; suppress notification alert
+                    \local_batchanalytics\mentor_activity_service::save_activity_status(
+                        $courseid,
+                        $act_name,
+                        true,
+                        $eval_date,
+                        0,
+                        $sectionid,
+                        true,
+                        false // send_alert = false
+                    );
+                    $results[$act_key] = 'date_updated';
                 }
             }
         }
@@ -1057,7 +1120,11 @@ class activity_tracker_service {
             }
         }
 
-        $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid]);
+        $criteria = ['courseid' => $courseid];
+        if (self::has_sectionid_field()) {
+            $criteria['sectionid'] = $sectionid;
+        }
+        $saved = $DB->get_records('local_batchanalytics_activity_tracker', $criteria);
         $savedbycmid = [];
         foreach ($saved as $record) {
             $savedbycmid[(int)$record->cmid] = $record;
@@ -1121,7 +1188,7 @@ class activity_tracker_service {
                 }
             } else if ($modname === 'vpl' && $DB->get_manager()->table_exists('vpl_submissions')) {
                 $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
-                $params = array_merge(['instance' => $instance], $student_params);
+                $params = array_merge(['instance' => $instance, 'instance_sub' => $instance], $student_params);
 
                 $sql_vpl_pend = "
                     SELECT COUNT(DISTINCT s.id)
@@ -1129,6 +1196,7 @@ class activity_tracker_service {
                     JOIN (
                         SELECT vpl, userid, MAX(id) as maxid
                         FROM {vpl_submissions}
+                        WHERE vpl = :instance_sub
                         GROUP BY vpl, userid
                     ) latest ON latest.maxid = s.id
                     WHERE s.vpl = :instance
@@ -1143,6 +1211,7 @@ class activity_tracker_service {
                     JOIN (
                         SELECT vpl, userid, MAX(id) as maxid
                         FROM {vpl_submissions}
+                        WHERE vpl = :instance_sub
                         GROUP BY vpl, userid
                     ) latest ON latest.maxid = s.id
                     WHERE s.vpl = :instance
@@ -1269,7 +1338,7 @@ class activity_tracker_service {
                 $eval_date = date('Y-m-d', $latest_graded_time > 0 ? $latest_graded_time : time());
                 $grader_id = 0; // 0 indicates System (Auto)
 
-                if (!$is_completed || empty($existing_rec->modifiedby) || empty($existing_rec->completiondate)) {
+                if (!$is_completed || empty($existing_rec->completiondate) || $existing_rec->completiondate !== $eval_date) {
                     if ($existing_rec) {
                         $existing_rec->completed = 1;
                         $existing_rec->completiondate = $eval_date;
@@ -1285,6 +1354,9 @@ class activity_tracker_service {
                             'modifiedby'     => $grader_id,
                             'timemodified'   => time(),
                         ];
+                        if (self::has_sectionid_field()) {
+                            $newrec->sectionid = $sectionid;
+                        }
                         $DB->insert_record('local_batchanalytics_activity_tracker', $newrec);
                     }
                     $results[$cmid] = 'auto_completed';
@@ -1760,7 +1832,7 @@ class activity_tracker_service {
         }
 
         if ($modname === 'vpl' && $DB->get_manager()->table_exists('vpl_submissions')) {
-            $params = array_merge(['instance' => $instance], $student_params);
+            $params = array_merge(['instance' => $instance, 'instance_sub' => $instance], $student_params);
             $vpl_stu_sql = str_replace('s.userid', 's.userid', $student_filter_sql);
             $sql_pend = "
                 SELECT COUNT(DISTINCT s.id)
@@ -1768,6 +1840,7 @@ class activity_tracker_service {
                 JOIN (
                     SELECT vpl, userid, MAX(id) as maxid
                     FROM {vpl_submissions}
+                    WHERE vpl = :instance_sub
                     GROUP BY vpl, userid
                 ) latest ON latest.maxid = s.id
                 WHERE s.vpl = :instance
@@ -1782,6 +1855,7 @@ class activity_tracker_service {
                 JOIN (
                     SELECT vpl, userid, MAX(id) as maxid
                     FROM {vpl_submissions}
+                    WHERE vpl = :instance_sub
                     GROUP BY vpl, userid
                 ) latest ON latest.maxid = s.id
                 WHERE s.vpl = :instance

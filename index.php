@@ -137,9 +137,9 @@ if ($action === 'complete_task') {
             'act_key'      => optional_param('act_key', '', PARAM_RAW),
             'review_notes' => optional_param('review_notes', '', PARAM_RAW),
             'mentorid'     => optional_param('mentorid', 0, PARAM_INT),
-            'plannedstart' => optional_param('plannedstart', $selected_date, PARAM_RAW_TRIMMED),
-            'actualend'    => optional_param('actualend', $selected_date, PARAM_RAW_TRIMMED),
-            'actualstart'  => optional_param('actualstart', $selected_date, PARAM_RAW_TRIMMED),
+            'plannedstart' => optional_param('plannedstart', ($type === 'am_sched' ? $selected_date : 0), PARAM_RAW_TRIMMED),
+            'actualend'    => optional_param('actualend', (in_array($type, ['am_end', 'am_closer'], true) ? $selected_date : 0), PARAM_RAW_TRIMMED),
+            'actualstart'  => optional_param('actualstart', ($type === 'am_start' ? $selected_date : 0), PARAM_RAW_TRIMMED),
         ];
         $res = \local_batchanalytics\task_service::mark_activity_complete($userid, $type, $params);
         if (!empty($res['success'])) {

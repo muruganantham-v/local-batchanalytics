@@ -25,11 +25,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Custom uninstall procedure. Purges all plugin configuration settings and tokens.
+ * Custom uninstall procedure.
+ * Note: Moodle core automatically cleans up install.xml tables, capabilities,
+ * events, and clears plugin configuration settings upon uninstallation (Finding 29).
  *
  * @return bool
  */
 function xmldb_local_batchanalytics_uninstall() {
-    unset_all_config_for_plugin('local_batchanalytics');
     return true;
 }

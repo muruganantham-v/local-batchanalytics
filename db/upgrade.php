@@ -349,8 +349,14 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
     if ($oldversion < 2026093001) {
         require_once(__DIR__ . '/../classes/mentor_activity_service.php');
 
-        set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
-        set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        $existing_act = get_config('local_batchanalytics', 'mentor_master_activities');
+        if ($existing_act === false || $existing_act === null || trim((string)$existing_act) === '') {
+            set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+        }
+        $existing_grp = get_config('local_batchanalytics', 'mentor_activity_grouping');
+        if ($existing_grp === false || $existing_grp === null || trim((string)$existing_grp) === '') {
+            set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        }
 
         upgrade_plugin_savepoint(true, 2026093001, 'local', 'batchanalytics');
     }
@@ -359,8 +365,14 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
     if ($oldversion < 2026100101) {
         require_once(__DIR__ . '/../classes/mentor_activity_service.php');
 
-        set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
-        set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        $existing_act = get_config('local_batchanalytics', 'mentor_master_activities');
+        if ($existing_act === false || $existing_act === null || trim((string)$existing_act) === '') {
+            set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+        }
+        $existing_grp = get_config('local_batchanalytics', 'mentor_activity_grouping');
+        if ($existing_grp === false || $existing_grp === null || trim((string)$existing_grp) === '') {
+            set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        }
 
         upgrade_plugin_savepoint(true, 2026100101, 'local', 'batchanalytics');
     }
@@ -406,8 +418,14 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
     if ($oldversion < 2026101403) {
         require_once(__DIR__ . '/../classes/mentor_activity_service.php');
 
-        set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
-        set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        $existing_act = get_config('local_batchanalytics', 'mentor_master_activities');
+        if ($existing_act === false || $existing_act === null || trim((string)$existing_act) === '') {
+            set_config('mentor_master_activities', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_MASTER_ACTIVITIES), 'local_batchanalytics');
+        }
+        $existing_grp = get_config('local_batchanalytics', 'mentor_activity_grouping');
+        if ($existing_grp === false || $existing_grp === null || trim((string)$existing_grp) === '') {
+            set_config('mentor_activity_grouping', json_encode(\local_batchanalytics\mentor_activity_service::DEFAULT_GROUPING_RULES), 'local_batchanalytics');
+        }
 
         upgrade_plugin_savepoint(true, 2026101403, 'local', 'batchanalytics');
     }
@@ -415,7 +433,10 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
     if ($oldversion < 2026101404) {
         require_once(__DIR__ . '/../classes/activity_tracker_service.php');
 
-        set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
+        $existing_cats = get_config('local_batchanalytics', 'module_tracker_categories');
+        if ($existing_cats === false || $existing_cats === null || trim((string)$existing_cats) === '') {
+            set_config('module_tracker_categories', json_encode(\local_batchanalytics\activity_tracker_service::get_default_tracker_categories()), 'local_batchanalytics');
+        }
 
         upgrade_plugin_savepoint(true, 2026101404, 'local', 'batchanalytics');
     }
@@ -620,11 +641,57 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         $dbman = $DB->get_manager();
 
         // 1. Migrate settings from block_batchanalytics if not already set in local_batchanalytics.
+        $allowed_settings = [
+            'zoho_client_id',
+            'zoho_client_secret',
+            'zoho_refresh_token',
+            'zoho_accounts_url',
+            'zoho_api_base_url',
+            'zoho_cliq_enabled',
+            'zoho_cliq_bot_url',
+            'zoho_cliq_zapikey',
+            'zoho_cliq_default_channel',
+            'student_crm_module_api_name',
+            'crm_fields_config',
+            'mentor_master_activities',
+            'mentor_activity_grouping',
+            'module_tracker_categories',
+            'mentor_roles',
+            'ssexecutive_roles',
+            'sslead_roles',
+            'sslead_email',
+            'program_manager_roles',
+            'assistant_manager_roles',
+        ];
+        $allowed_prefixes = [
+            'cliq_tpl_',
+            'module_tracker_',
+        ];
+
         $block_configs = $DB->get_records('config_plugins', ['plugin' => 'block_batchanalytics']);
         foreach ($block_configs as $cfg) {
-            $existing = get_config('local_batchanalytics', $cfg->name);
+            $name = trim((string)$cfg->name);
+            if ($name === '' || $name === 'version') {
+                continue;
+            }
+
+            $is_allowed = in_array($name, $allowed_settings, true);
+            if (!$is_allowed) {
+                foreach ($allowed_prefixes as $prefix) {
+                    if (strpos($name, $prefix) === 0) {
+                        $is_allowed = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$is_allowed) {
+                continue;
+            }
+
+            $existing = get_config('local_batchanalytics', $name);
             if ($existing === false || $existing === null || trim((string)$existing) === '') {
-                set_config($cfg->name, $cfg->value, 'local_batchanalytics');
+                set_config($name, $cfg->value, 'local_batchanalytics');
             }
         }
 
@@ -662,6 +729,88 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         }
 
         upgrade_plugin_savepoint(true, 2026102001, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026110301) {
+        // Isolate course module activity tracking per class section (Finding 21).
+        $table = new xmldb_table('local_batchanalytics_activity_tracker');
+
+        if ($dbman->table_exists($table)) {
+            $field = new xmldb_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'cmid');
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+
+            $oldindex = new xmldb_index('course_cmid_uix', XMLDB_INDEX_UNIQUE, ['courseid', 'cmid']);
+            if ($dbman->index_exists($table, $oldindex)) {
+                $dbman->drop_index($table, $oldindex);
+            }
+
+            $newindex = new xmldb_index('course_cmid_sec_uix', XMLDB_INDEX_UNIQUE, ['courseid', 'cmid', 'sectionid']);
+            if (!$dbman->index_exists($table, $newindex)) {
+                $dbman->add_index($table, $newindex);
+            }
+
+            $secindex = new xmldb_index('sectionid_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid']);
+            if (!$dbman->index_exists($table, $secindex)) {
+                $dbman->add_index($table, $secindex);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026110301, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026110302) {
+        // Add userid to Zoho Cliq dispatch log to prevent orphaning after user email change (Finding 24).
+        $table = new xmldb_table('local_batchanalytics_cliq_log');
+
+        if ($dbman->table_exists($table)) {
+            $field = new xmldb_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'recipient_email');
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+
+            $index = new xmldb_index('userid_ix', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+            if (!$dbman->index_exists($table, $index)) {
+                $dbman->add_index($table, $index);
+            }
+
+            // Backfill userid from recipient_email for existing logs.
+            $logs = $DB->get_records_select(
+                'local_batchanalytics_cliq_log',
+                "(userid = 0 OR userid IS NULL) AND recipient_email IS NOT NULL AND recipient_email != ''",
+                null,
+                '',
+                'id, recipient_email'
+            );
+            if (!empty($logs)) {
+                $email_user_cache = [];
+                foreach ($logs as $log) {
+                    $email = strtolower(trim((string)$log->recipient_email));
+                    if ($email === '') {
+                        continue;
+                    }
+                    if (!array_key_exists($email, $email_user_cache)) {
+                        $matched_users = $DB->get_records_select(
+                            'user',
+                            'deleted = 0 AND LOWER(email) = :email',
+                            ['email' => $email],
+                            'id ASC',
+                            'id',
+                            0,
+                            1
+                        );
+                        $email_user_cache[$email] = !empty($matched_users) ? (int)reset($matched_users)->id : 0;
+                    }
+                    $uid = $email_user_cache[$email];
+                    if ($uid > 0) {
+                        $DB->set_field('local_batchanalytics_cliq_log', 'userid', $uid, ['id' => $log->id]);
+                    }
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026110302, 'local', 'batchanalytics');
     }
 
     return true;

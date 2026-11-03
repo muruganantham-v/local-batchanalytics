@@ -78,10 +78,17 @@ if ($action === 'saveactivity') {
 
             if (!$can_edit && $requested_batchid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
                 $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $requested_batchid]);
+                if (!$sec_obj) {
+                    $sec_obj = $DB->get_record('local_bm_classsection', ['batchid' => $requested_batchid]);
+                }
                 if ($sec_obj) {
-                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
-                    if (!empty($assignment['is_assigned'])) {
-                        $can_edit = true;
+                    // Enforce that courseid actually belongs to this batch (Finding 13).
+                    $matched_mod = \local_batchanalytics\util::get_section_module_by_course($sec_obj, $cid);
+                    if ($matched_mod) {
+                        $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
+                        if (!empty($assignment['is_pm']) || \local_batchanalytics\util::is_mentor_assigned_to_module($matched_mod, $USER)) {
+                            $can_edit = true;
+                        }
                     }
                 }
             } else if (!$can_edit && $coursecontext && is_enrolled($coursecontext, $USER->id)) {
@@ -95,7 +102,7 @@ if ($action === 'saveactivity') {
             }
 
             if ($completed) {
-                $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, $cmid);
+                $pending_check = \local_batchanalytics\activity_tracker_service::check_pending_submissions($cid, $cmid, '', $requested_batchid);
                 if ($pending_check['has_pending']) {
                     http_response_code(400);
                     echo json_encode([
@@ -109,7 +116,7 @@ if ($action === 'saveactivity') {
 
             $service = new \local_batchanalytics\activity_tracker_service();
             if ($service->is_table_available()) {
-                $saved = $service->save_activity_status($cid, $USER->id, $cmid, (bool)$completed, $completiondate);
+                $saved = $service->save_activity_status($cid, $USER->id, $cmid, (bool)$completed, $completiondate, $requested_batchid);
                 echo json_encode(['status' => 'ok', 'data' => $saved]);
                 die();
             }
@@ -155,10 +162,17 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
             $sec_check_id = $sectionid > 0 ? $sectionid : $requested_batchid;
             if (!$can_edit && $sec_check_id > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
                 $sec_obj = $DB->get_record('local_bm_classsection', ['id' => $sec_check_id]);
+                if (!$sec_obj) {
+                    $sec_obj = $DB->get_record('local_bm_classsection', ['batchid' => $sec_check_id]);
+                }
                 if ($sec_obj) {
-                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
-                    if (!empty($assignment['is_assigned'])) {
-                        $can_edit = true;
+                    // Enforce that courseid actually belongs to this batch (Finding 13).
+                    $matched_mod = \local_batchanalytics\util::get_section_module_by_course($sec_obj, $cid);
+                    if ($matched_mod) {
+                        $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_obj, $USER, true);
+                        if (!empty($assignment['is_pm']) || \local_batchanalytics\util::is_mentor_assigned_to_module($matched_mod, $USER)) {
+                            $can_edit = true;
+                        }
                     }
                 }
             } else if (!$can_edit && $coursecontext && is_enrolled($coursecontext, $USER->id)) {
@@ -973,16 +987,14 @@ $mod_p_start_ts = 0;
 if (is_numeric($mod_p_start_raw) && (int)$mod_p_start_raw > 100000) {
     $mod_p_start_ts = (int)$mod_p_start_raw;
 } else if (!empty($mod_p_start_raw) && $mod_p_start_raw !== '—') {
-    $parsed = strtotime($mod_p_start_raw);
-    if ($parsed !== false) $mod_p_start_ts = $parsed;
+    $mod_p_start_ts = \local_batchanalytics\util::parse_user_date($mod_p_start_raw);
 }
 
 $mod_p_end_ts = 0;
 if (is_numeric($mod_p_end_raw) && (int)$mod_p_end_raw > 100000) {
     $mod_p_end_ts = (int)$mod_p_end_raw;
 } else if (!empty($mod_p_end_raw) && $mod_p_end_raw !== '—') {
-    $parsed = strtotime($mod_p_end_raw);
-    if ($parsed !== false) $mod_p_end_ts = $parsed;
+    $mod_p_end_ts = \local_batchanalytics\util::parse_user_date($mod_p_end_raw);
 }
 
 // -------------------------------------------------------------------------
@@ -1008,8 +1020,8 @@ $ss_module_activities = [];
 
 if ($section && !empty($section->softskillsdata)) {
     $all_ss_activities = \local_batchanalytics\util::decode_softskills_activities($section->softskillsdata);
-    $range_start = $mod_p_start_ts > 0 ? strtotime('today midnight', $mod_p_start_ts) : 0;
-    $range_end = $mod_p_end_ts > 0 ? (strtotime('today midnight', $mod_p_end_ts) + 86399) : 0;
+    $range_start = $mod_p_start_ts > 0 ? (function_exists('usergetmidnight') ? usergetmidnight($mod_p_start_ts) : strtotime('today midnight', $mod_p_start_ts)) : 0;
+    $range_end = $mod_p_end_ts > 0 ? ((function_exists('usergetmidnight') ? usergetmidnight($mod_p_end_ts) : strtotime('today midnight', $mod_p_end_ts)) + 86399) : 0;
 
     foreach ($all_ss_activities as &$act) {
         $is_in_module = ($range_start > 0 && $range_end > 0 && $act['planned'] > 0

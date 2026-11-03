@@ -62,11 +62,23 @@ class provider implements
             [
                 'courseid'     => 'privacy:metadata:activity_tracker:courseid',
                 'cmid'         => 'privacy:metadata:activity_tracker:cmid',
+                'sectionid'    => 'privacy:metadata:activity_tracker:sectionid',
                 'completed'    => 'privacy:metadata:activity_tracker:completed',
                 'modifiedby'   => 'privacy:metadata:activity_tracker:modifiedby',
                 'timemodified' => 'privacy:metadata:activity_tracker:timemodified',
             ],
             'privacy:metadata:activity_tracker'
+        );
+
+        $collection->add_database_table(
+            'local_batchanalytics_mentor_act',
+            [
+                'courseid'       => 'privacy:metadata:mentor_act:courseid',
+                'selectedgroup'  => 'privacy:metadata:mentor_act:selectedgroup',
+                'activitiesdata' => 'privacy:metadata:mentor_act:activitiesdata',
+                'timemodified'   => 'privacy:metadata:mentor_act:timemodified',
+            ],
+            'privacy:metadata:mentor_act'
         );
 
         $collection->add_database_table(
@@ -78,10 +90,28 @@ class provider implements
                 'activity_key'    => 'privacy:metadata:cliq_log:activity_key',
                 'stage'           => 'privacy:metadata:cliq_log:stage',
                 'recipient_email' => 'privacy:metadata:cliq_log:recipient_email',
+                'userid'          => 'privacy:metadata:cliq_log:userid',
                 'timesent'        => 'privacy:metadata:cliq_log:timesent',
                 'status'          => 'privacy:metadata:cliq_log:status',
             ],
             'privacy:metadata:cliq_log'
+        );
+
+        $collection->add_external_location_link(
+            'zohocliq',
+            [
+                'name'  => 'privacy:metadata:zohocliq:name',
+                'email' => 'privacy:metadata:zohocliq:email',
+            ],
+            'privacy:metadata:zohocliq:summary'
+        );
+
+        $collection->add_external_location_link(
+            'zohocrm',
+            [
+                'studentid' => 'privacy:metadata:zohocrm:studentid',
+            ],
+            'privacy:metadata:zohocrm:summary'
         );
 
         return $collection;
@@ -97,7 +127,7 @@ class provider implements
         global $DB;
         $contextlist = new contextlist();
 
-        // Course contexts where user modified activity tracking records.
+        // 1. Course contexts where user modified activity tracking records.
         $sql = "SELECT c.id
                   FROM {context} c
                   JOIN {course} co ON co.id = c.instanceid AND c.contextlevel = :courselevel
@@ -105,22 +135,43 @@ class provider implements
                  WHERE at.modifiedby = :userid";
         $contextlist->add_from_sql($sql, ['courselevel' => CONTEXT_COURSE, 'userid' => $userid]);
 
-        // Review notes are attached to batches and managed at the system context level.
+        // 2. Course contexts where user modified mentor activities in JSON blob.
+        $mentor_sql = "SELECT c.id
+                         FROM {context} c
+                         JOIN {course} co ON co.id = c.instanceid AND c.contextlevel = :courselevel
+                         JOIN {local_batchanalytics_mentor_act} ma ON ma.courseid = co.id
+                        WHERE (" . $DB->sql_like('ma.activitiesdata', ':userlike1') . "
+                            OR " . $DB->sql_like('ma.activitiesdata', ':userlike2') . ")";
+        $contextlist->add_from_sql($mentor_sql, [
+            'courselevel' => CONTEXT_COURSE,
+            'userlike1'   => '%"modifiedby":' . $userid . '%',
+            'userlike2'   => '%"modifiedby": ' . $userid . '%',
+        ]);
+
+        // 3. Review notes are attached to batches and managed at the system context level.
         $notes_sql = "SELECT c.id
                         FROM {context} c
                         JOIN {local_batchanalytics_batch_notes} bn ON c.contextlevel = :syslevel
                        WHERE bn.userid = :userid";
         $contextlist->add_from_sql($notes_sql, ['syslevel' => CONTEXT_SYSTEM, 'userid' => $userid]);
 
-        // Zoho Cliq notification logs for this user's email at system context level.
+        // 4. Zoho Cliq notification logs at system context level:
+        // Match primarily by permanent userid, with fallback to recipient_email to prevent orphaning after email change.
         $user = $DB->get_record('user', ['id' => $userid], 'id, email');
-        if ($user && !empty($user->email)) {
-            $cliq_sql = "SELECT c.id
-                           FROM {context} c
-                           JOIN {local_batchanalytics_cliq_log} cl ON c.contextlevel = :syslevel
-                          WHERE cl.recipient_email = :email";
-            $contextlist->add_from_sql($cliq_sql, ['syslevel' => CONTEXT_SYSTEM, 'email' => $user->email]);
+        $user_email = ($user && !empty($user->email)) ? $user->email : '';
+
+        $cliq_params = ['syslevel' => CONTEXT_SYSTEM, 'userid' => $userid];
+        $cliq_where = 'cl.userid = :userid';
+        if ($user_email !== '') {
+            $cliq_where .= ' OR cl.recipient_email = :email';
+            $cliq_params['email'] = $user_email;
         }
+
+        $cliq_sql = "SELECT c.id
+                       FROM {context} c
+                       JOIN {local_batchanalytics_cliq_log} cl ON c.contextlevel = :syslevel
+                      WHERE $cliq_where";
+        $contextlist->add_from_sql($cliq_sql, $cliq_params);
 
         return $contextlist;
     }
@@ -131,6 +182,7 @@ class provider implements
      * @param userlist $userlist
      */
     public static function get_users_in_context(userlist $userlist) {
+        global $DB;
         $context = $userlist->get_context();
 
         if ($context instanceof \context_course) {
@@ -138,17 +190,42 @@ class provider implements
                       FROM {local_batchanalytics_activity_tracker}
                      WHERE courseid = :courseid AND modifiedby > 0";
             $userlist->add_from_sql('userid', $sql, ['courseid' => $context->instanceid]);
+
+            // Users who modified mentor activities for this course.
+            $rec = $DB->get_record('local_batchanalytics_mentor_act', ['courseid' => $context->instanceid], 'id, activitiesdata');
+            if ($rec && !empty($rec->activitiesdata)) {
+                $items = json_decode($rec->activitiesdata, true);
+                if (is_array($items)) {
+                    $mod_uids = [];
+                    foreach ($items as $item) {
+                        $uid = (int)($item['modifiedby'] ?? 0);
+                        if ($uid > 0) {
+                            $mod_uids[] = $uid;
+                        }
+                    }
+                    if (!empty($mod_uids)) {
+                        $userlist->add_users(array_values(array_unique($mod_uids)));
+                    }
+                }
+            }
         } else if ($context instanceof \context_system) {
             $sql = "SELECT userid
                       FROM {local_batchanalytics_batch_notes}
                      WHERE userid > 0";
             $userlist->add_from_sql('userid', $sql, []);
 
-            $cliq_sql = "SELECT u.id AS userid
-                           FROM {local_batchanalytics_cliq_log} cl
-                           JOIN {user} u ON u.email = cl.recipient_email
-                          WHERE u.deleted = 0";
-            $userlist->add_from_sql('userid', $cliq_sql, []);
+            // Cliq logs: match by permanent userid.
+            $cliq_user_sql = "SELECT userid
+                                FROM {local_batchanalytics_cliq_log}
+                               WHERE userid > 0";
+            $userlist->add_from_sql('userid', $cliq_user_sql, []);
+
+            // Fallback for any legacy rows without userid: match by email.
+            $cliq_legacy_sql = "SELECT u.id AS userid
+                                  FROM {local_batchanalytics_cliq_log} cl
+                                  JOIN {user} u ON LOWER(u.email) = LOWER(cl.recipient_email)
+                                 WHERE (cl.userid = 0 OR cl.userid IS NULL) AND u.deleted = 0";
+            $userlist->add_from_sql('userid', $cliq_legacy_sql, []);
         }
     }
 
@@ -182,25 +259,29 @@ class provider implements
                     );
                 }
 
-                // Export Cliq notification dispatch records for this user.
+                // Export Cliq notification dispatch records for this user (by userid or email).
+                $cliq_where = 'userid = :userid';
+                $cliq_params = ['userid' => $userid];
                 if (!empty($user->email)) {
-                    $logs = $DB->get_records('local_batchanalytics_cliq_log', ['recipient_email' => $user->email]);
-                    if (!empty($logs)) {
-                        $export_logs = [];
-                        foreach ($logs as $l) {
-                            $export_logs[] = [
-                                'activity_type' => $l->activity_type,
-                                'activity_key'  => $l->activity_key,
-                                'stage'         => $l->stage,
-                                'timesent'      => transform::datetime($l->timesent),
-                                'status'        => $l->status,
-                            ];
-                        }
-                        writer::with_context($context)->export_data(
-                            [get_string('pluginname', 'local_batchanalytics'), get_string('cliqnotifications', 'local_batchanalytics')],
-                            (object)['notifications' => $export_logs]
-                        );
+                    $cliq_where .= ' OR recipient_email = :email';
+                    $cliq_params['email'] = $user->email;
+                }
+                $logs = $DB->get_records_select('local_batchanalytics_cliq_log', $cliq_where, $cliq_params);
+                if (!empty($logs)) {
+                    $export_logs = [];
+                    foreach ($logs as $l) {
+                        $export_logs[] = [
+                            'activity_type' => $l->activity_type,
+                            'activity_key'  => $l->activity_key,
+                            'stage'         => $l->stage,
+                            'timesent'      => transform::datetime($l->timesent),
+                            'status'        => $l->status,
+                        ];
                     }
+                    writer::with_context($context)->export_data(
+                        [get_string('pluginname', 'local_batchanalytics'), get_string('cliqnotifications', 'local_batchanalytics')],
+                        (object)['notifications' => $export_logs]
+                    );
                 }
             } else if ($context instanceof \context_course) {
                 // Export activity tracking completion stamps by this user.
@@ -223,6 +304,33 @@ class provider implements
                         (object)['activities' => $export_tracker]
                     );
                 }
+
+                // Export mentor activities modified by this user in this course.
+                $mentor_act = $DB->get_record('local_batchanalytics_mentor_act', ['courseid' => $context->instanceid]);
+                if ($mentor_act && !empty($mentor_act->activitiesdata)) {
+                    $items = json_decode($mentor_act->activitiesdata, true);
+                    if (is_array($items)) {
+                        $user_activities = [];
+                        foreach ($items as $item) {
+                            if ((int)($item['modifiedby'] ?? 0) === $userid) {
+                                $user_activities[] = [
+                                    'key'            => $item['key'] ?? '',
+                                    'name'           => $item['name'] ?? '',
+                                    'completed'      => transform::yesno(!empty($item['completed'])),
+                                    'completiondate' => $item['completiondate'] ?? '',
+                                    'sectionid'      => $item['sectionid'] ?? 0,
+                                    'timemodified'   => !empty($item['timemodified']) ? transform::datetime($item['timemodified']) : '',
+                                ];
+                            }
+                        }
+                        if (!empty($user_activities)) {
+                            writer::with_context($context)->export_data(
+                                [get_string('pluginname', 'local_batchanalytics'), get_string('mentoractivities', 'local_batchanalytics')],
+                                (object)['activities' => $user_activities]
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -237,6 +345,7 @@ class provider implements
 
         if ($context instanceof \context_course) {
             $DB->delete_records('local_batchanalytics_activity_tracker', ['courseid' => $context->instanceid]);
+            $DB->delete_records('local_batchanalytics_mentor_act', ['courseid' => $context->instanceid]);
         } else if ($context instanceof \context_system) {
             $DB->delete_records('local_batchanalytics_batch_notes');
             $DB->delete_records('local_batchanalytics_cliq_log');
@@ -257,16 +366,44 @@ class provider implements
         foreach ($contextlist->get_contexts() as $context) {
             if ($context instanceof \context_system) {
                 $DB->delete_records('local_batchanalytics_batch_notes', ['userid' => $userid]);
+                // Delete Cliq logs by permanent userid OR current email to prevent orphaning after email change.
+                $cliq_where = 'userid = :userid';
+                $cliq_params = ['userid' => $userid];
                 if (!empty($user->email)) {
-                    $DB->delete_records('local_batchanalytics_cliq_log', ['recipient_email' => $user->email]);
+                    $cliq_where .= ' OR recipient_email = :email';
+                    $cliq_params['email'] = $user->email;
                 }
+                $DB->delete_records_select('local_batchanalytics_cliq_log', $cliq_where, $cliq_params);
             } else if ($context instanceof \context_course) {
+                // Anonymize user from activity tracker completions.
                 $DB->set_field(
                     'local_batchanalytics_activity_tracker',
                     'modifiedby',
                     0,
                     ['courseid' => $context->instanceid, 'modifiedby' => $userid]
                 );
+
+                // Anonymize user from mentor activities JSON blob.
+                $mentor_act = $DB->get_record('local_batchanalytics_mentor_act', ['courseid' => $context->instanceid]);
+                if ($mentor_act && !empty($mentor_act->activitiesdata)) {
+                    $items = json_decode($mentor_act->activitiesdata, true);
+                    if (is_array($items)) {
+                        $changed = false;
+                        foreach ($items as &$item) {
+                            if ((int)($item['modifiedby'] ?? 0) === $userid) {
+                                $item['modifiedby'] = 0;
+                                $item['modifiedbyname'] = '';
+                                $changed = true;
+                            }
+                        }
+                        unset($item);
+                        if ($changed) {
+                            $mentor_act->activitiesdata = json_encode(array_values($items), JSON_UNESCAPED_UNICODE);
+                            $mentor_act->timemodified = time();
+                            $DB->update_record('local_batchanalytics_mentor_act', $mentor_act);
+                        }
+                    }
+                }
             }
         }
     }
@@ -290,6 +427,11 @@ class provider implements
 
         if ($context instanceof \context_system) {
             $DB->delete_records_select('local_batchanalytics_batch_notes', "userid $insql", $inparams);
+
+            // Delete Cliq logs by permanent userid.
+            $DB->delete_records_select('local_batchanalytics_cliq_log', "userid $insql", $inparams);
+
+            // Also delete by email if any legacy records had userid = 0.
             $emails = $DB->get_fieldset_select('user', 'email', "id $insql AND email IS NOT NULL AND email != ''", $inparams);
             if (!empty($emails)) {
                 [$emailsql, $emailparams] = $DB->get_in_or_equal($emails, SQL_PARAMS_NAMED, 'clqmail');
@@ -303,6 +445,30 @@ class provider implements
                   WHERE courseid = :courseid AND modifiedby $insql",
                 $inparams
             );
+
+            // Anonymize mentor activities for multiple users.
+            $mentor_act = $DB->get_record('local_batchanalytics_mentor_act', ['courseid' => $context->instanceid]);
+            if ($mentor_act && !empty($mentor_act->activitiesdata)) {
+                $items = json_decode($mentor_act->activitiesdata, true);
+                if (is_array($items)) {
+                    $userids_map = array_flip($userids);
+                    $changed = false;
+                    foreach ($items as &$item) {
+                        $mid = (int)($item['modifiedby'] ?? 0);
+                        if ($mid > 0 && isset($userids_map[$mid])) {
+                            $item['modifiedby'] = 0;
+                            $item['modifiedbyname'] = '';
+                            $changed = true;
+                        }
+                    }
+                    unset($item);
+                    if ($changed) {
+                        $mentor_act->activitiesdata = json_encode(array_values($items), JSON_UNESCAPED_UNICODE);
+                        $mentor_act->timemodified = time();
+                        $DB->update_record('local_batchanalytics_mentor_act', $mentor_act);
+                    }
+                }
+            }
         }
     }
 }

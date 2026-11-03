@@ -535,26 +535,13 @@ class mentor_activity_service {
 
         $dbman = $DB->get_manager();
         if ($dbman->table_exists('local_bm_classsection')) {
-            $sections = $DB->get_records_select(
-                'local_bm_classsection',
-                $DB->sql_like('moduledata', ':pattern'),
-                ['pattern' => '%' . $courseid . '%'],
-                'id DESC'
-            );
-
-            if (empty($sections)) {
-                $sections = $DB->get_records('local_bm_classsection', null, 'id DESC');
-            }
-
-            foreach ($sections as $sec) {
-                $modules = util::decode_module_data($sec->moduledata, false);
-                foreach ($modules as $mod) {
-                    $cid = (int)($mod['moodlecourseid'] ?? $mod['courseid'] ?? 0);
-                    if ($cid === $courseid) {
-                        $name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
-                        if ($name !== '') {
-                            return $name;
-                        }
+            $sec = util::find_section_by_course($courseid, true);
+            if ($sec) {
+                $mod = util::get_section_module_by_course($sec, $courseid);
+                if ($mod) {
+                    $name = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                    if ($name !== '') {
+                        return $name;
                     }
                 }
             }
@@ -582,14 +569,22 @@ class mentor_activity_service {
     }
 
     /**
-     * Check class section module names mapped to this course and update course setting if matched.
+     * Check class section module names mapped to this course and update course setting if unconfigured.
+     * Respects existing manual admin configurations (does not overwrite).
      *
      * @param int $courseid
      * @return string Matched group name or empty string.
      */
     public static function sync_group_from_class_sections_for_course(int $courseid): string {
+        global $DB;
         if ($courseid <= 0 || !self::is_table_available()) {
             return '';
+        }
+
+        // If an explicit group or 'none' is already saved, do not overwrite it!
+        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
+        if ($rec && isset($rec->selectedgroup) && $rec->selectedgroup !== '') {
+            return trim($rec->selectedgroup);
         }
 
         $mod_name = self::get_module_name_for_course($courseid);
@@ -608,7 +603,7 @@ class mentor_activity_service {
 
     /**
      * Sync and update all courses mapped in class sections whose module names match configured mentor groups.
-     * Directly updates the course setting page mentor activity in database.
+     * Directly updates the course setting page mentor activity in database for unconfigured courses only.
      *
      * @return int Count of courses updated.
      */
@@ -648,8 +643,8 @@ class mentor_activity_service {
                 $matched = self::find_matching_group_for_module($mod_name);
                 if ($matched !== '' && isset($rules[$matched])) {
                     $rec = $DB->get_record(self::get_table_name(), ['courseid' => $cid], 'selectedgroup', IGNORE_MISSING);
-                    $existing = $rec && !empty($rec->selectedgroup) ? trim($rec->selectedgroup) : '';
-                    if ($existing !== $matched) {
+                    $existing = ($rec && isset($rec->selectedgroup)) ? trim($rec->selectedgroup) : '';
+                    if ($existing === '') {
                         self::save_course_selected_group($cid, $matched);
                         $updated_count++;
                     }
@@ -662,12 +657,14 @@ class mentor_activity_service {
 
     /**
      * Get the selected group for a course.
-     * Automatically selects and saves the group based on the mapped class section module name.
+     * Pure read operation: reads the manual admin setting if present, or resolves an
+     * auto-matched group from the mapped class section module name without writing to the database.
      *
      * @param int $courseid
-     * @return string
+     * @param bool $auto_fallback Whether to resolve an auto-matched group if not explicitly configured.
+     * @return string Selected or auto-matched group name, 'none', or empty string.
      */
-    public static function get_course_selected_group(int $courseid): string {
+    public static function get_course_selected_group(int $courseid, bool $auto_fallback = true): string {
         global $DB;
         if ($courseid <= 0 || !self::is_table_available()) {
             return '';
@@ -677,17 +674,25 @@ class mentor_activity_service {
 
         // 1. Check existing saved record in database
         $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
-        if ($rec && !empty($rec->selectedgroup)) {
+        if ($rec && isset($rec->selectedgroup) && $rec->selectedgroup !== '') {
             $selected = trim($rec->selectedgroup);
-            if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0 && isset($rules[$selected])) {
+            if (strcasecmp($selected, 'none') === 0 || $selected === '0') {
+                return 'none';
+            }
+            if (isset($rules[$selected])) {
                 return $selected;
             }
         }
 
-        // 2. Auto-select based on the module name mapped to this course in local_bm_classsection
-        $auto_group = self::sync_group_from_class_sections_for_course($courseid);
-        if ($auto_group !== '' && isset($rules[$auto_group])) {
-            return $auto_group;
+        // 2. Pure read fallback: resolve from module name mapped to this course WITHOUT writing to DB
+        if ($auto_fallback) {
+            $mod_name = self::get_module_name_for_course($courseid);
+            if ($mod_name !== '') {
+                $matched = self::find_matching_group_for_module($mod_name);
+                if ($matched !== '' && isset($rules[$matched])) {
+                    return $matched;
+                }
+            }
         }
 
         return '';
@@ -707,55 +712,83 @@ class mentor_activity_service {
         }
 
         $groupname = trim($groupname);
-        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
-
-        $now = time();
-        if ($rec) {
-            $rec->selectedgroup = $groupname;
-            $rec->timemodified = $now;
-            return $DB->update_record(self::get_table_name(), $rec);
+        $lock = util::get_lock('mentor_act_course_' . $courseid, 15);
+        if (!$lock) {
+            return false;
         }
 
-        $newrec = new \stdClass();
-        $newrec->courseid = $courseid;
-        $newrec->selectedgroup = $groupname;
-        $newrec->activitiesdata = json_encode([]);
-        $newrec->timemodified = $now;
-        return (bool)$DB->insert_record(self::get_table_name(), $newrec);
+        try {
+            $transaction = $DB->start_delegated_transaction();
+
+            $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
+            $now = time();
+            if ($rec) {
+                $rec->selectedgroup = $groupname;
+                $rec->timemodified = $now;
+                $ok = $DB->update_record(self::get_table_name(), $rec);
+            } else {
+                $newrec = new \stdClass();
+                $newrec->courseid = $courseid;
+                $newrec->selectedgroup = $groupname;
+                $newrec->activitiesdata = json_encode([]);
+                $newrec->timemodified = $now;
+                $ok = (bool)$DB->insert_record(self::get_table_name(), $newrec);
+            }
+
+            $transaction->allow_commit();
+            return $ok;
+        } finally {
+            util::release_lock($lock);
+        }
     }
 
     /**
      * Resolve the group for a given course.
-     * Automatically selects the group based on the module name mapped to the course.
-     * If no module name or mapped group matches, returns empty string indicating no mentor activities.
+     * Manual admin configuration takes precedence over auto-matching.
+     * Auto-matching is applied dynamically for display/evaluation only when no manual setting exists.
+     * Pure read operation: never mutates or overwrites database records on page views.
      *
      * @param int $courseid
      * @param string $coursename Module name or course name.
      * @return array{group: string, is_manual: bool}
      */
     public static function resolve_group_for_course(int $courseid, string $coursename = ''): array {
+        global $DB;
         $rules = self::get_grouping_rules();
 
-        // 1. If coursename (which is passed as the module name) is provided, match directly
-        if ($coursename !== '') {
-            $matched = self::find_matching_group_for_module($coursename);
-            if ($matched !== '' && isset($rules[$matched])) {
-                // Ensure this is saved for the course as well if not already set
-                if ($courseid > 0) {
-                    $saved = self::get_course_selected_group($courseid);
-                    if ($saved !== $matched) {
-                        self::save_course_selected_group($courseid, $matched);
-                    }
+        // 1. If courseid is valid, check database for an explicit manual configuration first
+        if ($courseid > 0 && self::is_table_available()) {
+            $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid], 'selectedgroup', IGNORE_MISSING);
+            if ($rec && isset($rec->selectedgroup) && $rec->selectedgroup !== '') {
+                $selected = trim($rec->selectedgroup);
+                if (strcasecmp($selected, 'none') === 0 || $selected === '0') {
+                    // Admin explicitly chose 'None' (disabled mentor activities for this course)
+                    return ['group' => '', 'is_manual' => true];
                 }
-                return ['group' => $matched, 'is_manual' => true];
+                if (isset($rules[$selected])) {
+                    // Admin explicitly chose this group
+                    return ['group' => $selected, 'is_manual' => true];
+                }
             }
         }
 
-        // 2. If courseid is valid, check DB or auto-resolve from class section module mapping
+        // 2. Only if no manual configuration exists in DB, fall back to auto-matching dynamically
+        // Check passed coursename (module name) first
+        if ($coursename !== '') {
+            $matched = self::find_matching_group_for_module($coursename);
+            if ($matched !== '' && isset($rules[$matched])) {
+                return ['group' => $matched, 'is_manual' => false];
+            }
+        }
+
+        // Check module name mapped in local_bm_classsection for this course
         if ($courseid > 0) {
-            $selected = self::get_course_selected_group($courseid);
-            if ($selected !== '' && $selected !== '0' && strcasecmp($selected, 'none') !== 0 && isset($rules[$selected])) {
-                return ['group' => $selected, 'is_manual' => true];
+            $mod_name = self::get_module_name_for_course($courseid);
+            if ($mod_name !== '') {
+                $matched = self::find_matching_group_for_module($mod_name);
+                if ($matched !== '' && isset($rules[$matched])) {
+                    return ['group' => $matched, 'is_manual' => false];
+                }
             }
         }
 
@@ -893,7 +926,7 @@ class mentor_activity_service {
             $completiondate = !empty($saved['completiondate']) ? (string)$saved['completiondate'] : '';
             $completiondate_formatted = '—';
             if ($completed && !empty($completiondate) && $completiondate !== '—') {
-                $comp_ts = is_numeric($completiondate) ? (int)$completiondate : strtotime($completiondate);
+                $comp_ts = is_numeric($completiondate) ? (int)$completiondate : util::parse_user_date($completiondate);
                 if ($comp_ts > 0) {
                     $completiondate_formatted = userdate($comp_ts, '%d %b %Y');
                 }
@@ -954,6 +987,8 @@ class mentor_activity_service {
      * @param string $completiondate
      * @param int $userid
      * @param int $sectionid Optional class section id for section-specific tracking.
+     * @param bool $is_auto Whether this save was triggered automatically by the system.
+     * @param bool $send_alert Whether to send a Cliq completion alert on state transition.
      * @return array
      * @throws \moodle_exception
      */
@@ -964,7 +999,8 @@ class mentor_activity_service {
         string $completiondate,
         int $userid,
         int $sectionid = 0,
-        bool $is_auto = false
+        bool $is_auto = false,
+        bool $send_alert = true
     ): array {
         global $DB;
 
@@ -983,124 +1019,141 @@ class mentor_activity_service {
             $date_val = !empty($completiondate) ? trim($completiondate) : date('Y-m-d', $now);
         }
 
-        $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
-        $activities_list = [];
-
-        if ($rec && !empty($rec->activitiesdata)) {
-            $activities_list = json_decode($rec->activitiesdata, true) ?: [];
+        $lock = util::get_lock('mentor_act_course_' . $courseid, 15);
+        if (!$lock) {
+            throw new \moodle_exception('locktimeout', 'local_batchanalytics', '', 'Could not acquire lock for course mentor activities.');
         }
 
-        $found = false;
-        $updated_item = null;
-        $target_key = mb_strtolower(self::slugify_key($activityname));
-        $target_name = mb_strtolower($activityname);
-        $template_item = null;
+        try {
+            $transaction = $DB->start_delegated_transaction();
 
-        if ($sectionid > 0) {
-            // Case 1: Saving for a specific section.
-            // Look for an exact match for this section.
-            foreach ($activities_list as &$item) {
-                $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
-                $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
-                $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
-                $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
+            $rec = $DB->get_record(self::get_table_name(), ['courseid' => $courseid]);
+            $activities_list = [];
 
-                if ($key_matches) {
-                    if ($item_sec === $sectionid) {
+            if ($rec && !empty($rec->activitiesdata)) {
+                $activities_list = json_decode($rec->activitiesdata, true) ?: [];
+            }
+
+            $found = false;
+            $was_already_complete = false;
+            $updated_item = null;
+            $target_key = mb_strtolower(self::slugify_key($activityname));
+            $target_name = mb_strtolower($activityname);
+            $template_item = null;
+
+            if ($sectionid > 0) {
+                // Case 1: Saving for a specific section.
+                // Look for an exact match for this section.
+                foreach ($activities_list as &$item) {
+                    $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
+                    $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+                    $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                    $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
+
+                    if ($key_matches) {
+                        if ($item_sec === $sectionid) {
+                            $was_already_complete = !empty($item['completed']);
+                            $item['completed'] = $completed ? 1 : 0;
+                            $item['completiondate'] = $date_val;
+                            $item['modifiedby'] = $is_auto ? 0 : $userid;
+                            $item['is_auto'] = $is_auto ? 1 : 0;
+                            $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
+                            $item['timemodified'] = $now;
+                            $item['sectionid'] = $sectionid;
+                            $updated_item = $item;
+                            $found = true;
+                            break;
+                        } else if ($item_sec === 0 && $template_item === null) {
+                            // Keep a reference to the template without modifying it.
+                            $template_item = $item;
+                        }
+                    }
+                }
+                unset($item);
+
+                // If not found for this section, append a new section entry. Never mutate the template in-place!
+                if (!$found) {
+                    $updated_item = [
+                        'key'            => !empty($template_item['key']) ? $template_item['key'] : self::slugify_key($activityname),
+                        'name'           => !empty($template_item['name']) ? $template_item['name'] : $activityname,
+                        'completed'      => $completed ? 1 : 0,
+                        'completiondate' => $date_val,
+                        'modifiedby'     => $is_auto ? 0 : $userid,
+                        'is_auto'        => $is_auto ? 1 : 0,
+                        'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
+                        'timemodified'   => $now,
+                        'sectionid'      => $sectionid,
+                    ];
+                    if (isset($template_item['activitytype'])) {
+                        $updated_item['activitytype'] = $template_item['activitytype'];
+                    }
+                    if (isset($template_item['group'])) {
+                        $updated_item['group'] = $template_item['group'];
+                    }
+                    $activities_list[] = $updated_item;
+                }
+            } else {
+                // Case 2: Saving course-wide template (sectionid <= 0).
+                foreach ($activities_list as &$item) {
+                    $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
+                    $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
+                    $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
+                    $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
+
+                    if ($key_matches && $item_sec === 0) {
+                        $was_already_complete = !empty($item['completed']);
                         $item['completed'] = $completed ? 1 : 0;
                         $item['completiondate'] = $date_val;
                         $item['modifiedby'] = $is_auto ? 0 : $userid;
                         $item['is_auto'] = $is_auto ? 1 : 0;
                         $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
                         $item['timemodified'] = $now;
-                        $item['sectionid'] = $sectionid;
+                        $item['sectionid'] = 0;
                         $updated_item = $item;
                         $found = true;
                         break;
-                    } else if ($item_sec === 0 && $template_item === null) {
-                        // Keep a reference to the template without modifying it.
-                        $template_item = $item;
                     }
                 }
-            }
-            unset($item);
+                unset($item);
 
-            // If not found for this section, append a new section entry. Never mutate the template in-place!
-            if (!$found) {
-                $updated_item = [
-                    'key'            => !empty($template_item['key']) ? $template_item['key'] : self::slugify_key($activityname),
-                    'name'           => !empty($template_item['name']) ? $template_item['name'] : $activityname,
-                    'completed'      => $completed ? 1 : 0,
-                    'completiondate' => $date_val,
-                    'modifiedby'     => $is_auto ? 0 : $userid,
-                    'is_auto'        => $is_auto ? 1 : 0,
-                    'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
-                    'timemodified'   => $now,
-                    'sectionid'      => $sectionid,
-                ];
-                if (isset($template_item['activitytype'])) {
-                    $updated_item['activitytype'] = $template_item['activitytype'];
-                }
-                if (isset($template_item['group'])) {
-                    $updated_item['group'] = $template_item['group'];
-                }
-                $activities_list[] = $updated_item;
-            }
-        } else {
-            // Case 2: Saving course-wide template (sectionid <= 0).
-            foreach ($activities_list as &$item) {
-                $item_key = !empty($item['key']) ? mb_strtolower(trim($item['key'])) : '';
-                $item_name = !empty($item['name']) ? mb_strtolower(trim($item['name'])) : '';
-                $item_sec = isset($item['sectionid']) ? (int)$item['sectionid'] : 0;
-                $key_matches = ($item_key === $target_key || $item_name === $target_name || $item_key === $target_name);
-
-                if ($key_matches && $item_sec === 0) {
-                    $item['completed'] = $completed ? 1 : 0;
-                    $item['completiondate'] = $date_val;
-                    $item['modifiedby'] = $is_auto ? 0 : $userid;
-                    $item['is_auto'] = $is_auto ? 1 : 0;
-                    $item['modifiedbyname'] = $is_auto ? 'System (Auto)' : '';
-                    $item['timemodified'] = $now;
-                    $item['sectionid'] = 0;
-                    $updated_item = $item;
-                    $found = true;
-                    break;
+                if (!$found) {
+                    $updated_item = [
+                        'key'            => self::slugify_key($activityname),
+                        'name'           => $activityname,
+                        'completed'      => $completed ? 1 : 0,
+                        'completiondate' => $date_val,
+                        'modifiedby'     => $is_auto ? 0 : $userid,
+                        'is_auto'        => $is_auto ? 1 : 0,
+                        'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
+                        'timemodified'   => $now,
+                        'sectionid'      => 0,
+                    ];
+                    $activities_list[] = $updated_item;
                 }
             }
-            unset($item);
 
-            if (!$found) {
-                $updated_item = [
-                    'key'            => self::slugify_key($activityname),
-                    'name'           => $activityname,
-                    'completed'      => $completed ? 1 : 0,
-                    'completiondate' => $date_val,
-                    'modifiedby'     => $is_auto ? 0 : $userid,
-                    'is_auto'        => $is_auto ? 1 : 0,
-                    'modifiedbyname' => $is_auto ? 'System (Auto)' : '',
-                    'timemodified'   => $now,
-                    'sectionid'      => 0,
-                ];
-                $activities_list[] = $updated_item;
+            $json_data = json_encode(array_values($activities_list), JSON_UNESCAPED_UNICODE);
+
+            if ($rec) {
+                $rec->activitiesdata = $json_data;
+                $rec->timemodified = $now;
+                $DB->update_record(self::get_table_name(), $rec);
+            } else {
+                $newrec = new \stdClass();
+                $newrec->courseid = $courseid;
+                $newrec->selectedgroup = '';
+                $newrec->activitiesdata = $json_data;
+                $newrec->timemodified = $now;
+                $DB->insert_record(self::get_table_name(), $newrec);
             }
+
+            $transaction->allow_commit();
+        } finally {
+            util::release_lock($lock);
         }
 
-        $json_data = json_encode(array_values($activities_list), JSON_UNESCAPED_UNICODE);
-
-        if ($rec) {
-            $rec->activitiesdata = $json_data;
-            $rec->timemodified = $now;
-            $DB->update_record(self::get_table_name(), $rec);
-        } else {
-            $newrec = new \stdClass();
-            $newrec->courseid = $courseid;
-            $newrec->selectedgroup = '';
-            $newrec->activitiesdata = $json_data;
-            $newrec->timemodified = $now;
-            $DB->insert_record(self::get_table_name(), $newrec);
-        }
-
-        if ($completed) {
+        // Only send completion notification on a true state transition (incomplete -> completed)
+        if ($completed && !$was_already_complete && $send_alert) {
             try {
                 cliq_activity_notifier::send_completion_alert('mentor', $sectionid, $courseid, $activityname, $userid);
             } catch (\Throwable $e) {

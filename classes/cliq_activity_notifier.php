@@ -129,6 +129,18 @@ class cliq_activity_notifier {
                         'default_body'    => "Attention {pm_name} (Program Manager),\n\nThe following module mentor activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Pending Activity: {task_name}\n• Assigned Mentor: {mentor_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue (Escalation)\n\nPlease follow up with the assigned mentor.\n🔗 View Module: {link}",
                         'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{pm_name}', '{overdue_days}', '{link}'],
                     ],
+                    't_plus_10' => [
+                        'key'             => 'mentor_t_plus_10',
+                        'title'           => '10th Day PM Final Escalation',
+                        'timing_badge'    => '10+ Days Overdue (T+10)',
+                        'badge_color'     => '#b02a37',
+                        'recipient'       => 'Program Manager (PM)',
+                        'recipient_badge' => 'PM Only',
+                        'card_theme'      => 'red',
+                        'default_subject' => '🛑 FINAL ESCALATION: {module_name} - {task_name} is {overdue_days} Days Overdue',
+                        'default_body'    => "Attention {pm_name} (Program Manager),\n\nThis is the final escalation. The following module mentor activity has not been completed and is now {overdue_days} days overdue:\n• Batch: {batch_name}\n• Module: {module_name}\n• Pending Activity: {task_name}\n• Assigned Mentor: {mentor_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue (Final Escalation)\n\nImmediate intervention is required.\n🔗 View Module: {link}",
+                        'placeholders'    => ['{batch_name}', '{module_name}', '{task_name}', '{due_date}', '{mentor_name}', '{pm_name}', '{overdue_days}', '{link}'],
+                    ],
                     'completed' => [
                         'key'             => 'mentor_completed',
                         'title'           => 'Instant Completion Confirmation',
@@ -194,6 +206,18 @@ class cliq_activity_notifier {
                         'card_theme'      => 'red',
                         'default_subject' => '🛑 ESCALATION: Pending SS Activity {activity_name} is {overdue_days} Days Overdue',
                         'default_body'    => "Attention {ss_lead_name},\n\nThe following batch SS activity has not been completed and is {overdue_days} days overdue:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue\n\nPlease coordinate to ensure this milestone is completed and recorded in the LMS:\n🔗 View Batch: {link}",
+                        'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{overdue_days}', '{link}'],
+                    ],
+                    't_plus_10' => [
+                        'key'             => 'ss_t_plus_10',
+                        'title'           => '10th Day SS Lead Final Escalation',
+                        'timing_badge'    => '10+ Days Overdue (T+10)',
+                        'badge_color'     => '#b02a37',
+                        'recipient'       => 'SS Lead Only (PM, SSE & Mentors Excluded)',
+                        'recipient_badge' => 'SS Lead Only',
+                        'card_theme'      => 'red',
+                        'default_subject' => '🛑 FINAL ESCALATION: Pending SS Activity {activity_name} is {overdue_days} Days Overdue',
+                        'default_body'    => "Attention {ss_lead_name},\n\nThis is the final escalation. The following batch SS activity has not been completed and is now {overdue_days} days overdue:\n• Batch: {batch_name}\n• Current Module: {current_module}\n• Pending Activity: {activity_name}\n• Assigned Executive: {sse_name}\n• Original Due Date: {due_date}\n• Status: {overdue_days} days overdue (Final Escalation)\n\nImmediate intervention is required to complete and record this milestone in the LMS:\n🔗 View Batch: {link}",
                         'placeholders'    => ['{batch_name}', '{current_module}', '{activity_name}', '{due_date}', '{sse_name}', '{ss_lead_name}', '{overdue_days}', '{link}'],
                     ],
                     'completed' => [
@@ -362,15 +386,36 @@ class cliq_activity_notifier {
      * @param mixed $val
      * @return \stdClass|null
      */
+    /**
+     * Resolve a Moodle user record from an ID or exact email address.
+     * Strictly uses numeric User ID or exact email (Issue #42 / Finding 18).
+     * Name and username searches are intentionally excluded to prevent arbitrary
+     * namesake matches and private batch notification leaks.
+     *
+     * @param mixed $val User ID int/string, user object, or email address
+     * @return \stdClass|null
+     */
     public static function resolve_user($val): ?\stdClass {
         global $DB;
 
-        if ($val === null || $val === false || trim((string)$val) === '') {
+        if ($val === null || $val === false) {
             return null;
         }
 
-        $s = trim((string)$val);
+        if (is_object($val)) {
+            if (!empty($val->id) && is_numeric($val->id) && (int)$val->id > 0) {
+                $val = $val->id;
+            } else {
+                return null;
+            }
+        }
 
+        $s = trim((string)$val);
+        if ($s === '') {
+            return null;
+        }
+
+        // 1. Resolve by numeric User ID
         if (is_numeric($s) && (int)$s > 0) {
             $u = $DB->get_record('user', ['id' => (int)$s, 'deleted' => 0]);
             if ($u) {
@@ -378,33 +423,72 @@ class cliq_activity_notifier {
             }
         }
 
-        if (strpos($s, '@') !== false) {
+        // 2. Resolve by exact Email address
+        if (filter_var($s, FILTER_VALIDATE_EMAIL)) {
             $u = $DB->get_record('user', ['email' => $s, 'deleted' => 0]);
             if ($u) {
                 return $u;
             }
         }
 
-        $u = $DB->get_record('user', ['username' => $s, 'deleted' => 0]);
-        if ($u) {
-            return $u;
-        }
-
-        // Match by fullname
-        $sql = "SELECT * FROM {user} WHERE deleted = 0 AND " . $DB->sql_concat('firstname', "' '", 'lastname') . " = :fn";
-        $u = $DB->get_record_sql($sql, ['fn' => $s]);
-        if ($u) {
-            return $u;
-        }
-
+        // Do NOT fall back to username or firstname/lastname searches (Finding 18 / Issue #42)
+        // to prevent arbitrary namesake matches and private batch notification leaks.
         return null;
+    }
+
+    /**
+     * Generate a collision-safe de-duplication key for stage transition notifications.
+     * Uses module index and course ID instead of raw module name to prevent collisions
+     * with non-ASCII or similarly punctuated names (Finding 26).
+     *
+     * @param string $mod_idx
+     * @param int $courseid
+     * @return string
+     */
+    public static function get_stage_transition_dedup_key(string $mod_idx = '', int $courseid = 0): string {
+        $idx_part = ($mod_idx !== '') ? clean_param($mod_idx, PARAM_ALPHANUMEXT) : '';
+        if ($idx_part !== '' && $courseid > 0) {
+            return 'stage_trans_m_' . $idx_part . '_c' . $courseid;
+        }
+        if ($courseid > 0) {
+            return 'stage_trans_c' . $courseid;
+        }
+        if ($idx_part !== '') {
+            return 'stage_trans_m_' . $idx_part;
+        }
+        return 'stage_trans_default';
+    }
+
+    /**
+     * Queue a deferred Zoho Cliq notification ad-hoc task.
+     * Prevents blocking web requests on synchronous external HTTP requests (Finding 28).
+     *
+     * @param string $action
+     * @param array $data
+     * @return bool True if successfully queued to Moodle adhoc task runner.
+     */
+    public static function queue_adhoc_alert(string $action, array $data): bool {
+        if (class_exists('\core\task\manager') && class_exists('\local_batchanalytics\task\send_cliq_notification_task')) {
+            try {
+                $task = new \local_batchanalytics\task\send_cliq_notification_task();
+                $task->set_custom_data((object)[
+                    'action' => $action,
+                    'data'   => $data,
+                ]);
+                \core\task\manager::queue_adhoc_task($task);
+                return true;
+            } catch (\Throwable $e) {
+                debugging('Failed to queue Zoho Cliq ad-hoc task: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+        return false;
     }
 
     /**
      * Resolve the SS Lead user(s) or email(s) from plugin configuration.
      * Checks:
      * 1. Direct configured email(s) in 'sslead_email' (comma-separated).
-     * 2. Users assigned the role configured in 'sslead_roles'.
+     * 2. Users assigned the role(s) configured in 'sslead_roles'.
      *
      * @return array{emails: string[], names: string[]}
      */
@@ -427,14 +511,22 @@ class cliq_activity_notifier {
             }
         }
 
-        // 2. Role configuration
-        $role_id = (int)get_config('local_batchanalytics', 'sslead_roles');
-        if ($role_id > 0) {
+        // 2. Role configuration (restricted to system or category level)
+        $role_ids = task_service::get_configured_role_ids('sslead_roles');
+        if (!empty($role_ids)) {
+            [$in_sql, $in_params] = $DB->get_in_or_equal($role_ids, SQL_PARAMS_NAMED, 'role');
             $sql = "SELECT DISTINCT u.*
                       FROM {user} u
                       JOIN {role_assignments} ra ON ra.userid = u.id
-                     WHERE ra.roleid = :roleid AND u.deleted = 0 AND u.suspended = 0";
-            $users = $DB->get_records_sql($sql, ['roleid' => $role_id]);
+                      JOIN {context} ctx ON ctx.id = ra.contextid
+                     WHERE ra.roleid $in_sql
+                       AND ctx.contextlevel IN (:ctxsystem, :ctxcoursecat)
+                       AND u.deleted = 0 AND u.suspended = 0";
+            $params = array_merge($in_params, [
+                'ctxsystem'    => CONTEXT_SYSTEM,
+                'ctxcoursecat' => CONTEXT_COURSECAT,
+            ]);
+            $users = $DB->get_records_sql($sql, $params);
             foreach ($users as $u) {
                 if (!empty($u->email)) {
                     $emails[] = $u->email;
@@ -550,9 +642,18 @@ class cliq_activity_notifier {
      * @param string $act_key
      * @param string $stage
      * @param string $date_sent
+     * @param string $recipient_email
+     * @param string $status
      * @return bool
      */
-    public static function is_already_sent(int $batchid, string $act_key, string $stage, string $date_sent = '', string $recipient_email = ''): bool {
+    public static function is_already_sent(
+        int $batchid,
+        string $act_key,
+        string $stage,
+        string $date_sent = '',
+        string $recipient_email = '',
+        string $status = 'sent'
+    ): bool {
         global $DB;
 
         if (!$DB->get_manager()->table_exists(self::LOG_TABLE)) {
@@ -564,6 +665,9 @@ class cliq_activity_notifier {
             'activity_key' => $act_key,
             'stage'        => $stage,
         ];
+        if (!empty($status)) {
+            $conditions['status'] = $status;
+        }
         if (!empty($date_sent)) {
             $conditions['date_sent'] = $date_sent;
         }
@@ -572,6 +676,37 @@ class cliq_activity_notifier {
         }
 
         return $DB->record_exists(self::LOG_TABLE, $conditions);
+    }
+
+    /**
+     * Reset/delete any logged completion alert for an activity so future completions can notify again.
+     *
+     * @param int $batchid
+     * @param string $act_key
+     * @return void
+     */
+    public static function reset_completion_alert(int $batchid, string $act_key): void {
+        global $DB;
+        if ($batchid <= 0 || trim($act_key) === '') {
+            return;
+        }
+        if (!$DB->get_manager()->table_exists(self::LOG_TABLE)) {
+            return;
+        }
+        $slug_key = class_exists('\local_batchanalytics\mentor_activity_service')
+            ? mentor_activity_service::slugify_key($act_key)
+            : strtolower(str_replace(' ', '_', $act_key));
+
+        $DB->delete_records_select(
+            self::LOG_TABLE,
+            'batchid = :bid AND stage = :stg AND (activity_key = :k1 OR activity_key = :k2)',
+            [
+                'bid' => $batchid,
+                'stg' => 'completed',
+                'k1'  => trim($act_key),
+                'k2'  => $slug_key,
+            ]
+        );
     }
 
     /**
@@ -584,6 +719,7 @@ class cliq_activity_notifier {
      * @param string $stage
      * @param string $recipient_email
      * @param string $status
+     * @param int $userid Optional user ID of recipient (if 0, resolved from email)
      * @return int
      */
     public static function log_notification(
@@ -593,7 +729,8 @@ class cliq_activity_notifier {
         string $act_key,
         string $stage,
         string $recipient_email,
-        string $status = 'sent'
+        string $status = 'sent',
+        int $userid = 0
     ): int {
         global $DB;
 
@@ -611,6 +748,27 @@ class cliq_activity_notifier {
             if ($em === '') {
                 continue;
             }
+
+            $row_userid = $userid;
+            if ($row_userid <= 0 && method_exists($DB, 'get_records_select')) {
+                try {
+                    $matched_users = $DB->get_records_select(
+                        'user',
+                        'deleted = 0 AND LOWER(email) = :email',
+                        ['email' => strtolower($em)],
+                        'id ASC',
+                        'id',
+                        0,
+                        1
+                    );
+                    if (!empty($matched_users)) {
+                        $row_userid = (int)reset($matched_users)->id;
+                    }
+                } catch (\Throwable $e) {
+                    $row_userid = 0;
+                }
+            }
+
             $rec = (object)[
                 'batchid'         => $batchid,
                 'courseid'        => $courseid,
@@ -618,6 +776,7 @@ class cliq_activity_notifier {
                 'activity_key'    => $act_key,
                 'stage'           => $stage,
                 'recipient_email' => $em,
+                'userid'          => $row_userid,
                 'timesent'        => $now,
                 'date_sent'       => $today,
                 'status'          => $status,
@@ -635,7 +794,14 @@ class cliq_activity_notifier {
      * @param string $text Message content
      * @param array $card_options Optional card layout parameters (title, theme)
      * @param bool $dry_run If true, simulate without HTTP call
-     * @return array{success: bool, http_code: int, response: string}
+     * @return array{
+     *     success: bool,
+     *     http_code: int,
+     *     response: string,
+     *     deliveries: array<string, array{success: bool, http_code: int, response: string}>,
+     *     successful_recipients: string[],
+     *     failed_recipients: string[]
+     * }
      */
     public static function send_cliq_message(
         array $recipient_emails,
@@ -646,7 +812,14 @@ class cliq_activity_notifier {
         $cfg = self::get_config_details();
 
         if (empty($cfg['zapikey']) && !$dry_run) {
-            return ['success' => false, 'http_code' => 0, 'response' => 'No Zoho Cliq ZAPI Key configured.'];
+            return [
+                'success'               => false,
+                'http_code'             => 0,
+                'response'              => 'No Zoho Cliq ZAPI Key configured.',
+                'deliveries'            => [],
+                'successful_recipients' => [],
+                'failed_recipients'     => array_values(array_filter(array_unique($recipient_emails))),
+            ];
         }
 
         // Build URL
@@ -676,13 +849,37 @@ class cliq_activity_notifier {
         }
 
         $clean_emails = array_values(array_filter(array_unique($recipient_emails)));
+        $allow_channel_fallback = !empty($card_options['allow_channel_fallback']);
+
+        // Prohibit fallback to default channel for person-targeted alerts.
+        if (empty($clean_emails) && !$allow_channel_fallback) {
+            return [
+                'success'               => false,
+                'http_code'             => 0,
+                'response'              => 'No valid recipient email resolved for person-targeted notification. Default channel fallback prohibited.',
+                'deliveries'            => [],
+                'successful_recipients' => [],
+                'failed_recipients'     => [],
+            ];
+        }
 
         if ($dry_run) {
             $payload['userids'] = !empty($clean_emails) ? implode(',', $clean_emails) : ($cfg['channel'] ?? '');
+            $deliveries = [];
+            foreach ($clean_emails as $em) {
+                $deliveries[$em] = [
+                    'success'   => true,
+                    'http_code' => 200,
+                    'response'  => 'Simulated (dry-run)',
+                ];
+            }
             return [
-                'success'   => true,
-                'http_code' => 200,
-                'response'  => 'Simulated (dry-run): ' . json_encode($payload),
+                'success'               => true,
+                'http_code'             => 200,
+                'response'              => 'Simulated (dry-run): ' . json_encode($payload),
+                'deliveries'            => $deliveries,
+                'successful_recipients' => $clean_emails,
+                'failed_recipients'     => [],
             ];
         }
 
@@ -697,10 +894,11 @@ class cliq_activity_notifier {
         ]);
 
         if (!empty($clean_emails)) {
-            $overall_success = true;
             $first_error_code = 0;
             $last_http_code = 200;
-            $responses = [];
+            $deliveries = [];
+            $successful_recipients = [];
+            $failed_recipients = [];
 
             foreach ($clean_emails as $single_email) {
                 $user_payload = $payload;
@@ -708,35 +906,66 @@ class cliq_activity_notifier {
                 $raw_response = $curl->post($url, json_encode($user_payload));
                 $http_code = (int)$curl->get_info()['http_code'];
                 $is_ok = ($http_code >= 200 && $http_code < 300);
-                if (!$is_ok) {
-                    $overall_success = false;
+
+                $deliveries[$single_email] = [
+                    'success'   => $is_ok,
+                    'http_code' => $http_code,
+                    'response'  => $raw_response,
+                ];
+
+                if ($is_ok) {
+                    $successful_recipients[] = $single_email;
+                } else {
+                    $failed_recipients[] = $single_email;
                     if ($first_error_code === 0) {
                         $first_error_code = $http_code;
                     }
                 }
                 $last_http_code = $http_code;
-                $responses[$single_email] = $raw_response;
             }
 
+            $overall_success = empty($failed_recipients) && !empty($successful_recipients);
+
             return [
-                'success'   => $overall_success,
-                'http_code' => $overall_success ? $last_http_code : ($first_error_code ?: $last_http_code),
-                'response'  => json_encode($responses),
+                'success'               => $overall_success,
+                'http_code'             => $overall_success ? $last_http_code : ($first_error_code ?: $last_http_code),
+                'response'              => json_encode($deliveries),
+                'deliveries'            => $deliveries,
+                'successful_recipients' => $successful_recipients,
+                'failed_recipients'     => $failed_recipients,
             ];
-        } else if (!empty($cfg['channel'])) {
+        } else if (!empty($cfg['channel']) && $allow_channel_fallback) {
             $payload['channel_unique_name'] = $cfg['channel'];
             $raw_response = $curl->post($url, json_encode($payload));
             $http_code = (int)$curl->get_info()['http_code'];
             $success = ($http_code >= 200 && $http_code < 300);
+            $target = 'channel:' . $cfg['channel'];
+            $deliveries = [
+                $target => [
+                    'success'   => $success,
+                    'http_code' => $http_code,
+                    'response'  => $raw_response,
+                ],
+            ];
 
             return [
-                'success'   => $success,
-                'http_code' => $http_code,
-                'response'  => $raw_response,
+                'success'               => $success,
+                'http_code'             => $http_code,
+                'response'              => $raw_response,
+                'deliveries'            => $deliveries,
+                'successful_recipients' => $success ? [$target] : [],
+                'failed_recipients'     => !$success ? [$target] : [],
             ];
         }
 
-        return ['success' => false, 'http_code' => 0, 'response' => 'No recipients or channel specified.'];
+        return [
+            'success'               => false,
+            'http_code'             => 0,
+            'response'              => 'No recipients or channel specified.',
+            'deliveries'            => [],
+            'successful_recipients' => [],
+            'failed_recipients'     => [],
+        ];
     }
 
     /**
@@ -745,7 +974,8 @@ class cliq_activity_notifier {
      * - T-3 days (Before 3 days) -> Mentor / SSE
      * - T-0 days (Due today) -> Mentor / SSE
      * - T+3 days (Overdue 3 days) -> Mentor / SSE
-     * - T+5 days (Overdue 5 days) -> Program Manager (PM) Escalation
+     * - T+5 days (Overdue 5 days) -> Program Manager (PM) / SS Lead Escalation
+     * - T+10 days (Overdue 10 days) -> Program Manager (PM) / SS Lead Final Escalation (Capped at 2 max)
      *
      * @param bool $dry_run
      * @return array Summary of evaluation
@@ -754,12 +984,13 @@ class cliq_activity_notifier {
         global $DB, $CFG;
 
         $results = [
-            'checked_sections' => 0,
-            'matched'          => 0,
-            'sent'             => 0,
-            'skipped_dedup'    => 0,
-            'errors'           => [],
-            'details'          => [],
+            'checked_sections'       => 0,
+            'skipped_inactive_batch' => 0,
+            'matched'                => 0,
+            'sent'                   => 0,
+            'skipped_dedup'          => 0,
+            'errors'                 => [],
+            'details'                => [],
         ];
 
         if (!self::is_enabled() && !$dry_run) {
@@ -778,18 +1009,35 @@ class cliq_activity_notifier {
         $defs = self::get_template_definitions();
         $sections = $DB->get_records('local_bm_classsection', null, 'id ASC');
 
+        $parent_batches = [];
+        if ($dbman->table_exists('local_bm_batch')) {
+            $parent_batches = $DB->get_records('local_bm_batch');
+        }
+
+        // Hoist SS Lead resolution outside loop to avoid redundant DB queries per section (Finding 27).
+        $ss_lead_info   = self::resolve_ss_leads();
+        $ss_lead_emails = $ss_lead_info['emails'];
+        $ss_lead_name   = !empty($ss_lead_info['names']) ? implode(', ', $ss_lead_info['names']) : 'SS Lead';
+
         foreach ($sections as $sec) {
             $results['checked_sections']++;
+
+            $parent_batch = (!empty($sec->batchid) && isset($parent_batches[$sec->batchid])) ? $parent_batches[$sec->batchid] : null;
+            if (!util::is_section_active($sec, $parent_batch)) {
+                $results['skipped_inactive_batch']++;
+                continue;
+            }
+
             $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
-            // 1. Resolve Stakeholders
-            $pm_user  = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
-            $sse_user = self::resolve_user($sec->maacexecutive) ?: self::resolve_user($sec->maacexecutivename);
+            // 1. Resolve Stakeholders (strictly by User ID or direct email, stopping pmmanagername/maacexecutivename)
+            $pm_user  = self::resolve_user($sec->pmmanager);
+            $sse_user = self::resolve_user($sec->maacexecutive);
 
             $pm_email  = $pm_user ? $pm_user->email : '';
-            $pm_name   = $pm_user ? fullname($pm_user) : ($sec->pmmanagername ?: 'Program Manager');
+            $pm_name   = $pm_user ? fullname($pm_user) : 'Program Manager';
             $sse_email = $sse_user ? $sse_user->email : '';
-            $sse_name  = $sse_user ? fullname($sse_user) : ($sec->maacexecutivename ?: 'SS Executive');
+            $sse_name  = $sse_user ? fullname($sse_user) : 'SS Executive';
 
             $batch_url = $CFG->wwwroot . '/local/batchanalytics/batch.php?id=' . $sec->id;
 
@@ -798,11 +1046,6 @@ class cliq_activity_notifier {
             // -----------------------------------------------------------------
             if (!empty($sec->softskillsdata)) {
                 $ss_list = util::decode_softskills_activities($sec->softskillsdata);
-
-                // Resolve SS Lead(s)
-                $ss_lead_info   = self::resolve_ss_leads();
-                $ss_lead_emails = $ss_lead_info['emails'];
-                $ss_lead_name   = !empty($ss_lead_info['names']) ? implode(', ', $ss_lead_info['names']) : 'SS Lead';
 
                 // Resolve Current Module Mentor(s)
                 $mod_mentor_info   = self::resolve_current_module_mentors($sec);
@@ -882,42 +1125,74 @@ class cliq_activity_notifier {
                         $stg_def = $defs['ss']['stages']['t_plus_3'];
                         $subject = self::render_template(self::get_template_subject('ss_t_plus_3', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_t_plus_3', $stg_def['default_body']), $placeholders);
-                    } else if ($diff_days <= -5) {
-                        // 4. After 5th day overdue -> SS Lead Escalation (PM, SSE & Mentors Excluded)
+                    } else if ($diff_days <= -5 && $diff_days >= -9) {
+                        // 4. Overdue 5-9 days -> Stage 1 Escalation: SS Lead Escalation (PM, SSE & Mentors Excluded)
                         $stage = 't_plus_5_escalation';
                         $recipient_emails = array_values(array_filter(array_unique($ss_lead_emails)));
                         $card_theme = 'red';
                         $stg_def = $defs['ss']['stages']['t_plus_5'];
                         $subject = self::render_template(self::get_template_subject('ss_t_plus_5', $stg_def['default_subject']), $placeholders);
                         $body = self::render_template(self::get_template_body('ss_t_plus_5', $stg_def['default_body']), $placeholders);
+                    } else if ($diff_days <= -10 && $diff_days >= -14) {
+                        // 5. Overdue 10-14 days -> Stage 2 Escalation (Final): SS Lead Escalation
+                        $stage = 't_plus_10_escalation';
+                        $recipient_emails = array_values(array_filter(array_unique($ss_lead_emails)));
+                        $card_theme = 'red';
+                        $stg_def = $defs['ss']['stages']['t_plus_10'] ?? $defs['ss']['stages']['t_plus_5'];
+                        $subject = self::render_template(self::get_template_subject('ss_t_plus_10', $stg_def['default_subject']), $placeholders);
+                        $body = self::render_template(self::get_template_body('ss_t_plus_10', $stg_def['default_body']), $placeholders);
                     }
+                    // Note: If $diff_days < -14, $stage remains null and no further escalations fire (capped at 2 max).
 
                     if ($stage !== null) {
                         $results['matched']++;
 
-                        $dedup_check_date = ($stage === 't_plus_5_escalation') ? $date_sent : '';
-                        if (self::is_already_sent($sec->id, $act_key, $stage, $dedup_check_date)) {
+                        // Filter out recipients who already received this notification for this activity stage
+                        $pending_recipients = [];
+                        foreach ($recipient_emails as $remail) {
+                            if (!self::is_already_sent($sec->id, $act_key, $stage, '', $remail)) {
+                                $pending_recipients[] = $remail;
+                            }
+                        }
+
+                        if (empty($pending_recipients)) {
                             $results['skipped_dedup']++;
                             continue;
                         }
 
-                        $dispatch = self::send_cliq_message($recipient_emails, $body, ['title' => $subject, 'theme' => $card_theme], $dry_run);
+                        $dispatch = self::send_cliq_message($pending_recipients, $body, ['title' => $subject, 'theme' => $card_theme], $dry_run);
 
-                        if ($dispatch['success']) {
-                            $results['sent']++;
-                            if (!$dry_run) {
+                        if (!$dry_run) {
+                            if (!empty($dispatch['successful_recipients'])) {
                                 self::log_notification(
                                     $sec->id,
                                     0,
                                     'ss',
                                     $act_key,
                                     $stage,
-                                    implode(',', $recipient_emails),
+                                    implode(',', $dispatch['successful_recipients']),
                                     'sent'
                                 );
                             }
-                        } else {
-                            $results['errors'][] = "Failed SS [{$batch_name}/{$act_name}]: " . $dispatch['response'];
+                            if (!empty($dispatch['failed_recipients'])) {
+                                self::log_notification(
+                                    $sec->id,
+                                    0,
+                                    'ss',
+                                    $act_key,
+                                    $stage,
+                                    implode(',', $dispatch['failed_recipients']),
+                                    'failed'
+                                );
+                            }
+                        }
+
+                        if (!empty($dispatch['successful_recipients'])) {
+                            $results['sent']++;
+                        }
+                        if (!empty($dispatch['failed_recipients'])) {
+                            $results['errors'][] = "Failed SS [{$batch_name}/{$act_name}] for recipient(s) " .
+                                implode(', ', $dispatch['failed_recipients']) . ": " . $dispatch['response'];
                         }
 
                         $results['details'][] = [
@@ -925,7 +1200,7 @@ class cliq_activity_notifier {
                             'batch'      => $batch_name,
                             'activity'   => $act_name,
                             'stage'      => $stage,
-                            'recipients' => $recipient_emails,
+                            'recipients' => $pending_recipients,
                         ];
                     }
                 }
@@ -946,7 +1221,17 @@ class cliq_activity_notifier {
                         continue;
                     }
 
-                    // Resolve Assigned Mentors for this module
+                    $mod_a_end = (int)($sm['actualend'] ?? 0);
+                    $mod_p_end = (int)($sm['plannedend'] ?? 0);
+
+                    // Skip mentor activity checking if module has concluded or planned end > 15 days in past (Finding 27).
+                    $check_mentor_acts = ($mod_a_end === 0);
+                    if ($check_mentor_acts && $mod_p_end > 0 && ($today_midnight - $mod_p_end) > (15 * 86400)) {
+                        $check_mentor_acts = false;
+                    }
+
+                    if ($check_mentor_acts) {
+                        // Resolve Assigned Mentors for this module
                     $mentor_cands = [
                         $sm['primarymentor'] ?? '',
                         $sm['secondarymentor'] ?? '',
@@ -1034,44 +1319,76 @@ class cliq_activity_notifier {
                                 $stg_def = $defs['mentor']['stages']['t_plus_3'];
                                 $subject = self::render_template(self::get_template_subject('mentor_t_plus_3', $stg_def['default_subject']), $placeholders);
                                 $body = self::render_template(self::get_template_body('mentor_t_plus_3', $stg_def['default_body']), $placeholders);
-                            } else if ($diff_days <= -5) {
-                                // 4. After 5th day overdue -> Program Manager Escalation (PM Only)
+                            } else if ($diff_days <= -5 && $diff_days >= -9) {
+                                // 4. Overdue 5-9 days -> Stage 1 Escalation: Program Manager (PM Only)
                                 $stage = 't_plus_5_escalation';
                                 $recipient_emails = array_filter([$pm_email]);
                                 $card_theme = 'red';
                                 $stg_def = $defs['mentor']['stages']['t_plus_5'];
                                 $subject = self::render_template(self::get_template_subject('mentor_t_plus_5', $stg_def['default_subject']), $placeholders);
                                 $body = self::render_template(self::get_template_body('mentor_t_plus_5', $stg_def['default_body']), $placeholders);
+                            } else if ($diff_days <= -10 && $diff_days >= -14) {
+                                // 5. Overdue 10-14 days -> Stage 2 Escalation (Final): Program Manager (PM Only)
+                                $stage = 't_plus_10_escalation';
+                                $recipient_emails = array_filter([$pm_email]);
+                                $card_theme = 'red';
+                                $stg_def = $defs['mentor']['stages']['t_plus_10'] ?? $defs['mentor']['stages']['t_plus_5'];
+                                $subject = self::render_template(self::get_template_subject('mentor_t_plus_10', $stg_def['default_subject']), $placeholders);
+                                $body = self::render_template(self::get_template_body('mentor_t_plus_10', $stg_def['default_body']), $placeholders);
                             }
+                            // Note: If $diff_days < -14, $stage remains null and no further escalations fire (capped at 2 max).
 
                             if ($stage !== null) {
                                 $results['matched']++;
 
                                 $act_unique_key = 'mentor_' . $courseid . '_' . $act_key;
-                                $dedup_check_date = ($stage === 't_plus_5_escalation') ? $date_sent : '';
 
-                                if (self::is_already_sent($sec->id, $act_unique_key, $stage, $dedup_check_date)) {
+                                // Filter out recipients who already received this notification for this activity stage
+                                $pending_recipients = [];
+                                foreach ($recipient_emails as $remail) {
+                                    if (!self::is_already_sent($sec->id, $act_unique_key, $stage, '', $remail)) {
+                                        $pending_recipients[] = $remail;
+                                    }
+                                }
+
+                                if (empty($pending_recipients)) {
                                     $results['skipped_dedup']++;
                                     continue;
                                 }
 
-                                $dispatch = self::send_cliq_message($recipient_emails, $body, ['title' => $subject, 'theme' => $card_theme], $dry_run);
+                                $dispatch = self::send_cliq_message($pending_recipients, $body, ['title' => $subject, 'theme' => $card_theme], $dry_run);
 
-                                if ($dispatch['success']) {
-                                    $results['sent']++;
-                                    if (!$dry_run) {
+                                if (!$dry_run) {
+                                    if (!empty($dispatch['successful_recipients'])) {
                                         self::log_notification(
                                             $sec->id,
                                             $courseid,
                                             'mentor',
                                             $act_unique_key,
                                             $stage,
-                                            implode(',', $recipient_emails),
+                                            implode(',', $dispatch['successful_recipients']),
                                             'sent'
                                         );
                                     }
-                                } else {
-                                    $results['errors'][] = "Failed Mentor [{$batch_name}/{$mod_name}/{$act_name}]: " . $dispatch['response'];
+                                    if (!empty($dispatch['failed_recipients'])) {
+                                        self::log_notification(
+                                            $sec->id,
+                                            $courseid,
+                                            'mentor',
+                                            $act_unique_key,
+                                            $stage,
+                                            implode(',', $dispatch['failed_recipients']),
+                                            'failed'
+                                        );
+                                    }
+                                }
+
+                                if (!empty($dispatch['successful_recipients'])) {
+                                    $results['sent']++;
+                                }
+                                if (!empty($dispatch['failed_recipients'])) {
+                                    $results['errors'][] = "Failed Mentor [{$batch_name}/{$mod_name}/{$act_name}] for recipient(s) " .
+                                        implode(', ', $dispatch['failed_recipients']) . ": " . $dispatch['response'];
                                 }
 
                                 $results['details'][] = [
@@ -1080,7 +1397,7 @@ class cliq_activity_notifier {
                                     'module'     => $mod_name,
                                     'activity'   => $act_name,
                                     'stage'      => $stage,
-                                    'recipients' => $recipient_emails,
+                                    'recipients' => $pending_recipients,
                                 ];
                             }
                         }
@@ -1088,14 +1405,15 @@ class cliq_activity_notifier {
                         // Gracefully log error without halting loop
                         $results['errors'][] = "Error processing module {$mod_name}: " . $e->getMessage();
                     }
+                }
 
                     // Check for Stage Transition: if module actual start date was recorded recently (within last 48 hours)
                     $mod_a_start = (int)($sm['actualstart'] ?? 0);
                     if ($mod_a_start > 0 && $mod_a_start >= ($today_midnight - 172800)) {
-                        $dedup_key = 'stage_trans_' . clean_param($mod_name, PARAM_ALPHANUMEXT);
+                        $dedup_key = self::get_stage_transition_dedup_key((string)$mod_idx, $courseid);
                         if (!self::is_already_sent($sec->id, $dedup_key, 'stage_transition')) {
                             try {
-                                $t_res = self::handle_module_start_transition($sec->id, (string)$mod_idx, $modules, $mod_a_start);
+                                $t_res = self::handle_module_start_transition($sec->id, (string)$mod_idx, $modules, $mod_a_start, false);
                                 if (!empty($t_res['success'])) {
                                     $results['sent']++;
                                     $results['details'][] = [
@@ -1105,6 +1423,9 @@ class cliq_activity_notifier {
                                         'stage'      => 'stage_transition',
                                         'recipients' => $t_res['recipients'] ?? [],
                                     ];
+                                } else {
+                                    $err_msg = $t_res['error'] ?? 'Unknown transition error';
+                                    $results['errors'][] = "Stage transition alert failed for {$batch_name}/{$mod_name}: {$err_msg}";
                                 }
                             } catch (\Throwable $te) {
                                 $results['errors'][] = "Stage transition alert error for {$batch_name}/{$mod_name}: " . $te->getMessage();
@@ -1129,6 +1450,7 @@ class cliq_activity_notifier {
      * @param int $courseid
      * @param string $act_name_or_key
      * @param int $completed_by_userid
+     * @param bool $async Whether to dispatch asynchronously via Moodle adhoc task runner (default true).
      * @return bool
      */
     public static function send_completion_alert(
@@ -1136,7 +1458,8 @@ class cliq_activity_notifier {
         int $batchid,
         int $courseid,
         string $act_name_or_key,
-        int $completed_by_userid
+        int $completed_by_userid,
+        bool $async = true
     ): bool {
         global $DB, $CFG;
 
@@ -1144,25 +1467,57 @@ class cliq_activity_notifier {
             return false;
         }
 
-        if ($batchid <= 0 && $courseid > 0) {
-            $sql = "SELECT id FROM {local_bm_classsection} WHERE " . $DB->sql_like('moduledata', ':pattern');
-            $matching_sections = $DB->get_records_sql($sql, ['pattern' => '%' . $courseid . '%'], 0, 1);
-            if (!empty($matching_sections)) {
-                $sec_found = reset($matching_sections);
-                $batchid = (int)$sec_found->id;
+        // Offload to background adhoc task if called in web context (Finding 28).
+        if ($async && !defined('CLI_SCRIPT')) {
+            $queued = self::queue_adhoc_alert('completion', [
+                'type'                => $action_type,
+                'batchid'             => $batchid,
+                'courseid'            => $courseid,
+                'act_key'             => $act_name_or_key,
+                'completed_by_userid' => $completed_by_userid,
+            ]);
+            if ($queued) {
+                return true;
             }
         }
 
-        $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+        $sec = null;
+        if ($batchid <= 0 && $courseid > 0) {
+            // Safely resolve the section that actually contains this course as a module (preferring active batches)
+            $sec_found = util::find_section_by_course($courseid, true);
+            if ($sec_found) {
+                $batchid = (int)$sec_found->id;
+                $sec = $sec_found;
+            } else {
+                // Course does not belong to any class section/batch; cannot send batch completion alert.
+                return false;
+            }
+        } else if ($batchid > 0) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            // If courseid is also provided, verify that the course actually belongs to this batch
+            if ($courseid > 0 && $sec && !util::is_course_in_section($sec, $courseid)) {
+                // Course does not belong to the specified batch; abort to prevent wrong-batch alerts
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        // Deduplicate completion alerts per recipient for this batch and activity.
+        $dedup_key = trim($act_name_or_key);
+        $slug_key = class_exists('\local_batchanalytics\mentor_activity_service')
+            ? mentor_activity_service::slugify_key($dedup_key)
+            : strtolower(str_replace(' ', '_', $dedup_key));
+
         $batch_name = util::clean_section_name($sec ? ($sec->name ?: ('Batch ' . $sec->id)) : ('Batch ' . $batchid));
 
-        $pm_user  = $sec ? (self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername)) : null;
-        $sse_user = $sec ? (self::resolve_user($sec->maacexecutive) ?: self::resolve_user($sec->maacexecutivename)) : null;
+        $pm_user  = ($sec && !empty($sec->pmmanager)) ? self::resolve_user($sec->pmmanager) : null;
+        $sse_user = ($sec && !empty($sec->maacexecutive)) ? self::resolve_user($sec->maacexecutive) : null;
         $by_user  = self::resolve_user($completed_by_userid);
 
         $pm_email  = $pm_user ? $pm_user->email : '';
         $sse_email = $sse_user ? $sse_user->email : '';
-        $sse_name  = $sse_user ? fullname($sse_user) : ($sec && !empty($sec->maacexecutivename) ? $sec->maacexecutivename : 'SS Executive');
+        $sse_name  = $sse_user ? fullname($sse_user) : 'SS Executive';
         $by_name   = $by_user ? fullname($by_user) : 'System (Auto)';
         $by_email  = ($by_user && !empty($by_user->email)) ? $by_user->email : '';
         $comp_date = date('d M Y');
@@ -1187,6 +1542,19 @@ class cliq_activity_notifier {
             // SSE, SS Lead, and Current Module Mentors receive completion notification
             $recipients = array_values(array_filter(array_unique(array_merge([$sse_email, $by_email], $ss_lead_emails, $cur_mentor_emails))));
 
+            // Filter out recipients who already received the completion alert for this activity
+            $pending_recipients = [];
+            foreach ($recipients as $rem) {
+                if (!self::is_already_sent($batchid, $dedup_key, 'completed', '', $rem) &&
+                    !self::is_already_sent($batchid, $slug_key, 'completed', '', $rem)) {
+                    $pending_recipients[] = $rem;
+                }
+            }
+
+            if (empty($pending_recipients)) {
+                return true; // Already delivered to all intended recipients
+            }
+
             $stg_def = $defs['ss']['stages']['completed'];
             $placeholders = [
                 '{batch_name}'      => $batch_name,
@@ -1204,10 +1572,14 @@ class cliq_activity_notifier {
             $subject = self::render_template(self::get_template_subject('ss_completed', $stg_def['default_subject']), $placeholders);
             $body = self::render_template(self::get_template_body('ss_completed', $stg_def['default_body']), $placeholders);
 
-            $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
-            $status = !empty($dispatch['success']) ? 'sent' : 'failed';
-            self::log_notification($batchid, 0, 'ss', $act_name_or_key, 'completed', implode(',', $recipients), $status);
-            return $dispatch['success'];
+            $dispatch = self::send_cliq_message($pending_recipients, $body, ['title' => $subject, 'theme' => 'green']);
+            if (!empty($dispatch['successful_recipients'])) {
+                self::log_notification($batchid, 0, 'ss', $act_name_or_key, 'completed', implode(',', $dispatch['successful_recipients']), 'sent');
+            }
+            if (!empty($dispatch['failed_recipients'])) {
+                self::log_notification($batchid, 0, 'ss', $act_name_or_key, 'completed', implode(',', $dispatch['failed_recipients']), 'failed');
+            }
+            return !empty($dispatch['successful_recipients']);
         }
 
         if ($action_type === 'mentor') {
@@ -1241,6 +1613,19 @@ class cliq_activity_notifier {
             // Both the mentor and PM receive the notification when activity is completed
             $recipients = array_values(array_filter(array_unique(array_merge([$pm_email, $by_email], $mentor_emails))));
 
+            // Filter out recipients who already received the completion alert for this activity
+            $pending_recipients = [];
+            foreach ($recipients as $rem) {
+                if (!self::is_already_sent($batchid, $dedup_key, 'completed', '', $rem) &&
+                    !self::is_already_sent($batchid, $slug_key, 'completed', '', $rem)) {
+                    $pending_recipients[] = $rem;
+                }
+            }
+
+            if (empty($pending_recipients)) {
+                return true; // Already delivered to all intended recipients
+            }
+
             $stg_def = $defs['mentor']['stages']['completed'];
             $placeholders = [
                 '{batch_name}'      => $batch_name,
@@ -1256,10 +1641,14 @@ class cliq_activity_notifier {
             $subject = self::render_template(self::get_template_subject('mentor_completed', $stg_def['default_subject']), $placeholders);
             $body = self::render_template(self::get_template_body('mentor_completed', $stg_def['default_body']), $placeholders);
 
-            $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
-            $status = !empty($dispatch['success']) ? 'sent' : 'failed';
-            self::log_notification($batchid, $courseid, 'mentor', $act_name_or_key, 'completed', implode(',', $recipients), $status);
-            return $dispatch['success'];
+            $dispatch = self::send_cliq_message($pending_recipients, $body, ['title' => $subject, 'theme' => 'green']);
+            if (!empty($dispatch['successful_recipients'])) {
+                self::log_notification($batchid, $courseid, 'mentor', $act_name_or_key, 'completed', implode(',', $dispatch['successful_recipients']), 'sent');
+            }
+            if (!empty($dispatch['failed_recipients'])) {
+                self::log_notification($batchid, $courseid, 'mentor', $act_name_or_key, 'completed', implode(',', $dispatch['failed_recipients']), 'failed');
+            }
+            return !empty($dispatch['successful_recipients']);
         }
 
         if ($action_type === 'batch_review') {
@@ -1343,47 +1732,41 @@ class cliq_activity_notifier {
             }
         }
 
-        // 3. MAAC Rating
-        if ($att_courseid > 0) {
-            $dbman = $DB->get_manager();
-            $maac_val = null;
-            if ($dbman->table_exists('local_batchanalytics_maac')) {
-                $sql = "SELECT AVG(CAST(value AS DECIMAL(5,2))) as avg_val 
-                          FROM {local_batchanalytics_maac} 
-                         WHERE courseid = :cid AND value IS NOT NULL AND value != ''";
-                $rec = $DB->get_record_sql($sql, ['cid' => $att_courseid]);
-                if ($rec && $rec->avg_val !== null && (float)$rec->avg_val > 0) {
-                    $maac_val = round((float)$rec->avg_val, 1);
-                }
-            }
-            if ($maac_val === null) {
-                // Check course final grade scaled out of 10
-                $sql = "SELECT AVG(gg.finalgrade / gi.grademax * 10) as avg_rating
-                          FROM {grade_items} gi
-                          JOIN {grade_grades} gg ON gg.itemid = gi.id
-                         WHERE gi.courseid = :cid AND gi.itemtype = 'course' AND gi.grademax > 0 AND gg.finalgrade IS NOT NULL";
-                $rec = $DB->get_record_sql($sql, ['cid' => $att_courseid]);
-                if ($rec && $rec->avg_rating !== null && (float)$rec->avg_rating > 0) {
-                    $maac_val = round((float)$rec->avg_rating, 1);
-                }
-            }
-            if ($maac_val !== null) {
+        // 3. MAAC Rating (based on course final grades of enrolled batch students scaled out of 10)
+        if ($att_courseid > 0 && !empty($userids)) {
+            list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'musr');
+            $uparams['cid'] = $att_courseid;
+            $sql = "SELECT AVG(gg.finalgrade / gi.grademax * 10) as avg_rating
+                      FROM {grade_items} gi
+                      JOIN {grade_grades} gg ON gg.itemid = gi.id
+                     WHERE gi.courseid = :cid
+                       AND gi.itemtype = 'course'
+                       AND gi.grademax > 0
+                       AND gg.userid $usql
+                       AND gg.finalgrade IS NOT NULL";
+            $rec = $DB->get_record_sql($sql, $uparams);
+            if ($rec && $rec->avg_rating !== null && (float)$rec->avg_rating > 0) {
+                $maac_val = round((float)$rec->avg_rating, 1);
                 $summary['overall_maac_rating'] = $maac_val . ' / 10';
             }
         }
 
-        // 4. Previous Module Completion
-        if ($att_courseid > 0) {
+        // 4. Previous Module Completion (strictly scoped to enrolled batch students)
+        if ($att_courseid > 0 && !empty($userids) && $student_count > 0) {
+            list($uin, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'ccu');
+            $uparams['cid'] = $att_courseid;
             $sql = "SELECT COUNT(DISTINCT userid) as completed_count
                       FROM {course_completions}
-                     WHERE course = :cid AND timecompleted IS NOT NULL AND timecompleted > 0";
-            $rec = $DB->get_record_sql($sql, ['cid' => $att_courseid]);
-            if ($rec && $student_count > 0 && (int)$rec->completed_count > 0) {
-                $comp_pct = round(((int)$rec->completed_count / $student_count) * 100, 1);
-                $summary['prev_module_completion'] = $comp_pct . '% (' . (int)$rec->completed_count . '/' . $student_count . ')';
-            } else {
-                $summary['prev_module_completion'] = 'Completed';
-            }
+                     WHERE course = :cid
+                       AND userid $uin
+                       AND timecompleted IS NOT NULL
+                       AND timecompleted > 0";
+            $rec = $DB->get_record_sql($sql, $uparams);
+            $completed_count = $rec ? (int)$rec->completed_count : 0;
+            $comp_pct = round(($completed_count / $student_count) * 100, 1);
+            $summary['prev_module_completion'] = $comp_pct . '% (' . $completed_count . '/' . $student_count . ')';
+        } else {
+            $summary['prev_module_completion'] = '—';
         }
 
         return $summary;
@@ -1552,6 +1935,7 @@ class cliq_activity_notifier {
      * @param int $next_courseid
      * @param int $prev_courseid
      * @param array $next_mod_data
+     * @param string $mod_index Module index / key (e.g. '0', '1', etc.)
      * @return array
      */
     public static function send_stage_transition_alert(
@@ -1561,7 +1945,8 @@ class cliq_activity_notifier {
         int $transition_timestamp = 0,
         int $next_courseid = 0,
         int $prev_courseid = 0,
-        array $next_mod_data = []
+        array $next_mod_data = [],
+        string $mod_index = ''
     ): array {
         global $DB, $CFG;
 
@@ -1583,9 +1968,9 @@ class cliq_activity_notifier {
         $trans_ts   = $transition_timestamp > 0 ? $transition_timestamp : time();
         $trans_date = date('d M Y', $trans_ts);
 
-        // 1. Resolve Stakeholders
-        $pm_user  = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
-        $sse_user = self::resolve_user($sec->maacexecutive) ?: self::resolve_user($sec->maacexecutivename);
+        // 1. Resolve Stakeholders (strictly by User ID or direct email, stopping pmmanagername/maacexecutivename)
+        $pm_user  = ($sec && !empty($sec->pmmanager)) ? self::resolve_user($sec->pmmanager) : null;
+        $sse_user = ($sec && !empty($sec->maacexecutive)) ? self::resolve_user($sec->maacexecutive) : null;
 
         $class_mentor_user = null;
         $lab_mentor_user   = null;
@@ -1606,10 +1991,10 @@ class cliq_activity_notifier {
             }
         }
 
-        $pm_name   = $pm_user ? fullname($pm_user) : ($sec->pmmanagername ?: 'Program Manager');
-        $sse_name  = $sse_user ? fullname($sse_user) : ($sec->maacexecutivename ?: 'SS Executive');
-        $cm_name   = $class_mentor_user ? fullname($class_mentor_user) : ($next_mod_data['primarymentor'] ?? 'Assigned Class Mentor');
-        $lm_name   = $lab_mentor_user ? fullname($lab_mentor_user) : ($next_mod_data['labmentor1'] ?? 'Assigned Lab Mentor');
+        $pm_name   = $pm_user ? fullname($pm_user) : 'Program Manager';
+        $sse_name  = $sse_user ? fullname($sse_user) : 'SS Executive';
+        $cm_name   = $class_mentor_user ? fullname($class_mentor_user) : 'Assigned Class Mentor';
+        $lm_name   = $lab_mentor_user ? fullname($lab_mentor_user) : 'Assigned Lab Mentor';
 
         $next_mentor_names = trim($cm_name . ' (Class) / ' . $lm_name . ' (Lab)');
 
@@ -1668,8 +2053,15 @@ class cliq_activity_notifier {
         $subject = self::render_template(self::get_template_subject('stage_transition', $default_sub), $placeholders);
         $body    = self::render_template(self::get_template_body('stage_transition', $default_bod), $placeholders);
 
-        $dedup_key = 'stage_trans_' . clean_param($next_module_name, PARAM_ALPHANUMEXT);
-        if (self::is_already_sent($batchid, $dedup_key, 'stage_transition')) {
+        $dedup_key = self::get_stage_transition_dedup_key($mod_index, $next_courseid);
+        $pending_cliq_recipients = [];
+        foreach ($recipient_emails as $em) {
+            if (!self::is_already_sent($batchid, $dedup_key, 'stage_transition', '', $em)) {
+                $pending_cliq_recipients[] = $em;
+            }
+        }
+
+        if (empty($pending_cliq_recipients) && !empty($recipient_emails)) {
             $results['skipped_dedup'] = true;
             $results['success'] = true;
             return $results;
@@ -1677,7 +2069,7 @@ class cliq_activity_notifier {
 
         // 4. Send via Zoho Cliq Bot API (if enabled)
         $cliq_res = ['success' => false];
-        if (self::is_enabled()) {
+        if (self::is_enabled() && !empty($pending_cliq_recipients)) {
             $slides = [
                 [
                     'type' => 'table',
@@ -1710,11 +2102,18 @@ class cliq_activity_notifier {
                 ],
             ];
 
-            $cliq_res = self::send_cliq_message($recipient_emails, $body, [
+            $cliq_res = self::send_cliq_message($pending_cliq_recipients, $body, [
                 'title'  => $subject,
                 'theme'  => 'modern-inline',
                 'slides' => $slides,
             ]);
+
+            if (!empty($cliq_res['successful_recipients'])) {
+                self::log_notification($batchid, $next_courseid, 'transition', $dedup_key, 'stage_transition', implode(',', $cliq_res['successful_recipients']), 'sent');
+            }
+            if (!empty($cliq_res['failed_recipients'])) {
+                self::log_notification($batchid, $next_courseid, 'transition', $dedup_key, 'stage_transition', implode(',', $cliq_res['failed_recipients']), 'failed');
+            }
         }
 
         // 5. Send via Moodle Email (HTML format) to each recipient
@@ -1735,10 +2134,6 @@ class cliq_activity_notifier {
         $results['success'] = ($cliq_res['success'] ?? false) || ($email_count > 0);
         $results['emails_sent'] = $email_count;
 
-        if ($results['success']) {
-            self::log_notification($batchid, $next_courseid, 'transition', $dedup_key, 'stage_transition', implode(',', $recipient_emails));
-        }
-
         return $results;
     }
 
@@ -1752,6 +2147,7 @@ class cliq_activity_notifier {
      * @param int $plannedend_ts Optional planned end timestamp
      * @param \stdClass|null $target_mentor_user Optional single user to send to
      * @param string $target_role Optional role override
+     * @param bool $async Whether to dispatch asynchronously via Moodle adhoc task runner (default true).
      * @return array Results summary
      */
     public static function send_module_assigned_mentor_alert(
@@ -1761,9 +2157,22 @@ class cliq_activity_notifier {
         int $actualstart_ts = 0,
         int $plannedend_ts = 0,
         ?\stdClass $target_mentor_user = null,
-        string $target_role = ''
+        string $target_role = '',
+        bool $async = true
     ): array {
         global $DB, $CFG;
+
+        if ($async && !defined('CLI_SCRIPT')) {
+            $queued = self::queue_adhoc_alert('module_assigned', [
+                'batchid'              => $batchid,
+                'next_module_name'     => $mod_name,
+                'next_mod_data'        => $mod_data,
+                'transition_timestamp' => $actualstart_ts,
+            ]);
+            if ($queued) {
+                return ['success' => true, 'queued' => true, 'recipients' => []];
+            }
+        }
 
         $results = [
             'success'     => false,
@@ -1945,24 +2354,94 @@ class cliq_activity_notifier {
      * Trigger stage transition and module assigned alerts when a module actual start date is recorded.
      *
      * @param int $batchid
-     * @param string $mod_key E.g. 'module2' or 'module_2'
-     * @param array $modules Raw moduledata array
+     * @param string $mod_key E.g. '0', '1', 'module2', or 'module_2'
+     * @param array $modules Raw or decoded moduledata array
      * @param int $actualstart_ts Timestamp of actual start date
+     * @param bool $async Whether to dispatch asynchronously via Moodle adhoc task runner (default true).
      * @return array Result of dispatch
      */
-    public static function handle_module_start_transition(int $batchid, string $mod_key, array $modules, int $actualstart_ts): array {
+    public static function handle_module_start_transition(int $batchid, string $mod_key, array $modules, int $actualstart_ts, bool $async = true): array {
         if ($batchid <= 0 || empty($modules)) {
             return ['success' => false, 'error' => 'Invalid parameters'];
         }
 
-        $keys = array_keys($modules);
-        $pos  = array_search($mod_key, $keys, true);
-
-        if ($pos === false || !isset($modules[$mod_key])) {
-            return ['success' => false, 'error' => 'Module key not found'];
+        if ($async && !defined('CLI_SCRIPT')) {
+            $queued = self::queue_adhoc_alert('module_start_transition', [
+                'batchid'         => $batchid,
+                'current_mod_idx' => $mod_key,
+                'modules'         => $modules,
+                'actualstart_ts'  => $actualstart_ts,
+            ]);
+            if ($queued) {
+                return ['success' => true, 'queued' => true, 'recipients' => []];
+            }
         }
 
-        $next_mod = $modules[$mod_key];
+        $keys = array_keys($modules);
+        $pos = false;
+        $target_key = null;
+
+        // 1. Direct match in keys (strict or string-converted, e.g. '0' vs 0)
+        foreach ($keys as $idx => $k) {
+            if ($k === $mod_key || (string)$k === (string)$mod_key) {
+                $pos = $idx;
+                $target_key = $k;
+                break;
+            }
+        }
+
+        // 2. If $mod_key is like 'module_2' or 'module2', match against module sequence number
+        if ($pos === false && preg_match('/^module_?(\d+)$/i', $mod_key, $m)) {
+            $target_mod_num = (int)$m[1];
+            foreach ($modules as $idx => $mod) {
+                if (is_array($mod) && isset($mod['module']) && (int)$mod['module'] === $target_mod_num) {
+                    $pos = array_search($idx, $keys, true);
+                    $target_key = $idx;
+                    break;
+                }
+            }
+        }
+
+        // 3. If $mod_key is numeric (e.g. 1 or '1'), check for key 'module_X' or 0-based offset
+        if ($pos === false && is_numeric($mod_key)) {
+            $num = (int)$mod_key;
+            if (isset($modules['module_' . $num])) {
+                $target_key = 'module_' . $num;
+                $pos = array_search($target_key, $keys, true);
+            } else if (isset($modules['module' . $num])) {
+                $target_key = 'module' . $num;
+                $pos = array_search($target_key, $keys, true);
+            } else if (isset($keys[$num])) {
+                $pos = $num;
+                $target_key = $keys[$num];
+            }
+        }
+
+        // 4. Match by module name, courseshortname, or moodlecourseid
+        if ($pos === false) {
+            foreach ($modules as $idx => $mod) {
+                if (is_array($mod)) {
+                    $mname = trim((string)($mod['name'] ?? $mod['courseshortname'] ?? ''));
+                    $mcid  = (int)($mod['moodlecourseid'] ?? $mod['courseid'] ?? 0);
+                    if ($mname !== '' && strcasecmp($mname, $mod_key) === 0) {
+                        $pos = array_search($idx, $keys, true);
+                        $target_key = $idx;
+                        break;
+                    }
+                    if ($mcid > 0 && (string)$mcid === (string)$mod_key) {
+                        $pos = array_search($idx, $keys, true);
+                        $target_key = $idx;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($pos === false || $target_key === null || !isset($modules[$target_key])) {
+            return ['success' => false, 'error' => "Module key '{$mod_key}' not found in modules list"];
+        }
+
+        $next_mod = $modules[$target_key];
         $next_name = trim((string)($next_mod['name'] ?? $next_mod['courseshortname'] ?? 'Next Module'));
         $next_cid  = (int)($next_mod['moodlecourseid'] ?? 0);
 
@@ -1977,14 +2456,20 @@ class cliq_activity_notifier {
         }
 
         // 1. Dispatch Template 1: Stage Transition alert (PM + SSE + Next Mentors)
-        $trans_res = self::send_stage_transition_alert($batchid, $prev_name, $next_name, $actualstart_ts, $next_cid, $prev_cid, $next_mod);
+        $trans_res = self::send_stage_transition_alert($batchid, $prev_name, $next_name, $actualstart_ts, $next_cid, $prev_cid, $next_mod, (string)$target_key);
 
         // 2. Dispatch Template 2: Module Assigned alert (Class & Lab Mentors)
-        $assign_res = self::send_module_assigned_mentor_alert($batchid, $next_name, $next_mod, $actualstart_ts);
+        $assign_res = self::send_module_assigned_mentor_alert($batchid, $next_name, $next_mod, $actualstart_ts, 0, null, '', false);
+
+        $combined_recipients = array_values(array_unique(array_merge(
+            $trans_res['recipients'] ?? [],
+            $assign_res['recipients'] ?? []
+        )));
 
         return [
             'stage_transition' => $trans_res,
             'module_assigned'  => $assign_res,
+            'recipients'       => $combined_recipients,
             'success'          => ($trans_res['success'] ?? false) || ($assign_res['success'] ?? false),
         ];
     }
@@ -1997,18 +2482,33 @@ class cliq_activity_notifier {
      * @param int $userid
      * @param string $author
      * @param string $note_text
+     * @param bool $async Whether to dispatch asynchronously via Moodle adhoc task runner (default true).
      * @return bool
      */
     public static function send_batch_review_note_alert(
         int $batchid,
         int $userid,
         string $author,
-        string $note_text
+        string $note_text,
+        bool $async = true
     ): bool {
         global $DB, $CFG;
 
         if (!self::is_enabled()) {
             return false;
+        }
+
+        // Offload to background adhoc task if called in web context (Finding 28).
+        if ($async && !defined('CLI_SCRIPT')) {
+            $queued = self::queue_adhoc_alert('batch_review_note', [
+                'batchid' => $batchid,
+                'userid'  => $userid,
+                'author'  => $author,
+                'body'    => $note_text,
+            ]);
+            if ($queued) {
+                return true;
+            }
         }
 
         $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
@@ -2019,14 +2519,14 @@ class cliq_activity_notifier {
         $batch_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
 
         // 1. Program Manager
-        $pm_user  = self::resolve_user($sec->pmmanager) ?: self::resolve_user($sec->pmmanagername);
+        $pm_user  = self::resolve_user($sec->pmmanager);
         $pm_email = $pm_user ? $pm_user->email : '';
-        $pm_name  = $pm_user ? fullname($pm_user) : ($sec->pmmanagername ?: 'Program Manager');
+        $pm_name  = $pm_user ? fullname($pm_user) : 'Program Manager';
 
         // 2. SS Executive
-        $sse_user  = self::resolve_user($sec->maacexecutive) ?: self::resolve_user($sec->maacexecutivename);
+        $sse_user  = self::resolve_user($sec->maacexecutive);
         $sse_email = $sse_user ? $sse_user->email : '';
-        $sse_name  = $sse_user ? fullname($sse_user) : ($sec->maacexecutivename ?: 'SS Executive');
+        $sse_name  = $sse_user ? fullname($sse_user) : 'SS Executive';
 
         // 3. SS Lead
         $ss_lead_info   = self::resolve_ss_leads();
@@ -2086,19 +2586,30 @@ class cliq_activity_notifier {
 
         $dispatch = self::send_cliq_message($recipients, $body, ['title' => $subject, 'theme' => 'green']);
 
-        if ($dispatch['success']) {
+        if (!empty($dispatch['successful_recipients'])) {
             self::log_notification(
                 $sec->id,
                 0,
                 'batch_review',
                 'batch_review_' . $sec->id,
                 'completed',
-                implode(',', $recipients),
+                implode(',', $dispatch['successful_recipients']),
                 'sent'
             );
-            return true;
         }
-        return false;
+        if (!empty($dispatch['failed_recipients'])) {
+            self::log_notification(
+                $sec->id,
+                0,
+                'batch_review',
+                'batch_review_' . $sec->id,
+                'completed',
+                implode(',', $dispatch['failed_recipients']),
+                'failed'
+            );
+        }
+
+        return !empty($dispatch['successful_recipients']);
     }
 }
 

@@ -10,6 +10,7 @@
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="sectionid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="completed" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="completiondate" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
         <FIELD NAME="modifiedby" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
@@ -19,9 +20,10 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="course_cmid_uix" UNIQUE="true" FIELDS="courseid, cmid"/>
+        <INDEX NAME="course_cmid_sec_uix" UNIQUE="true" FIELDS="courseid, cmid, sectionid"/>
         <INDEX NAME="courseid_ix" UNIQUE="false" FIELDS="courseid"/>
         <INDEX NAME="cmid_ix" UNIQUE="false" FIELDS="cmid"/>
+        <INDEX NAME="sectionid_ix" UNIQUE="false" FIELDS="sectionid"/>
       </INDEXES>
     </TABLE>
     <TABLE NAME="local_batchanalytics_batch_notes" COMMENT="Review notes captured for batches">
@@ -64,6 +66,7 @@
         <FIELD NAME="activity_key" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
         <FIELD NAME="stage" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
         <FIELD NAME="recipient_email" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timesent" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="date_sent" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="" SEQUENCE="false"/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="sent" SEQUENCE="false"/>
@@ -76,6 +79,7 @@
         <INDEX NAME="dedup_recipient_ix" UNIQUE="false" FIELDS="batchid, activity_key, stage, recipient_email, date_sent"/>
         <INDEX NAME="timesent_ix" UNIQUE="false" FIELDS="timesent"/>
         <INDEX NAME="recipient_email_ix" UNIQUE="false" FIELDS="recipient_email"/>
+        <INDEX NAME="userid_ix" UNIQUE="false" FIELDS="userid"/>
       </INDEXES>
     </TABLE>
   </TABLES>

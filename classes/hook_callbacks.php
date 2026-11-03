@@ -64,7 +64,7 @@ class hook_callbacks {
 
         if ($courseid > 0) {
             $selected = mentor_activity_service::get_course_selected_group($courseid);
-            $mform->setDefault('local_batchanalytics_mentor_group', $selected);
+            $mform->setDefault('local_batchanalytics_mentor_group', $selected !== '' ? $selected : 'none');
         }
     }
 

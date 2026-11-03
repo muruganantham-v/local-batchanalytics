@@ -315,7 +315,38 @@ class util {
     }
 
     /**
-     * Check if a user is designated as SS Lead (via configured role or email).
+     * Find a module matching a given Moodle course ID within a class section.
+     *
+     * @param \stdClass $sec Class section record from local_bm_classsection.
+     * @param int $courseid Moodle course ID.
+     * @return array|null The matched module array from decode_module_data, or null if not found.
+     */
+    public static function get_section_module_by_course(\stdClass $sec, int $courseid): ?array {
+        if ($courseid <= 0 || empty($sec->moduledata)) {
+            return null;
+        }
+        $modules = self::decode_module_data($sec->moduledata, false);
+        foreach ($modules as $m) {
+            if (!empty($m['moodlecourseid']) && (int)$m['moodlecourseid'] === $courseid) {
+                return $m;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if a given Moodle course ID belongs to a class section.
+     *
+     * @param \stdClass $sec Class section record from local_bm_classsection.
+     * @param int $courseid Moodle course ID.
+     * @return bool
+     */
+    public static function is_course_in_section(\stdClass $sec, int $courseid): bool {
+        return self::get_section_module_by_course($sec, $courseid) !== null;
+    }
+
+    /**
+     * Check if a user is designated as SS Lead (via configured role at system or category level).
      *
      * @param \stdClass|int|null $user_or_id User object or user ID.
      * @return bool
@@ -1253,8 +1284,8 @@ class util {
             }
         }
 
-        $today_start = strtotime('today midnight');
-        $today_end   = $today_start + 86400;
+        $today_start = self::get_user_today_midnight();
+        $today_end   = self::get_user_today_end() + 1;
 
         $results = [];
         foreach ($grouped as $entry) {
@@ -1354,6 +1385,339 @@ class util {
         }
 
         return null;
+    }
+
+    /**
+     * Get the DateTimeZone object for the current user or system.
+     *
+     * @return \DateTimeZone
+     */
+    public static function get_user_timezone_object(): \DateTimeZone {
+        global $USER, $CFG;
+
+        if (class_exists('\core_date') && method_exists('\core_date', 'get_user_timezone_object')) {
+            try {
+                return \core_date::get_user_timezone_object();
+            } catch (\Throwable $e) {
+                // Fallback below.
+            }
+        }
+
+        $tzstring = '';
+        if (class_exists('\core_date') && method_exists('\core_date', 'get_user_timezone')) {
+            try {
+                $tzstring = \core_date::get_user_timezone();
+            } catch (\Throwable $e) {
+                $tzstring = '';
+            }
+        }
+
+        if (empty($tzstring) || $tzstring === '99') {
+            $tzstring = !empty($USER->timezone) && $USER->timezone !== '99'
+                ? $USER->timezone
+                : (!empty($CFG->timezone) && $CFG->timezone !== '99' ? $CFG->timezone : date_default_timezone_get());
+        }
+
+        try {
+            return new \DateTimeZone($tzstring);
+        } catch (\Throwable $e) {
+            return new \DateTimeZone('UTC');
+        }
+    }
+
+    /**
+     * Parse a date input (unix timestamp or date string like YYYY-MM-DD) in the user's timezone.
+     *
+     * @param mixed $val
+     * @return int Unix timestamp, or 0 if invalid
+     */
+    public static function parse_user_date($val): int {
+        if (empty($val)) {
+            return 0;
+        }
+        if (is_numeric($val)) {
+            return (int)$val;
+        }
+        $val = trim((string)$val);
+        if ($val === '' || $val === '—') {
+            return 0;
+        }
+
+        $tz = self::get_user_timezone_object();
+
+        // 1. Check for standard YYYY-MM-DD or YYYY-MM-DD HH:MM(:SS) format.
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/', $val, $m)) {
+            $year   = (int)$m[1];
+            $month  = (int)$m[2];
+            $day    = (int)$m[3];
+            $hour   = isset($m[4]) ? (int)$m[4] : 0;
+            $minute = isset($m[5]) ? (int)$m[5] : 0;
+            $second = isset($m[6]) ? (int)$m[6] : 0;
+
+            if (function_exists('make_timestamp')) {
+                // make_timestamp with default 99 uses current user's timezone.
+                return (int)make_timestamp($year, $month, $day, $hour, $minute, $second);
+            }
+
+            try {
+                $dt = new \DateTime('now', $tz);
+                $dt->setDate($year, $month, $day);
+                $dt->setTime($hour, $minute, $second);
+                return $dt->getTimestamp();
+            } catch (\Throwable $e) {
+                // fallback below.
+            }
+        }
+
+        // 2. Try parsing relative or other date formats with user timezone.
+        try {
+            $dt = new \DateTime($val, $tz);
+            $ts = $dt->getTimestamp();
+            return ($ts !== false && $ts > 0) ? (int)$ts : 0;
+        } catch (\Throwable $e) {
+            $ts = strtotime($val);
+            return ($ts !== false && $ts > 0) ? (int)$ts : 0;
+        }
+    }
+
+    /**
+     * Get the timestamp for today midnight (00:00:00) in the user's timezone.
+     *
+     * @return int
+     */
+    public static function get_user_today_midnight(): int {
+        if (function_exists('usergetmidnight')) {
+            return (int)usergetmidnight(time());
+        }
+        $tz = self::get_user_timezone_object();
+        try {
+            $dt = new \DateTime('today midnight', $tz);
+            return $dt->getTimestamp();
+        } catch (\Throwable $e) {
+            return strtotime('today midnight');
+        }
+    }
+
+    /**
+     * Get the timestamp for the end of today (23:59:59) in the user's timezone.
+     *
+     * @return int
+     */
+    public static function get_user_today_end(): int {
+        if (function_exists('usergetmidnight')) {
+            // Tomorrow midnight in user timezone minus 1 second
+            return (int)usergetmidnight(time() + 86400) - 1;
+        }
+        $tz = self::get_user_timezone_object();
+        try {
+            $dt = new \DateTime('tomorrow midnight', $tz);
+            return $dt->getTimestamp() - 1;
+        } catch (\Throwable $e) {
+            return strtotime('tomorrow midnight') - 1;
+        }
+    }
+
+    /**
+     * Check if a class section is active and eligible for daily cron activity checks.
+     *
+     * A batch/section is active if:
+     * 1. It contains at least one configured module in moduledata.
+     * 2. The final module has no actual end date (actualend <= 0), indicating the batch is still in progress.
+     * 3. The batch started within the last $max_age_days days (default 365 days).
+     *
+     * @param \stdClass $sec Section record from local_bm_classsection
+     * @param \stdClass|null $parent_batch Optional parent batch record from local_bm_batch
+     * @param int $max_age_days Maximum batch age in days (default 365)
+     * @return bool True if section is currently active and eligible for cron processing
+     */
+    public static function is_section_active(\stdClass $sec, ?\stdClass $parent_batch = null, int $max_age_days = 365): bool {
+        if (empty($sec->moduledata)) {
+            return false;
+        }
+
+        $modules = self::decode_module_data($sec->moduledata, true);
+        if (empty($modules)) {
+            return false;
+        }
+
+        // 1. Completion check: if the last configured module has an actual end date, batch is completed.
+        $last_module = end($modules);
+        if (!empty($last_module['actualend']) && (int)$last_module['actualend'] > 0) {
+            return false;
+        }
+
+        // 2. Age check: batch must have started within the last $max_age_days days.
+        $startdate = 0;
+        if (!empty($parent_batch->startdate) && is_numeric($parent_batch->startdate)) {
+            $startdate = (int)$parent_batch->startdate;
+        } else if (!empty($sec->timecreated) && is_numeric($sec->timecreated)) {
+            $startdate = (int)$sec->timecreated;
+        } else if (!empty($modules[0]['plannedstart']) && (int)$modules[0]['plannedstart'] > 0) {
+            $startdate = (int)$modules[0]['plannedstart'];
+        } else if (!empty($modules[0]['actualstart']) && (int)$modules[0]['actualstart'] > 0) {
+            $startdate = (int)$modules[0]['actualstart'];
+        }
+
+        if ($startdate > 0 && $startdate < (time() - ($max_age_days * 86400))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Find a class section that contains the given Moodle course ID as a configured module.
+     *
+     * Exact module course matching is verified using util::is_course_in_section()
+     * to prevent false substring matches (e.g. course 12 matching 112, 120, or timestamps).
+     *
+     * @param int $courseid Moodle course ID.
+     * @param bool $prefer_active If true, prefers active batches (started <= 365 days ago, last module not ended).
+     * @return \stdClass|null The matched class section record or null if not found.
+     */
+    public static function find_section_by_course(int $courseid, bool $prefer_active = true): ?\stdClass {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return null;
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return null;
+        }
+
+        // Targeted SQL pre-filter: look for specific JSON patterns for course ID
+        $sql = "SELECT id, name, moduledata, timecreated, batchid FROM {local_bm_classsection} WHERE " .
+            $DB->sql_like('moduledata', ':p1') . " OR " .
+            $DB->sql_like('moduledata', ':p2') . " OR " .
+            $DB->sql_like('moduledata', ':p3') . " OR " .
+            $DB->sql_like('moduledata', ':p4');
+        $params = [
+            'p1' => '%"moodlecourseid":' . $courseid . '%',
+            'p2' => '%"moodlecourseid":"' . $courseid . '"%',
+            'p3' => '%"courseid":' . $courseid . '%',
+            'p4' => '%"courseid":"' . $courseid . '"%',
+        ];
+
+        $candidates = $DB->get_records_sql($sql, $params);
+        if (empty($candidates)) {
+            // Broad fallback query if custom formatting is present, still verified strictly in PHP
+            $candidates = $DB->get_records_select('local_bm_classsection', $DB->sql_like('moduledata', ':bp'), ['bp' => '%' . $courseid . '%'], 'id DESC');
+        }
+
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $active_matches = [];
+        $inactive_matches = [];
+
+        // Preload parent batches if available for active check
+        $parent_batches = [];
+        if ($prefer_active && $dbman->table_exists('local_bm_batch')) {
+            $parent_batches = $DB->get_records('local_bm_batch');
+        }
+
+        foreach ($candidates as $sec) {
+            // STRICT PHP verification: decode moduledata and check exact integer course ID
+            if (!self::is_course_in_section($sec, $courseid)) {
+                continue;
+            }
+
+            if ($prefer_active) {
+                $parent_batch = (!empty($sec->batchid) && isset($parent_batches[$sec->batchid])) ? $parent_batches[$sec->batchid] : null;
+                if (self::is_section_active($sec, $parent_batch)) {
+                    $active_matches[] = $sec;
+                } else {
+                    $inactive_matches[] = $sec;
+                }
+            } else {
+                return $sec;
+            }
+        }
+
+        if (!empty($active_matches)) {
+            // Return most recent active batch (highest id / timecreated)
+            usort($active_matches, static function($a, $b) {
+                return ((int)($b->timecreated ?? $b->id)) <=> ((int)($a->timecreated ?? $a->id));
+            });
+            return reset($active_matches);
+        }
+
+        if (!empty($inactive_matches)) {
+            usort($inactive_matches, static function($a, $b) {
+                return ((int)($b->timecreated ?? $b->id)) <=> ((int)($a->timecreated ?? $a->id));
+            });
+            return reset($inactive_matches);
+        }
+
+        return null;
+    }
+
+    /**
+     * Acquire a named application lock to serialize concurrent read-modify-write operations.
+     * Uses Moodle Lock API (\core\lock\lock_config) if available.
+     *
+     * @param string $resource Unique resource identifier to lock (e.g. 'mentor_act_course_12', 'classsection_45')
+     * @param int $timeout Timeout in seconds to wait for the lock (default 15)
+     * @return object|bool Lock object with a release() method, or false if timed out
+     */
+    public static function get_lock(string $resource, int $timeout = 15) {
+        if (class_exists('\core\lock\lock_config')) {
+            try {
+                $lockfactory = \core\lock\lock_config::get_lock_factory('local_batchanalytics');
+                $lock = $lockfactory->get_lock($resource, $timeout);
+                return $lock ?: false;
+            } catch (\Throwable $e) {
+                debugging('Lock acquisition failed for ' . $resource . ': ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+
+        // Mock/fallback lock mechanism for standalone and test environments
+        static $held_locks = [];
+        if (isset($held_locks[$resource])) {
+            if ($timeout <= 0) {
+                return false;
+            }
+            return false;
+        }
+
+        $held_locks[$resource] = true;
+        return new class($resource, static function() use ($resource, &$held_locks) {
+            unset($held_locks[$resource]);
+        }) {
+            private string $key;
+            private $releaser;
+            private bool $released = false;
+
+            public function __construct(string $key, callable $releaser) {
+                $this->key = $key;
+                $this->releaser = $releaser;
+            }
+
+            public function release(): bool {
+                if (!$this->released) {
+                    $this->released = true;
+                    ($this->releaser)();
+                    return true;
+                }
+                return false;
+            }
+        };
+    }
+
+    /**
+     * Release an acquired application lock safely.
+     *
+     * @param mixed $lock Lock object returned by get_lock()
+     * @return bool
+     */
+    public static function release_lock($lock): bool {
+        if (is_object($lock) && method_exists($lock, 'release')) {
+            return (bool)$lock->release();
+        }
+        return true;
     }
 }
 
