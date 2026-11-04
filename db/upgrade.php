@@ -813,5 +813,57 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026110302, 'local', 'batchanalytics');
     }
 
+    if ($oldversion < 2026110401) {
+        $table = new xmldb_table('local_batchanalytics_batch_notes');
+
+        $f_timemodified = new xmldb_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timecreated');
+        if (!$dbman->field_exists($table, $f_timemodified)) {
+            $dbman->add_field($table, $f_timemodified);
+        }
+
+        $f_modifiedby = new xmldb_field('modifiedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timemodified');
+        if (!$dbman->field_exists($table, $f_modifiedby)) {
+            $dbman->add_field($table, $f_modifiedby);
+        }
+
+        $f_history = new xmldb_field('history', XMLDB_TYPE_TEXT, null, null, null, null, null, 'modifiedby');
+        if (!$dbman->field_exists($table, $f_history)) {
+            $dbman->add_field($table, $f_history);
+        }
+
+        upgrade_plugin_savepoint(true, 2026110401, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026110403) {
+        // Migrate legacy sectionid = 0 activity tracker rows to their matching class section.
+        $table = new xmldb_table('local_batchanalytics_activity_tracker');
+        if ($dbman->table_exists($table) && $dbman->field_exists($table, new xmldb_field('sectionid'))) {
+            $legacy_rows = $DB->get_records('local_batchanalytics_activity_tracker', ['sectionid' => 0]);
+            if (!empty($legacy_rows)) {
+                foreach ($legacy_rows as $row) {
+                    $sec = \local_batchanalytics\util::resolve_section_for_course((int)$row->courseid);
+                    if ($sec && !empty($sec->id)) {
+                        $target_secid = (int)$sec->id;
+                        // Check if target section already has a record for this activity
+                        $exists = $DB->record_exists('local_batchanalytics_activity_tracker', [
+                            'courseid'  => $row->courseid,
+                            'cmid'      => $row->cmid,
+                            'sectionid' => $target_secid,
+                        ]);
+                        if (!$exists) {
+                            $row->sectionid = $target_secid;
+                            $DB->update_record('local_batchanalytics_activity_tracker', $row);
+                        } else {
+                            // Redundant legacy row, safely remove
+                            $DB->delete_records('local_batchanalytics_activity_tracker', ['id' => $row->id]);
+                        }
+                    }
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026110403, 'local', 'batchanalytics');
+    }
+
     return true;
 }

@@ -413,7 +413,7 @@ define([], function() {
                     '<text x="' + (leftPadding - 6).toFixed(2) + '" y="' + (tick.y + 4).toFixed(2) + '" text-anchor="end" font-size="10" fill="#94a3b8">' + tick.value + '</text></g>';
             }).join('');
             var gradId = 'ba-trend-fill-' + Math.random().toString(36).substr(2, 9);
-            return '<div class="chart-container" style="position: relative; height: 80px; width: 100%;">' +
+            return '<div class="chart-container ba-trend-mini-chart">' +
                 '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="80" role="img" aria-label="Grade trend chart">' +
                 '<defs><linearGradient id="' + gradId + '" x1="0" x2="0" y1="0" y2="1">' +
                 '<stop offset="0%" stop-color="rgba(102, 126, 234, 0.28)"></stop>' +
@@ -432,16 +432,15 @@ define([], function() {
                 if (!recentPoints.length) return '';
                 var summary = calculateCourseTrendComponent(recentPoints);
                 if (!summary) return '';
-                var deltaBg = summary.change >= 0 ? '#f0fdf4' : '#fef2f2';
-                var deltaColor = summary.change >= 0 ? '#10b981' : '#ef4444';
+                var deltaClass = summary.change >= 0 ? 'ba-trend-delta-pos' : 'ba-trend-delta-neg';
                 return '<div class="trend-card">' +
                     '<div class="trend-title">' + icon + ' ' + escapeHtml(title) + '</div>' +
                     '<div class="trend-chart">' + renderCourseTrendMiniChart(recentPoints) + '</div>' +
                     '<div class="trend-stats">' +
-                    '<div><span style="color: #6b7280;">Start:</span> <strong>' + escapeHtml(String(summary.start)) + '%</strong></div>' +
-                    '<div><span style="color: #6b7280;">Latest:</span> <strong>' + escapeHtml(String(summary.latest)) + '%</strong></div>' +
-                    '<div style="margin-top: 8px; padding: 8px; background: ' + deltaBg + '; border-radius: 6px;">' +
-                    '<strong style="color: ' + deltaColor + '">' + (summary.change >= 0 ? '+' : '') + escapeHtml(String(summary.change)) + '%</strong>' +
+                    '<div><span class="ba-trend-stat-label">Start:</span> <strong>' + escapeHtml(String(summary.start)) + '%</strong></div>' +
+                    '<div><span class="ba-trend-stat-label">Latest:</span> <strong>' + escapeHtml(String(summary.latest)) + '%</strong></div>' +
+                    '<div class="ba-trend-delta-box ' + deltaClass + '">' +
+                    '<strong>' + (summary.change >= 0 ? '+' : '') + escapeHtml(String(summary.change)) + '%</strong>' +
                     '</div></div></div>';
             }
             var attendancePoints = Array.isArray(details.attendance) ? details.attendance : [];
@@ -450,34 +449,34 @@ define([], function() {
                 var attendanceWindow = Math.max(2, Math.min(Number(details.attendance_window) || 5, trendWindow));
                 var summary = calculateCourseAttendanceSummary(attendancePoints, attendanceWindow);
                 if (summary) {
-                    var deltaColor = '#6b7280';
-                    var deltaBg = '#f3f4f6';
+                    var deltaClass = 'ba-trend-delta-muted';
                     var deltaText = summary.comparisonLabel || 'Need more sessions for comparison';
                     if (summary.delta !== null) {
-                        if (summary.delta > 0) { deltaColor = '#10b981'; deltaBg = '#f0fdf4'; }
-                        else if (summary.delta < 0) { deltaColor = '#ef4444'; deltaBg = '#fef2f2'; }
-                        else { deltaColor = '#f59e0b'; deltaBg = '#fffbeb'; }
+                        if (summary.delta > 0) deltaClass = 'ba-trend-delta-pos';
+                        else if (summary.delta < 0) deltaClass = 'ba-trend-delta-neg';
+                        else deltaClass = 'ba-trend-delta-neutral';
                         deltaText = summary.comparisonMode === 'adaptive-half'
                             ? (summary.delta > 0 ? '+' : '') + summary.delta + ' vs earlier ' + summary.previousWindowSize
                             : (summary.delta > 0 ? '+' : '') + summary.delta + ' vs previous ' + summary.previousWindowSize;
                     }
-                    var strip = '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">' +
+                    var strip = '<div class="ba-attendance-strip">' +
                         attendancePoints.slice(-10).map(function(point) {
                             var status = point.status ? String(point.status).toUpperCase() : (Number(point.present) === 1 ? 'P' : 'A');
-                            var color = '#ef4444';
-                            if (status === 'P' || status === 'E') color = '#10b981';
-                            else if (status === 'L') color = '#f59e0b';
-                            return '<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: ' + color + ';">' + escapeHtml(status) + '</span>';
+                            var badgeClass = 'ba-att-badge';
+                            if (status === 'P' || status === 'E') badgeClass += ' ba-att-present';
+                            else if (status === 'L') badgeClass += ' ba-att-late';
+                            else badgeClass += ' ba-att-absent';
+                            return '<span class="' + badgeClass + '">' + escapeHtml(status) + '</span>';
                         }).join('') + '</div>';
                     attendanceCard = '<div class="trend-card">' +
                         '<div class="trend-title">\uD83D\uDC65 Attendance</div>' +
                         strip +
                         '<div class="trend-stats">' +
-                        '<div><span style="color: #6b7280;">Last ' + summary.windowSize + ':</span> <strong>' + summary.currentCount + ' attended</strong></div>' +
-                        '<div><span style="color: #6b7280;">Recent rate:</span> <strong>' + summary.currentRate + '%</strong></div>' +
-                        (summary.previousWindowSize > 0 ? '<div><span style="color: #6b7280;">Previous rate:</span> <strong>' + summary.previousRate + '%</strong></div>' : '') +
-                        '<div style="margin-top: 8px; padding: 8px; background: ' + deltaBg + '; border-radius: 6px;">' +
-                        '<strong style="color: ' + deltaColor + '">' + escapeHtml(deltaText) + '</strong>' +
+                        '<div><span class="ba-trend-stat-label">Last ' + summary.windowSize + ':</span> <strong>' + summary.currentCount + ' attended</strong></div>' +
+                        '<div><span class="ba-trend-stat-label">Recent rate:</span> <strong>' + summary.currentRate + '%</strong></div>' +
+                        (summary.previousWindowSize > 0 ? '<div><span class="ba-trend-stat-label">Previous rate:</span> <strong>' + summary.previousRate + '%</strong></div>' : '') +
+                        '<div class="ba-trend-delta-box ' + deltaClass + '">' +
+                        '<strong>' + escapeHtml(deltaText) + '</strong>' +
                         '</div></div></div>';
                 }
             }
@@ -496,15 +495,15 @@ define([], function() {
             var visual = getTrendVisual(calculateCourseOverallTrend(details)) || getTrendVisual('stable');
             var currentLevel = calculateCourseCurrentLevel(details);
             var cards = buildCourseTrendCards(details, trendWindow);
-            var trendColor = visual.key === 'up' ? '#10b981' : (visual.key === 'down' ? '#ef4444' : '#f59e0b');
-            return '<div class="trends-indicator" style="background: ' + trendColor + '20; border-left: 4px solid ' + trendColor + '; padding: 16px; border-radius: 8px; margin-bottom: 20px;">' +
-                '<div style="display: flex; align-items: center; gap: 12px;">' +
-                '<span style="font-size: 24px;">' + visual.emoji + '</span>' +
+            var trendType = visual.key === 'up' ? 'ba-trend-up' : (visual.key === 'down' ? 'ba-trend-down' : 'ba-trend-stable');
+            return '<div class="trends-indicator ' + trendType + '">' +
+                '<div class="ba-trend-indicator-inner">' +
+                '<span class="ba-trend-emoji">' + visual.emoji + '</span>' +
                 '<div>' +
-                '<div style="font-size: 13px; color: #6b7280; margin-bottom: 2px;">' + escapeHtml(student.name || student.fullname || student.username || 'Student') + '</div>' +
-                '<div style="font-size: 14px; color: #6b7280;">Overall Trend (last ' + trendWindow + ')</div>' +
-                '<div style="font-size: 18px; font-weight: 700; color: ' + trendColor + '">' + escapeHtml(visual.label) + ' (' + escapeHtml(currentLevel.label) + ')</div>' +
-                (currentLevel.score !== null ? '<div style="font-size: 13px; color: #6b7280;">Current level score: ' + escapeHtml(String(currentLevel.score)) + '%</div>' : '') +
+                '<div class="ba-trend-student-name">' + escapeHtml(student.name || student.fullname || student.username || 'Student') + '</div>' +
+                '<div class="ba-trend-window-label">Overall Trend (last ' + trendWindow + ')</div>' +
+                '<div class="ba-trend-level-title">' + escapeHtml(visual.label) + ' (' + escapeHtml(currentLevel.label) + ')</div>' +
+                (currentLevel.score !== null ? '<div class="ba-trend-score">Current level score: ' + escapeHtml(String(currentLevel.score)) + '%</div>' : '') +
                 '</div></div></div>' +
                 '<div class="trends-grid">' +
                 (cards || '<div class="trend-card"><div class="trend-title">Trend</div><div class="trend-stats"><div>No trend detail is available for this student yet.</div></div></div>') +
@@ -530,12 +529,10 @@ define([], function() {
 
                 var courseTabsHtml = '';
                 if (records.length > 1) {
-                    courseTabsHtml = '<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">' +
+                    courseTabsHtml = '<div class="ba-trend-tabs">' +
                         records.map(function(rec, idx) {
                             var isAct = idx === activeIndex;
-                            var btnBg = isAct ? '#4f46e5' : '#f1f5f9';
-                            var btnColor = isAct ? '#ffffff' : '#475569';
-                            return '<button type="button" class="ba-trend-tab-btn" data-trend-tab-idx="' + idx + '" style="padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid ' + (isAct ? '#4f46e5' : '#e2e8f0') + '; background: ' + btnBg + '; color: ' + btnColor + '; cursor: pointer;">' +
+                            return '<button type="button" class="ba-trend-tab-btn' + (isAct ? ' active' : '') + '" data-trend-tab-idx="' + idx + '">' +
                                 escapeHtml(rec.course || ('Course ' + (idx + 1))) + '</button>';
                         }).join('') + '</div>';
                 }
@@ -623,26 +620,26 @@ define([], function() {
             if (existing) existing.remove();
 
             var cards = feedbacks.length ? feedbacks.map(function(item, idx) {
-                return '<div class="ba-feedback-card" style="display:flex; border:1px solid #dbe5f0; border-radius:8px; margin-bottom:12px; overflow:hidden; background:#fff;">' +
-                    '<div class="ba-feedback-card-left" style="background:#eaf6ff; padding:10px 14px; border-right:1px solid #dbe5f0; min-width:140px; display:flex; flex-direction:column; gap:6px;">' +
-                    '<div class="ba-feedback-card-title" style="color:#0369a1; font-size:13px; font-weight:700;">' + escapeHtml(columnLabel) + ' - ' + (idx + 1) + '</div>' +
-                    '<div class="ba-feedback-card-date" style="color:#0284c7; font-size:11px; display:flex; gap:4px;"><span style="font-weight:700;">Date:</span> <span>' + escapeHtml(formatFeedbackDate(item.date)) + '</span></div>' +
+                return '<div class="ba-feedback-card">' +
+                    '<div class="ba-feedback-card-left">' +
+                    '<div class="ba-feedback-card-title">' + escapeHtml(columnLabel) + ' - ' + (idx + 1) + '</div>' +
+                    '<div class="ba-feedback-card-date"><span>Date:</span> <span>' + escapeHtml(formatFeedbackDate(item.date)) + '</span></div>' +
                     '</div>' +
-                    '<div class="ba-feedback-card-right" style="padding:10px 14px; flex:1; background:#f8fafc; color:#334155; font-size:13px; line-height:1.4; display:flex; align-items:center;">' +
+                    '<div class="ba-feedback-card-right">' +
                     '<div class="ba-feedback-card-text">' + escapeHtml(item.text) + '</div>' +
                     '</div>' +
                     '</div>';
-            }).join('') : '<div style="text-align:center; padding:24px; color:#64748b;">No feedback provided yet.</div>';
+            }).join('') : '<div class="ba-feedback-empty">No feedback provided yet.</div>';
 
             var modal = document.createElement('div');
             modal.className = 'trends-modal';
             modal.id = 'ba-feedback-modal-dialog';
-            modal.innerHTML = '<div class="trends-content" style="max-width:700px;">' +
+            modal.innerHTML = '<div class="trends-content ba-feedback-modal-content">' +
                 '<div class="trends-header">' +
                 '<h3>' + escapeHtml(student.name || student.fullname || 'Student') + ' - ' + escapeHtml(columnLabel) + '</h3>' +
                 '<button type="button" class="close-trends" aria-label="Close">x</button>' +
                 '</div>' +
-                '<div style="max-height:60vh; overflow-y:auto; padding:4px;">' + cards + '</div>' +
+                '<div class="ba-feedback-scroll">' + cards + '</div>' +
                 '</div>';
 
             modal.addEventListener('click', function(e) {
@@ -667,7 +664,7 @@ define([], function() {
                 if (!feedbacks.length) {
                     return '<span class="muted">&mdash;</span>';
                 }
-                return '<button type="button" class="ba-btn ba-btn-sm ba-performance-feedback-btn" data-feedback-userid="' + Number(student.userid || 0) + '" data-feedback-colkey="' + escapeHtml(column.key) + '" data-feedback-collabel="' + escapeHtml(column.label) + '" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid #6366f1; color:#6366f1; background:transparent; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;">' +
+                return '<button type="button" class="ba-btn ba-btn-sm ba-performance-feedback-btn" data-feedback-userid="' + Number(student.userid || 0) + '" data-feedback-colkey="' + escapeHtml(column.key) + '" data-feedback-collabel="' + escapeHtml(column.label) + '">' +
                     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> View Feedback (' + feedbacks.length + ')' +
                     '</button>';
             }
@@ -684,8 +681,8 @@ define([], function() {
                     isTrue = (value === 1 || value === '1' || value === true || value === 'true' || String(value).toLowerCase() === 'yes');
                 }
                 return isTrue
-                    ? '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:11.5px; font-weight:700;">Yes</span>'
-                    : '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; background:#f1f5f9; color:#64748b; font-size:11.5px; font-weight:600;">No</span>';
+                    ? '<span class="ba-maac-chip ba-maac-chip-yes">Yes</span>'
+                    : '<span class="ba-maac-chip ba-maac-chip-no">No</span>';
             }
 
             var items = null;
@@ -709,7 +706,7 @@ define([], function() {
             if (items !== null) {
                 if (!items.length) return '<span class="muted">&mdash;</span>';
                 return items.map(function(it) {
-                    return '<span class="ba-maac-chip" style="display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; background:#f1f5f9; color:#334155; font-size:11.5px; font-weight:600; margin:2px;">' + escapeHtml(String(it)) + '</span>';
+                    return '<span class="ba-maac-chip">' + escapeHtml(String(it)) + '</span>';
                 }).join(' ');
             }
 
@@ -993,15 +990,15 @@ define([], function() {
 
             modal.innerHTML = '<div class="ba-band-modal-dialog" role="dialog" aria-modal="true">' +
                 '<div class="ba-band-modal-header">' +
-                    '<div style="display:flex; align-items:center; gap:12px;">' +
-                        '<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background:' + bandMeta.color + ';"></span>' +
+                    '<div class="ba-band-modal-header-left">' +
+                        '<span class="ba-band-modal-dot dot-' + bandKey + '"></span>' +
                         '<div>' +
-                            '<h3 style="margin:0; font-size:18px; font-weight:700; color:#0f172a;">' + escapeHtml(bandMeta.title) + ' (' + bandStudents.length + ' Students)</h3>' +
-                            '<div style="font-size:12px; color:#64748b; margin-top:2px;">' + escapeHtml(bandMeta.sub) + '</div>' +
+                            '<h3 class="ba-band-modal-title">' + escapeHtml(bandMeta.title) + ' (' + bandStudents.length + ' Students)</h3>' +
+                            '<div class="ba-band-modal-subtitle">' + escapeHtml(bandMeta.sub) + '</div>' +
                         '</div>' +
                     '</div>' +
-                    '<div style="display:flex; align-items:center; gap:10px;">' +
-                        '<input type="text" id="ba-band-modal-search" class="ba-modal-input-search" placeholder="Search student name or ID..." style="width:200px;">' +
+                    '<div class="ba-band-modal-header-right">' +
+                        '<input type="text" id="ba-band-modal-search" class="ba-modal-input-search ba-band-modal-search" placeholder="Search student name or ID...">' +
                         '<button type="button" id="ba-band-modal-export" class="ba-modal-btn-export">' +
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
                                 '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
@@ -1019,9 +1016,9 @@ define([], function() {
                     '</div>' +
                 '</div>' +
                 '<div class="ba-band-modal-body">' +
-                    '<div class="tablecard" style="margin:0; max-height:55vh; overflow-y:auto; overflow-x:auto;">' +
-                        '<table style="width:100%; border-collapse:separate; border-spacing:0;">' +
-                            '<thead style="position:sticky; top:0; background:#fff; z-index:10; box-shadow:0 1px 0 #e2e8f0;">' +
+                    '<div class="tablecard ba-band-modal-tablecard">' +
+                        '<table class="ba-band-modal-table">' +
+                            '<thead class="ba-band-modal-thead">' +
                                 '<tr>' +
                                     '<th class="ba-modal-th-sortable ba-modal-sticky-col" data-modal-col="name">Student <span class="ba-sort-indicator">⇅</span></th>' +
                                     '<th class="ba-modal-th-sortable" data-modal-col="grade">' + (perfMode === 'grade' ? 'Grade' : 'Completion %') + ' <span class="ba-sort-indicator">⇅</span></th>' +
@@ -1033,7 +1030,7 @@ define([], function() {
                     '</div>' +
                 '</div>' +
                 '<div class="ba-band-modal-footer">' +
-                    '<span id="ba-band-modal-count" style="font-size:12px; color:#64748b;">Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students</span>' +
+                    '<span id="ba-band-modal-count" class="ba-band-modal-count">Showing ' + bandStudents.length + ' of ' + bandStudents.length + ' students</span>' +
                     '<button type="button" class="ba-modal-btn-footer-close ba-band-modal-close-btn">Close</button>' +
                 '</div>' +
             '</div>';
@@ -1127,7 +1124,7 @@ define([], function() {
                 });
 
                 if (!rowsHtml) {
-                    rowsHtml = '<tr><td colspan="' + (2 + performanceColumns.length) + '" style="text-align:center; padding:32px; color:#64748b;">No students found matching current filter.</td></tr>';
+                    rowsHtml = '<tr><td colspan="' + (2 + performanceColumns.length) + '" class="ba-empty-cell">No students found matching current filter.</td></tr>';
                 }
 
                 if (tbody) {
@@ -1237,18 +1234,18 @@ define([], function() {
             if (!studentsData || studentsData.length === 0) {
                 if (bandrow) {
                     bandrow.innerHTML =
-                        '<div class="band top" style="cursor:default;">' +
+                        '<div class="band top is-empty">' +
                             '<div class="pct">0</div><div class="lbl">Top Performers</div><div class="cnt">grade &gt; 70</div>' +
                         '</div>' +
-                        '<div class="band mid" style="cursor:default;">' +
+                        '<div class="band mid is-empty">' +
                             '<div class="pct">0</div><div class="lbl">Middle Performers</div><div class="cnt">grade 40–70</div>' +
                         '</div>' +
-                        '<div class="band bot" style="cursor:default;">' +
+                        '<div class="band bot is-empty">' +
                             '<div class="pct">0</div><div class="lbl">Low Performers</div><div class="cnt">grade &lt; 40</div>' +
                         '</div>';
                 }
                 if (stuBody) {
-                    stuBody.innerHTML = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this batch.</td></tr>';
+                    stuBody.innerHTML = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" class="ba-empty-cell">No students found for this batch.</td></tr>';
                 }
                 if (paginationInfo) paginationInfo.textContent = 'No students to display';
                 if (paginationBtns) paginationBtns.innerHTML = '';
@@ -1372,7 +1369,7 @@ define([], function() {
                 }
 
                 html += '<tr>' +
-                    '<td><span class="bdot" style="background:' + dotColors[b] + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
+                    '<td><span class="bdot bdot-' + b + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
                     '<td class="ba-performance-student-cell">' +
                         '<div class="ba-student-cell">' +
                             avatarHtml +
@@ -1392,7 +1389,7 @@ define([], function() {
             });
 
             if (pagedStudents.length === 0) {
-                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" style="text-align:center; padding:32px; color:#64748b;">No students found for this filter.</td></tr>';
+                html = '<tr><td colspan="' + getVisiblePerformanceColumnCount() + '" class="ba-empty-cell">No students found for this filter.</td></tr>';
             }
 
             if (stuBody) {
@@ -1632,6 +1629,131 @@ define([], function() {
                 '</svg>' + escapeHtml(noteStrings.edit) + '</button>';
         }
 
+        function createHistoryButtonHtml(noteId) {
+            return '<button type="button" class="ba-btn-note-history" data-note-id="' + escapeHtml(noteId) + '" title="' + escapeHtml(noteStrings.viewHistory || 'View edit history') + '">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>' +
+                '<span>' + escapeHtml(noteStrings.edited || 'Edited') + '</span>' +
+                '</button>';
+        }
+
+        function openHistoryModal(noteId) {
+            var batchId = (batchContainer && batchContainer.getAttribute('data-batchid')) || '1';
+            var sessKey = (batchContainer && batchContainer.getAttribute('data-sesskey')) || '';
+            if (!sessKey && typeof M !== 'undefined' && M.cfg && M.cfg.sesskey) {
+                sessKey = M.cfg.sesskey;
+            }
+
+            var backdrop = document.createElement('div');
+            backdrop.className = 'ba-history-modal-backdrop';
+            backdrop.innerHTML = '<div class="ba-history-modal" role="dialog" aria-modal="true" aria-labelledby="ba-hist-modal-title">' +
+                '<div class="ba-history-modal-header">' +
+                '  <h3 id="ba-hist-modal-title">' +
+                '    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>' +
+                '    <span>' + escapeHtml(noteStrings.historyTitle || 'Review Note Edit History') + '</span>' +
+                '  </h3>' +
+                '  <button type="button" class="ba-history-close" aria-label="' + escapeHtml(noteStrings.close || 'Close') + '">&times;</button>' +
+                '</div>' +
+                '<div class="ba-history-modal-body">' +
+                '  <div class="ba-history-loading">' +
+                '    <div class="ba-spinner"></div>' +
+                '    <span>Loading history…</span>' +
+                '  </div>' +
+                '</div>' +
+                '</div>';
+
+            document.body.appendChild(backdrop);
+            document.body.style.overflow = 'hidden';
+
+            function closeModal() {
+                backdrop.remove();
+                document.body.style.overflow = '';
+                document.removeEventListener('keydown', handleKey);
+            }
+
+            function handleKey(e) {
+                if (e.key === 'Escape') {
+                    closeModal();
+                }
+            }
+            document.addEventListener('keydown', handleKey);
+
+            backdrop.querySelector('.ba-history-close').addEventListener('click', closeModal);
+            backdrop.addEventListener('click', function(e) {
+                if (e.target === backdrop) {
+                    closeModal();
+                }
+            });
+
+            var formData = new FormData();
+            formData.append('action', 'get_note_history');
+            formData.append('batchid', batchId);
+            formData.append('noteid', noteId);
+            formData.append('sesskey', sessKey);
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(res) {
+                return res.json().catch(function() { return null; }).then(function(data) {
+                    if (!res.ok) {
+                        var msg = (data && data.message) ? data.message : ('Server returned ' + res.status);
+                        throw new Error(msg);
+                    }
+                    return data;
+                });
+            })
+            .then(function(data) {
+                var bodyContainer = backdrop.querySelector('.ba-history-modal-body');
+                if (!bodyContainer) return;
+
+                if (data && data.success && Array.isArray(data.history) && data.history.length > 0) {
+                    var timelineHtml = '<div class="ba-timeline">';
+                    data.history.forEach(function(item, idx) {
+                        var isLatest = (idx === data.history.length - 1);
+                        var isOriginal = (idx === 0);
+                        var verLabel = isOriginal ? (noteStrings.verOriginal || 'Version 1 (Original)') : ('Version ' + item.version);
+
+                        timelineHtml += '<div class="ba-timeline-item' + (isLatest ? ' ba-timeline-latest' : '') + '">' +
+                            '  <div class="ba-timeline-marker"></div>' +
+                            '  <div class="ba-timeline-content">' +
+                            '    <div class="ba-timeline-meta">' +
+                            '      <span class="ba-timeline-ver">' + escapeHtml(verLabel) + '</span>' +
+                            '      <span class="ba-timeline-sep">·</span>' +
+                            '      <span class="ba-timeline-who"><b>' + escapeHtml(item.author) + '</b></span>' +
+                            '      <span class="ba-timeline-sep">·</span>' +
+                            '      <span class="ba-timeline-date">' + escapeHtml(item.date) + '</span>' +
+                            '    </div>' +
+                            '    <div class="ba-timeline-body">' + escapeHtml(item.body).replace(/\n/g, '<br>') + '</div>' +
+                            '  </div>' +
+                            '</div>';
+                    });
+                    timelineHtml += '</div>';
+                    bodyContainer.innerHTML = timelineHtml;
+                } else {
+                    bodyContainer.innerHTML = '<div class="ba-history-empty">No edit history recorded for this note.</div>';
+                }
+            })
+            .catch(function(err) {
+                var bodyContainer = backdrop.querySelector('.ba-history-modal-body');
+                if (bodyContainer) {
+                    bodyContainer.innerHTML = '<div class="ba-history-error">Failed to load history: ' + escapeHtml(err.message || 'Unknown error') + '</div>';
+                }
+            });
+        }
+
+        function attachHistoryListener(btn) {
+            if (!btn) return;
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var noteId = btn.getAttribute('data-note-id') || (btn.closest('.note-item') && btn.closest('.note-item').getAttribute('data-note-id'));
+                if (noteId) {
+                    openHistoryModal(noteId);
+                }
+            });
+        }
+
         function attachEditListener(editBtn) {
             if (!editBtn) return;
             editBtn.addEventListener('click', function() {
@@ -1759,6 +1881,19 @@ define([], function() {
                         if (data && data.success && data.note) {
                             bodyEl.setAttribute('data-raw-text', data.note.body);
                             bodyEl.innerHTML = escapeHtml(data.note.body).replace(/\n/g, '<br>');
+
+                            // Add edited history pill button if not already present
+                            var metaLeft = noteItem.querySelector('.meta-left');
+                            if (metaLeft && !metaLeft.querySelector('.ba-btn-note-history')) {
+                                var tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = createHistoryButtonHtml(data.note.id);
+                                var newHistBtn = tempDiv.firstElementChild;
+                                if (newHistBtn) {
+                                    metaLeft.appendChild(newHistBtn);
+                                    attachHistoryListener(newHistBtn);
+                                }
+                            }
+
                             cleanup();
                         } else {
                             alert((data && data.message) ? data.message : 'Failed to update review note.');
@@ -1779,6 +1914,10 @@ define([], function() {
             var initialEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
             initialEditBtns.forEach(function(btn) {
                 attachEditListener(btn);
+            });
+            var initialHistBtns = noteList.querySelectorAll('.ba-btn-note-history');
+            initialHistBtns.forEach(function(btn) {
+                attachHistoryListener(btn);
             });
         }
 
@@ -1840,6 +1979,15 @@ define([], function() {
                         oldBadges.forEach(function(badge) {
                             badge.remove();
                         });
+
+                        // If user cannot manage all notes, remove edit buttons from older notes
+                        var canManageAllNotes = (batchContainer && batchContainer.getAttribute('data-can-manage-all') === '1');
+                        if (!canManageAllNotes) {
+                            var oldEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
+                            oldEditBtns.forEach(function(btn) {
+                                btn.remove();
+                            });
+                        }
 
                         var noteItem = document.createElement('div');
                         noteItem.className = 'note-item';
@@ -1905,7 +2053,7 @@ define([], function() {
             function _buildHeader() {
                 var thead = document.getElementById('ba-crm-thead');
                 if (!thead) return;
-                var html = '<tr><th style="position:sticky;left:0;background:#f1f5f9;z-index:2;border-right:2px solid #e2e8f0;">Student</th>';
+                var html = '<tr><th class="ba-crm-th-student">Student</th>';
                 CRM_COLS.forEach(function(c) {
                     html += '<th>' + escapeHtml(c.h) + '</th>';
                 });
@@ -1919,7 +2067,7 @@ define([], function() {
                 if (!tbody) return;
 
                 if (!studentsData.length) {
-                    tbody.innerHTML = '<tr><td colspan="' + (CRM_COLS.length + 1) + '" style="text-align:center;padding:24px;color:#94a3b8;">No students found for this batch.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="' + (CRM_COLS.length + 1) + '" class="ba-crm-nodata">No students found for this batch.</td></tr>';
                     return;
                 }
 
@@ -1929,12 +2077,12 @@ define([], function() {
                     var u = s.username || '';
                     var uid = _uid(u);
                     html += '<tr id="ba-crm-row-' + escapeHtml(uid) + '">';
-                    html += '<td style="position:sticky;left:0;background:#fff;z-index:1;border-right:1px solid #eee;min-width:160px;">' +
+                    html += '<td class="ba-crm-td-student">' +
                             '<b>' + escapeHtml(s.name) + '</b><br>' +
-                            '<small style="color:#888;">' + escapeHtml(u || s.id || '-') + '</small></td>';
+                            '<small class="ba-crm-student-sub">' + escapeHtml(u || s.id || '-') + '</small></td>';
 
                     if (PTF_FAILED[u]) {
-                        CRM_COLS.forEach(function() { html += '<td style="color:#e53e3e;font-size:12px;">CRM unavailable</td>'; });
+                        CRM_COLS.forEach(function() { html += '<td class="ba-crm-cell-error">CRM unavailable</td>'; });
                     } else if (PTF_CACHE[u]) {
                         // Will be filled after innerHTML, see _fillCachedRows()
                         CRM_COLS.forEach(function() { html += '<td class="ba-crm-loading">...</td>'; });
@@ -1966,7 +2114,7 @@ define([], function() {
                 var isPlaced = company && company !== 'Not Placed' && company !== 'Checking...' && company !== 'Error';
                 var statusHtml;
                 if (company === null) {
-                    statusHtml = '<span class="st" style="background:#f1f5f9;color:#64748b;">—</span>';
+                    statusHtml = '<span class="st st-none">—</span>';
                 } else {
                     statusHtml = isPlaced
                         ? '<span class="st st-g">Placed</span>'
@@ -2047,7 +2195,11 @@ define([], function() {
                 if (!CRM_FAILURE_SHOWN) {
                     CRM_FAILURE_SHOWN = true;
                     var retryBtn = document.getElementById('ba-crm-retry-btn');
-                    if (retryBtn) { retryBtn.style.display = ''; retryBtn.classList.remove('disabled'); }
+                    if (retryBtn) {
+                        retryBtn.classList.remove('ba-is-hidden');
+                        retryBtn.style.display = '';
+                        retryBtn.classList.remove('disabled');
+                    }
                 }
                 // Refresh failed row cells
                 chunk.forEach(function(u) {
@@ -2056,7 +2208,7 @@ define([], function() {
                     while (tr.children.length > 1) tr.removeChild(tr.lastChild);
                     CRM_COLS.forEach(function() {
                         var td = document.createElement('td');
-                        td.style.cssText = 'color:#e53e3e;font-size:12px;';
+                        td.className = 'ba-crm-cell-error';
                         td.textContent = 'CRM unavailable';
                         tr.appendChild(td);
                     });
@@ -2079,11 +2231,11 @@ define([], function() {
                     var c = document.getElementById(id);
                     if (!c) return;
                     var checked = Array.from(c.querySelectorAll('input:checked')).map(function(cb){ return cb.value; });
-                    if (!items.length) { c.innerHTML = '<span style="color:#94a3b8;">No data yet</span>'; return; }
+                    if (!items.length) { c.innerHTML = '<span class="ba-crm-loading-text">No data yet</span>'; return; }
                     var html = '';
                     Array.from(items).sort().forEach(function(item) {
                         var chk = checked.indexOf(item) !== -1 ? 'checked' : '';
-                        html += '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:5px;font-size:12px;">'
+                        html += '<label class="ba-crm-cb-label">'
                               + '<input type="checkbox" value="' + escapeHtml(item) + '" class="' + id.replace('ba-crm-f-', 'ba-crm-cb-') + '" onchange="baBatchCrm.applyFilters()" ' + chk + '> '
                               + escapeHtml(item) + '</label>';
                     });

@@ -75,7 +75,7 @@ if ($action === 'addnote') {
         $sec_assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER->id, true);
         $is_assigned_pm = !empty($sec_assignment['is_pm']);
 
-        if (!$can_manage_all && !$is_sslead && !$is_assigned_pm) {
+        if (!$can_manage_all) {
             require_capability('local/batchanalytics:editreviewnotes', $context);
         }
 
@@ -156,15 +156,22 @@ if ($action === 'editnote') {
         $sec_assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER->id, true);
         $is_assigned_pm = !empty($sec_assignment['is_pm']);
 
-        if (!$can_manage_all && !$is_sslead && !$is_assigned_pm) {
+        if (!$can_manage_all) {
             require_capability('local/batchanalytics:editreviewnotes', $context);
         }
 
         \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'editnote');
 
-        // 5. Author check: Only site administrators and users with full manage capability can edit others' notes.
-        // PM and SS Lead can only edit their own notes.
+        // 5. Latest-note check: Regular users (PM / SS Lead) can only edit the latest note.
+        // Site administrators and full managers can edit any note.
         if (!$can_manage_all) {
+            $is_latest = \local_batchanalytics\batch_notes_service::is_latest_note((int)$existing->batchid, $noteid);
+            if (!$is_latest) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => get_string('only_latest_note_editable', 'local_batchanalytics')]);
+                exit;
+            }
+
             if ((int)$existing->userid !== (int)$USER->id) {
                 http_response_code(403);
                 echo json_encode(['success' => false, 'message' => 'You can only edit your own notes']);
@@ -172,7 +179,7 @@ if ($action === 'editnote') {
             }
         }
 
-        $saved = \local_batchanalytics\batch_notes_service::update_note($noteid, $note);
+        $saved = \local_batchanalytics\batch_notes_service::update_note($noteid, $note, (int)$USER->id, fullname($USER));
         echo json_encode(['success' => true, 'note' => $saved]);
     } catch (\moodle_exception $e) {
         $is_permission = ($e instanceof \required_capability_exception)
@@ -180,6 +187,72 @@ if ($action === 'editnote') {
             || (strpos($e->errorcode, 'nopermission') !== false);
         http_response_code($is_permission ? 403 : 400);
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'get_note_history') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        require_sesskey();
+        $batchid = required_param('batchid', PARAM_INT);
+        $noteid  = required_param('noteid', PARAM_INT);
+
+        global $DB;
+
+        // 1. Verify note exists
+        $existing = $DB->get_record(\local_batchanalytics\batch_notes_service::TABLE, ['id' => $noteid]);
+        if (!$existing) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Note not found']);
+            exit;
+        }
+
+        // 2. Resolve target batch section
+        $sec = null;
+        if ($DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+            if (!$sec) {
+                $secs = $DB->get_records('local_bm_classsection', ['batchid' => $batchid], 'id ASC', '*', 0, 1);
+                if (!empty($secs)) {
+                    $sec = reset($secs);
+                }
+            }
+        }
+        if (!$sec) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Batch not found']);
+            exit;
+        }
+
+        // 3. Strict Batch Ownership: Ensure the note belongs to this batch
+        $matches_batch = ((int)$existing->batchid === (int)$batchid)
+            || ((int)$existing->batchid === (int)$sec->id)
+            || (!empty($sec->batchid) && (int)$existing->batchid === (int)$sec->batchid);
+
+        if (!$matches_batch) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Note does not belong to authorized batch']);
+            exit;
+        }
+
+        // 4. View permission check
+        $can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context)
+            || has_capability('local/batchanalytics:editreviewnotes', $context)
+            || \local_batchanalytics\util::can_view_all_batches($context, $USER->id)
+            || \local_batchanalytics\util::is_user_sslead($USER->id);
+
+        if (!$can_view_notes) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'No permission to view note history']);
+            exit;
+        }
+
+        $history = \local_batchanalytics\batch_notes_service::get_note_history($noteid);
+        echo json_encode(['success' => true, 'history' => $history]);
     } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -640,8 +713,8 @@ $can_manage_all_notes = is_siteadmin()
     || has_capability('moodle/site:config', $context)
     || has_capability('local/batchanalytics:manage', $context);
 
-// Edit notes allowed for: assigned PM on this batch, SS Lead on any batch, or Admin/Manager.
-$can_edit_notes = $can_manage_all_notes || $is_sslead || ($is_assigned_pm && ($has_edit_notes_cap || true));
+// Edit notes allowed for: assigned PM on this batch, SS Lead on any batch, or Admin/Manager (subject to editreviewnotes capability).
+$can_edit_notes = $can_manage_all_notes || ($has_edit_notes_cap && ($is_assigned_pm || $is_sslead));
 
 // View notes allowed for: anyone with view capability, assigned PM, SS Lead, or Admin/Manager.
 $can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context)
@@ -748,21 +821,27 @@ echo $OUTPUT->header();
   data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
   data-crm-fields="<?= htmlspecialchars(json_encode($crm_fields_config), ENT_QUOTES) ?>"
   data-can-manage="<?= $batch_can_manage ? '1' : '0' ?>"
+  data-can-manage-all="<?= !empty($can_manage_all_notes) ? '1' : '0' ?>"
   data-can-view-crm="<?= $batch_can_view_crm ? '1' : '0' ?>"
   data-crm-index-url="<?= s($crm_index_url) ?>"
   data-note-strings="<?= s(json_encode([
-      'edit'    => get_string('btn_edit_note', 'local_batchanalytics'),
-      'save'    => get_string('btn_save_note', 'local_batchanalytics'),
-      'cancel'  => get_string('btn_cancel_note', 'local_batchanalytics'),
-      'saving'  => get_string('saving_note', 'local_batchanalytics'),
-      'latest'  => get_string('latest_note', 'local_batchanalytics'),
+      'edit'        => get_string('btn_edit_note', 'local_batchanalytics'),
+      'save'        => get_string('btn_save_note', 'local_batchanalytics'),
+      'cancel'      => get_string('btn_cancel_note', 'local_batchanalytics'),
+      'saving'      => get_string('saving_note', 'local_batchanalytics'),
+      'latest'      => get_string('latest_note', 'local_batchanalytics'),
+      'edited'      => get_string('edited', 'local_batchanalytics'),
+      'viewHistory' => get_string('view_note_history', 'local_batchanalytics'),
+      'historyTitle'=> get_string('note_history_title', 'local_batchanalytics'),
+      'verOriginal' => get_string('version_original', 'local_batchanalytics'),
+      'close'       => get_string('close', 'local_batchanalytics'),
   ])) ?>">
 
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
     <span class="crumb">
       <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
-      <span style="color:#cbd5e1; margin:0 6px;">›</span>
+      <span class="crumb-sep">›</span>
       <b><?= s($batchid_label) ?></b>
     </span>
   </div>
@@ -830,8 +909,8 @@ echo $OUTPUT->header();
           <div class="panel-note">
             <?= get_string('sched_panel_note', 'local_batchanalytics') ?>
           </div>
-          <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-            <table style="min-width:880px;">
+          <div class="tablecard">
+            <table>
               <thead>
                 <tr>
                   <th><?= s(get_string('col_module', 'local_batchanalytics')) ?></th>
@@ -847,7 +926,7 @@ echo $OUTPUT->header();
               </thead>
               <tbody>
                 <?php if (empty($schedule_rows)): ?>
-                  <tr><td colspan="9" class="muted" style="text-align:center; padding:24px;"><?= s(get_string('no_modules_configured', 'local_batchanalytics')) ?></td></tr>
+                  <tr><td colspan="9" class="muted ba-empty-cell"><?= s(get_string('no_modules_configured', 'local_batchanalytics')) ?></td></tr>
                 <?php else: ?>
                   <?php foreach ($schedule_rows as $idx => $r): ?>
                     <?php
@@ -869,9 +948,9 @@ echo $OUTPUT->header();
                     <tr>
                       <td>
                         <?php if ($course_linked): ?>
-                          <a href="<?= s($module_tracker_url) ?>" class="val" style="color:var(--text-main); font-weight:600; text-decoration:none;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'"><?= s($r['name']) ?></a>
+                          <a href="<?= s($module_tracker_url) ?>" class="val"><?= s($r['name']) ?></a>
                         <?php else: ?>
-                          <span class="val" style="color:var(--text-main); font-weight:600;" title="No course mapped for this module"><?= s($r['name']) ?></span>
+                          <span class="val" title="No course mapped for this module"><?= s($r['name']) ?></span>
                         <?php endif; ?>
                       </td>
                       <td>
@@ -909,7 +988,7 @@ echo $OUTPUT->header();
                         <?php if ($course_linked): ?>
                           <a href="<?= s($module_tracker_url) ?>" class="viewbtn"><?= s(get_string('view_module', 'local_batchanalytics')) ?></a>
                         <?php else: ?>
-                          <button type="button" class="viewbtn disabled" disabled style="border-color:#d3d9de; color:#8c959f; background:#f6f8fa; cursor:not-allowed; opacity:0.65; pointer-events:auto;" title="No course mapped for this module"><?= s(get_string('view_module', 'local_batchanalytics')) ?></button>
+                          <button type="button" class="viewbtn disabled" disabled title="No course mapped for this module"><?= s(get_string('view_module', 'local_batchanalytics')) ?></button>
                         <?php endif; ?>
                       </td>
                     </tr>
@@ -925,8 +1004,8 @@ echo $OUTPUT->header();
           <div class="panel-note">
             <?= get_string('ss_panel_note', 'local_batchanalytics') ?>
           </div>
-          <div class="tablecard" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-            <table style="min-width:600px;">
+          <div class="tablecard">
+            <table>
               <thead>
                 <tr>
                   <th><?= s(get_string('col_activity', 'local_batchanalytics')) ?></th>
@@ -937,7 +1016,7 @@ echo $OUTPUT->header();
               </thead>
               <tbody>
                 <?php if (empty($ss_activities)): ?>
-                  <tr><td colspan="4" class="muted" style="text-align:center; padding:24px;"><?= s(get_string('no_ss_activities', 'local_batchanalytics')) ?></td></tr>
+                  <tr><td colspan="4" class="muted ba-empty-cell"><?= s(get_string('no_ss_activities', 'local_batchanalytics')) ?></td></tr>
                 <?php else: ?>
                 <?php foreach ($ss_activities as $act): ?>
                   <tr>
@@ -1022,27 +1101,25 @@ echo $OUTPUT->header();
           </div>
 
           <!-- CRM Filter + Table Layout -->
-          <div class="ba-crm-layout" style="display:flex; gap:18px; align-items:flex-start;">
+          <div class="ba-crm-layout">
 
             <!-- Filter Sidebar -->
-            <div class="ba-crm-sidebar" style="min-width:220px; max-width:240px; flex-shrink:0; background:var(--card,#fff); border:1px solid var(--line,#e2e8f0); border-radius:10px; padding:16px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-weight:700; font-size:13px; color:var(--txt,#1e293b);"><?= s(get_string('filters', 'local_batchanalytics')) ?></span>
-                <span onclick="baBatchCrm.resetFilters()" style="cursor:pointer; color:var(--accent,#4f46e5); font-size:12px; font-weight:600;"><?= s(get_string('filters_reset_all', 'local_batchanalytics')) ?></span>
+            <div class="ba-crm-sidebar">
+              <div class="ba-crm-sidebar-header">
+                <span class="ba-crm-sidebar-title"><?= s(get_string('filters', 'local_batchanalytics')) ?></span>
+                <span onclick="baBatchCrm.resetFilters()" class="ba-crm-reset-link"><?= s(get_string('filters_reset_all', 'local_batchanalytics')) ?></span>
               </div>
 
               <!-- Search -->
-              <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('search_name_id', 'local_batchanalytics')) ?></label>
-                <input type="text" id="ba-crm-f-search" placeholder="Search..." oninput="baBatchCrm.applyFilters()"
-                  style="width:100%; box-sizing:border-box; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+              <div class="ba-crm-filter-group">
+                <label class="ba-crm-filter-label"><?= s(get_string('search_name_id', 'local_batchanalytics')) ?></label>
+                <input type="text" id="ba-crm-f-search" class="ba-crm-input-text" placeholder="Search..." oninput="baBatchCrm.applyFilters()">
               </div>
 
               <!-- Placement Status -->
-              <div style="margin-bottom:12px;" id="ba-crm-placement-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('placement_status', 'local_batchanalytics')) ?></label>
-                <select id="ba-crm-f-placement" onchange="baBatchCrm.applyFilters()"
-                  style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+              <div class="ba-crm-filter-group" id="ba-crm-placement-wrap">
+                <label class="ba-crm-filter-label"><?= s(get_string('placement_status', 'local_batchanalytics')) ?></label>
+                <select id="ba-crm-f-placement" class="ba-crm-select" onchange="baBatchCrm.applyFilters()">
                   <option value="">All</option>
                   <option value="Placed">Placed</option>
                   <option value="Not Placed">Not Placed</option>
@@ -1050,69 +1127,64 @@ echo $OUTPUT->header();
               </div>
 
               <!-- PET Status -->
-              <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('pet_status', 'local_batchanalytics')) ?></label>
-                <select id="ba-crm-f-pet" onchange="baBatchCrm.applyFilters()"
-                  style="width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px;">
+              <div class="ba-crm-filter-group">
+                <label class="ba-crm-filter-label"><?= s(get_string('pet_status', 'local_batchanalytics')) ?></label>
+                <select id="ba-crm-f-pet" class="ba-crm-select" onchange="baBatchCrm.applyFilters()">
                   <option value="">All</option>
                 </select>
               </div>
 
               <!-- MAAC Rating Range -->
-              <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('maac_rating', 'local_batchanalytics')) ?></label>
-                <div style="display:flex; gap:6px; align-items:center;">
-                  <input type="number" id="ba-crm-f-maac-min" value="0" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()"
-                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
-                  <span style="color:#94a3b8;">–</span>
-                  <input type="number" id="ba-crm-f-maac-max" value="10" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()"
-                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Max">
+              <div class="ba-crm-filter-group">
+                <label class="ba-crm-filter-label"><?= s(get_string('maac_rating', 'local_batchanalytics')) ?></label>
+                <div class="ba-crm-range-row">
+                  <input type="number" id="ba-crm-f-maac-min" class="ba-crm-input-range" value="0" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()" placeholder="Min">
+                  <span class="ba-crm-range-sep">–</span>
+                  <input type="number" id="ba-crm-f-maac-max" class="ba-crm-input-range" value="10" min="0" max="10" step="0.1" onchange="baBatchCrm.applyFilters()" placeholder="Max">
                 </div>
               </div>
 
               <!-- Adv C Mock Score -->
-              <div style="margin-bottom:12px;">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('adv_c_mock_score', 'local_batchanalytics')) ?></label>
-                <div style="display:flex; gap:6px; align-items:center;">
-                  <input type="number" id="ba-crm-f-advc-min" value="0" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()"
-                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Min">
-                  <span style="color:#94a3b8;">–</span>
-                  <input type="number" id="ba-crm-f-advc-max" value="100" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()"
-                    style="width:60px; border:1px solid #e2e8f0; border-radius:6px; padding:5px 6px; font-size:12px;" placeholder="Max">
+              <div class="ba-crm-filter-group">
+                <label class="ba-crm-filter-label"><?= s(get_string('adv_c_mock_score', 'local_batchanalytics')) ?></label>
+                <div class="ba-crm-range-row">
+                  <input type="number" id="ba-crm-f-advc-min" class="ba-crm-input-range" value="0" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()" placeholder="Min">
+                  <span class="ba-crm-range-sep">–</span>
+                  <input type="number" id="ba-crm-f-advc-max" class="ba-crm-input-range" value="100" min="0" max="100" step="1" onchange="baBatchCrm.applyFilters()" placeholder="Max">
                 </div>
               </div>
 
               <!-- Year of Passing -->
-              <div style="margin-bottom:12px;" id="ba-crm-yop-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('year_of_passing', 'local_batchanalytics')) ?></label>
-                <div id="ba-crm-f-yop-list" style="max-height:110px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
-                  <span style="color:#94a3b8;"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
+              <div class="ba-crm-filter-group" id="ba-crm-yop-wrap">
+                <label class="ba-crm-filter-label"><?= s(get_string('year_of_passing', 'local_batchanalytics')) ?></label>
+                <div id="ba-crm-f-yop-list" class="ba-crm-checkbox-list">
+                  <span class="ba-crm-loading-text"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
                 </div>
               </div>
 
               <!-- Home State -->
-              <div style="margin-bottom:4px;" id="ba-crm-state-wrap">
-                <label style="font-size:12px; font-weight:600; color:#64748b; display:block; margin-bottom:4px;"><?= s(get_string('home_state', 'local_batchanalytics')) ?></label>
-                <div id="ba-crm-f-state-list" style="max-height:130px; overflow-y:auto; border:1px solid #eee; padding:6px 8px; border-radius:6px; font-size:12px;">
-                  <span style="color:#94a3b8;"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
+              <div class="ba-crm-filter-group ba-crm-filter-group-sm" id="ba-crm-state-wrap">
+                <label class="ba-crm-filter-label"><?= s(get_string('home_state', 'local_batchanalytics')) ?></label>
+                <div id="ba-crm-f-state-list" class="ba-crm-checkbox-list ba-crm-checkbox-list-lg">
+                  <span class="ba-crm-loading-text"><?= s(get_string('loading_crm_data', 'local_batchanalytics')) ?></span>
                 </div>
               </div>
             </div>
 
             <!-- Main Table Area -->
-            <div style="flex:1; min-width:0;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span id="ba-crm-count" style="font-weight:600; font-size:13px; color:#64748b;"><?= s(get_string('loading_students', 'local_batchanalytics')) ?></span>
-                <div style="display:flex; gap:8px;">
-                  <button type="button" id="ba-crm-retry-btn" onclick="baBatchCrm.retryCrm()" class="viewbtn disabled" style="display:none;"><?= s(get_string('retry_crm_data', 'local_batchanalytics')) ?></button>
+            <div class="ba-crm-main">
+              <div class="ba-crm-toolbar">
+                <span id="ba-crm-count" class="ba-crm-count"><?= s(get_string('loading_students', 'local_batchanalytics')) ?></span>
+                <div class="ba-crm-toolbar-actions">
+                  <button type="button" id="ba-crm-retry-btn" onclick="baBatchCrm.retryCrm()" class="viewbtn disabled ba-is-hidden"><?= s(get_string('retry_crm_data', 'local_batchanalytics')) ?></button>
                   <button type="button" id="ba-crm-export-btn" onclick="baBatchCrm.exportCsv()" class="exp"><?= s(get_string('export_csv', 'local_batchanalytics')) ?></button>
                 </div>
               </div>
-              <div class="tablecard" style="overflow-x:auto;">
-                <table id="ba-crm-table" style="min-width:700px;">
+              <div class="tablecard">
+                <table id="ba-crm-table">
                   <thead id="ba-crm-thead"><tr><th><?= s(get_string('col_student', 'local_batchanalytics')) ?></th></tr></thead>
                   <tbody id="ba-crm-tbody">
-                    <tr><td colspan="20" style="text-align:center; padding:24px; color:#94a3b8;"><?= s(get_string('click_crm_tab_to_load', 'local_batchanalytics')) ?></td></tr>
+                    <tr><td colspan="20" class="ba-crm-cell-empty"><?= s(get_string('click_crm_tab_to_load', 'local_batchanalytics')) ?></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1174,13 +1246,19 @@ echo $OUTPUT->header();
                     <?php if ($is_latest): ?>
                       <span class="ba-latest-badge"><?= s(get_string('latest_note', 'local_batchanalytics')) ?></span>
                     <?php endif; ?>
+                    <?php if (!empty($nt['is_edited'])): ?>
+                      <button type="button" class="ba-btn-note-history" data-note-id="<?= s($nt['id']) ?>" title="<?= s(get_string('view_note_history', 'local_batchanalytics')) ?>">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                        <span><?= s(get_string('edited', 'local_batchanalytics')) ?></span>
+                      </button>
+                    <?php endif; ?>
                   </div>
                   <?php 
                   $can_manage_all_notes = is_siteadmin()
                       || has_capability('moodle/site:config', $context)
                       || has_capability('local/batchanalytics:manage', $context);
                   $can_edit_this_note = $can_edit_notes && (
-                      (int)($nt['userid'] ?? 0) === (int)$USER->id || $can_manage_all_notes
+                      $can_manage_all_notes || ($is_latest && (int)($nt['userid'] ?? 0) === (int)$USER->id)
                   );
                   if ($can_edit_this_note): 
                   ?>
@@ -1194,7 +1272,7 @@ echo $OUTPUT->header();
             <?php endforeach; ?>
           </div>
           <?php else: ?>
-          <div class="ba-note-permission-msg" style="padding: 16px; background: #f8fafc; border: 1px dashed var(--line); border-radius: 8px; color: var(--mute, #64748b); font-size: 13px;">
+          <div class="ba-note-permission-msg">
             <?= s(get_string('nopermissiontoviewnotes', 'local_batchanalytics')) ?>
           </div>
           <?php endif; ?>

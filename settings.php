@@ -294,12 +294,12 @@ if ($hassiteconfig) {
         [],
         $role_choices
     ));
-    $page_roles->add(new admin_setting_configtext(
+    require_once(__DIR__ . '/classes/admin_setting_configcommaemails.php');
+    $page_roles->add(new \local_batchanalytics\admin_setting_configcommaemails(
         'local_batchanalytics/sslead_email',
         get_string('sslead_email', 'local_batchanalytics'),
         get_string('sslead_email_desc', 'local_batchanalytics'),
-        '',
-        PARAM_EMAIL
+        ''
     ));
     $page_roles->add(new admin_setting_configmultiselect(
         'local_batchanalytics/program_manager_roles',

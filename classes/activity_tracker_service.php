@@ -71,19 +71,16 @@ class activity_tracker_service {
         $activities = $this->get_course_activities($course);
         if (self::has_sectionid_field()) {
             if ($sectionid > 0) {
-                // Section-specific tracker records take precedence over template records (sectionid = 0).
-                $saved = $DB->get_records_select(
-                    'local_batchanalytics_activity_tracker',
-                    'courseid = :cid AND (sectionid = :secid OR sectionid = 0)',
-                    ['cid' => $courseid, 'secid' => $sectionid],
-                    'sectionid ASC, id ASC',
-                    'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid'
-                );
+                // Section-specific tracker records only (ignore legacy sectionid = 0 rows to preserve section isolation).
+                $saved = $DB->get_records('local_batchanalytics_activity_tracker', [
+                    'courseid'  => $courseid,
+                    'sectionid' => $sectionid,
+                ], 'id ASC', 'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid');
             } else {
                 $saved = $DB->get_records('local_batchanalytics_activity_tracker', [
-                    'courseid' => $courseid,
+                    'courseid'  => $courseid,
                     'sectionid' => 0,
-                ], '', 'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid');
+                ], 'id ASC', 'id, cmid, completed, completiondate, modifiedby, timemodified, sectionid');
             }
         } else {
             $saved = $DB->get_records('local_batchanalytics_activity_tracker', ['courseid' => $courseid], '',
@@ -1043,8 +1040,8 @@ class activity_tracker_service {
                         $sectionid
                     );
                     if ($sectionid > 0) {
-                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_name);
-                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_key);
+                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_name, $courseid);
+                        \local_batchanalytics\cliq_activity_notifier::reset_completion_alert($sectionid, $act_key, $courseid);
                     }
                     $results[$act_key] = 'reverted_to_incomplete';
                 }
@@ -1325,12 +1322,16 @@ class activity_tracker_service {
             // Case A: Pending submissions exist -> if marked completed, revert to incomplete!
             if ($pending_count > 0) {
                 if ($is_completed && $existing_rec) {
-                    $existing_rec->completed = 0;
-                    $existing_rec->completiondate = '';
-                    $existing_rec->modifiedby = 0;
-                    $existing_rec->timemodified = time();
-                    $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
-                    $results[$cmid] = 'reverted_to_incomplete';
+                    // Only auto-revert rows the system created (modifiedby == 0).
+                    // Preserve manual mentor sign-offs (modifiedby > 0).
+                    if ((int)$existing_rec->modifiedby === 0) {
+                        $existing_rec->completed = 0;
+                        $existing_rec->completiondate = '';
+                        $existing_rec->modifiedby = 0;
+                        $existing_rec->timemodified = time();
+                        $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
+                        $results[$cmid] = 'reverted_to_incomplete';
+                    }
                 }
             }
             // Case B: 0 pending submissions and at least 1 evaluated -> auto-mark complete!
@@ -1338,28 +1339,33 @@ class activity_tracker_service {
                 $eval_date = date('Y-m-d', $latest_graded_time > 0 ? $latest_graded_time : time());
                 $grader_id = 0; // 0 indicates System (Auto)
 
-                if (!$is_completed || empty($existing_rec->completiondate) || $existing_rec->completiondate !== $eval_date) {
-                    if ($existing_rec) {
-                        $existing_rec->completed = 1;
-                        $existing_rec->completiondate = $eval_date;
-                        $existing_rec->modifiedby = $grader_id;
-                        $existing_rec->timemodified = time();
-                        $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
-                    } else {
-                        $newrec = (object)[
-                            'courseid'       => $courseid,
-                            'cmid'           => $cmid,
-                            'completed'      => 1,
-                            'completiondate' => $eval_date,
-                            'modifiedby'     => $grader_id,
-                            'timemodified'   => time(),
-                        ];
-                        if (self::has_sectionid_field()) {
-                            $newrec->sectionid = $sectionid;
+                // Only autoupdate rows the system created (modifiedby == 0) or uncompleted rows.
+                // If a human mentor manually marked it completed (modifiedby > 0), do not overwrite their completion date or reset modifiedby.
+                $is_manual = ($existing_rec && $is_completed && (int)$existing_rec->modifiedby > 0);
+                if (!$is_manual) {
+                    if (!$is_completed || empty($existing_rec->completiondate) || $existing_rec->completiondate !== $eval_date) {
+                        if ($existing_rec) {
+                            $existing_rec->completed = 1;
+                            $existing_rec->completiondate = $eval_date;
+                            $existing_rec->modifiedby = $grader_id;
+                            $existing_rec->timemodified = time();
+                            $DB->update_record('local_batchanalytics_activity_tracker', $existing_rec);
+                        } else {
+                            $newrec = (object)[
+                                'courseid'       => $courseid,
+                                'cmid'           => $cmid,
+                                'completed'      => 1,
+                                'completiondate' => $eval_date,
+                                'modifiedby'     => $grader_id,
+                                'timemodified'   => time(),
+                            ];
+                            if (self::has_sectionid_field()) {
+                                $newrec->sectionid = $sectionid;
+                            }
+                            $DB->insert_record('local_batchanalytics_activity_tracker', $newrec);
                         }
-                        $DB->insert_record('local_batchanalytics_activity_tracker', $newrec);
+                        $results[$cmid] = 'auto_completed';
                     }
-                    $results[$cmid] = 'auto_completed';
                 }
             }
         }

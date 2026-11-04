@@ -805,7 +805,7 @@ class util {
     }
 
     /**
-     * Clear cached batch responses after course-level metadata changes.
+     * Clear cached batch responses and course student counts after metadata changes.
      */
     public static function purge_batch_response_cache(): void {
         try {
@@ -814,6 +814,183 @@ class util {
         } catch (\Exception $e) {
             // Ignore if cache is unavailable.
         }
+        try {
+            $cache2 = \cache::make('local_batchanalytics', 'coursestudents');
+            $cache2->purge();
+        } catch (\Throwable $e) {
+            // Ignore if cache is unavailable.
+        }
+    }
+
+    /**
+     * Retrieve active student user IDs per course, using MUC caching and high-performance bulk queries.
+     *
+     * Identifies users holding the 'student' role in that course context, excluding any user who
+     * holds a staff role in that specific course context or who is a site administrator.
+     *
+     * @param array $courseids Array of course IDs
+     * @return array Map of courseid => [userid => true, ...]
+     */
+    public static function get_courses_student_uids(array $courseids): array {
+        global $DB, $CFG;
+
+        $sanitized_cids = [];
+        foreach ($courseids as $cid) {
+            $cid = (int)$cid;
+            if ($cid > 0) {
+                $sanitized_cids[$cid] = $cid;
+            }
+        }
+
+        if (empty($sanitized_cids)) {
+            return [];
+        }
+
+        $result = []; // courseid => [userid => true]
+        $to_fetch = [];
+
+        // 1. Try to read from MUC 'coursestudents' cache store.
+        $cache = null;
+        try {
+            $cache = \cache::make('local_batchanalytics', 'coursestudents');
+        } catch (\Throwable $e) {
+            $cache = null;
+        }
+
+        if ($cache) {
+            $keys_to_fetch = [];
+            foreach ($sanitized_cids as $cid) {
+                $keys_to_fetch[$cid] = (string)$cid;
+            }
+
+            try {
+                $cached_items = $cache->get_many($keys_to_fetch);
+                foreach ($keys_to_fetch as $cid => $cache_key) {
+                    if (isset($cached_items[$cache_key]) && is_array($cached_items[$cache_key])) {
+                        $result[$cid] = $cached_items[$cache_key];
+                    } else {
+                        $to_fetch[] = $cid;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $to_fetch = array_values($sanitized_cids);
+            }
+        } else {
+            $to_fetch = array_values($sanitized_cids);
+        }
+
+        // If all courses were cached, return immediately!
+        if (empty($to_fetch)) {
+            return $result;
+        }
+
+        // 2. Query missing courses in bulk
+        $staff_roles = [
+            'manager', 'coursecreator', 'editingteacher', 'teacher',
+            'program_manager', 'mentor_resource_access', 'ss_team_member', 'ss_team_lead'
+        ];
+        $staff_archetypes = ['teacher', 'editingteacher', 'manager', 'coursecreator'];
+
+        // Site admins to exclude
+        $siteadmin_ids = [];
+        if (!empty($CFG->siteadmins)) {
+            foreach (explode(',', $CFG->siteadmins) as $adm) {
+                $adm = (int)trim($adm);
+                if ($adm > 0) {
+                    $siteadmin_ids[$adm] = $adm;
+                }
+            }
+        }
+
+        // Initialize missed courses in result as empty arrays
+        $newly_fetched = [];
+        foreach ($to_fetch as $cid) {
+            $newly_fetched[$cid] = [];
+        }
+
+        try {
+            list($in_courses, $course_params) = $DB->get_in_or_equal($to_fetch, SQL_PARAMS_NAMED, 'cid');
+            list($in_staff, $staff_params) = $DB->get_in_or_equal($staff_roles, SQL_PARAMS_NAMED, 'stf');
+            list($in_arch, $arch_params) = $DB->get_in_or_equal($staff_archetypes, SQL_PARAMS_NAMED, 'arc');
+
+            $coursecontext_level = defined('CONTEXT_COURSE') ? CONTEXT_COURSE : 50;
+
+            $params = array_merge($course_params, $staff_params, $arch_params, [
+                'coursecontext' => $coursecontext_level,
+                'studentrole'   => 'student',
+            ]);
+
+            $sql = "SELECT DISTINCT ctx.instanceid AS courseid, ra.userid
+                      FROM {role_assignments} ra
+                      JOIN {context} ctx ON ctx.id = ra.contextid AND ctx.contextlevel = :coursecontext
+                      JOIN {role} r ON r.id = ra.roleid AND (r.shortname = :studentrole OR r.archetype = :studentrole)
+                      JOIN {user_enrolments} ue ON ue.userid = ra.userid
+                      JOIN {enrol} e ON e.id = ue.enrolid AND e.courseid = ctx.instanceid AND e.status = 0
+                      JOIN {user} u ON u.id = ra.userid AND u.deleted = 0 AND u.suspended = 0
+                     WHERE ctx.instanceid $in_courses
+                       AND ue.status = 0
+                       AND ra.userid NOT IN (
+                           SELECT DISTINCT ra_stf.userid
+                             FROM {role_assignments} ra_stf
+                             JOIN {role} r_stf ON r_stf.id = ra_stf.roleid
+                            WHERE ra_stf.contextid = ctx.id
+                              AND (r_stf.shortname $in_staff OR r_stf.archetype $in_arch)
+                       )";
+
+            $records = $DB->get_records_sql($sql, $params);
+            if (!empty($records)) {
+                foreach ($records as $rec) {
+                    $cid = (int)$rec->courseid;
+                    $uid = (int)$rec->userid;
+                    if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                        continue;
+                    }
+                    $newly_fetched[$cid][$uid] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // In case of query failure, fallback to per-course get_enrolled_users()
+            foreach ($to_fetch as $cid) {
+                try {
+                    $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
+                    if (!$c_ctx) {
+                        continue;
+                    }
+                    $c_users = get_enrolled_users($c_ctx, '', 0, 'u.id');
+                    if (!empty($c_users)) {
+                        foreach ($c_users as $u) {
+                            $uid = (int)$u->id;
+                            if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                                continue;
+                            }
+                            $newly_fetched[$cid][$uid] = true;
+                        }
+                    }
+                } catch (\Throwable $ex) {
+                    // Ignore per-course error
+                }
+            }
+        }
+
+        // 3. Write newly fetched items into MUC cache in bulk
+        if ($cache && !empty($newly_fetched)) {
+            $set_data = [];
+            foreach ($newly_fetched as $cid => $uids) {
+                $set_data[(string)$cid] = $uids;
+                $result[$cid] = $uids;
+            }
+            try {
+                $cache->set_many($set_data);
+            } catch (\Throwable $e) {
+                // Ignore cache set failure
+            }
+        } else {
+            foreach ($newly_fetched as $cid => $uids) {
+                $result[$cid] = $uids;
+            }
+        }
+
+        return $result;
     }
 
     /**

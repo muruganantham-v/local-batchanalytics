@@ -1598,7 +1598,7 @@ class task_service {
         // 2. Resolve section assignment strictly by User ID / Username (Issue #42).
         $assignment = util::get_section_user_assignment($sec, $userid, true);
 
-        // 3. Action: Module schedule changes (am_start, am_end, am_closer, am_mentor, am_sched) (Issue #38).
+        // 3. Action: Module schedule changes (am_start, am_end, am_closer, am_sched) (Issue #38).
         if (strpos($action_type, 'am_') === 0) {
             if (empty($assignment['is_pm'])) {
                 throw new \moodle_exception('nopermissions', 'error', '', 'modify module schedule for this batch');
@@ -1779,6 +1779,9 @@ class task_service {
             $DB->update_record('local_bm_classsection', $sec);
 
             $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
         } finally {
             util::release_lock($lock);
         }
@@ -1890,6 +1893,9 @@ class task_service {
             $DB->update_record('local_bm_classsection', $sec);
 
             $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
         } finally {
             util::release_lock($lock);
         }
@@ -1926,7 +1932,7 @@ class task_service {
      * Mark an operational activity complete.
      *
      * @param int $userid
-     * @param string $action_type 'mentor', 'ss', 'ss_approve', 'am_start', 'am_end', or 'am_mentor'
+     * @param string $action_type 'mentor', 'ss', 'ss_approve', 'am_start', 'am_end', 'am_closer', or 'am_sched'
      * @param array $params
      * @return array
      * @throws \moodle_exception
@@ -2081,6 +2087,9 @@ class task_service {
                 $DB->update_record('local_bm_classsection', $sec);
 
                 $transaction->allow_commit();
+            } catch (\Throwable $e) {
+                $transaction->rollback($e);
+                throw $e;
             } finally {
                 util::release_lock($lock);
             }
@@ -2116,6 +2125,11 @@ class task_service {
                 'batchid'   => $batchid,
                 'actual_ts' => $now,
             ];
+        }
+
+        // Module mentor assignments are managed and synchronized exclusively via Zoho CRM.
+        if ($action_type === 'am_mentor') {
+            throw new \moodle_exception('invalidaction', 'local_batchanalytics', '', 'Module mentor assignments are synchronized via Zoho CRM and cannot be manually marked complete.');
         }
 
         if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_closer' || $action_type === 'am_sched') {
@@ -2229,6 +2243,9 @@ class task_service {
 
                 $transaction->allow_commit();
                 $ret_modules = $modules;
+            } catch (\Throwable $e) {
+                $transaction->rollback($e);
+                throw $e;
             } finally {
                 util::release_lock($lock);
             }

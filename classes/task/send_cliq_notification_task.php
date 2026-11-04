@@ -43,13 +43,20 @@ class send_cliq_notification_task extends \core\task\adhoc_task {
      * Execute the ad-hoc task.
      */
     public function execute() {
-        $customdata = $this->get_custom_data();
-        if (empty($customdata) || empty($customdata->action)) {
+        $raw_data = $this->get_custom_data();
+        if (empty($raw_data)) {
             return;
         }
 
-        $action = $customdata->action;
-        $data   = (array)($customdata->data ?? []);
+        // Moodle core deserializes ad-hoc task customdata into stdClass objects recursively.
+        // Convert to an associative array so all nested structures (e.g. modules, next_mod_data) are real arrays.
+        $customdata = json_decode(json_encode($raw_data), true);
+        if (empty($customdata) || empty($customdata['action'])) {
+            return;
+        }
+
+        $action = (string)$customdata['action'];
+        $data   = is_array($customdata['data'] ?? null) ? $customdata['data'] : [];
 
         switch ($action) {
             case 'completion':
@@ -59,8 +66,6 @@ class send_cliq_notification_task extends \core\task\adhoc_task {
                     (int)($data['courseid'] ?? 0),
                     $data['act_key'] ?? '',
                     (int)($data['completed_by_userid'] ?? 0),
-                    $data['completed_by_name'] ?? '',
-                    (int)($data['completion_timestamp'] ?? 0),
                     false // async = false to perform synchronous delivery in task runner
                 );
                 break;
@@ -76,21 +81,39 @@ class send_cliq_notification_task extends \core\task\adhoc_task {
                 break;
 
             case 'module_start_transition':
+                $batchid = (int)($data['batchid'] ?? 0);
+                $mod_key = (string)($data['current_mod_idx'] ?? '');
+                $modules = is_array($data['modules'] ?? null) ? $data['modules'] : [];
+                $actualstart_ts = (int)($data['actualstart_ts'] ?? 0);
+
+                // If modules array is empty or missing, re-read fresh modules from the batch class section record.
+                if (empty($modules) && $batchid > 0) {
+                    global $DB;
+                    $sec = $DB->get_record('local_bm_classsection', ['id' => $batchid]);
+                    if ($sec && !empty($sec->moduledata)) {
+                        $modules = \local_batchanalytics\util::decode_module_data($sec->moduledata, true);
+                    }
+                }
+
                 \local_batchanalytics\cliq_activity_notifier::handle_module_start_transition(
-                    (int)($data['batchid'] ?? 0),
-                    (string)($data['current_mod_idx'] ?? ''),
-                    (array)($data['modules'] ?? []),
-                    (int)($data['actualstart_ts'] ?? 0),
+                    $batchid,
+                    $mod_key,
+                    $modules,
+                    $actualstart_ts,
                     false // async = false
                 );
                 break;
 
             case 'module_assigned':
+                $next_mod_data = is_array($data['next_mod_data'] ?? null) ? $data['next_mod_data'] : [];
                 \local_batchanalytics\cliq_activity_notifier::send_module_assigned_mentor_alert(
                     (int)($data['batchid'] ?? 0),
                     (string)($data['next_module_name'] ?? ''),
-                    (array)($data['next_mod_data'] ?? []),
+                    $next_mod_data,
                     (int)($data['transition_timestamp'] ?? 0),
+                    (int)($data['escalation_type'] ?? 0),
+                    null,
+                    (string)($data['escalation_reason'] ?? ''),
                     false // async = false
                 );
                 break;

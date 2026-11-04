@@ -136,7 +136,6 @@ if ($action === 'complete_task') {
             'act_name'     => optional_param('act_name', '', PARAM_RAW),
             'act_key'      => optional_param('act_key', '', PARAM_RAW),
             'review_notes' => optional_param('review_notes', '', PARAM_RAW),
-            'mentorid'     => optional_param('mentorid', 0, PARAM_INT),
             'plannedstart' => optional_param('plannedstart', ($type === 'am_sched' ? $selected_date : 0), PARAM_RAW_TRIMMED),
             'actualend'    => optional_param('actualend', (in_array($type, ['am_end', 'am_closer'], true) ? $selected_date : 0), PARAM_RAW_TRIMMED),
             'actualstart'  => optional_param('actualstart', ($type === 'am_start' ? $selected_date : 0), PARAM_RAW_TRIMMED),
@@ -448,50 +447,10 @@ if ($action === 'getnewbatchdata') {
             }
         }
 
-        // 2. Query active enrolled students per course using Moodle core get_enrolled_users() (same canonical API as batch.php)
-        // Filter out staff roles (manager, teacher, mentor) and site admins so only real students are counted.
+        // 2. Query active enrolled students holding student role in each course context (cached via MUC 'coursestudents')
         $course_students = []; // courseid => [userid => true]
         if (!empty($all_courseids)) {
-            $staff_uids = [];
-            $staff_roles = [
-                'manager', 'coursecreator', 'editingteacher', 'teacher',
-                'program_manager', 'mentor_resource_access', 'ss_team_member', 'ss_team_lead'
-            ];
-            try {
-                list($staff_sql, $staff_params) = $DB->get_in_or_equal($staff_roles, SQL_PARAMS_NAMED, 'stf');
-                $staff_records = $DB->get_records_sql(
-                    "SELECT DISTINCT ra.userid 
-                       FROM {role_assignments} ra 
-                       JOIN {role} r ON r.id = ra.roleid 
-                      WHERE r.shortname $staff_sql",
-                    $staff_params
-                );
-                foreach ($staff_records as $stf) {
-                    $staff_uids[(int)$stf->userid] = true;
-                }
-            } catch (\Throwable $e) {
-                // Table role_assignments or role not queryable
-            }
-
-            foreach ($all_courseids as $cid) {
-                $coursecontext = \context_course::instance($cid, IGNORE_MISSING);
-                if (!$coursecontext) {
-                    continue;
-                }
-                $c_users = get_enrolled_users($coursecontext, '', 0, 'u.id');
-                if (!empty($c_users)) {
-                    foreach ($c_users as $u) {
-                        $uid = (int)$u->id;
-                        if (function_exists('is_siteadmin') && is_siteadmin($uid)) {
-                            continue;
-                        }
-                        if (isset($staff_uids[$uid])) {
-                            continue;
-                        }
-                        $course_students[$cid][$uid] = true;
-                    }
-                }
-            }
+            $course_students = \local_batchanalytics\util::get_courses_student_uids(array_keys($all_courseids));
         }
 
         // 3. Fallback student mappings from legacy local_bm_student if available

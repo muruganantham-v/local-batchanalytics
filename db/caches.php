@@ -39,5 +39,13 @@ $definitions = [
         // The counter keeps its fixed window start time alongside the request count. (F-21)
         'simpledata' => false,
         'ttl' => 60, // 1 minute window for rate limiting
-    ]
+    ],
+    'coursestudents' => [
+        // Dedicated cache for active course-level student user IDs.
+        // Caches array of student user IDs per course with 30-minute TTL.
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => false,
+        'ttl' => 1800, // 30 minutes
+    ],
 ];

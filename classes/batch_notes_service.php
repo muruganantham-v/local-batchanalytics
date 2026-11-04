@@ -36,16 +36,45 @@ final class batch_notes_service {
         }
 
         $records = $DB->get_records(self::TABLE, ['batchid' => $batchid], 'timecreated DESC, id DESC');
+        if (empty($records)) {
+            return [];
+        }
+
+        // Pre-fetch modifier names to avoid N+1 queries.
+        $modifier_ids = [];
+        foreach ($records as $r) {
+            if (!empty($r->modifiedby) && (int)$r->modifiedby > 0) {
+                $modifier_ids[] = (int)$r->modifiedby;
+            }
+        }
+        $modifier_map = [];
+        if (!empty($modifier_ids)) {
+            [$insql, $inparams] = $DB->get_in_or_equal(array_unique($modifier_ids), SQL_PARAMS_NAMED);
+            $users = $DB->get_records_select('user', "id $insql AND deleted = 0", $inparams, '', 'id, firstname, lastname');
+            foreach ($users as $u) {
+                $modifier_map[$u->id] = fullname($u);
+            }
+        }
+
         $notes = [];
         foreach ($records as $r) {
+            $is_edited = !empty($r->timemodified) && (int)$r->timemodified > 0;
+            $modby = (int)($r->modifiedby ?? 0);
+            $mod_name = $modby > 0 ? ($modifier_map[$modby] ?? 'Reviewer') : '';
+
             $notes[] = [
-                'id'          => (int)$r->id,
-                'batchid'     => (int)$r->batchid,
-                'userid'      => (int)$r->userid,
-                'who'         => (string)$r->author,
-                'date'        => userdate($r->timecreated, '%d %b %Y, %I:%M %p'),
-                'timecreated' => (int)$r->timecreated,
-                'body'        => (string)$r->body,
+                'id'               => (int)$r->id,
+                'batchid'          => (int)$r->batchid,
+                'userid'           => (int)$r->userid,
+                'who'              => (string)$r->author,
+                'date'             => userdate($r->timecreated, '%d %b %Y, %I:%M %p'),
+                'timecreated'      => (int)$r->timecreated,
+                'is_edited'        => $is_edited,
+                'timemodified'     => $is_edited ? (int)$r->timemodified : 0,
+                'timemodified_str' => $is_edited ? userdate($r->timemodified, '%d %b %Y, %I:%M %p') : '',
+                'modifiedby'       => $modby,
+                'modifier_name'    => $mod_name,
+                'body'             => (string)$r->body,
             ];
         }
         return $notes;
@@ -190,13 +219,38 @@ final class batch_notes_service {
     }
 
     /**
-     * Update an existing review note by ID.
+     * Check whether a given note ID is the latest note for a batch.
+     *
+     * @param int $batchid
+     * @param int $noteid
+     * @return bool
+     */
+    public static function is_latest_note(int $batchid, int $noteid): bool {
+        global $DB;
+        self::ensure_table_exists();
+
+        if ($batchid <= 0 || $noteid <= 0) {
+            return false;
+        }
+
+        $top = $DB->get_records(self::TABLE, ['batchid' => $batchid], 'timecreated DESC, id DESC', 'id', 0, 1);
+        if (empty($top)) {
+            return false;
+        }
+        $latest = reset($top);
+        return ((int)$latest->id === $noteid);
+    }
+
+    /**
+     * Update an existing review note by ID and capture full revision history.
      *
      * @param int $noteid
      * @param string $body
+     * @param int $modifiedby User ID performing the edit
+     * @param string $modifier_name Full name of the user performing the edit
      * @return array
      */
-    public static function update_note(int $noteid, string $body): array {
+    public static function update_note(int $noteid, string $body, int $modifiedby = 0, string $modifier_name = ''): array {
         global $DB;
         self::ensure_table_exists();
 
@@ -213,18 +267,110 @@ final class batch_notes_service {
             throw new \moodle_exception('Note not found.');
         }
 
-        $record->body = $body;
+        // Parse existing history or initialize with the original baseline as Version 1
+        $history_list = [];
+        if (!empty($record->history)) {
+            $decoded = json_decode($record->history, true);
+            if (is_array($decoded)) {
+                $history_list = $decoded;
+            }
+        }
+
+        if (empty($history_list)) {
+            $history_list[] = [
+                'version'     => 1,
+                'userid'      => (int)$record->userid,
+                'author'      => (string)$record->author,
+                'body'        => (string)$record->body,
+                'timecreated' => (int)$record->timecreated,
+                'date'        => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
+            ];
+        }
+
+        $now = time();
+        $mod_name = trim($modifier_name);
+        if ($mod_name === '' && $modifiedby > 0) {
+            $u = $DB->get_record('user', ['id' => $modifiedby, 'deleted' => 0]);
+            if ($u) {
+                $mod_name = fullname($u);
+            }
+        }
+        if ($mod_name === '') {
+            $mod_name = (string)$record->author;
+        }
+
+        $next_version = count($history_list) + 1;
+        $history_list[] = [
+            'version'     => $next_version,
+            'userid'      => $modifiedby > 0 ? $modifiedby : (int)$record->userid,
+            'author'      => $mod_name,
+            'body'        => $body,
+            'timecreated' => $now,
+            'date'        => userdate($now, '%d %b %Y, %I:%M %p'),
+        ];
+
+        $record->body         = $body;
+        $record->timemodified = $now;
+        $record->modifiedby   = $modifiedby > 0 ? $modifiedby : (int)$record->userid;
+        $record->history      = json_encode($history_list);
+
         $DB->update_record(self::TABLE, $record);
 
         return [
-            'id'          => (int)$record->id,
-            'batchid'     => (int)$record->batchid,
-            'userid'      => (int)$record->userid,
-            'who'         => (string)$record->author,
-            'date'        => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
-            'timecreated' => (int)$record->timecreated,
-            'body'        => $body,
+            'id'               => (int)$record->id,
+            'batchid'          => (int)$record->batchid,
+            'userid'           => (int)$record->userid,
+            'who'              => (string)$record->author,
+            'date'             => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
+            'timecreated'      => (int)$record->timecreated,
+            'is_edited'        => true,
+            'timemodified'     => $now,
+            'timemodified_str' => userdate($now, '%d %b %Y, %I:%M %p'),
+            'modifiedby'       => (int)$record->modifiedby,
+            'modifier_name'    => $mod_name,
+            'body'             => $body,
         ];
+    }
+
+    /**
+     * Retrieve the revision history snapshots for a review note.
+     *
+     * @param int $noteid
+     * @return array Array of version objects (version, author, date, body, etc.)
+     */
+    public static function get_note_history(int $noteid): array {
+        global $DB;
+        self::ensure_table_exists();
+
+        if ($noteid <= 0) {
+            return [];
+        }
+
+        $record = $DB->get_record(self::TABLE, ['id' => $noteid]);
+        if (!$record) {
+            return [];
+        }
+
+        $history_list = [];
+        if (!empty($record->history)) {
+            $decoded = json_decode($record->history, true);
+            if (is_array($decoded)) {
+                $history_list = $decoded;
+            }
+        }
+
+        if (empty($history_list)) {
+            $history_list[] = [
+                'version'     => 1,
+                'userid'      => (int)$record->userid,
+                'author'      => (string)$record->author,
+                'body'        => (string)$record->body,
+                'timecreated' => (int)$record->timecreated,
+                'date'        => userdate($record->timecreated, '%d %b %Y, %I:%M %p'),
+            ];
+        }
+
+        return $history_list;
     }
 
     /**

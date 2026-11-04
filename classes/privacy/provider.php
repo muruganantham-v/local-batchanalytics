@@ -48,11 +48,14 @@ class provider implements
         $collection->add_database_table(
             'local_batchanalytics_batch_notes',
             [
-                'batchid'     => 'privacy:metadata:batch_notes:batchid',
-                'userid'      => 'privacy:metadata:batch_notes:userid',
-                'author'      => 'privacy:metadata:batch_notes:author',
-                'body'        => 'privacy:metadata:batch_notes:body',
-                'timecreated' => 'privacy:metadata:batch_notes:timecreated',
+                'batchid'      => 'privacy:metadata:batch_notes:batchid',
+                'userid'       => 'privacy:metadata:batch_notes:userid',
+                'author'       => 'privacy:metadata:batch_notes:author',
+                'body'         => 'privacy:metadata:batch_notes:body',
+                'timecreated'  => 'privacy:metadata:batch_notes:timecreated',
+                'timemodified' => 'privacy:metadata:batch_notes:timemodified',
+                'modifiedby'   => 'privacy:metadata:batch_notes:modifiedby',
+                'history'      => 'privacy:metadata:batch_notes:history',
             ],
             'privacy:metadata:batch_notes'
         );
@@ -248,9 +251,11 @@ class provider implements
                     $export_notes = [];
                     foreach ($notes as $n) {
                         $export_notes[] = [
-                            'batchid'     => $n->batchid,
-                            'body'        => $n->body,
-                            'timecreated' => transform::datetime($n->timecreated),
+                            'batchid'      => $n->batchid,
+                            'body'         => $n->body,
+                            'timecreated'  => transform::datetime($n->timecreated),
+                            'timemodified' => !empty($n->timemodified) ? transform::datetime($n->timemodified) : '',
+                            'history'      => $n->history ?? '',
                         ];
                     }
                     writer::with_context($context)->export_data(

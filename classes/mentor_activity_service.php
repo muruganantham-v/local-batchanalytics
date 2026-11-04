@@ -737,6 +737,9 @@ class mentor_activity_service {
 
             $transaction->allow_commit();
             return $ok;
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
         } finally {
             util::release_lock($lock);
         }
@@ -1148,6 +1151,9 @@ class mentor_activity_service {
             }
 
             $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
         } finally {
             util::release_lock($lock);
         }
