@@ -336,6 +336,7 @@ if ($section) {
     $batchname = \local_batchanalytics\util::clean_section_name($section->name ?: ($batch ? $batch->name : 'Batch ' . $section->id));
     // Program Manager resolution: prioritize resolving by userid
     $pmuser = null;
+    $pmname = '';
     if (!empty($section->pmmanager) && is_numeric($section->pmmanager) && (int)$section->pmmanager > 0) {
         $pmprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->pmmanager, 1);
         if (!empty($pmprofile['user'])) {
@@ -343,12 +344,20 @@ if ($section) {
             $pmname = $pmprofile['name'];
         }
     }
-    if (empty($pmname)) {
-        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : '—';
+    if (empty($pmname) && !empty($section->pmmanagername)) {
+        $cleaned_pm = trim((string)$section->pmmanagername);
+        if ($cleaned_pm !== '—' && $cleaned_pm !== '-' && $cleaned_pm !== '0' && strcasecmp($cleaned_pm, 'null') !== 0) {
+            $pmname = $cleaned_pm;
+        }
+    }
+    if (empty($pmname) || $pmname === '—' || $pmname === '-' || strcasecmp($pmname, 'Not Assigned') === 0) {
+        $pmname = get_string('not_assigned', 'local_batchanalytics');
+        $pmuser = null;
     }
 
     // MAAC Executive (SSE) resolution: prioritize resolving by userid
     $sseuser = null;
+    $ssename = '';
     if (!empty($section->maacexecutive) && is_numeric($section->maacexecutive) && (int)$section->maacexecutive > 0) {
         $sseprofile = \local_batchanalytics\util::get_user_profile_data((int)$section->maacexecutive, 1);
         if (!empty($sseprofile['user'])) {
@@ -356,8 +365,15 @@ if ($section) {
             $ssename = $sseprofile['name'];
         }
     }
-    if (empty($ssename)) {
-        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : '—';
+    if (empty($ssename) && !empty($section->maacexecutivename)) {
+        $cleaned_sse = trim((string)$section->maacexecutivename);
+        if ($cleaned_sse !== '—' && $cleaned_sse !== '-' && $cleaned_sse !== '0' && strcasecmp($cleaned_sse, 'null') !== 0) {
+            $ssename = $cleaned_sse;
+        }
+    }
+    if (empty($ssename) || $ssename === '—' || $ssename === '-' || strcasecmp($ssename, 'Not Assigned') === 0) {
+        $ssename = get_string('not_assigned', 'local_batchanalytics');
+        $sseuser = null;
     }
 
     $raw_modules = [];
@@ -369,9 +385,9 @@ if ($section) {
     }
 } else {
     $batchname = $id > 0 ? ('Batch ' . $id) : 'Batch';
-    $pmname = '—';
+    $pmname = get_string('not_assigned', 'local_batchanalytics');
     $pmuser = null;
-    $ssename = '—';
+    $ssename = get_string('not_assigned', 'local_batchanalytics');
     $sseuser = null;
     $raw_modules = [];
 }
@@ -506,7 +522,16 @@ $p_end   = $format_mod_date($cur_mod['plannedend'] ?? '');
 $a_start = $format_mod_date($cur_mod['actualstart'] ?? '');
 $a_end   = $format_mod_date($cur_mod['actualend'] ?? '');
 
-$delta = isset($cur_mod['scheduledelta']) && is_numeric($cur_mod['scheduledelta']) ? (int)$cur_mod['scheduledelta'] : null;
+$delta = null;
+$mod_pdays = !empty($cur_mod['planneddays']) && is_numeric($cur_mod['planneddays']) ? (int)$cur_mod['planneddays'] : 0;
+$mod_adays = !empty($cur_mod['actualdays']) && is_numeric($cur_mod['actualdays']) ? (int)$cur_mod['actualdays'] : 0;
+if ($mod_pdays > 0 && $mod_adays > 0) {
+    $delta = $mod_adays - $mod_pdays;
+} else if (!empty($cur_mod['actualend']) && !empty($cur_mod['plannedend']) && is_numeric($cur_mod['actualend']) && is_numeric($cur_mod['plannedend']) && (int)$cur_mod['actualend'] > 100000 && (int)$cur_mod['plannedend'] > 100000) {
+    $delta = (int)round(((int)$cur_mod['actualend'] - (int)$cur_mod['plannedend']) / 86400);
+} else if (isset($cur_mod['scheduledelta']) && is_numeric($cur_mod['scheduledelta'])) {
+    $delta = (int)$cur_mod['scheduledelta'];
+}
 $is_in_progress = ($a_start !== '—' && $a_end === '—');
 $is_completed = ($a_end !== '—');
 

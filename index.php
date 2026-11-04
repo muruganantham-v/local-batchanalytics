@@ -427,27 +427,94 @@ if ($action === 'getnewbatchdata') {
             }
         }
 
-        // Fetch students per class section
-        $studentcounts_by_section = [];
-        if ($has_bm_student) {
-            $sql = "SELECT classsectionid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} GROUP BY classsectionid";
-            foreach ($DB->get_records_sql($sql) as $row) {
-                $studentcounts_by_section[(int)$row->classsectionid] = (int)$row->cnt;
-            }
-
-            if ($can_view_all_courses) {
-                $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student}");
-            } else {
-                $sec_ids_list = array_map('intval', array_keys($sections));
-                if (!empty($sec_ids_list)) {
-                    list($sin_sql, $sparams) = $DB->get_in_or_equal($sec_ids_list, SQL_PARAMS_NAMED, 'bm_cs');
-                    $studentcount = (int)$DB->count_records_sql("SELECT COUNT(DISTINCT userid) FROM {local_bm_student} WHERE classsectionid $sin_sql", $sparams);
-                } else {
-                    $studentcount = 0;
+        // 1. Identify all courses linked to sections across their modules
+        $all_courseids = [];
+        $section_courses = [];
+        if (!empty($sections)) {
+            foreach ($sections as $sec) {
+                $sec_id = (int)$sec->id;
+                $sec_mods = \local_batchanalytics\util::decode_module_data($sec->moduledata ?? '', true);
+                $sec_cids = [];
+                foreach ($sec_mods as $sm) {
+                    $cid = !empty($sm['moodlecourseid']) ? (int)$sm['moodlecourseid'] : (!empty($sm['courseid']) ? (int)$sm['courseid'] : 0);
+                    if ($cid > 1) {
+                        $sec_cids[$cid] = $cid;
+                        $all_courseids[$cid] = $cid;
+                    }
+                }
+                if (!empty($sec_cids)) {
+                    $section_courses[$sec_id] = array_values($sec_cids);
                 }
             }
-        } else {
-            $studentcount = 0;
+        }
+
+        // 2. Query active enrolled students per course using Moodle core get_enrolled_users() (same canonical API as batch.php)
+        // Filter out staff roles (manager, teacher, mentor) and site admins so only real students are counted.
+        $course_students = []; // courseid => [userid => true]
+        if (!empty($all_courseids)) {
+            $staff_uids = [];
+            $staff_roles = [
+                'manager', 'coursecreator', 'editingteacher', 'teacher',
+                'program_manager', 'mentor_resource_access', 'ss_team_member', 'ss_team_lead'
+            ];
+            try {
+                list($staff_sql, $staff_params) = $DB->get_in_or_equal($staff_roles, SQL_PARAMS_NAMED, 'stf');
+                $staff_records = $DB->get_records_sql(
+                    "SELECT DISTINCT ra.userid 
+                       FROM {role_assignments} ra 
+                       JOIN {role} r ON r.id = ra.roleid 
+                      WHERE r.shortname $staff_sql",
+                    $staff_params
+                );
+                foreach ($staff_records as $stf) {
+                    $staff_uids[(int)$stf->userid] = true;
+                }
+            } catch (\Throwable $e) {
+                // Table role_assignments or role not queryable
+            }
+
+            foreach ($all_courseids as $cid) {
+                $coursecontext = \context_course::instance($cid, IGNORE_MISSING);
+                if (!$coursecontext) {
+                    continue;
+                }
+                $c_users = get_enrolled_users($coursecontext, '', 0, 'u.id');
+                if (!empty($c_users)) {
+                    foreach ($c_users as $u) {
+                        $uid = (int)$u->id;
+                        if (function_exists('is_siteadmin') && is_siteadmin($uid)) {
+                            continue;
+                        }
+                        if (isset($staff_uids[$uid])) {
+                            continue;
+                        }
+                        $course_students[$cid][$uid] = true;
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback student mappings from legacy local_bm_student if available
+        $studentcounts_by_section = [];
+        $studentcounts_by_batch = [];
+        if ($has_bm_student) {
+            try {
+                $cols = $DB->get_columns('local_bm_student');
+                if (isset($cols['classsectionid'])) {
+                    $sql = "SELECT classsectionid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} WHERE classsectionid > 0 GROUP BY classsectionid";
+                    foreach ($DB->get_records_sql($sql) as $row) {
+                        $studentcounts_by_section[(int)$row->classsectionid] = (int)$row->cnt;
+                    }
+                }
+                if (isset($cols['batchid'])) {
+                    $sql = "SELECT batchid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} WHERE batchid > 0 GROUP BY batchid";
+                    foreach ($DB->get_records_sql($sql) as $row) {
+                        $studentcounts_by_batch[(int)$row->batchid] = (int)$row->cnt;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Table local_bm_student may not be available or readable.
+            }
         }
 
         $batchlist = [];
@@ -486,11 +553,6 @@ if ($action === 'getnewbatchdata') {
                 $normalizedmode = $raw_mode !== '' ? ucfirst(strtolower(trim($raw_mode))) : 'Offline';
                 $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
                 $type = ($parent && !empty($parent->submode)) ? ucfirst(strtolower($parent->submode)) : 'Regular';
-                $startdate_ts = ($parent && !empty($parent->startdate)) ? (int)$parent->startdate : ((int)$sec->timecreated ?: time());
-                $startformatted = userdate($startdate_ts, '%d %b %Y');
-                $year = userdate($startdate_ts, '%Y');
-
-                $sec_students = $studentcounts_by_section[(int)$sec->id] ?? 0;
 
                 $modules = \local_batchanalytics\util::decode_module_data($sec->moduledata ?? '', true);
                 if ($is_online) {
@@ -498,6 +560,44 @@ if ($action === 'getnewbatchdata') {
                 }
                 // For mentor: only display the modules which are assigned to them!
                 $modules = \local_batchanalytics\util::filter_modules_for_user($modules, $sec, $USER, $can_view_all_courses);
+
+                $startdate_ts = \local_batchanalytics\util::resolve_batch_startdate($parent, $sec, $modules);
+                $startformatted = $startdate_ts > 0 ? userdate($startdate_ts, '%d %b %Y') : 'N/A';
+                $year = $startdate_ts > 0 ? userdate($startdate_ts, '%Y') : date('Y');
+
+                $sec_id = (int)$sec->id;
+                $sec_students = 0;
+                $sec_uids = [];
+
+                // Priority 1: Count unique enrolled students across all module courses linked to this section (exact same canonical API as batch.php)
+                if (!empty($section_courses[$sec_id])) {
+                    foreach ($section_courses[$sec_id] as $cid) {
+                        if (!empty($course_students[$cid])) {
+                            foreach ($course_students[$cid] as $uid => $unused) {
+                                $sec_uids[(int)$uid] = (int)$uid;
+                            }
+                        }
+                    }
+                }
+
+                // Priority 1b: Fallback to local_batchmanagement classsection if section_courses yielded 0
+                if (empty($sec_uids) && class_exists('\local_batchmanagement\classsection') && is_callable(['\local_batchmanagement\classsection', 'get_enrolled_course_students'])) {
+                    try {
+                        $bm_students = \local_batchmanagement\classsection::get_enrolled_course_students($sec_id, 0, 10000);
+                        foreach ($bm_students as $bms) {
+                            $sec_uids[(int)$bms->id] = (int)$bms->id;
+                        }
+                    } catch (\Throwable $e) {
+                        // Ignore fallback error
+                    }
+                }
+
+                $sec_students = count($sec_uids);
+
+                // Priority 2: Fallback to local_bm_student if courses yielded 0 or if legacy table has higher count
+                $bm_sec_count = (int)($studentcounts_by_section[$sec_id] ?? 0);
+                $bm_batch_count = (!empty($sec->batchid) && isset($studentcounts_by_batch[(int)$sec->batchid])) ? (int)$studentcounts_by_batch[(int)$sec->batchid] : 0;
+                $sec_students = max($sec_students, $bm_sec_count, $bm_batch_count);
 
                 $assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER);
                 $is_assigned = !empty($assignment['is_assigned']);
@@ -523,11 +623,15 @@ if ($action === 'getnewbatchdata') {
 
                     // Accumulate schedule delta only from completed modules
                     if ($isdone) {
-                        if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
-                            $totaldelta += (int)$m['scheduledelta'];
+                        $mod_pdays = !empty($m['planneddays']) && is_numeric($m['planneddays']) ? (int)$m['planneddays'] : 0;
+                        $mod_adays = !empty($m['actualdays']) && is_numeric($m['actualdays']) ? (int)$m['actualdays'] : 0;
+                        if ($mod_pdays > 0 && $mod_adays > 0) {
+                            $totaldelta += ($mod_adays - $mod_pdays);
                         } else if (!empty($m['actualend']) && !empty($m['plannedend']) && is_numeric($m['actualend']) && is_numeric($m['plannedend']) && (int)$m['actualend'] > 100000 && (int)$m['plannedend'] > 100000) {
                             $diffdays = (int)round(((int)$m['actualend'] - (int)$m['plannedend']) / 86400);
                             $totaldelta += $diffdays;
+                        } else if (isset($m['scheduledelta']) && is_numeric($m['scheduledelta'])) {
+                            $totaldelta += (int)$m['scheduledelta'];
                         }
                     }
                 }
@@ -626,6 +730,7 @@ if ($action === 'getnewbatchdata') {
                     'statusLabel' => $statuslabel,
                     'delayDays' => $delaydays,
                     'studentCount' => $sec_students,
+                    'studentIds' => array_values($sec_uids),
                     'classMentors' => $active_classmentors,
                     'labMentors' => $active_labmentors,
 
@@ -634,43 +739,6 @@ if ($action === 'getnewbatchdata') {
                     'sectionId' => (int)$sec->id,
                     'parentBatchId' => $parent ? (int)$parent->id : 0,
                     'parentBatchName' => $parent ? (string)$parent->name : ''
-                ];
-            }
-        } else if (!$has_any_sections && !empty($batches) && $can_view_all_courses) {
-            // Fallback for batches if no class sections exist in table
-            foreach ($batches as $b) {
-                $mode = trim((string)($b->deliverymode ?? ''));
-                $normalizedmode = $mode !== '' ? ucfirst(strtolower($mode)) : 'Offline';
-                $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
-                $type = !empty($b->submode) ? ucfirst(strtolower($b->submode)) : 'Regular';
-                $startdate_ts = !empty($b->startdate) ? (int)$b->startdate : 0;
-                $startformatted = $startdate_ts > 0 ? userdate($startdate_ts, '%d %b %Y') : 'N/A';
-                $year = $startdate_ts > 0 ? userdate($startdate_ts, '%Y') : date('Y');
-
-                $status_info = \local_batchanalytics\util::get_batch_status(0);
-                $onschedulecount++;
-
-                $batchlist[] = [
-                    'id' => (int)$b->id,
-                    'batchId' => (string)($b->name ?? ''),
-                    'courseName' => (string)($b->coursename ?? ''),
-                    'mode' => $normalizedmode,
-                    'type' => $type,
-                    'startDate' => $startformatted,
-                    'year' => $year,
-                    'startdateTimestamp' => $startdate_ts,
-                    'currentModule' => 'N/A',
-                    'moduleIdx' => 1,
-                    'courseId' => 0,
-                    'status' => $status_info['status'],
-                    'statusLabel' => $status_info['label'],
-                    'delayDays' => 0,
-                    'studentCount' => 0,
-                    'classMentors' => [],
-                    'labMentors' => [],
-                    'isCompleted' => false,
-                    'isAssigned' => false,
-                    'sectionId' => (int)$b->id
                 ];
             }
         }
@@ -696,11 +764,17 @@ if ($action === 'getnewbatchdata') {
         $onlinecount = 0;
         $offlinecount = 0;
         $hybridcount = 0;
+        $running_unique_uids = [];
         foreach ($batchlist as $bl) {
             if ($bl['isCompleted']) {
                 $completedbatches++;
             } else {
                 $activebatches++;
+                if (!empty($bl['studentIds'])) {
+                    foreach ($bl['studentIds'] as $uid) {
+                        $running_unique_uids[(int)$uid] = true;
+                    }
+                }
                 if (strcasecmp((string)($bl['mode'] ?? ''), 'Online') === 0) {
                     $onlinecount++;
                 } else if (strcasecmp((string)($bl['mode'] ?? ''), 'Offline') === 0) {
@@ -736,7 +810,7 @@ if ($action === 'getnewbatchdata') {
                 'minorSlip' => $minorslipcount,
                 'delayed' => $delayedcount,
                 'early' => $earlycount,
-                'totalStudents' => $studentcount
+                'totalStudents' => count($running_unique_uids)
             ],
             'batches' => $batchlist,
             'filters' => [

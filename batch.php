@@ -44,7 +44,6 @@ if (!has_capability('local/batchanalytics:view', $context)) {
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 if ($action === 'addnote') {
     require_sesskey();
-    require_capability('local/batchanalytics:editreviewnotes', $context);
 
     header('Content-Type: application/json; charset=utf-8');
     try {
@@ -68,7 +67,19 @@ if ($action === 'addnote') {
             exit;
         }
 
-        // Enforce batch assignment scoping for review notes (Issue #43).
+        // Verify capability: site admins, managers, SS Leads on any batch, or PM on own batch.
+        $can_manage_all = is_siteadmin()
+            || has_capability('moodle/site:config', $context)
+            || has_capability('local/batchanalytics:manage', $context);
+        $is_sslead = \local_batchanalytics\util::is_user_sslead($USER->id);
+        $sec_assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER->id, true);
+        $is_assigned_pm = !empty($sec_assignment['is_pm']);
+
+        if (!$can_manage_all && !$is_sslead && !$is_assigned_pm) {
+            require_capability('local/batchanalytics:editreviewnotes', $context);
+        }
+
+        // Enforce batch assignment scoping for review notes (PM on assigned batch, SS Lead on any batch).
         \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'addnote');
 
         // Strictly use the authenticated logged-in user
@@ -92,7 +103,6 @@ if ($action === 'addnote') {
 
 if ($action === 'editnote') {
     require_sesskey();
-    require_capability('local/batchanalytics:editreviewnotes', $context);
 
     header('Content-Type: application/json; charset=utf-8');
     try {
@@ -138,15 +148,22 @@ if ($action === 'editnote') {
             exit;
         }
 
-        // 4. Enforce batch assignment scoping for review notes (Issue #43).
-        \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'editnote');
-
-        // 5. Author check: Only site administrators and users with full manage capability can edit others' notes.
-        // Read-only dashboard capabilities (viewallcourses / SS Lead) must never bypass authorship.
+        // 4. Verify capability & scoping: assigned PM on own batch, SS Lead on any batch, or site admin/manager.
         $can_manage_all = is_siteadmin()
             || has_capability('moodle/site:config', $context)
             || has_capability('local/batchanalytics:manage', $context);
+        $is_sslead = \local_batchanalytics\util::is_user_sslead($USER->id);
+        $sec_assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER->id, true);
+        $is_assigned_pm = !empty($sec_assignment['is_pm']);
 
+        if (!$can_manage_all && !$is_sslead && !$is_assigned_pm) {
+            require_capability('local/batchanalytics:editreviewnotes', $context);
+        }
+
+        \local_batchanalytics\task_service::require_section_permission((int)$USER->id, $sec, 'editnote');
+
+        // 5. Author check: Only site administrators and users with full manage capability can edit others' notes.
+        // PM and SS Lead can only edit their own notes.
         if (!$can_manage_all) {
             if ((int)$existing->userid !== (int)$USER->id) {
                 http_response_code(403);
@@ -275,8 +292,15 @@ if ($section) {
             $pmname = $pmprofile['name'];
         }
     }
-    if (empty($pmname)) {
-        $pmname = !empty($section->pmmanagername) ? $section->pmmanagername : '—';
+    if (empty($pmname) && !empty($section->pmmanagername)) {
+        $cleaned_pm = trim((string)$section->pmmanagername);
+        if ($cleaned_pm !== '—' && $cleaned_pm !== '-' && $cleaned_pm !== '0' && strcasecmp($cleaned_pm, 'null') !== 0) {
+            $pmname = $cleaned_pm;
+        }
+    }
+    if (empty($pmname) || $pmname === '—' || $pmname === '-' || strcasecmp($pmname, 'Not Assigned') === 0) {
+        $pmname = get_string('not_assigned', 'local_batchanalytics');
+        $pmuser = null;
     }
 
     // MAAC Executive (SSE) resolution: prioritize resolving by userid
@@ -289,8 +313,15 @@ if ($section) {
             $ssename = $sseprofile['name'];
         }
     }
-    if (empty($ssename)) {
-        $ssename = !empty($section->maacexecutivename) ? $section->maacexecutivename : '—';
+    if (empty($ssename) && !empty($section->maacexecutivename)) {
+        $cleaned_sse = trim((string)$section->maacexecutivename);
+        if ($cleaned_sse !== '—' && $cleaned_sse !== '-' && $cleaned_sse !== '0' && strcasecmp($cleaned_sse, 'null') !== 0) {
+            $ssename = $cleaned_sse;
+        }
+    }
+    if (empty($ssename) || $ssename === '—' || $ssename === '-' || strcasecmp($ssename, 'Not Assigned') === 0) {
+        $ssename = get_string('not_assigned', 'local_batchanalytics');
+        $sseuser = null;
     }
 
     $mode_param = optional_param('mode', '', PARAM_TEXT);
@@ -316,9 +347,9 @@ if ($section) {
     $deliverymode   = 'Offline';
     $submode        = '—';
     $startdate_str  = '—';
-    $pmname         = '—';
+    $pmname         = get_string('not_assigned', 'local_batchanalytics');
     $pmuser         = null;
-    $ssename        = '—';
+    $ssename        = get_string('not_assigned', 'local_batchanalytics');
     $sseuser        = null;
     $raw_modules    = [];
     $is_online      = false;
@@ -412,11 +443,16 @@ if (!empty($raw_modules)) {
         $a_start = $format_mod_date($mod['actualstart'] ?? '');
         $a_end   = $format_mod_date($mod['actualend'] ?? '');
 
-        $delta = isset($mod['scheduledelta']) && is_numeric($mod['scheduledelta'])
-            ? (int)$mod['scheduledelta']
-            : (!empty($mod['actualend']) && !empty($mod['plannedend']) && is_numeric($mod['actualend']) && is_numeric($mod['plannedend']) && (int)$mod['actualend'] > 100000 && (int)$mod['plannedend'] > 100000
-                ? (int)round(((int)$mod['actualend'] - (int)$mod['plannedend']) / 86400)
-                : null);
+        $delta = null;
+        $mod_pdays = !empty($mod['planneddays']) && is_numeric($mod['planneddays']) ? (int)$mod['planneddays'] : 0;
+        $mod_adays = !empty($mod['actualdays']) && is_numeric($mod['actualdays']) ? (int)$mod['actualdays'] : 0;
+        if ($mod_pdays > 0 && $mod_adays > 0) {
+            $delta = $mod_adays - $mod_pdays;
+        } else if (!empty($mod['actualend']) && !empty($mod['plannedend']) && is_numeric($mod['actualend']) && is_numeric($mod['plannedend']) && (int)$mod['actualend'] > 100000 && (int)$mod['plannedend'] > 100000) {
+            $delta = (int)round(((int)$mod['actualend'] - (int)$mod['plannedend']) / 86400);
+        } else if (isset($mod['scheduledelta']) && is_numeric($mod['scheduledelta'])) {
+            $delta = (int)$mod['scheduledelta'];
+        }
 
         if ($a_start !== '—' && $a_end === '—') {
             $delay_code = 'prog';
@@ -588,8 +624,28 @@ $performance_custom_groups = $performance_data['customgroups'] ?? [];
 // 5. Review Notes
 // -------------------------------------------------------------------------
 // Check review notes permissions
-$can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context);
-$can_edit_notes = has_capability('local/batchanalytics:editreviewnotes', $context);
+$has_edit_notes_cap = has_capability('local/batchanalytics:editreviewnotes', $context);
+
+// Program Manager can add/edit notes on their assigned batch.
+$is_assigned_pm = false;
+if ($section) {
+    $sec_assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER->id, true);
+    $is_assigned_pm = !empty($sec_assignment['is_pm']);
+}
+
+// SS Lead can add notes and edit their notes for ANY batch.
+$is_sslead = \local_batchanalytics\util::is_user_sslead($USER->id);
+
+$can_manage_all_notes = is_siteadmin()
+    || has_capability('moodle/site:config', $context)
+    || has_capability('local/batchanalytics:manage', $context);
+
+// Edit notes allowed for: assigned PM on this batch, SS Lead on any batch, or Admin/Manager.
+$can_edit_notes = $can_manage_all_notes || $is_sslead || ($is_assigned_pm && ($has_edit_notes_cap || true));
+
+// View notes allowed for: anyone with view capability, assigned PM, SS Lead, or Admin/Manager.
+$can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context)
+    || $can_edit_notes;
 
 $display_notes = [];
 $has_real_notes = false;
@@ -603,19 +659,19 @@ if ($can_view_notes) {
 
 // Determine logged-in user's identity and role for posting review notes
 $current_author_name = fullname($USER);
-if (is_siteadmin()) {
+if ($can_manage_all_notes) {
     $current_author_role = 'Administrator';
-} else if ($section && !empty($section->pmmanager) && (int)$USER->id === (int)$section->pmmanager) {
+} else if ($is_assigned_pm) {
     $current_author_role = 'Program Manager';
-} else if ($section && !empty($section->maacexecutive) && (int)$USER->id === (int)$section->maacexecutive) {
-    $current_author_role = 'SS / MAAC Executive';
+} else if ($is_sslead) {
+    $current_author_role = 'SS Lead';
 } else {
     $roles = get_user_roles($context, $USER->id, true);
     if (!empty($roles)) {
         $first_role = reset($roles);
         $current_author_role = role_get_name($first_role, $context);
     } else {
-        $current_author_role = 'Program Manager';
+        $current_author_role = 'Reviewer';
     }
 }
 
@@ -1123,7 +1179,7 @@ echo $OUTPUT->header();
                   $can_manage_all_notes = is_siteadmin()
                       || has_capability('moodle/site:config', $context)
                       || has_capability('local/batchanalytics:manage', $context);
-                  $can_edit_this_note = $can_edit_notes && $is_latest && (
+                  $can_edit_this_note = $can_edit_notes && (
                       (int)($nt['userid'] ?? 0) === (int)$USER->id || $can_manage_all_notes
                   );
                   if ($can_edit_this_note): 

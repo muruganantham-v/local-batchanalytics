@@ -105,10 +105,16 @@ function initNewBatchAnalytics() {
     setStatValue("stat-class-mentors", countUnique("classMentors"));
     setStatValue("stat-lab-mentors", countUnique("labMentors"));
 
-    const totalStudents = runningBatches.reduce(
-      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
-      0
-    );
+    // Count distinct unique students across all running batches
+    const uniqueStudentIds = new Set();
+    runningBatches.forEach((b) => {
+      if (Array.isArray(b.studentIds)) {
+        b.studentIds.forEach((id) => uniqueStudentIds.add(id));
+      }
+    });
+    const totalStudents = uniqueStudentIds.size > 0
+      ? uniqueStudentIds.size
+      : (stats && stats.totalStudents ? parseInt(stats.totalStudents, 10) : 0);
     setStatValue("stat-total-students", totalStudents.toLocaleString());
 
     renderContextStats(runningBatches);
@@ -190,7 +196,12 @@ function initNewBatchAnalytics() {
   function syncSection3Filters() {
     const universe = getFilteredUniverse();
 
-    const uniqueYears = [...new Set(universe.map((b) => b.year).filter(Boolean))].sort((a, b) => b - a);
+    // Ensure all known years from rawData are available in the dropdown when not strictly filtered
+    let yearList = universe.map((b) => b.year).filter(Boolean);
+    if (!currentScheduleFilter && (!currentStatFilter || currentStatFilter === "running") && rawData && rawData.filters && Array.isArray(rawData.filters.years)) {
+      yearList = [...yearList, ...rawData.filters.years];
+    }
+    const uniqueYears = [...new Set(yearList)].sort((a, b) => b - a);
     const uniqueBatches = [...new Set(universe.map((b) => b.batchId).filter(Boolean))].sort();
     const uniqueCourses = [...new Set(universe.map((b) => b.courseName).filter(Boolean))].sort();
     const uniqueModes = [...new Set(universe.map((b) => b.mode).filter(Boolean))].sort();
@@ -763,10 +774,17 @@ function initNewBatchAnalytics() {
     let filtered = getTableFilteredBatches();
 
     const studentBatches = getFilterScopedRunningBatches();
-    const totalStudents = studentBatches.reduce(
-      (sum, b) => sum + (parseInt(b.studentCount, 10) || 0),
-      0
-    );
+    const uniqueFilterStudentIds = new Set();
+    studentBatches.forEach((b) => {
+      if (Array.isArray(b.studentIds)) {
+        b.studentIds.forEach((id) => uniqueFilterStudentIds.add(id));
+      }
+    });
+    const totalStudents = uniqueFilterStudentIds.size > 0
+      ? uniqueFilterStudentIds.size
+      : (studentBatches.length === runningBatches.length && rawData.stats && rawData.stats.totalStudents
+          ? parseInt(rawData.stats.totalStudents, 10)
+          : studentBatches.reduce((sum, b) => sum + (parseInt(b.studentCount, 10) || 0), 0));
     setStatValue("stat-total-students", totalStudents.toLocaleString());
 
     // Ensure batches are ordered with oldest date first

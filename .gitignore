@@ -10,7 +10,6 @@ node_modules/
 scripts/
 .claude/
 .playwright-mcp/
-*.png
 bug_report.md
 deploy_local.sh
 PLUGIN_REVIEW.md

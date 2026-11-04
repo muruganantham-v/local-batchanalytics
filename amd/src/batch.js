@@ -1835,11 +1835,7 @@ define([], function() {
                             el.remove();
                         });
 
-                        // Remove edit buttons and latest note badges from older notes
-                        var oldEditBtns = noteList.querySelectorAll('.ba-btn-edit-note');
-                        oldEditBtns.forEach(function(btn) {
-                            btn.remove();
-                        });
+                        // Update latest note badge: remove badge from older notes
                         var oldBadges = noteList.querySelectorAll('.ba-latest-badge');
                         oldBadges.forEach(function(badge) {
                             badge.remove();

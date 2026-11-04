@@ -1671,10 +1671,19 @@ class task_service {
             return;
         }
 
-        // 8. Action: Batch review notes (Issue #43).
+        // 8. Action: Batch review notes.
+        // PM can add or edit notes for their own assigned batch.
+        // SS Lead can add or edit their notes for ANY batch.
+        // Site administrators and managers with local/batchanalytics:manage always pass (step 1).
         if ($action_type === 'addnote' || $action_type === 'editnote') {
-            if (!util::can_view_all_batches($sys_ctx, $userid) && empty($assignment['is_assigned'])) {
-                throw new \moodle_exception('nopermissions', 'error', '', 'add or edit review note for this batch');
+            $is_sslead = !empty($assignment['is_sslead']) || util::is_user_sslead($userid);
+            if (empty($assignment['is_pm']) && !$is_sslead) {
+                throw new \moodle_exception(
+                    'nopermissions',
+                    'error',
+                    '',
+                    'add or edit review notes for this batch. Only the assigned Program Manager or SS Lead can add or edit notes.'
+                );
             }
             return;
         }
@@ -2109,7 +2118,7 @@ class task_service {
             ];
         }
 
-        if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_closer' || $action_type === 'am_mentor' || $action_type === 'am_sched') {
+        if ($action_type === 'am_start' || $action_type === 'am_end' || $action_type === 'am_closer' || $action_type === 'am_sched') {
             $batchid = (int)($params['batchid'] ?? 0);
             $mod_key = trim((string)($params['act_key'] ?? ''));
             if ($batchid <= 0 || $mod_key === '') {
@@ -2136,7 +2145,6 @@ class task_service {
 
             $now = time();
             $should_send_start_alert = false;
-            $should_send_mentor_alert = false;
             $saved_ts = $now;
             $today_end = util::get_user_today_end();
             $today_start = util::get_user_today_midnight();
@@ -2202,17 +2210,6 @@ class task_service {
                     }
                     $saved_ts = $closer_ts;
 
-                } else if ($action_type === 'am_mentor') {
-                    $assign_uid = !empty($params['mentorid']) ? (int)$params['mentorid'] : 0;
-                    if ($assign_uid <= 0) {
-                        throw new \moodle_exception('invalidparams', 'local_batchanalytics', '', 'A valid mentor ID is required to assign a module mentor.');
-                    }
-                    if (!$DB->record_exists('user', ['id' => $assign_uid, 'deleted' => 0])) {
-                        throw new \moodle_exception('invaliduser', 'local_batchanalytics');
-                    }
-                    $modules[$mod_key]['primarymentor'] = (string)$assign_uid;
-                    $should_send_mentor_alert = true;
-
                 } else if ($action_type === 'am_sched') {
                     $sched_ts = $parse_date_param($params['plannedstart'] ?? 0);
                     if ($sched_ts <= 0) {
@@ -2242,16 +2239,6 @@ class task_service {
                     cliq_activity_notifier::handle_module_start_transition($batchid, $mod_key, $ret_modules, $saved_ts);
                 } catch (\Throwable $e) {
                     debugging('Cliq module start alert failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-                }
-            } else if ($should_send_mentor_alert) {
-                try {
-                    cliq_activity_notifier::send_module_assigned_mentor_alert(
-                        $batchid,
-                        $ret_modules[$mod_key]['name'] ?? 'Module',
-                        $ret_modules[$mod_key]
-                    );
-                } catch (\Throwable $e) {
-                    debugging('Cliq mentor assignment alert failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
                 }
             }
 

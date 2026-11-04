@@ -1350,7 +1350,7 @@ define([], function() {
                         performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                         csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
                     });
-                    var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    var blob = new Blob(['\uFEFF' + csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
                     var link = document.createElement('a');
                     var url = URL.createObjectURL(blob);
                     link.setAttribute('href', url);
@@ -1700,7 +1700,7 @@ define([], function() {
                     var name = (s.name || '').replace(/"/g, '""');
                     var id = (s.id || '').replace(/"/g, '""');
                     var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
-                    var attVal = (s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? s.attendance + '%' : '—';
+                    var attVal = (s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? s.attendance + '%' : '-';
                     var merit = (s.merit_text || '').replace(/"/g, '""');
                     var row = [band, name, id, grade, attVal];
                     if (!performanceCollapsedGroups.module) {
@@ -1757,7 +1757,7 @@ define([], function() {
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));
                 });
 
-                var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                var blob = new Blob(['\uFEFF' + csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
                 var link = document.createElement('a');
                 var url = URL.createObjectURL(blob);
                 link.setAttribute('href', url);
@@ -2002,7 +2002,7 @@ define([], function() {
                     '<th class="sortable" data-col="3" data-type="num" style="width:14.28%; text-align:center;">Completion</th>' +
                     '<th class="sortable" data-col="4" data-type="num" style="width:14.30%; text-align:center;">Final Grade</th>';
 
-                var tfHtml = '<tr><td colspan="2" style="width:57.14%;"><div class="ba-tfoot-total-label" id="ba-modal-tf-label">TOTAL AVERAGE:</div></td>' +
+                var tfHtml = '<tr><td style="width:28.57%;"></td><td style="width:28.57%; text-align:right;"><div class="ba-tfoot-total-label" id="ba-modal-tf-label" style="text-align:right;">TOTAL AVERAGE:</div></td>' +
                     '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-progress" id="ba-modal-tf-val">' + (isMaac ? avgG : avgG + '%') + '</strong></td>' +
                     '<td style="width:14.28%; text-align:center;"><strong class="ba-tfoot-val ba-val-comp">' + avgC + '%</strong></td>' +
                     '<td style="width:14.30%; text-align:center;"><strong class="ba-tfoot-val ba-val-final">' + (isMaac ? avgFinalG : avgFinalG + '%') + '</strong></td>' +
@@ -2209,14 +2209,22 @@ define([], function() {
                             var row = [];
                             tr.querySelectorAll('td, th').forEach(function(cell) {
                                 var cellText = cell.innerText.replace(/(\r\n|\n|\r)/gm, '').trim().replace(/"/g, '""');
+                                cellText = cellText.replace(/[\u2013\u2014]/g, '-');
+                                if (cellText === '—' || cellText === '–' || cellText === 'â€”') {
+                                    cellText = '-';
+                                }
                                 row.push('"' + cellText + '"');
+                                var colspan = parseInt(cell.getAttribute('colspan') || 1, 10);
+                                for (var k = 1; k < colspan; k++) {
+                                    row.push('""');
+                                }
                             });
                             if (row.length > 0) {
                                 csv.push(row.join(','));
                             }
                         });
 
-                        var blob = new Blob([csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                        var blob = new Blob(['\uFEFF' + csv.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
                         var link = document.createElement('a');
                         link.href = URL.createObjectURL(blob);
                         link.setAttribute('download', cname.replace(/[^a-zA-Z0-9_-]/g, '_') + '_grades.csv');

@@ -896,9 +896,18 @@ class util {
                 $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : (int)($slot[$prefix . '_actualstart'] ?? 0);
                 $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : (int)($slot[$prefix . '_actualend'] ?? 0);
                 $adays = (int)($slot['actualdays'] ?? $slot[$prefix . '_actualdays'] ?? 0);
-                $delta = isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])
-                    ? (int)$slot['scheduledelta']
-                    : (isset($slot[$prefix . '_scheduledelta']) && is_numeric($slot[$prefix . '_scheduledelta']) ? (int)$slot[$prefix . '_scheduledelta'] : null);
+                // Calculate schedule delta dynamically: prioritize (actualdays - planneddays), then (actualend - plannedend)
+                if ($pdays > 0 && $adays > 0) {
+                    $delta = $adays - $pdays;
+                } else if (!empty($aend) && !empty($pend) && $aend > 100000 && $pend > 100000) {
+                    $delta = (int)round(($aend - $pend) / 86400);
+                } else if (isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])) {
+                    $delta = (int)$slot['scheduledelta'];
+                } else if (isset($slot[$prefix . '_scheduledelta']) && is_numeric($slot[$prefix . '_scheduledelta'])) {
+                    $delta = (int)$slot[$prefix . '_scheduledelta'];
+                } else {
+                    $delta = null;
+                }
                 $pm = trim((string)($slot['primarymentor'] ?? $slot[$prefix . '_primarymentor'] ?? ''));
                 $sm = trim((string)($slot['secondarymentor'] ?? $slot[$prefix . '_secondarymentor'] ?? ''));
                 $lm1 = trim((string)($slot['labmentor1'] ?? $slot[$prefix . '_labmentor1'] ?? ''));
@@ -943,7 +952,16 @@ class util {
                 $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : 0;
                 $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : 0;
                 $adays = (int)($slot['actualdays'] ?? 0);
-                $delta = isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta']) ? (int)$slot['scheduledelta'] : null;
+                // Calculate schedule delta dynamically: prioritize (actualdays - planneddays), then (actualend - plannedend)
+                if ($pdays > 0 && $adays > 0) {
+                    $delta = $adays - $pdays;
+                } else if (!empty($aend) && !empty($pend) && $aend > 100000 && $pend > 100000) {
+                    $delta = (int)round(($aend - $pend) / 86400);
+                } else if (isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])) {
+                    $delta = (int)$slot['scheduledelta'];
+                } else {
+                    $delta = null;
+                }
                 $pm = trim((string)($slot['primarymentor'] ?? ''));
                 $sm = trim((string)($slot['secondarymentor'] ?? ''));
                 $lm1 = trim((string)($slot['labmentor1'] ?? ''));
@@ -1096,8 +1114,19 @@ class util {
     }
 
     /**
+     * Get the URL for the default profile/avatar image when a role or user is not assigned.
+     * Uses the default image located in amd/src/Images/image.png.
+     *
+     * @return string
+     */
+    public static function get_default_avatar_url(): string {
+        return (new \moodle_url('/local/batchanalytics/amd/src/Images/image.png'))->out(false);
+    }
+
+    /**
      * Render user avatar HTML.
      * Uses Moodle $OUTPUT->user_picture if user object exists,
+     * renders default profile image if unassigned,
      * with graceful styled initials fallback.
      *
      * @param int|string|\stdClass|null $userorid
@@ -1112,6 +1141,21 @@ class util {
         $profile = self::get_user_profile_data($userorid, $size <= 40 ? 2 : 1);
         $user = $profile['user'];
         $name = $profile['name'] ?: ($fallbackname ?: '');
+
+        // If user is not assigned or has default unassigned placeholder name, render default profile image.
+        $is_unassigned = empty($user) && (
+            empty($name) ||
+            $name === '—' ||
+            $name === '-' ||
+            strcasecmp(trim($name), 'Not Assigned') === 0 ||
+            strcasecmp(trim($fallbackname ?: ''), 'Not Assigned') === 0
+        );
+
+        if ($is_unassigned) {
+            $default_img_url = self::get_default_avatar_url();
+            return '<img src="' . s($default_img_url) . '" class="ba-user-avatar ' . s($extraclass) . '" style="width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;object-fit:cover;" alt="' . s($name ?: 'Not Assigned') . '">';
+        }
+
         $initials = $profile['initials'];
         if ($initials === '?' && $name !== '') {
             $parts = preg_split('/\s+/', trim($name));
@@ -1547,22 +1591,94 @@ class util {
         }
 
         // 2. Age check: batch must have started within the last $max_age_days days.
-        $startdate = 0;
-        if (!empty($parent_batch->startdate) && is_numeric($parent_batch->startdate)) {
-            $startdate = (int)$parent_batch->startdate;
-        } else if (!empty($sec->timecreated) && is_numeric($sec->timecreated)) {
-            $startdate = (int)$sec->timecreated;
-        } else if (!empty($modules[0]['plannedstart']) && (int)$modules[0]['plannedstart'] > 0) {
-            $startdate = (int)$modules[0]['plannedstart'];
-        } else if (!empty($modules[0]['actualstart']) && (int)$modules[0]['actualstart'] > 0) {
-            $startdate = (int)$modules[0]['actualstart'];
-        }
+        $startdate = self::resolve_batch_startdate($parent_batch, $sec, $modules);
 
         if ($startdate > 0 && $startdate < (time() - ($max_age_days * 86400))) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Resolve the canonical start date timestamp for a batch or class section.
+     *
+     * Hierarchy:
+     * 1. Parent batch startdate (if valid timestamp > 100000)
+     * 2. Earliest module plannedstart / actualstart (if valid timestamp > 100000)
+     * 3. Year inferred from section name or parent batch name (e.g. '27001' or '2027' -> Jan 1, 2027)
+     * 4. Section or parent record DB creation time (timecreated)
+     * 5. Current timestamp fallback
+     *
+     * @param \stdClass|null $parent Parent batch record from local_bm_batch.
+     * @param \stdClass|null $sec Class section record from local_bm_classsection.
+     * @param array $modules Decoded module list.
+     * @return int Unix timestamp.
+     */
+    public static function resolve_batch_startdate($parent = null, $sec = null, array $modules = []): int {
+        // 1. Parent batch startdate if valid
+        if (!empty($parent->startdate) && is_numeric($parent->startdate) && (int)$parent->startdate > 100000) {
+            return (int)$parent->startdate;
+        }
+
+        // 2. Earliest plannedstart / actualstart from configured modules
+        if (!empty($modules)) {
+            $earliest = 0;
+            foreach ($modules as $m) {
+                if (!empty($m['plannedstart']) && is_numeric($m['plannedstart']) && (int)$m['plannedstart'] > 100000) {
+                    $ts = (int)$m['plannedstart'];
+                    if ($earliest === 0 || $ts < $earliest) {
+                        $earliest = $ts;
+                    }
+                }
+                if (!empty($m['actualstart']) && is_numeric($m['actualstart']) && (int)$m['actualstart'] > 100000) {
+                    $ts = (int)$m['actualstart'];
+                    if ($earliest === 0 || $ts < $earliest) {
+                        $earliest = $ts;
+                    }
+                }
+            }
+            if ($earliest > 0) {
+                return $earliest;
+            }
+        }
+
+        // 3. Batch / Section name heuristics (e.g., '27001', '27002A', 'Batch 2027')
+        $candidates = [];
+        if (!empty($sec->name)) {
+            $candidates[] = (string)$sec->name;
+        }
+        if (!empty($parent->name)) {
+            $candidates[] = (string)$parent->name;
+        }
+        foreach ($candidates as $name) {
+            // Check explicit 4-digit year like 2027
+            if (preg_match('/\b(20[2-9]\d)\b/', $name, $matches)) {
+                $y = (int)$matches[1];
+                $ts = strtotime("{$y}-01-01 00:00:00");
+                if ($ts !== false && $ts > 0) {
+                    return (int)$ts;
+                }
+            }
+            // Check Emertxe 5-digit batch codes like 27001, 26002
+            if (preg_match('/\b([2-9]\d)\d{3}\b/', $name, $matches)) {
+                $y = (int)("20" . $matches[1]);
+                $ts = strtotime("{$y}-01-01 00:00:00");
+                if ($ts !== false && $ts > 0) {
+                    return (int)$ts;
+                }
+            }
+        }
+
+        // 4. Fallback to section or parent DB creation timestamp
+        if (!empty($sec->timecreated) && is_numeric($sec->timecreated) && (int)$sec->timecreated > 100000) {
+            return (int)$sec->timecreated;
+        }
+        if (!empty($parent->timecreated) && is_numeric($parent->timecreated) && (int)$parent->timecreated > 100000) {
+            return (int)$parent->timecreated;
+        }
+
+        return time();
     }
 
     /**
