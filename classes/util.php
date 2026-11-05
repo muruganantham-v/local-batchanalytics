@@ -915,15 +915,18 @@ class util {
 
             $coursecontext_level = defined('CONTEXT_COURSE') ? CONTEXT_COURSE : 50;
 
+            // Moodle DML does not allow a named parameter to appear twice in one query,
+            // so the student shortname and archetype each get their own placeholder.
             $params = array_merge($course_params, $staff_params, $arch_params, [
-                'coursecontext' => $coursecontext_level,
-                'studentrole'   => 'student',
+                'coursecontext'      => $coursecontext_level,
+                'studentshortname'   => 'student',
+                'studentarchetype'   => 'student',
             ]);
 
             $sql = "SELECT DISTINCT ctx.instanceid AS courseid, ra.userid
                       FROM {role_assignments} ra
                       JOIN {context} ctx ON ctx.id = ra.contextid AND ctx.contextlevel = :coursecontext
-                      JOIN {role} r ON r.id = ra.roleid AND (r.shortname = :studentrole OR r.archetype = :studentrole)
+                      JOIN {role} r ON r.id = ra.roleid AND (r.shortname = :studentshortname OR r.archetype = :studentarchetype)
                       JOIN {user_enrolments} ue ON ue.userid = ra.userid
                       JOIN {enrol} e ON e.id = ue.enrolid AND e.courseid = ctx.instanceid AND e.status = 0
                       JOIN {user} u ON u.id = ra.userid AND u.deleted = 0 AND u.suspended = 0
@@ -937,18 +940,21 @@ class util {
                               AND (r_stf.shortname $in_staff OR r_stf.archetype $in_arch)
                        )";
 
-            $records = $DB->get_records_sql($sql, $params);
-            if (!empty($records)) {
-                foreach ($records as $rec) {
-                    $cid = (int)$rec->courseid;
-                    $uid = (int)$rec->userid;
-                    if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
-                        continue;
-                    }
-                    $newly_fetched[$cid][$uid] = true;
+            // Use a recordset: get_records_sql() keys rows by the first column (courseid),
+            // which would collapse every course to a single student.
+            $rs = $DB->get_recordset_sql($sql, $params);
+            foreach ($rs as $rec) {
+                $cid = (int)$rec->courseid;
+                $uid = (int)$rec->userid;
+                if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                    continue;
                 }
+                $newly_fetched[$cid][$uid] = true;
             }
+            $rs->close();
         } catch (\Throwable $e) {
+            debugging('local_batchanalytics: student count query failed, using get_enrolled_users() fallback: ' .
+                $e->getMessage(), DEBUG_DEVELOPER);
             // In case of query failure, fallback to per-course get_enrolled_users()
             foreach ($to_fetch as $cid) {
                 try {
