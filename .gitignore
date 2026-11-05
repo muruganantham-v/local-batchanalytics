@@ -9,3 +9,12 @@ node_modules/
 .vscode/
 scripts/
 .claude/
+.playwright-mcp/
+bug_report.md
+deploy_local.sh
+PLUGIN_REVIEW.md
+scratch/
+Review_issues_1.md
+Review_report.md
+.gemini/
+PRE_PUSH_CHECKLIST.md

@@ -1,0 +1,2022 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace local_batchanalytics;
+
+defined('MOODLE_INTERNAL') || die();
+
+class util {
+    /**
+     * Canonical module durations in days as defined by curriculum.
+     *
+     * @var array<string, int>
+     */
+    public static $canonical_module_days = [
+        'Linux Systems'    => 5,
+        'Advanced C'       => 77,
+        'C++ Programming'  => 13,
+        'Data Structures'  => 29,
+        'Microcontrollers' => 37,
+        'Linux Internals'  => 33,
+        'Qt / QML'         => 10,
+        'ELARM'            => 10,
+    ];
+
+    /**
+     * Canonical module names indexed by module sequence position (1 to 8).
+     *
+     * @var array<int, string>
+     */
+    public static $canonical_modules = [
+        1 => 'Linux Systems',
+        2 => 'Advanced C',
+        3 => 'C++ Programming',
+        4 => 'Data Structures',
+        5 => 'Microcontrollers',
+        6 => 'Linux Internals',
+        7 => 'ELARM',
+        8 => 'Qt / QML',
+    ];
+
+    /**
+     * Clean class section / batch name by stripping suffixes like:
+     * - Primary Section, - Virtual Cohort A, - Fast Track Cohort, - Main Campus Batch, - Campus Batch 2
+     * leaving just the clean batch/section identifier (e.g., 26099 or 26099A).
+     *
+     * @param string|null $name Raw section or batch name
+     * @return string Cleaned section or batch name
+     */
+    public static function clean_section_name(?string $name): string {
+        if ($name === null || trim($name) === '') {
+            return '';
+        }
+        $cleaned = trim($name);
+
+        // 1. If starts with 4-6 digit batch code (optional letter) followed by hyphen and descriptive suffix, keep code
+        if (preg_match('/^([0-9]{4,6}[A-Za-z]?)\s*[-–—]\s*.+$/', $cleaned, $matches)) {
+            return $matches[1];
+        }
+
+        // 2. Strip specific known suffixes (with or without hyphen)
+        $patterns = [
+            '/\s*[-–—]?\s*Primary Section\b/i',
+            '/\s*[-–—]?\s*Virtual Cohort(\s+[A-Za-z0-9]+)?\b/i',
+            '/\s*[-–—]?\s*Fast Track Cohort\b/i',
+            '/\s*[-–—]?\s*Main Campus Batch\b/i',
+            '/\s*[-–—]?\s*Campus Batch(\s+[A-Za-z0-9]+)?\b/i',
+            '/\s*[-–—]?\s*Cliq Test Batch\b/i',
+        ];
+        $cleaned = preg_replace($patterns, '', $cleaned);
+        $cleaned = trim(preg_replace('/\s*[-–—]\s*$/', '', $cleaned));
+
+        return $cleaned;
+    }
+
+    /**
+     * Get a plugin configuration value from local_batchanalytics.
+     *
+     * @param string $name Configuration setting name
+     * @param mixed $default Fallback value if setting is not set
+     * @return mixed
+     */
+    public static function get_config_val(string $name, $default = false) {
+        $val = get_config('local_batchanalytics', $name);
+        if ($val === false || $val === null || trim((string)$val) === '') {
+            return $default;
+        }
+        return $val;
+    }
+
+    /**
+     * Check if the delivery mode represents an online batch.
+     *
+     * @param string|null $mode
+     * @return bool
+     */
+    public static function is_online_mode(?string $mode): bool {
+        if (empty($mode)) {
+            return false;
+        }
+        return stripos((string)$mode, 'online') !== false;
+    }
+
+    /**
+     * Check if a module name, code, or index corresponds to Qt / QML.
+     *
+     * @param string|int|null $name_or_code
+     * @return bool
+     */
+    public static function is_qt_module($name_or_code): bool {
+        if (empty($name_or_code)) {
+            return false;
+        }
+        $clean = strtolower(trim((string)$name_or_code));
+        if ($clean === '8' || $clean === 'module 8' || $clean === 'module8') {
+            return true;
+        }
+        $stripped = preg_replace('/[^a-z0-9]/', '', $clean);
+        return ($stripped === 'qtqml' || $stripped === 'qt' || $stripped === 'qml'
+            || strpos($stripped, 'qtqml') !== false || strpos($clean, 'qt') !== false || strpos($clean, 'qml') !== false);
+    }
+
+    /**
+     * Get canonical module titles by delivery mode.
+     * For Online batches, Qt / QML is completely excluded (SR-3.2.1).
+     *
+     * @param string|null $deliverymode
+     * @return array<int, string>
+     */
+    public static function get_canonical_modules(?string $deliverymode = 'Offline'): array {
+        if (self::is_online_mode($deliverymode)) {
+            return [
+                1 => 'Linux Systems',
+                2 => 'Advanced C',
+                3 => 'C++ Programming',
+                4 => 'Data Structures',
+                5 => 'Microcontrollers',
+                6 => 'Linux Internals',
+                7 => 'ELARM',
+            ];
+        }
+        return [
+            1 => 'Linux Systems',
+            2 => 'Advanced C',
+            3 => 'C++ Programming',
+            4 => 'Data Structures',
+            5 => 'Microcontrollers',
+            6 => 'Linux Internals',
+            7 => 'ELARM',
+            8 => 'Qt / QML',
+        ];
+    }
+
+    /**
+     * Get canonical module durations in days by delivery mode.
+     *
+     * @param string|null $deliverymode
+     * @return array<int, int>
+     */
+    public static function get_canonical_days(?string $deliverymode = 'Offline'): array {
+        if (self::is_online_mode($deliverymode)) {
+            return [
+                1 => 5, 2 => 77, 3 => 13, 4 => 29, 5 => 37, 6 => 33, 7 => 10
+            ];
+        }
+        return [
+            1 => 5, 2 => 77, 3 => 13, 4 => 29, 5 => 37, 6 => 33, 7 => 10, 8 => 10
+        ];
+    }
+
+    /**
+     * Filter module records for a specific delivery mode.
+     * If online, Qt / QML is excluded and module positions re-indexed (SR-3.2.1).
+     *
+     * @param array $modules
+     * @param string|null $deliverymode
+     * @return array
+     */
+    public static function filter_modules_for_mode(array $modules, ?string $deliverymode): array {
+        if (!self::is_online_mode($deliverymode)) {
+            return $modules;
+        }
+
+        $filtered = [];
+        $new_idx = 1;
+        foreach ($modules as $m) {
+            $m_name = $m['name'] ?? $m['courseshortname'] ?? '';
+            $m_idx = $m['module'] ?? $new_idx;
+            if (self::is_qt_module($m_name) || (is_numeric($m_idx) && (int)$m_idx === 8 && self::is_qt_module($m_name ?: '8'))) {
+                continue;
+            }
+            $m['module'] = $new_idx++;
+            $filtered[] = $m;
+        }
+        return $filtered;
+    }
+
+    /**
+     * Check if a given user value (id, name, username, email) matches a Moodle user.
+     *
+    /**
+     * Check if a record value matches a user ID (Issue #42).
+     * Authorisation and access control MUST match only against immutable user IDs,
+     * not against user-editable display names, usernames or emails.
+     *
+     * @param mixed $val Value from batch/module record (user id, or array/object containing id/userid).
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
+     * @return bool
+     */
+    public static function is_user_match($val, $user_or_id, bool $strict_userid = true): bool {
+        if ($val === null || $val === '' || $val === '0' || $val === 0 || $val === '—') {
+            return false;
+        }
+        if (is_array($val) || is_object($val)) {
+            if (is_object($val) && isset($val->id)) {
+                $val = $val->id;
+            } else if (is_array($val) && isset($val['id'])) {
+                $val = $val['id'];
+            } else if (is_object($val) && isset($val->userid)) {
+                $val = $val->userid;
+            } else if (is_array($val) && isset($val['userid'])) {
+                $val = $val['userid'];
+            } else {
+                return false;
+            }
+        }
+        if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else if (is_object($user_or_id) && isset($user_or_id->id)) {
+            $userid = (int)$user_or_id->id;
+        } else {
+            return false;
+        }
+        if ($userid <= 0) {
+            return false;
+        }
+
+        $v = trim((string)$val);
+        return ($v !== '' && $v === (string)$userid);
+    }
+
+    /**
+     * Check if a display name or email matches a user.
+     * WARNING: Only use this for UI display purposes. Never use for authorisation or access control (Issue #42).
+     *
+     * @param mixed $val Value from batch/module record (display name, username, email).
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_display_name_match($val, $user_or_id): bool {
+        if ($val === null || $val === '' || $val === '0' || $val === '—') {
+            return false;
+        }
+        if (is_array($val) || is_object($val)) {
+            if (is_object($val) && isset($val->name)) {
+                $val = $val->name;
+            } else if (is_array($val) && isset($val['name'])) {
+                $val = $val['name'];
+            } else if (is_object($val) && isset($val->fullname)) {
+                $val = $val->fullname;
+            } else if (is_array($val) && isset($val['fullname'])) {
+                $val = $val['fullname'];
+            } else {
+                return false;
+            }
+        }
+        global $DB;
+        if (is_numeric($user_or_id)) {
+            $user = $DB->get_record('user', ['id' => (int)$user_or_id], 'id, username, firstname, lastname, email');
+        } else {
+            $user = $user_or_id;
+        }
+        if (!$user) {
+            return false;
+        }
+
+        $lv = strtolower(trim((string)$val));
+        $u_name = strtolower(trim(fullname($user)));
+        $u_uname = strtolower(trim($user->username ?? ''));
+        $u_email = strtolower(trim($user->email ?? ''));
+
+        return ($lv === $u_name || ($u_uname !== '' && $lv === $u_uname) || ($u_email !== '' && $lv === $u_email));
+    }
+
+    /**
+     * Check if a user is assigned as mentor in a specific module.
+     * Strictly verifies by user ID (Issue #42).
+     *
+     * @param array $module Module associative array.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
+     * @return bool
+     */
+    public static function is_mentor_assigned_to_module(array $module, $user_or_id, bool $strict_userid = true): bool {
+        $mentor_fields = ['primarymentor', 'secondarymentor', 'labmentor1', 'labmentor2', 'labmentor3'];
+        foreach ($mentor_fields as $field) {
+            if (!empty($module[$field]) && self::is_user_match($module[$field], $user_or_id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Find a module matching a given Moodle course ID within a class section.
+     *
+     * @param \stdClass $sec Class section record from local_bm_classsection.
+     * @param int $courseid Moodle course ID.
+     * @return array|null The matched module array from decode_module_data, or null if not found.
+     */
+    public static function get_section_module_by_course(\stdClass $sec, int $courseid): ?array {
+        if ($courseid <= 0 || empty($sec->moduledata)) {
+            return null;
+        }
+        $modules = self::decode_module_data($sec->moduledata, false);
+        foreach ($modules as $m) {
+            if (!empty($m['moodlecourseid']) && (int)$m['moodlecourseid'] === $courseid) {
+                return $m;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if a given Moodle course ID belongs to a class section.
+     *
+     * @param \stdClass $sec Class section record from local_bm_classsection.
+     * @param int $courseid Moodle course ID.
+     * @return bool
+     */
+    public static function is_course_in_section(\stdClass $sec, int $courseid): bool {
+        return self::get_section_module_by_course($sec, $courseid) !== null;
+    }
+
+    /**
+     * Check if a user is designated as SS Lead (via configured role at system or category level).
+     *
+     * @param \stdClass|int|null $user_or_id User object or user ID.
+     * @return bool
+     */
+    public static function is_user_sslead($user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
+        }
+
+        if (class_exists('\local_batchanalytics\task_service')) {
+            $personas = \local_batchanalytics\task_service::resolve_user_personas($userid);
+            return !empty($personas['is_sslead']);
+        }
+        return false;
+    }
+
+    /**
+     * Check if a user is assigned to a section as PM, SSE, SS Lead, or Mentor.
+     * Strictly uses user IDs and stops reading pmmanagername and maacexecutivename columns (Issue #42).
+     *
+     * @param \stdClass $section Class section object.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $strict_userid Kept for backwards-compatibility; matching is always strict by ID.
+     * @return array{is_pm:bool, is_sse:bool, is_sslead:bool, is_mentor:bool, is_assigned:bool, assigned_modules:array}
+     */
+    public static function get_section_user_assignment(\stdClass $section, $user_or_id, bool $strict_userid = true): array {
+        $is_pm = self::is_user_match($section->pmmanager ?? '', $user_or_id);
+        $is_sse = self::is_user_match($section->maacexecutive ?? '', $user_or_id);
+        $is_sslead = self::is_user_sslead($user_or_id);
+
+        $modules = self::decode_module_data($section->moduledata ?? '', true);
+        $assigned_modules = [];
+        foreach ($modules as $m) {
+            if (self::is_mentor_assigned_to_module($m, $user_or_id)) {
+                $assigned_modules[] = $m;
+            }
+        }
+        $is_mentor = !empty($assigned_modules);
+        $is_assigned = $is_pm || $is_sse || $is_mentor || $is_sslead;
+
+        return [
+            'is_pm' => $is_pm,
+            'is_sse' => $is_sse,
+            'is_sslead' => $is_sslead,
+            'is_mentor' => $is_mentor,
+            'is_assigned' => $is_assigned,
+            'assigned_modules' => $assigned_modules,
+        ];
+    }
+
+    /**
+     * Filter modules for a specific user.
+     * Managers, PMs, SSEs, and SS Leads see all modules. Mentors only see the modules assigned to them.
+     *
+     * @param array $modules List of module arrays.
+     * @param \stdClass|null $section Class section object.
+     * @param \stdClass|int $user_or_id User object or user ID.
+     * @param bool $is_manager Whether user has manager/viewallcourses capability.
+     * @return array Filtered list of modules.
+     */
+    public static function filter_modules_for_user(array $modules, ?\stdClass $section, $user_or_id, bool $is_manager = false): array {
+        if ($is_manager || empty($modules)) {
+            return $modules;
+        }
+        if ($section) {
+            $assignment = self::get_section_user_assignment($section, $user_or_id);
+            // If user is PM, SSE, or SS Lead for this section, they see all modules.
+            if ($assignment['is_pm'] || $assignment['is_sse'] || !empty($assignment['is_sslead'])) {
+                return $modules;
+            }
+        }
+        // Mentor view: only display the modules which are assigned to them.
+        $filtered = [];
+        foreach ($modules as $m) {
+            if (self::is_mentor_assigned_to_module($m, $user_or_id)) {
+                $filtered[] = $m;
+            }
+        }
+        return $filtered;
+    }
+
+
+    /**
+     * Determine if a user can view all batches across the system,
+     * or is restricted to only batches they are assigned to.
+     *
+     * @param \context|null $context Context (defaults to system context).
+     * @param int|\stdClass|null $user_or_id User object or ID.
+     * @return bool True if user can view all batches, false if restricted to assigned batches only.
+     */
+    public static function can_view_all_batches(?\context $context = null, $user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
+        }
+
+        if (is_siteadmin($userid)) {
+            return true;
+        }
+
+        if (!$context) {
+            $context = \context_system::instance();
+        }
+
+        // SS Lead oversees soft skills across all batches.
+        if (self::is_user_sslead($userid)) {
+            return true;
+        }
+
+        return has_capability('local/batchanalytics:viewallcourses', $context, $userid);
+    }
+
+    /**
+     * Check whether the user has permission to view their assigned batches.
+     *
+     * @param \context|null $context
+     * @param mixed $user_or_id
+     * @return bool
+     */
+    public static function can_view_assigned_batches($context = null, $user_or_id = null): bool {
+        global $USER;
+        if ($user_or_id === null) {
+            $userid = (int)$USER->id;
+        } else if (is_numeric($user_or_id)) {
+            $userid = (int)$user_or_id;
+        } else {
+            $userid = (int)$user_or_id->id;
+        }
+
+        if (is_siteadmin($userid)) {
+            return true;
+        }
+
+        if (!$context) {
+            $context = \context_system::instance();
+        }
+
+        return has_capability('local/batchanalytics:viewassignedcourses', $context, $userid);
+    }
+
+    /**
+     * Get module total days by name, course name, or module index.
+     *
+     * @param string|int $module_name_or_idx Module title or 1-based index
+     * @param int $fallback Fallback days if not recognized
+     * @return int
+     */
+    public static function get_module_total_days($module_name_or_idx, int $fallback = 10): int {
+        if (is_numeric($module_name_or_idx)) {
+            $idx = (int)$module_name_or_idx;
+            $index_map = [
+                1 => 5,
+                2 => 77,
+                3 => 13,
+                4 => 29,
+                5 => 37,
+                6 => 33,
+                7 => 10,
+                8 => 10,
+            ];
+            if (isset($index_map[$idx])) {
+                return $index_map[$idx];
+            }
+        }
+
+        $raw = trim((string)$module_name_or_idx);
+        if ($raw === '') {
+            return $fallback > 0 ? $fallback : 10;
+        }
+
+        if (isset(self::$canonical_module_days[$raw])) {
+            return self::$canonical_module_days[$raw];
+        }
+
+        $normalized = strtolower(preg_replace('/[^a-z0-9\+]/i', '', $raw));
+        $normalized_map = [
+            'linuxsystems'     => 5,
+            'advancedc'        => 77,
+            'c++programming'   => 13,
+            'c++'              => 13,
+            'cppprogramming'   => 13,
+            'cpp'              => 13,
+            'datastructures'   => 29,
+            'ds'               => 29,
+            'microcontrollers' => 37,
+            'microcontroller'  => 37,
+            'linuxinternals'   => 33,
+            'qtqml'            => 10,
+            'qt'               => 10,
+            'qml'              => 10,
+            'elarm'            => 10,
+        ];
+
+        foreach ($normalized_map as $key => $days) {
+            if ($normalized === $key || strpos($normalized, $key) !== false || strpos($key, $normalized) !== false) {
+                return $days;
+            }
+        }
+
+        return $fallback > 0 ? $fallback : 10;
+    }
+
+    /**
+     * Calculate module status based on schedule delta and module total days.
+     *
+     * Rules:
+     * - Delta < 0: Early (-Xd)
+     * - Percentage < 7%: On schedule (Xd)
+     * - Percentage 7% - 13%: Minor slip (Xd)
+     * - Percentage > 13%: Delayed (Xd)
+     *
+     * @param int|float|string|null $delta Delay in days (or 'prog' or null)
+     * @param string|int $module_name_or_idx Module name or index
+     * @param int $fallback_total_days Optional fallback module days
+     * @return array Status descriptor array
+     */
+    public static function get_module_status($delta, $module_name_or_idx = '', int $fallback_total_days = 0): array {
+        $total_days = self::get_module_total_days($module_name_or_idx, $fallback_total_days);
+        if ($total_days <= 0) {
+            $total_days = 10;
+        }
+
+        if ($delta === 'prog') {
+            return [
+                'status' => 'in_progress',
+                'label' => 'In progress',
+                'short_label' => 'In progress',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => null,
+                'percentage' => null,
+                'total_days' => $total_days,
+            ];
+        }
+
+        if ($delta === null || $delta === '' || (is_string($delta) && !is_numeric($delta))) {
+            return [
+                'status' => 'none',
+                'label' => '—',
+                'short_label' => '—',
+                'chip_class' => 'muted',
+                'pill_class' => '',
+                'dot_class' => '',
+                'delta' => null,
+                'percentage' => null,
+                'total_days' => $total_days,
+            ];
+        }
+
+        $d = (int)$delta;
+
+        if ($d < 0) {
+            $early = abs($d);
+            return [
+                'status' => 'early',
+                'label' => 'Early (-' . $early . 'd)',
+                'short_label' => 'Early',
+                'chip_class' => 'b',
+                'pill_class' => 'status-early',
+                'dot_class' => 'dot-blue',
+                'delta' => $d,
+                'percentage' => round(($d / $total_days) * 100, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        $pct = ($d / $total_days) * 100;
+
+        if ($pct < 7.0) {
+            $days_text = ($d > 0) ? ('On schedule (+' . $d . 'd)') : 'On schedule (0d)';
+            return [
+                'status' => 'on_schedule',
+                'label' => $days_text,
+                'short_label' => 'On schedule',
+                'chip_class' => 'g',
+                'pill_class' => 'status-ok',
+                'dot_class' => 'dot-green',
+                'delta' => $d,
+                'percentage' => round($pct, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        if ($pct <= 13.0) {
+            return [
+                'status' => 'minor_slip',
+                'label' => 'Minor slip (+' . $d . 'd)',
+                'short_label' => 'Minor slip',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => $d,
+                'percentage' => round($pct, 2),
+                'total_days' => $total_days,
+            ];
+        }
+
+        return [
+            'status' => 'delayed',
+            'label' => 'Delayed (+' . $d . 'd)',
+            'short_label' => 'Delayed',
+            'chip_class' => 'r',
+            'pill_class' => 'status-delayed',
+            'dot_class' => 'dot-red',
+            'delta' => $d,
+            'percentage' => round($pct, 2),
+            'total_days' => $total_days,
+        ];
+    }
+
+    /**
+     * Calculate batch status based on total accumulated delay in days.
+     *
+     * Rules:
+     * - Delta < 0: Early (-Xd)
+     * - Delta < 12 days: On schedule (Xd)
+     * - Delta 12 - 23 days: Minor slip (Xd)
+     * - Delta 24+ days: Delayed (Xd)
+     *
+     * @param int|float|string|null $delta Accumulated delay in days
+     * @return array Status descriptor array
+     */
+    public static function get_batch_status($delta): array {
+        if ($delta === null || $delta === '' || (is_string($delta) && !is_numeric($delta))) {
+            return [
+                'status' => 'none',
+                'label' => '—',
+                'short_label' => '—',
+                'chip_class' => 'muted',
+                'pill_class' => '',
+                'dot_class' => '',
+                'delta' => null,
+            ];
+        }
+
+        $d = (int)$delta;
+
+        if ($d < 0) {
+            $early = abs($d);
+            return [
+                'status' => 'early',
+                'label' => 'Early (-' . $early . 'd)',
+                'short_label' => 'Early',
+                'chip_class' => 'b',
+                'pill_class' => 'status-early',
+                'dot_class' => 'dot-blue',
+                'delta' => $d,
+            ];
+        }
+
+        if ($d < 12) {
+            $days_text = ($d > 0) ? ('On schedule (+' . $d . 'd)') : 'On schedule (0d)';
+            return [
+                'status' => 'on_schedule',
+                'label' => $days_text,
+                'short_label' => 'On schedule',
+                'chip_class' => 'g',
+                'pill_class' => 'status-ok',
+                'dot_class' => 'dot-green',
+                'delta' => $d,
+            ];
+        }
+
+        if ($d <= 23) {
+            return [
+                'status' => 'minor_slip',
+                'label' => 'Minor slip (+' . $d . 'd)',
+                'short_label' => 'Minor slip',
+                'chip_class' => 'a',
+                'pill_class' => 'status-minor-slip',
+                'dot_class' => 'dot-amber',
+                'delta' => $d,
+            ];
+        }
+
+        return [
+            'status' => 'delayed',
+            'label' => 'Delayed (+' . $d . 'd)',
+            'short_label' => 'Delayed',
+            'chip_class' => 'r',
+            'pill_class' => 'status-delayed',
+            'dot_class' => 'dot-red',
+            'delta' => $d,
+        ];
+    }
+
+    /**
+     * Check whether a user has at least one enrolled-course capability instance.
+     *
+     * @param int $userid
+     * @param array $capabilities
+     * @return bool
+     */
+    public static function has_any_course_capability(int $userid, array $capabilities): bool {
+        $courses = enrol_get_users_courses($userid, true, ['id']);
+        foreach ($courses as $course) {
+            $coursecontext = \context_course::instance((int)$course->id, IGNORE_MISSING);
+            if (!$coursecontext) {
+                continue;
+            }
+            foreach ($capabilities as $capability) {
+                if (has_capability($capability, $coursecontext, $userid)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Build a short-lived MUC cache key for heavy batch responses.
+     */
+    public static function get_batch_cache_key(int $userid, string $batchcode, bool $can_view_all_courses): string {
+        return sha1(json_encode([
+            // Bump when the shape or calculation of the batch payload changes.
+            'v' => 2,
+            'u' => $userid,
+            'c' => $can_view_all_courses,
+            'b' => trim($batchcode)
+        ]));
+    }
+
+    /**
+     * Read a cached batch response from MUC.
+     */
+    public static function read_cached_batch_response(string $cachekey): ?array {
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $payload = $cache->get($cachekey);
+            return is_array($payload) ? $payload : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Store a cached batch response in MUC.
+     */
+    public static function write_cached_batch_response(string $cachekey, array $payload): void {
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache->set($cachekey, $payload);
+        } catch (\Exception $e) {
+            // Ignore if cache is unavailable
+        }
+    }
+
+    /**
+     * Clear cached batch responses and course student counts after metadata changes.
+     */
+    public static function purge_batch_response_cache(): void {
+        try {
+            $cache = \cache::make('local_batchanalytics', 'batchdata');
+            $cache->purge();
+        } catch (\Exception $e) {
+            // Ignore if cache is unavailable.
+        }
+        try {
+            $cache2 = \cache::make('local_batchanalytics', 'coursestudents');
+            $cache2->purge();
+        } catch (\Throwable $e) {
+            // Ignore if cache is unavailable.
+        }
+    }
+
+    /**
+     * Retrieve active student user IDs per course, using MUC caching and high-performance bulk queries.
+     *
+     * Identifies users holding the 'student' role in that course context, excluding any user who
+     * holds a staff role in that specific course context or who is a site administrator.
+     *
+     * @param array $courseids Array of course IDs
+     * @return array Map of courseid => [userid => true, ...]
+     */
+    public static function get_courses_student_uids(array $courseids): array {
+        global $DB, $CFG;
+
+        $sanitized_cids = [];
+        foreach ($courseids as $cid) {
+            $cid = (int)$cid;
+            if ($cid > 0) {
+                $sanitized_cids[$cid] = $cid;
+            }
+        }
+
+        if (empty($sanitized_cids)) {
+            return [];
+        }
+
+        $result = []; // courseid => [userid => true]
+        $to_fetch = [];
+
+        // 1. Try to read from MUC 'coursestudents' cache store.
+        $cache = null;
+        try {
+            $cache = \cache::make('local_batchanalytics', 'coursestudents');
+        } catch (\Throwable $e) {
+            $cache = null;
+        }
+
+        if ($cache) {
+            $keys_to_fetch = [];
+            foreach ($sanitized_cids as $cid) {
+                $keys_to_fetch[$cid] = (string)$cid;
+            }
+
+            try {
+                $cached_items = $cache->get_many($keys_to_fetch);
+                foreach ($keys_to_fetch as $cid => $cache_key) {
+                    if (isset($cached_items[$cache_key]) && is_array($cached_items[$cache_key])) {
+                        $result[$cid] = $cached_items[$cache_key];
+                    } else {
+                        $to_fetch[] = $cid;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $to_fetch = array_values($sanitized_cids);
+            }
+        } else {
+            $to_fetch = array_values($sanitized_cids);
+        }
+
+        // If all courses were cached, return immediately!
+        if (empty($to_fetch)) {
+            return $result;
+        }
+
+        // 2. Query missing courses in bulk
+        $staff_roles = [
+            'manager', 'coursecreator', 'editingteacher', 'teacher',
+            'program_manager', 'mentor_resource_access', 'ss_team_member', 'ss_team_lead'
+        ];
+        $staff_archetypes = ['teacher', 'editingteacher', 'manager', 'coursecreator'];
+
+        // Site admins to exclude
+        $siteadmin_ids = [];
+        if (!empty($CFG->siteadmins)) {
+            foreach (explode(',', $CFG->siteadmins) as $adm) {
+                $adm = (int)trim($adm);
+                if ($adm > 0) {
+                    $siteadmin_ids[$adm] = $adm;
+                }
+            }
+        }
+
+        // Initialize missed courses in result as empty arrays
+        $newly_fetched = [];
+        foreach ($to_fetch as $cid) {
+            $newly_fetched[$cid] = [];
+        }
+
+        try {
+            list($in_courses, $course_params) = $DB->get_in_or_equal($to_fetch, SQL_PARAMS_NAMED, 'cid');
+            list($in_staff, $staff_params) = $DB->get_in_or_equal($staff_roles, SQL_PARAMS_NAMED, 'stf');
+            list($in_arch, $arch_params) = $DB->get_in_or_equal($staff_archetypes, SQL_PARAMS_NAMED, 'arc');
+
+            $coursecontext_level = defined('CONTEXT_COURSE') ? CONTEXT_COURSE : 50;
+
+            // Moodle DML does not allow a named parameter to appear twice in one query,
+            // so the student shortname and archetype each get their own placeholder.
+            $params = array_merge($course_params, $staff_params, $arch_params, [
+                'coursecontext'      => $coursecontext_level,
+                'studentshortname'   => 'student',
+                'studentarchetype'   => 'student',
+            ]);
+
+            $sql = "SELECT DISTINCT ctx.instanceid AS courseid, ra.userid
+                      FROM {role_assignments} ra
+                      JOIN {context} ctx ON ctx.id = ra.contextid AND ctx.contextlevel = :coursecontext
+                      JOIN {role} r ON r.id = ra.roleid AND (r.shortname = :studentshortname OR r.archetype = :studentarchetype)
+                      JOIN {user_enrolments} ue ON ue.userid = ra.userid
+                      JOIN {enrol} e ON e.id = ue.enrolid AND e.courseid = ctx.instanceid AND e.status = 0
+                      JOIN {user} u ON u.id = ra.userid AND u.deleted = 0 AND u.suspended = 0
+                     WHERE ctx.instanceid $in_courses
+                       AND ue.status = 0
+                       AND ra.userid NOT IN (
+                           SELECT DISTINCT ra_stf.userid
+                             FROM {role_assignments} ra_stf
+                             JOIN {role} r_stf ON r_stf.id = ra_stf.roleid
+                            WHERE ra_stf.contextid = ctx.id
+                              AND (r_stf.shortname $in_staff OR r_stf.archetype $in_arch)
+                       )";
+
+            // Use a recordset: get_records_sql() keys rows by the first column (courseid),
+            // which would collapse every course to a single student.
+            $rs = $DB->get_recordset_sql($sql, $params);
+            foreach ($rs as $rec) {
+                $cid = (int)$rec->courseid;
+                $uid = (int)$rec->userid;
+                if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                    continue;
+                }
+                $newly_fetched[$cid][$uid] = true;
+            }
+            $rs->close();
+        } catch (\Throwable $e) {
+            debugging('local_batchanalytics: student count query failed, using get_enrolled_users() fallback: ' .
+                $e->getMessage(), DEBUG_DEVELOPER);
+            // In case of query failure, fallback to per-course get_enrolled_users()
+            foreach ($to_fetch as $cid) {
+                try {
+                    $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
+                    if (!$c_ctx) {
+                        continue;
+                    }
+                    $c_users = get_enrolled_users($c_ctx, '', 0, 'u.id');
+                    if (!empty($c_users)) {
+                        foreach ($c_users as $u) {
+                            $uid = (int)$u->id;
+                            if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                                continue;
+                            }
+                            $newly_fetched[$cid][$uid] = true;
+                        }
+                    }
+                } catch (\Throwable $ex) {
+                    // Ignore per-course error
+                }
+            }
+        }
+
+        // 3. Write newly fetched items into MUC cache in bulk
+        if ($cache && !empty($newly_fetched)) {
+            $set_data = [];
+            foreach ($newly_fetched as $cid => $uids) {
+                $set_data[(string)$cid] = $uids;
+                $result[$cid] = $uids;
+            }
+            try {
+                $cache->set_many($set_data);
+            } catch (\Throwable $e) {
+                // Ignore cache set failure
+            }
+        } else {
+            foreach ($newly_fetched as $cid => $uids) {
+                $result[$cid] = $uids;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check if the user has exceeded CRM API rate limit.
+     * Allows max 30 requests per minute per user.
+     */
+    public static function check_crm_rate_limit(int $userid): bool {
+        try {
+            $cache = \cache::make('local_batchanalytics', 'crmratelimit');
+            $key = 'user_' . $userid;
+            $now = time();
+            $window = $cache->get($key);
+            $window = is_array($window) ? $window : [];
+            $windowstart = (int)($window['windowstart'] ?? 0);
+            $count = (int)($window['count'] ?? 0);
+            if ($windowstart <= 0 || $now < $windowstart || ($now - $windowstart) >= 60) {
+                $windowstart = $now;
+                $count = 0;
+            }
+            if ($count >= 30) {
+                return false;
+            }
+            $cache->set($key, [
+                'windowstart' => $windowstart,
+                'count' => $count + 1,
+            ]);
+            return true;
+        } catch (\Exception $e) {
+            // Fail open if cache is unavailable
+            return true;
+        }
+    }
+
+    /**
+     * Decode moduledata JSON from local_bm_classsection.
+     * Supports both the new slot-object format (module_1 to module_8) and legacy indexed arrays.
+     *
+     * @param string|array|null $moduledata_raw Raw JSON string or array.
+     * @param bool $only_active When true, filters out unconfigured/empty module slots.
+     * @return array Standardized array of module records.
+     */
+    public static function decode_module_data($moduledata_raw, bool $only_active = true): array {
+        if (empty($moduledata_raw)) {
+            return [];
+        }
+        if (is_string($moduledata_raw)) {
+            $decoded = json_decode($moduledata_raw, true);
+        } else if (is_array($moduledata_raw)) {
+            $decoded = $moduledata_raw;
+        } else {
+            return [];
+        }
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        // Check if format is keyed by module_1, module_2, or module1, module2...
+        $is_keyed = false;
+        for ($i = 1; $i <= 8; $i++) {
+            if (isset($decoded['module_' . $i]) || isset($decoded['module' . $i])) {
+                $is_keyed = true;
+                break;
+            }
+        }
+
+        if ($is_keyed) {
+            for ($i = 1; $i <= 8; $i++) {
+                $slot = $decoded['module_' . $i] ?? $decoded['module' . $i] ?? null;
+                if (!is_array($slot)) {
+                    continue;
+                }
+                $prefix = 'module' . $i;
+                $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? $slot[$prefix . '_name'] ?? $slot[$prefix] ?? ''));
+                $cid = (int)($slot['moodlecourseid'] ?? $slot[$prefix . '_moodlecourseid'] ?? $slot['courseid'] ?? $slot[$prefix . '_courseid'] ?? 0);
+                $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : (int)($slot[$prefix . '_plannedstart'] ?? 0);
+                $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : (int)($slot[$prefix . '_plannedend'] ?? 0);
+                $pdays = (int)($slot['planneddays'] ?? $slot[$prefix . '_planneddays'] ?? 0);
+                $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : (int)($slot[$prefix . '_actualstart'] ?? 0);
+                $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : (int)($slot[$prefix . '_actualend'] ?? 0);
+                $adays = (int)($slot['actualdays'] ?? $slot[$prefix . '_actualdays'] ?? 0);
+                // Calculate schedule delta dynamically: prioritize (actualdays - planneddays), then (actualend - plannedend)
+                if ($pdays > 0 && $adays > 0) {
+                    $delta = $adays - $pdays;
+                } else if (!empty($aend) && !empty($pend) && $aend > 100000 && $pend > 100000) {
+                    $delta = (int)round(($aend - $pend) / 86400);
+                } else if (isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])) {
+                    $delta = (int)$slot['scheduledelta'];
+                } else if (isset($slot[$prefix . '_scheduledelta']) && is_numeric($slot[$prefix . '_scheduledelta'])) {
+                    $delta = (int)$slot[$prefix . '_scheduledelta'];
+                } else {
+                    $delta = null;
+                }
+                $pm = trim((string)($slot['primarymentor'] ?? $slot[$prefix . '_primarymentor'] ?? ''));
+                $sm = trim((string)($slot['secondarymentor'] ?? $slot[$prefix . '_secondarymentor'] ?? ''));
+                $lm1 = trim((string)($slot['labmentor1'] ?? $slot[$prefix . '_labmentor1'] ?? ''));
+                $lm2 = trim((string)($slot['labmentor2'] ?? $slot[$prefix . '_labmentor2'] ?? ''));
+                $lm3 = trim((string)($slot['labmentor3'] ?? $slot[$prefix . '_labmentor3'] ?? ''));
+
+                $has_data = ($name !== '' || $cid > 0 || $pstart > 0 || $astart > 0 || $pdays > 0 || ($pm !== '' && $pm !== '0' && $pm !== '—'));
+                if ($only_active && !$has_data) {
+                    continue;
+                }
+
+                $normalized[] = [
+                    'module' => $i,
+                    'name' => $name,
+                    'courseshortname' => $name,
+                    'moodlecourseid' => $cid,
+                    'plannedstart' => $pstart,
+                    'plannedend' => $pend,
+                    'planneddays' => $pdays,
+                    'actualstart' => $astart,
+                    'actualend' => $aend,
+                    'actualdays' => $adays,
+                    'scheduledelta' => $delta,
+                    'primarymentor' => $pm,
+                    'secondarymentor' => $sm,
+                    'labmentor1' => $lm1,
+                    'labmentor2' => $lm2,
+                    'labmentor3' => $lm3,
+                ];
+            }
+        } else {
+            foreach ($decoded as $pos => $slot) {
+                if (!is_array($slot)) {
+                    continue;
+                }
+                $modnum = isset($slot['module']) && is_numeric($slot['module']) ? (int)$slot['module'] : ($pos + 1);
+                $name = trim((string)($slot['name'] ?? $slot['courseshortname'] ?? ''));
+                $cid = (int)($slot['moodlecourseid'] ?? $slot['courseid'] ?? 0);
+                $pstart = !empty($slot['plannedstart']) && is_numeric($slot['plannedstart']) ? (int)$slot['plannedstart'] : 0;
+                $pend = !empty($slot['plannedend']) && is_numeric($slot['plannedend']) ? (int)$slot['plannedend'] : 0;
+                $pdays = (int)($slot['planneddays'] ?? 0);
+                $astart = !empty($slot['actualstart']) && is_numeric($slot['actualstart']) ? (int)$slot['actualstart'] : 0;
+                $aend = !empty($slot['actualend']) && is_numeric($slot['actualend']) ? (int)$slot['actualend'] : 0;
+                $adays = (int)($slot['actualdays'] ?? 0);
+                // Calculate schedule delta dynamically: prioritize (actualdays - planneddays), then (actualend - plannedend)
+                if ($pdays > 0 && $adays > 0) {
+                    $delta = $adays - $pdays;
+                } else if (!empty($aend) && !empty($pend) && $aend > 100000 && $pend > 100000) {
+                    $delta = (int)round(($aend - $pend) / 86400);
+                } else if (isset($slot['scheduledelta']) && is_numeric($slot['scheduledelta'])) {
+                    $delta = (int)$slot['scheduledelta'];
+                } else {
+                    $delta = null;
+                }
+                $pm = trim((string)($slot['primarymentor'] ?? ''));
+                $sm = trim((string)($slot['secondarymentor'] ?? ''));
+                $lm1 = trim((string)($slot['labmentor1'] ?? ''));
+                $lm2 = trim((string)($slot['labmentor2'] ?? ''));
+                $lm3 = trim((string)($slot['labmentor3'] ?? ''));
+
+                $has_data = ($name !== '' || $cid > 0 || $pstart > 0 || $astart > 0 || $pdays > 0 || ($pm !== '' && $pm !== '0' && $pm !== '—'));
+                if ($only_active && !$has_data) {
+                    continue;
+                }
+
+                $normalized[] = [
+                    'module' => $modnum,
+                    'name' => $name,
+                    'courseshortname' => $name,
+                    'moodlecourseid' => $cid,
+                    'plannedstart' => $pstart,
+                    'plannedend' => $pend,
+                    'planneddays' => $pdays,
+                    'actualstart' => $astart,
+                    'actualend' => $aend,
+                    'actualdays' => $adays,
+                    'scheduledelta' => $delta,
+                    'primarymentor' => $pm,
+                    'secondarymentor' => $sm,
+                    'labmentor1' => $lm1,
+                    'labmentor2' => $lm2,
+                    'labmentor3' => $lm3,
+                ];
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Get user profile details (name, profile picture URL, user object) by userid or user object.
+     * Caches in memory to avoid duplicate DB queries.
+     *
+     * @param int|string|\stdClass|null $userorid User ID, username, or user record.
+     * @param int $size 1 for large (f1 ~100px), 2 for small (f2 ~35px)
+     * @return array ['user' => \stdClass|null, 'userid' => int, 'name' => string, 'initials' => string, 'profileimageurl' => string]
+     */
+    public static function get_user_profile_data($userorid, int $size = 2): array {
+        global $DB, $PAGE;
+
+        static $cache = [];
+        static $str_cache = [];
+
+        $user = null;
+        $userid = 0;
+        $str_key = '';
+
+        if (is_object($userorid) && isset($userorid->id)) {
+            $user = $userorid;
+            $userid = (int)$user->id;
+        } else if (is_numeric($userorid) && (int)$userorid > 0) {
+            $userid = (int)$userorid;
+        } else if (is_string($userorid) && trim($userorid) !== '' && trim($userorid) !== '—') {
+            $identifier = trim($userorid);
+            if (is_numeric($identifier)) {
+                $userid = (int)$identifier;
+            } else {
+                $str_key = mb_strtolower($identifier);
+                if (isset($str_cache[$str_key][$size])) {
+                    return $str_cache[$str_key][$size];
+                }
+                // Try looking up by username or idnumber
+                $matched = $DB->get_record_select(
+                    'user',
+                    'deleted = 0 AND (username = :u OR idnumber = :id)',
+                    ['u' => $identifier, 'id' => $identifier],
+                    '*',
+                    IGNORE_MULTIPLE
+                );
+                if ($matched) {
+                    $user = $matched;
+                    $userid = (int)$user->id;
+                }
+            }
+        }
+
+        if ($userid > 0 && isset($cache[$userid][$size])) {
+            return $cache[$userid][$size];
+        }
+
+        // Ensure we have a complete user record with picture fields
+        if (!$user && $userid > 0) {
+            $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+        } else if ($user && (!property_exists($user, 'picture') || !property_exists($user, 'imagealt'))) {
+            $fresh = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+            if ($fresh) {
+                $user = $fresh;
+            }
+        }
+
+        $name = $user ? fullname($user) : '';
+        if ($name === '' && is_string($userorid) && !is_numeric($userorid)) {
+            $name = trim($userorid);
+        }
+        $initials = '';
+        if ($name !== '' && $name !== '—') {
+            $parts = preg_split('/\s+/', trim($name));
+            if (count($parts) >= 2) {
+                $initials = strtoupper(mb_substr($parts[0], 0, 1) . mb_substr(end($parts), 0, 1));
+            } else {
+                $initials = strtoupper(mb_substr($name, 0, 1));
+            }
+        }
+
+        $profileurl = '';
+        if ($user) {
+            try {
+                global $PAGE;
+                if (!empty($PAGE)) {
+                    try {
+                        $ref = new \ReflectionProperty($PAGE, '_context');
+                        $ref->setAccessible(true);
+                        if ($ref->getValue($PAGE) === null) {
+                            $PAGE->set_context(\context_system::instance());
+                        }
+                    } catch (\Throwable $ignored) {
+                        // Reflection fallback.
+                    }
+                }
+                $up = new \user_picture($user);
+                $up->size = $size;
+                $profileurl = $up->get_url($PAGE)->out(false);
+            } catch (\Throwable $e) {
+                $profileurl = '';
+            }
+        }
+
+        $data = [
+            'user' => $user,
+            'userid' => $userid,
+            'name' => $name,
+            'initials' => $initials ?: '?',
+            'profileimageurl' => $profileurl,
+        ];
+
+        if ($userid > 0) {
+            $cache[$userid][$size] = $data;
+        }
+        if ($str_key !== '') {
+            $str_cache[$str_key][$size] = $data;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Get the URL for the default profile/avatar image when a role or user is not assigned.
+     * Uses the default image located in amd/src/Images/image.png.
+     *
+     * @return string
+     */
+    public static function get_default_avatar_url(): string {
+        return (new \moodle_url('/local/batchanalytics/amd/src/Images/image.png'))->out(false);
+    }
+
+    /**
+     * Render user avatar HTML.
+     * Uses Moodle $OUTPUT->user_picture if user object exists,
+     * renders default profile image if unassigned,
+     * with graceful styled initials fallback.
+     *
+     * @param int|string|\stdClass|null $userorid
+     * @param int $size Pixel size (e.g. 35, 38, 30, 24)
+     * @param string $extraclass Optional CSS class
+     * @param string|null $fallbackname Optional name if user record is missing
+     * @return string HTML markup
+     */
+    public static function render_user_avatar($userorid, int $size = 35, string $extraclass = '', ?string $fallbackname = null): string {
+        global $OUTPUT;
+
+        $profile = self::get_user_profile_data($userorid, $size <= 40 ? 2 : 1);
+        $user = $profile['user'];
+        $name = $profile['name'] ?: ($fallbackname ?: '');
+
+        // If user is not assigned or has default unassigned placeholder name, render default profile image.
+        $is_unassigned = empty($user) && (
+            empty($name) ||
+            $name === '—' ||
+            $name === '-' ||
+            strcasecmp(trim($name), 'Not Assigned') === 0 ||
+            strcasecmp(trim($fallbackname ?: ''), 'Not Assigned') === 0
+        );
+
+        if ($is_unassigned) {
+            $default_img_url = self::get_default_avatar_url();
+            return '<img src="' . s($default_img_url) . '" class="ba-user-avatar ' . s($extraclass) . '" style="width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;object-fit:cover;" alt="' . s($name ?: 'Not Assigned') . '">';
+        }
+
+        $initials = $profile['initials'];
+        if ($initials === '?' && $name !== '') {
+            $parts = preg_split('/\s+/', trim($name));
+            $initials = count($parts) >= 2
+                ? strtoupper(mb_substr($parts[0], 0, 1) . mb_substr(end($parts), 0, 1))
+                : strtoupper(mb_substr($name, 0, 1));
+        }
+
+        if ($user && $OUTPUT) {
+            try {
+                return $OUTPUT->user_picture($user, [
+                    'size' => $size,
+                    'link' => false,
+                    'class' => trim('ba-user-avatar ' . $extraclass),
+                ]);
+            } catch (\Throwable $e) {
+                // Fall back to image tag or initials markup
+            }
+        }
+
+        if (!empty($profile['profileimageurl'])) {
+            return '<img src="' . s($profile['profileimageurl']) . '" class="ba-user-avatar ' . s($extraclass) . '" style="width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;object-fit:cover;" alt="' . s($name) . '">';
+        }
+
+        $fontsize = max(10, (int)round($size * 0.42));
+        return '<span class="ba-user-avatar ba-avatar-initials ' . s($extraclass) . '" style="display:inline-flex;align-items:center;justify-content:center;width:' . (int)$size . 'px;height:' . (int)$size . 'px;border-radius:50%;font-size:' . $fontsize . 'px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366f1,#8b5cf6);flex-shrink:0;" title="' . s($name) . '">' . s($initials) . '</span>';
+    }
+
+    /**
+     * Format an activity name or key into Title Case style.
+     * Preserves acronyms like SS, DSA, TCP/IP, and AANCHOR.
+     *
+     * @param string $str Raw activity name or key
+     * @return string Formatted Title Case activity name
+     */
+    public static function format_activity_title(string $str): string {
+        $str = trim($str);
+        if ($str === '') {
+            return '';
+        }
+        $str = str_replace('_', ' ', $str);
+        $str = preg_replace('/\s+/', ' ', $str);
+        return preg_replace_callback('/\b[a-zA-Z]/', function ($m) {
+            return strtoupper($m[0]);
+        }, $str);
+    }
+
+    /**
+     * Decode and extract soft skill activities from local_bm_classsection softskillsdata.
+     * All activities and keys are parsed dynamically from the database record with zero hardcoding.
+     *
+     * @param string|array|object|null $softskillsdata_raw Raw data from local_bm_classsection.softskillsdata
+     * @return array List of dynamically extracted activities with planned, actual, status, etc.
+     */
+    public static function decode_softskills_activities($softskillsdata_raw): array {
+        if (empty($softskillsdata_raw)) {
+            return [];
+        }
+
+        if (is_array($softskillsdata_raw)) {
+            $raw = $softskillsdata_raw;
+        } else if (is_string($softskillsdata_raw)) {
+            $raw = json_decode($softskillsdata_raw, true);
+        } else if (is_object($softskillsdata_raw)) {
+            $raw = (array)$softskillsdata_raw;
+        } else {
+            return [];
+        }
+
+        if (!is_array($raw) || empty($raw)) {
+            return [];
+        }
+
+        $grouped = [];
+
+        // Parse all keys in $raw dynamically without hardcoding any activity names
+        foreach ($raw as $key => $val) {
+            if (is_array($val) || is_object($val)) {
+                $val = (array)$val;
+                $act_name = (string)($val['activity'] ?? $val['name'] ?? $val['title'] ?? $key);
+                $base = trim($act_name);
+                if ($base === '') {
+                    continue;
+                }
+                $p_val = $val['planned'] ?? $val['planned_date'] ?? $val['planneddate'] ?? 0;
+                $a_val = $val['actual'] ?? $val['actual_date'] ?? $val['actualdate'] ?? 0;
+                $p_ts = is_numeric($p_val) ? (int)$p_val : (strtotime((string)$p_val) ?: 0);
+                $a_ts = is_numeric($a_val) ? (int)$a_val : (strtotime((string)$a_val) ?: 0);
+                $appr_st = (string)($val['approval_status'] ?? $val['approvalstatus'] ?? '');
+                $req_by  = (int)($val['requested_by'] ?? $val['requestedby'] ?? 0);
+                $req_at  = (int)($val['requested_at'] ?? $val['requestedat'] ?? 0);
+                $appr_by = (int)($val['approved_by'] ?? $val['approvedby'] ?? 0);
+                $appr_at = (int)($val['approved_at'] ?? $val['approvedat'] ?? 0);
+                $rej_by  = (int)($val['rejected_by'] ?? $val['rejectedby'] ?? 0);
+                $rej_at  = (int)($val['rejected_at'] ?? $val['rejectedat'] ?? 0);
+                $rev_notes = (string)($val['review_notes'] ?? $val['reviewnotes'] ?? '');
+
+                $grouped[$base] = [
+                    'key'             => $base,
+                    'label'           => self::format_activity_title($base),
+                    'planned'         => $p_ts,
+                    'actual'          => $a_ts,
+                    'approval_status' => $appr_st,
+                    'requested_by'    => $req_by,
+                    'requested_at'    => $req_at,
+                    'approved_by'     => $appr_by,
+                    'approved_at'     => $appr_at,
+                    'rejected_by'     => $rej_by,
+                    'rejected_at'     => $rej_at,
+                    'review_notes'    => $rev_notes,
+                ];
+                continue;
+            }
+
+            if (!is_scalar($val)) {
+                continue;
+            }
+
+            $key = trim((string)$key);
+            if (preg_match('/^(.+)_(planned|actual|approvalstatus|requestedby|requestedat|approvedby|approvedat|rejectedby|rejectedat|reviewnotes)$/i', $key, $m)) {
+                $base = $m[1];
+                $type = strtolower($m[2]);
+
+                if (!isset($grouped[$base])) {
+                    $label = self::format_activity_title($base);
+                    $grouped[$base] = [
+                        'key'             => $base,
+                        'label'           => $label,
+                        'planned'         => 0,
+                        'actual'          => 0,
+                        'approval_status' => '',
+                        'requested_by'    => 0,
+                        'requested_at'    => 0,
+                        'approved_by'     => 0,
+                        'approved_at'     => 0,
+                        'rejected_by'     => 0,
+                        'rejected_at'     => 0,
+                        'review_notes'    => '',
+                    ];
+                }
+
+                if ($type === 'approvalstatus') {
+                    $grouped[$base]['approval_status'] = (string)$val;
+                } else if ($type === 'requestedby') {
+                    $grouped[$base]['requested_by'] = (int)$val;
+                } else if ($type === 'requestedat') {
+                    $grouped[$base]['requested_at'] = (int)$val;
+                } else if ($type === 'approvedby') {
+                    $grouped[$base]['approved_by'] = (int)$val;
+                } else if ($type === 'approvedat') {
+                    $grouped[$base]['approved_at'] = (int)$val;
+                } else if ($type === 'rejectedby') {
+                    $grouped[$base]['rejected_by'] = (int)$val;
+                } else if ($type === 'rejectedat') {
+                    $grouped[$base]['rejected_at'] = (int)$val;
+                } else if ($type === 'reviewnotes') {
+                    $grouped[$base]['review_notes'] = (string)$val;
+                } else {
+                    $ts = 0;
+                    if (is_numeric($val)) {
+                        $ts = (int)$val;
+                    } else if (is_string($val) && trim($val) !== '') {
+                        $parsed = strtotime($val);
+                        if ($parsed !== false) {
+                            $ts = $parsed;
+                        }
+                    }
+                    $grouped[$base][$type] = $ts;
+                }
+            }
+        }
+
+        $today_start = self::get_user_today_midnight();
+        $today_end   = self::get_user_today_end() + 1;
+
+        $results = [];
+        foreach ($grouped as $entry) {
+            $p = (int)$entry['planned'];
+            $a = (int)$entry['actual'];
+            $appr_st = (string)($entry['approval_status'] ?? '');
+
+            if ($a > 0) {
+                $status = 'g';
+                $label  = 'Completed';
+            } else if ($appr_st === 'pending_approval') {
+                $status = 'pending_approval';
+                $label  = 'Pending Approval';
+            } else if ($p > 0 && $p < $today_start) {
+                $days   = max(1, floor(($today_start - $p) / 86400));
+                $status = 'r';
+                $label  = "Overdue ({$days}d)";
+            } else if ($p >= $today_start && $p < $today_end) {
+                $status = 'a';
+                $label  = 'Due today';
+            } else if ($p > 0) {
+                $days   = max(1, floor(($p - $today_start) / 86400));
+                $status = 'b';
+                $label  = "Upcoming ({$days}d)";
+            } else {
+                $status = 'n';
+                $label  = 'Not scheduled';
+            }
+
+            $p_str = $p > 0 ? userdate($p, '%d %b %Y') : '—';
+            $a_str = $a > 0 ? userdate($a, '%d %b %Y') : '—';
+
+            $results[] = [
+                'key'             => $entry['key'],
+                'activity'        => $entry['label'],
+                'planned'         => $p,
+                'actual'          => $a,
+                'p_date'          => $p_str,
+                'a_date'          => $a_str,
+                'planned_date'    => $p_str,
+                'actual_date'     => $a_str,
+                'status'          => $status,
+                'label'           => $label,
+                'approval_status' => $appr_st,
+                'requested_by'    => (int)($entry['requested_by'] ?? 0),
+                'requested_at'    => (int)($entry['requested_at'] ?? 0),
+                'approved_by'     => (int)($entry['approved_by'] ?? 0),
+                'approved_at'     => (int)($entry['approved_at'] ?? 0),
+                'rejected_by'     => (int)($entry['rejected_by'] ?? 0),
+                'rejected_at'     => (int)($entry['rejected_at'] ?? 0),
+                'review_notes'    => (string)($entry['review_notes'] ?? ''),
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Calculate average attendance percentage for a course across enrolled students.
+     *
+     * @param int $courseid Course ID
+     * @param int[] $enrolled_userids Optional list of student user IDs to restrict average
+     * @return float|null Attendance percentage (0-100) or null if no attendance recorded
+     */
+    public static function get_course_attendance_percentage(int $courseid, array $enrolled_userids = []): ?float {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return null;
+        }
+
+        $user_filter = "";
+        $params = ['cid' => $courseid];
+        if (!empty($enrolled_userids)) {
+            list($uin, $uparams) = $DB->get_in_or_equal($enrolled_userids, SQL_PARAMS_NAMED, 'attusr');
+            $user_filter = " AND gg.userid $uin";
+            $params = array_merge($params, $uparams);
+        }
+
+        $attendlike = $DB->sql_like('gi.itemname', ':attname', false, false);
+        $params['attname'] = '%attend%';
+
+        $sql = "
+            SELECT gi.id, AVG(gg.finalgrade) as avg_grade, gi.grademax, gi.grademin
+            FROM {grade_items} gi
+            JOIN {grade_grades} gg ON gg.itemid = gi.id
+            WHERE gi.courseid = :cid
+              AND (gi.itemmodule = 'attendance' OR $attendlike)
+              $user_filter
+              AND gg.finalgrade IS NOT NULL
+            GROUP BY gi.id, gi.grademax, gi.grademin
+        ";
+        $rec = $DB->get_record_sql($sql, $params);
+        if ($rec && ($rec->grademax - $rec->grademin) > 0) {
+            $pct = (($rec->avg_grade - $rec->grademin) / ($rec->grademax - $rec->grademin)) * 100;
+            return round(max(0, min(100, $pct)), 1);
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the DateTimeZone object for the current user or system.
+     *
+     * @return \DateTimeZone
+     */
+    public static function get_user_timezone_object(): \DateTimeZone {
+        global $USER, $CFG;
+
+        if (class_exists('\core_date') && method_exists('\core_date', 'get_user_timezone_object')) {
+            try {
+                return \core_date::get_user_timezone_object();
+            } catch (\Throwable $e) {
+                // Fallback below.
+            }
+        }
+
+        $tzstring = '';
+        if (class_exists('\core_date') && method_exists('\core_date', 'get_user_timezone')) {
+            try {
+                $tzstring = \core_date::get_user_timezone();
+            } catch (\Throwable $e) {
+                $tzstring = '';
+            }
+        }
+
+        if (empty($tzstring) || $tzstring === '99') {
+            $tzstring = !empty($USER->timezone) && $USER->timezone !== '99'
+                ? $USER->timezone
+                : (!empty($CFG->timezone) && $CFG->timezone !== '99' ? $CFG->timezone : date_default_timezone_get());
+        }
+
+        try {
+            return new \DateTimeZone($tzstring);
+        } catch (\Throwable $e) {
+            return new \DateTimeZone('UTC');
+        }
+    }
+
+    /**
+     * Parse a date input (unix timestamp or date string like YYYY-MM-DD) in the user's timezone.
+     *
+     * @param mixed $val
+     * @return int Unix timestamp, or 0 if invalid
+     */
+    public static function parse_user_date($val): int {
+        if (empty($val)) {
+            return 0;
+        }
+        if (is_numeric($val)) {
+            return (int)$val;
+        }
+        $val = trim((string)$val);
+        if ($val === '' || $val === '—') {
+            return 0;
+        }
+
+        $tz = self::get_user_timezone_object();
+
+        // 1. Check for standard YYYY-MM-DD or YYYY-MM-DD HH:MM(:SS) format.
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/', $val, $m)) {
+            $year   = (int)$m[1];
+            $month  = (int)$m[2];
+            $day    = (int)$m[3];
+            $hour   = isset($m[4]) ? (int)$m[4] : 0;
+            $minute = isset($m[5]) ? (int)$m[5] : 0;
+            $second = isset($m[6]) ? (int)$m[6] : 0;
+
+            if (function_exists('make_timestamp')) {
+                // make_timestamp with default 99 uses current user's timezone.
+                return (int)make_timestamp($year, $month, $day, $hour, $minute, $second);
+            }
+
+            try {
+                $dt = new \DateTime('now', $tz);
+                $dt->setDate($year, $month, $day);
+                $dt->setTime($hour, $minute, $second);
+                return $dt->getTimestamp();
+            } catch (\Throwable $e) {
+                // fallback below.
+            }
+        }
+
+        // 2. Try parsing relative or other date formats with user timezone.
+        try {
+            $dt = new \DateTime($val, $tz);
+            $ts = $dt->getTimestamp();
+            return ($ts !== false && $ts > 0) ? (int)$ts : 0;
+        } catch (\Throwable $e) {
+            $ts = strtotime($val);
+            return ($ts !== false && $ts > 0) ? (int)$ts : 0;
+        }
+    }
+
+    /**
+     * Get the timestamp for today midnight (00:00:00) in the user's timezone.
+     *
+     * @return int
+     */
+    public static function get_user_today_midnight(): int {
+        if (function_exists('usergetmidnight')) {
+            return (int)usergetmidnight(time());
+        }
+        $tz = self::get_user_timezone_object();
+        try {
+            $dt = new \DateTime('today midnight', $tz);
+            return $dt->getTimestamp();
+        } catch (\Throwable $e) {
+            return strtotime('today midnight');
+        }
+    }
+
+    /**
+     * Get the timestamp for the end of today (23:59:59) in the user's timezone.
+     *
+     * @return int
+     */
+    public static function get_user_today_end(): int {
+        if (function_exists('usergetmidnight')) {
+            // Tomorrow midnight in user timezone minus 1 second
+            return (int)usergetmidnight(time() + 86400) - 1;
+        }
+        $tz = self::get_user_timezone_object();
+        try {
+            $dt = new \DateTime('tomorrow midnight', $tz);
+            return $dt->getTimestamp() - 1;
+        } catch (\Throwable $e) {
+            return strtotime('tomorrow midnight') - 1;
+        }
+    }
+
+    /**
+     * Check if a class section is active and eligible for daily cron activity checks.
+     *
+     * A batch/section is active if:
+     * 1. It contains at least one configured module in moduledata.
+     * 2. The final module has no actual end date (actualend <= 0), indicating the batch is still in progress.
+     * 3. The batch started within the last $max_age_days days (default 365 days).
+     *
+     * @param \stdClass $sec Section record from local_bm_classsection
+     * @param \stdClass|null $parent_batch Optional parent batch record from local_bm_batch
+     * @param int $max_age_days Maximum batch age in days (default 365)
+     * @return bool True if section is currently active and eligible for cron processing
+     */
+    public static function is_section_active(\stdClass $sec, ?\stdClass $parent_batch = null, int $max_age_days = 365): bool {
+        if (empty($sec->moduledata)) {
+            return false;
+        }
+
+        $modules = self::decode_module_data($sec->moduledata, true);
+        if (empty($modules)) {
+            return false;
+        }
+
+        // 1. Completion check: if the last configured module has an actual end date, batch is completed.
+        $last_module = end($modules);
+        if (!empty($last_module['actualend']) && (int)$last_module['actualend'] > 0) {
+            return false;
+        }
+
+        // 2. Age check: batch must have started within the last $max_age_days days.
+        $startdate = self::resolve_batch_startdate($parent_batch, $sec, $modules);
+
+        if ($startdate > 0 && $startdate < (time() - ($max_age_days * 86400))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Resolve the canonical start date timestamp for a batch or class section.
+     *
+     * Hierarchy:
+     * 1. Parent batch startdate (if valid timestamp > 100000)
+     * 2. Earliest module plannedstart / actualstart (if valid timestamp > 100000)
+     * 3. Year inferred from section name or parent batch name (e.g. '27001' or '2027' -> Jan 1, 2027)
+     * 4. Section or parent record DB creation time (timecreated)
+     * 5. Current timestamp fallback
+     *
+     * @param \stdClass|null $parent Parent batch record from local_bm_batch.
+     * @param \stdClass|null $sec Class section record from local_bm_classsection.
+     * @param array $modules Decoded module list.
+     * @return int Unix timestamp.
+     */
+    public static function resolve_batch_startdate($parent = null, $sec = null, array $modules = []): int {
+        // 1. Parent batch startdate if valid
+        if (!empty($parent->startdate) && is_numeric($parent->startdate) && (int)$parent->startdate > 100000) {
+            return (int)$parent->startdate;
+        }
+
+        // 2. Earliest plannedstart / actualstart from configured modules
+        if (!empty($modules)) {
+            $earliest = 0;
+            foreach ($modules as $m) {
+                if (!empty($m['plannedstart']) && is_numeric($m['plannedstart']) && (int)$m['plannedstart'] > 100000) {
+                    $ts = (int)$m['plannedstart'];
+                    if ($earliest === 0 || $ts < $earliest) {
+                        $earliest = $ts;
+                    }
+                }
+                if (!empty($m['actualstart']) && is_numeric($m['actualstart']) && (int)$m['actualstart'] > 100000) {
+                    $ts = (int)$m['actualstart'];
+                    if ($earliest === 0 || $ts < $earliest) {
+                        $earliest = $ts;
+                    }
+                }
+            }
+            if ($earliest > 0) {
+                return $earliest;
+            }
+        }
+
+        // 3. Batch / Section name heuristics (e.g., '27001', '27002A', 'Batch 2027')
+        $candidates = [];
+        if (!empty($sec->name)) {
+            $candidates[] = (string)$sec->name;
+        }
+        if (!empty($parent->name)) {
+            $candidates[] = (string)$parent->name;
+        }
+        foreach ($candidates as $name) {
+            // Check explicit 4-digit year like 2027
+            if (preg_match('/\b(20[2-9]\d)\b/', $name, $matches)) {
+                $y = (int)$matches[1];
+                $ts = strtotime("{$y}-01-01 00:00:00");
+                if ($ts !== false && $ts > 0) {
+                    return (int)$ts;
+                }
+            }
+            // Check Emertxe 5-digit batch codes like 27001, 26002
+            if (preg_match('/\b([2-9]\d)\d{3}\b/', $name, $matches)) {
+                $y = (int)("20" . $matches[1]);
+                $ts = strtotime("{$y}-01-01 00:00:00");
+                if ($ts !== false && $ts > 0) {
+                    return (int)$ts;
+                }
+            }
+        }
+
+        // 4. Fallback to section or parent DB creation timestamp
+        if (!empty($sec->timecreated) && is_numeric($sec->timecreated) && (int)$sec->timecreated > 100000) {
+            return (int)$sec->timecreated;
+        }
+        if (!empty($parent->timecreated) && is_numeric($parent->timecreated) && (int)$parent->timecreated > 100000) {
+            return (int)$parent->timecreated;
+        }
+
+        return time();
+    }
+
+    /**
+     * Find a class section that contains the given Moodle course ID as a configured module.
+     *
+     * Exact module course matching is verified using util::is_course_in_section()
+     * to prevent false substring matches (e.g. course 12 matching 112, 120, or timestamps).
+     *
+     * @param int $courseid Moodle course ID.
+     * @param bool $prefer_active If true, prefers active batches (started <= 365 days ago, last module not ended).
+     * @return \stdClass|null The matched class section record or null if not found.
+     */
+    public static function find_section_by_course(int $courseid, bool $prefer_active = true): ?\stdClass {
+        global $DB;
+
+        if ($courseid <= 0) {
+            return null;
+        }
+
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_bm_classsection')) {
+            return null;
+        }
+
+        // Targeted SQL pre-filter: look for specific JSON patterns for course ID
+        $sql = "SELECT id, name, moduledata, timecreated, batchid FROM {local_bm_classsection} WHERE " .
+            $DB->sql_like('moduledata', ':p1') . " OR " .
+            $DB->sql_like('moduledata', ':p2') . " OR " .
+            $DB->sql_like('moduledata', ':p3') . " OR " .
+            $DB->sql_like('moduledata', ':p4');
+        $params = [
+            'p1' => '%"moodlecourseid":' . $courseid . '%',
+            'p2' => '%"moodlecourseid":"' . $courseid . '"%',
+            'p3' => '%"courseid":' . $courseid . '%',
+            'p4' => '%"courseid":"' . $courseid . '"%',
+        ];
+
+        $candidates = $DB->get_records_sql($sql, $params);
+        if (empty($candidates)) {
+            // Broad fallback query if custom formatting is present, still verified strictly in PHP
+            $candidates = $DB->get_records_select('local_bm_classsection', $DB->sql_like('moduledata', ':bp'), ['bp' => '%' . $courseid . '%'], 'id DESC');
+        }
+
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $active_matches = [];
+        $inactive_matches = [];
+
+        // Preload parent batches if available for active check
+        $parent_batches = [];
+        if ($prefer_active && $dbman->table_exists('local_bm_batch')) {
+            $parent_batches = $DB->get_records('local_bm_batch');
+        }
+
+        foreach ($candidates as $sec) {
+            // STRICT PHP verification: decode moduledata and check exact integer course ID
+            if (!self::is_course_in_section($sec, $courseid)) {
+                continue;
+            }
+
+            if ($prefer_active) {
+                $parent_batch = (!empty($sec->batchid) && isset($parent_batches[$sec->batchid])) ? $parent_batches[$sec->batchid] : null;
+                if (self::is_section_active($sec, $parent_batch)) {
+                    $active_matches[] = $sec;
+                } else {
+                    $inactive_matches[] = $sec;
+                }
+            } else {
+                return $sec;
+            }
+        }
+
+        if (!empty($active_matches)) {
+            // Return most recent active batch (highest id / timecreated)
+            usort($active_matches, static function($a, $b) {
+                return ((int)($b->timecreated ?? $b->id)) <=> ((int)($a->timecreated ?? $a->id));
+            });
+            return reset($active_matches);
+        }
+
+        if (!empty($inactive_matches)) {
+            usort($inactive_matches, static function($a, $b) {
+                return ((int)($b->timecreated ?? $b->id)) <=> ((int)($a->timecreated ?? $a->id));
+            });
+            return reset($inactive_matches);
+        }
+
+        return null;
+    }
+
+    /**
+     * Acquire a named application lock to serialize concurrent read-modify-write operations.
+     * Uses Moodle Lock API (\core\lock\lock_config) if available.
+     *
+     * @param string $resource Unique resource identifier to lock (e.g. 'mentor_act_course_12', 'classsection_45')
+     * @param int $timeout Timeout in seconds to wait for the lock (default 15)
+     * @return object|bool Lock object with a release() method, or false if timed out
+     */
+    public static function get_lock(string $resource, int $timeout = 15) {
+        if (class_exists('\core\lock\lock_config')) {
+            try {
+                $lockfactory = \core\lock\lock_config::get_lock_factory('local_batchanalytics');
+                $lock = $lockfactory->get_lock($resource, $timeout);
+                return $lock ?: false;
+            } catch (\Throwable $e) {
+                debugging('Lock acquisition failed for ' . $resource . ': ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+
+        // Mock/fallback lock mechanism for standalone and test environments
+        static $held_locks = [];
+        if (isset($held_locks[$resource])) {
+            if ($timeout <= 0) {
+                return false;
+            }
+            return false;
+        }
+
+        $held_locks[$resource] = true;
+        return new class($resource, static function() use ($resource, &$held_locks) {
+            unset($held_locks[$resource]);
+        }) {
+            private string $key;
+            private $releaser;
+            private bool $released = false;
+
+            public function __construct(string $key, callable $releaser) {
+                $this->key = $key;
+                $this->releaser = $releaser;
+            }
+
+            public function release(): bool {
+                if (!$this->released) {
+                    $this->released = true;
+                    ($this->releaser)();
+                    return true;
+                }
+                return false;
+            }
+        };
+    }
+
+    /**
+     * Release an acquired application lock safely.
+     *
+     * @param mixed $lock Lock object returned by get_lock()
+     * @return bool
+     */
+    public static function release_lock($lock): bool {
+        if (is_object($lock) && method_exists($lock, 'release')) {
+            return (bool)$lock->release();
+        }
+        return true;
+    }
+}
+

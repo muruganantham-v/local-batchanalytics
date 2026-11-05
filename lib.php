@@ -54,3 +54,5 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
     $node->showinflatnavigation = true;
     $navigation->add_node($node);
 }
+
+
