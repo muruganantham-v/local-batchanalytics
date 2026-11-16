@@ -496,11 +496,62 @@ class task_service {
             }
         }
 
-        // Student count
+        // Student count: Count active users holding the student role in each course context, cached in MUC.
+        
         $student_count = 0;
-        if (!empty($assigned_section_ids) && $dbman->table_exists('local_bm_student')) {
-            [$sec_sql, $sec_params] = $DB->get_in_or_equal(array_keys($assigned_section_ids));
-            $student_count = (int)$DB->count_records_select('local_bm_student', "classsectionid $sec_sql", $sec_params);
+        $courseids_to_count = [];
+        foreach ($filtered_sections as $sec) {
+            $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
+            foreach ($s_modules as $sm) {
+                $cid = !empty($sm['moodlecourseid']) ? (int)$sm['moodlecourseid'] : (!empty($sm['courseid']) ? (int)$sm['courseid'] : 0);
+                if ($cid > 1) {
+                    if ($active_role === 'mentors') {
+                        $mentors = [
+                            $sm['primarymentor'] ?? '',
+                            $sm['secondarymentor'] ?? '',
+                            $sm['labmentor1'] ?? '',
+                            $sm['labmentor2'] ?? '',
+                            $sm['labmentor3'] ?? ''
+                        ];
+                        $is_mentor_in_mod = false;
+                        foreach ($mentors as $m_cand) {
+                            if ($is_user_match($m_cand)) {
+                                $is_mentor_in_mod = true;
+                                break;
+                            }
+                        }
+                        if ($is_mentor_in_mod) {
+                            $courseids_to_count[$cid] = $cid;
+                        }
+                    } else {
+                        $courseids_to_count[$cid] = $cid;
+                    }
+                }
+            }
+        }
+
+        // If mentor role didn't match specific modules but matched sections, include all section module courses.
+        if ($active_role === 'mentors' && empty($courseids_to_count)) {
+            foreach ($filtered_sections as $sec) {
+                $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
+                foreach ($s_modules as $sm) {
+                    $cid = !empty($sm['moodlecourseid']) ? (int)$sm['moodlecourseid'] : (!empty($sm['courseid']) ? (int)$sm['courseid'] : 0);
+                    if ($cid > 1) {
+                        $courseids_to_count[$cid] = $cid;
+                    }
+                }
+            }
+        }
+
+        if (!empty($courseids_to_count)) {
+            $course_students = util::get_courses_student_uids(array_values($courseids_to_count));
+            $distinct_uids = [];
+            foreach ($course_students as $cid => $uids) {
+                foreach ($uids as $uid => $unused) {
+                    $distinct_uids[(int)$uid] = true;
+                }
+            }
+            $student_count = count($distinct_uids);
         }
 
         $today_midnight = util::get_user_today_midnight();

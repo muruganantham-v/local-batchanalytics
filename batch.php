@@ -648,14 +648,31 @@ if ($section && $has_bm_student) {
 // Fetch and merge enrolled students across all linked courses in the batch.
 $enrolledstudents = [];
 if (!empty($performance_courseids)) {
+    // 1. Get student user IDs scoped to the student role (excludes teachers, mentors, staff)
+    $cached_course_students = \local_batchanalytics\util::get_courses_student_uids($performance_courseids);
+    $sec_student_map = !empty($sec_student_uids) ? array_flip($sec_student_uids) : null;
+
     foreach ($performance_courseids as $enrolledcourseid) {
         $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
         if (!$coursecontext) {
             continue;
         }
+        $valid_uids = $cached_course_students[$enrolledcourseid] ?? [];
         $course_students = get_enrolled_users($coursecontext, '', 0, 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
         foreach ($course_students as $studentrecord) {
-            $enrolledstudents[(int)$studentrecord->id] = $studentrecord;
+            $uid = (int)$studentrecord->id;
+
+            // Only include users who hold the student role in that course
+            if (!empty($valid_uids) && !isset($valid_uids[$uid])) {
+                continue;
+            }
+
+            // If the section has specific assigned students in local_bm_student, filter by section
+            if ($sec_student_map !== null && !isset($sec_student_map[$uid])) {
+                continue;
+            }
+
+            $enrolledstudents[$uid] = $studentrecord;
         }
     }
 }
@@ -671,7 +688,7 @@ foreach ($enrolledstudents as $studentrecord) {
         'name' => $profile['name'],
         'profileimageurl' => $profile['profileimageurl'],
         'initials' => $profile['initials'],
-        'id' => !empty($studentrecord->idnumber) ? $studentrecord->idnumber : ('ST_' . $studentrecord->id),
+        'id' => !empty($studentrecord->username) ? $studentrecord->username : ('ST_' . $studentrecord->id),
         'grade' => null,
         'attendance' => '—',
         'assignments' => '—',

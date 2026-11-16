@@ -666,7 +666,7 @@ foreach ($enrolledstudents as $studentrecord) {
         'name' => $profile['name'],
         'profileimageurl' => $profile['profileimageurl'],
         'initials' => $profile['initials'],
-        'id' => !empty($studentrecord->idnumber) ? $studentrecord->idnumber : ('ST_' . $studentrecord->id),
+        'id' => !empty($studentrecord->username) ? $studentrecord->username : ('ST_' . $studentrecord->id),
         'grade' => null,
         'completion_pct' => null,
         'attendance' => '—',
