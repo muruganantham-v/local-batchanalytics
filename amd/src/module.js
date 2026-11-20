@@ -26,6 +26,7 @@ define([], function() {
         var courseId = container.getAttribute('data-courseid') || '0';
         var batchId = container.getAttribute('data-batchid') || '0';
         var sesskey = container.getAttribute('data-sesskey') || '';
+        var isSponsor = container.getAttribute('data-is-sponsor') === '1';
 
         // 1. Tab Switching (Mentor Activities, SS Activities, Student Performance)
         var tabs = container.querySelectorAll('.ba-module-tabs .tab');
@@ -44,6 +45,21 @@ define([], function() {
                 }
             });
         });
+
+        // Restore active tab from URL query param or hash (e.g. #panel-evidence or ?tab=evidence)
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            var reqTab = urlParams.get('tab');
+            if (!reqTab && window.location.hash) {
+                reqTab = window.location.hash.replace('#panel-', '').replace('#', '');
+            }
+            if (reqTab) {
+                var tabToClick = container.querySelector('.ba-module-tabs .tab[data-tab="' + reqTab + '"]');
+                if (tabToClick) {
+                    tabToClick.click();
+                }
+            }
+        } catch (e) {}
 
         // 2. Mentor Activities Checklist UI
         var mentorStatusMsg = document.getElementById('ba-mentor-status-msg');
@@ -260,7 +276,7 @@ define([], function() {
             return num.toFixed(2) + (column.ismaac ? '' : '%');
         }
 
-        var perfMode = 'grade'; // 'grade' or 'percentile'
+        var perfMode = isSponsor ? 'percentile' : 'grade'; // 'grade' or 'percentile'
         var currentPage = 1;
         var pageSize = 10;
         var sortColumn = '';
@@ -841,7 +857,7 @@ define([], function() {
         }
 
         function getVisiblePerformanceColumnCount() {
-            var count = 5 + performanceColumns.length;
+            var count = (isSponsor ? 4 : 5) + performanceColumns.length;
             performanceCustomGroups.forEach(function(group) {
                 count += performanceCollapsedGroups[group.key] ? 1 : (group.columns || []).length;
             });
@@ -856,9 +872,11 @@ define([], function() {
             var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             var html = '<tr>' +
                 '<th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>' +
-                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
-                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>' +
-                '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
+                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>';
+            if (!isSponsor) {
+                html += '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>';
+            }
+            html += '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
             performanceColumns.forEach(function(column) {
                 html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
@@ -1470,8 +1488,10 @@ define([], function() {
                     for (var k = 0; k < spotCount; k++) stars += '★';
                     meritHtml += '<span class="m m-spot">' + stars + ' Spot</span> ';
                 }
-                if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
-                else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
+                if (!isSponsor) {
+                    if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
+                    else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
+                }
                 if (!meritHtml) meritHtml = '<span class="muted">—</span>';
 
                 var avatarHtml = '';
@@ -1484,19 +1504,27 @@ define([], function() {
                     avatarHtml = '<div class="ba-avatar-wrap"><span class="ba-avatar-initials">' + studentInitials + '</span></div>';
                 }
 
+                var studentNameDisplay = escapeHtml(s.name);
+                if (isSponsor && s.userid) {
+                    studentNameDisplay = '<a href="student.php?id=' + encodeURIComponent(s.userid) + (batchId ? '&batchid=' + encodeURIComponent(batchId) : '') + '" class="ba-student-profile-link" style="color:var(--primary,#0072ce);font-weight:600;text-decoration:none;">' + escapeHtml(s.name) + '</a>';
+                }
+                var studentIdDisplay = isSponsor ? '' : '<span class="sid">' + escapeHtml(s.id) + '</span>';
+
                 html += '<tr>' +
                     '<td><span class="bdot" style="background:' + dotColors[b] + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
                     '<td class="ba-performance-student-cell">' +
                         '<div class="ba-student-cell">' +
                             avatarHtml +
                             '<div class="ba-student-info">' +
-                                '<span class="sname">' + escapeHtml(s.name) + '</span>' +
-                                '<span class="sid">' + escapeHtml(s.id) + '</span>' +
+                                '<span class="sname">' + studentNameDisplay + '</span>' +
+                                studentIdDisplay +
                             '</div>' +
                         '</div>' +
-                    '</td>' +
-                    '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
-                    '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
+                    '</td>';
+                if (!isSponsor) {
+                    html += '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>';
+                }
+                html += '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
                     performanceColumns.map(function(column) {
                         return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
                     }).join('') +
@@ -1677,7 +1705,9 @@ define([], function() {
         // CSV Export
         if (expBtn) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
+                var csvHeaders = isSponsor
+                    ? ['Band', 'Student Name', 'Attendance']
+                    : ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
                 if (!performanceCollapsedGroups.module) {
                     performanceColumns.forEach(function(column) {
                         var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
@@ -1701,8 +1731,15 @@ define([], function() {
                     var id = (s.id || '').replace(/"/g, '""');
                     var grade = getOverallDisplayValue(s, percentileValues).replace(/&mdash;/g, '-');
                     var attVal = (s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? s.attendance + '%' : '-';
-                    var merit = (s.merit_text || '').replace(/"/g, '""');
-                    var row = [band, name, id, grade, attVal];
+                    var merits = [];
+                    var spot = Number(s.spot_count || (s.spot ? 1 : 0));
+                    if (spot > 0) merits.push(spot + ' Spot');
+                    if (!isSponsor) {
+                        if (s.pt === 'nom') merits.push('PT-Nom');
+                        else if (s.pt === 'sel') merits.push('PT-Sel');
+                    }
+                    var merit = merits.join('; ');
+                    var row = isSponsor ? [band, name, attVal] : [band, name, id, grade, attVal];
                     if (!performanceCollapsedGroups.module) {
                         performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     }
