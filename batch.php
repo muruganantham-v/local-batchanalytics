@@ -272,7 +272,6 @@ global $DB, $PAGE, $OUTPUT, $USER;
 $dbman = $DB->get_manager();
 $has_bm_section = $dbman->table_exists('local_bm_classsection');
 $has_bm_batch   = $dbman->table_exists('local_bm_batch');
-$has_bm_student = $dbman->table_exists('local_bm_student');
 
 $section = null;
 $batch = null;
@@ -626,31 +625,11 @@ if (!empty($performance_courseids) && !empty($spot_items_tbl) && !empty($spot_no
     }
 }
 
-$sec_student_uids = [];
-if ($section && $has_bm_student) {
-    $sec_student_uids = $DB->get_fieldset_select(
-        'local_bm_student',
-        'userid',
-        'classsectionid = :secid',
-        ['secid' => $section->id]
-    );
-    if (empty($sec_student_uids) && !empty($section->batchid)) {
-        $sec_student_uids = $DB->get_fieldset_select(
-            'local_bm_student',
-            'userid',
-            'batchid = :bid',
-            ['bid' => $section->batchid]
-        );
-    }
-    $sec_student_uids = array_values(array_filter(array_map('intval', $sec_student_uids)));
-}
-
 // Fetch and merge enrolled students across all linked courses in the batch.
 $enrolledstudents = [];
 if (!empty($performance_courseids)) {
     // 1. Get student user IDs scoped to the student role (excludes teachers, mentors, staff)
     $cached_course_students = \local_batchanalytics\util::get_courses_student_uids($performance_courseids);
-    $sec_student_map = !empty($sec_student_uids) ? array_flip($sec_student_uids) : null;
 
     foreach ($performance_courseids as $enrolledcourseid) {
         $coursecontext = context_course::instance($enrolledcourseid, IGNORE_MISSING);
@@ -663,12 +642,7 @@ if (!empty($performance_courseids)) {
             $uid = (int)$studentrecord->id;
 
             // Only include users who hold the student role in that course
-            if (!empty($valid_uids) && !isset($valid_uids[$uid])) {
-                continue;
-            }
-
-            // If the section has specific assigned students in local_bm_student, filter by section
-            if ($sec_student_map !== null && !isset($sec_student_map[$uid])) {
+            if (!isset($valid_uids[$uid])) {
                 continue;
             }
 

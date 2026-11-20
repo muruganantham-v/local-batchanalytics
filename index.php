@@ -337,7 +337,6 @@ if ($action === 'getnewbatchdata') {
         $dbman = $DB->get_manager();
         $has_bm_batch = $dbman->table_exists('local_bm_batch');
         $has_bm_section = $dbman->table_exists('local_bm_classsection');
-        $has_bm_student = $dbman->table_exists('local_bm_student');
 
         if (!$has_bm_batch) {
             echo json_encode([
@@ -453,29 +452,6 @@ if ($action === 'getnewbatchdata') {
             $course_students = \local_batchanalytics\util::get_courses_student_uids(array_keys($all_courseids));
         }
 
-        // 3. Fallback student mappings from legacy local_bm_student if available
-        $studentcounts_by_section = [];
-        $studentcounts_by_batch = [];
-        if ($has_bm_student) {
-            try {
-                $cols = $DB->get_columns('local_bm_student');
-                if (isset($cols['classsectionid'])) {
-                    $sql = "SELECT classsectionid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} WHERE classsectionid > 0 GROUP BY classsectionid";
-                    foreach ($DB->get_records_sql($sql) as $row) {
-                        $studentcounts_by_section[(int)$row->classsectionid] = (int)$row->cnt;
-                    }
-                }
-                if (isset($cols['batchid'])) {
-                    $sql = "SELECT batchid, COUNT(DISTINCT userid) AS cnt FROM {local_bm_student} WHERE batchid > 0 GROUP BY batchid";
-                    foreach ($DB->get_records_sql($sql) as $row) {
-                        $studentcounts_by_batch[(int)$row->batchid] = (int)$row->cnt;
-                    }
-                }
-            } catch (\Throwable $e) {
-                // Table local_bm_student may not be available or readable.
-            }
-        }
-
         $batchlist = [];
         $onlinecount = 0;
         $offlinecount = 0;
@@ -552,11 +528,6 @@ if ($action === 'getnewbatchdata') {
                 }
 
                 $sec_students = count($sec_uids);
-
-                // Priority 2: Fallback to local_bm_student if courses yielded 0 or if legacy table has higher count
-                $bm_sec_count = (int)($studentcounts_by_section[$sec_id] ?? 0);
-                $bm_batch_count = (!empty($sec->batchid) && isset($studentcounts_by_batch[(int)$sec->batchid])) ? (int)$studentcounts_by_batch[(int)$sec->batchid] : 0;
-                $sec_students = max($sec_students, $bm_sec_count, $bm_batch_count);
 
                 $assignment = \local_batchanalytics\util::get_section_user_assignment($sec, $USER);
                 $is_assigned = !empty($assignment['is_assigned']);

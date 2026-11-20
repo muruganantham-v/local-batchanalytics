@@ -233,7 +233,6 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
 $dbman = $DB->get_manager();
 $has_bm_section = $dbman->table_exists('local_bm_classsection');
 $has_bm_batch   = $dbman->table_exists('local_bm_batch');
-$has_bm_student = $dbman->table_exists('local_bm_student');
 
 $section = null;
 $batch = null;
@@ -613,45 +612,28 @@ if ($courseid > 0 && !empty($spot_items_tbl) && !empty($spot_noms_tbl)) {
     }
 }
 
-$sec_student_uids = [];
-if ($section && $has_bm_student) {
-    $sec_student_uids = $DB->get_fieldset_select(
-        'local_bm_student',
-        'userid',
-        'classsectionid = :secid',
-        ['secid' => $section->id]
-    );
-    if (empty($sec_student_uids) && !empty($section->batchid)) {
-        $sec_student_uids = $DB->get_fieldset_select(
-            'local_bm_student',
-            'userid',
-            'batchid = :bid',
-            ['bid' => $section->batchid]
-        );
-    }
-    $sec_student_uids = array_values(array_filter(array_map('intval', $sec_student_uids)));
-}
-
 $enrolledstudents = [];
 if ($courseid > 0) {
     $coursecontext = context_course::instance($courseid, IGNORE_MISSING);
     if ($coursecontext) {
-        $studentroleid = (int)$DB->get_field('role', 'id', ['shortname' => 'student']);
-        if ($studentroleid > 0) {
+        $studentroles = $DB->get_records_select('role', "shortname = 'student' OR archetype = 'student'", null, '', 'id');
+        $studentroleids = !empty($studentroles) ? array_map('intval', array_keys($studentroles)) : [];
+        if (!empty($studentroleids)) {
             $enrolledstudents = get_role_users(
-                $studentroleid,
+                $studentroleids,
                 $coursecontext,
                 false,
                 'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
             );
         }
-        if (empty($enrolledstudents)) {
-            $enrolledstudents = get_enrolled_users(
-                $coursecontext,
-                '',
-                0,
-                'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
-            );
+        // Filter strictly through util::get_courses_student_uids to guarantee active enrolment and no staff leakage
+        if (!empty($enrolledstudents)) {
+            $valid_map = \local_batchanalytics\util::get_courses_student_uids([$courseid])[$courseid] ?? [];
+            foreach ($enrolledstudents as $uid => $userrec) {
+                if (!isset($valid_map[$uid])) {
+                    unset($enrolledstudents[$uid]);
+                }
+            }
         }
     }
 }

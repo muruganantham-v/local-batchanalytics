@@ -315,6 +315,34 @@ class util {
     }
 
     /**
+     * Resolve the Moodle course ID from a module array or object.
+     *
+     * @param array|\stdClass|null $module Module data.
+     * @return int Positive course ID, or 0 if missing/invalid.
+     */
+    public static function get_module_course_id($module): int {
+        if (empty($module)) {
+            return 0;
+        }
+        if (is_array($module)) {
+            if (!empty($module['moodlecourseid'])) {
+                return (int)$module['moodlecourseid'];
+            }
+            if (!empty($module['courseid'])) {
+                return (int)$module['courseid'];
+            }
+        } else if (is_object($module)) {
+            if (!empty($module->moodlecourseid)) {
+                return (int)$module->moodlecourseid;
+            }
+            if (!empty($module->courseid)) {
+                return (int)$module->courseid;
+            }
+        }
+        return 0;
+    }
+
+    /**
      * Find a module matching a given Moodle course ID within a class section.
      *
      * @param \stdClass $sec Class section record from local_bm_classsection.
@@ -953,20 +981,60 @@ class util {
             }
             $rs->close();
         } catch (\Throwable $e) {
-            debugging('local_batchanalytics: student count query failed, using get_enrolled_users() fallback: ' .
+            debugging('local_batchanalytics: student count query failed, using get_role_users() fallback: ' .
                 $e->getMessage(), DEBUG_DEVELOPER);
-            // In case of query failure, fallback to per-course get_enrolled_users()
+            // In case of query failure, fallback to per-course get_role_users() scoped strictly to student roles
+            $student_role_ids = [];
+            $staff_role_ids = [];
+            try {
+                $st_roles = $DB->get_records_select('role', "shortname = 'student' OR archetype = 'student'", null, '', 'id');
+                if (!empty($st_roles)) {
+                    $student_role_ids = array_map('intval', array_keys($st_roles));
+                }
+                list($in_stf, $stf_p) = $DB->get_in_or_equal($staff_roles, SQL_PARAMS_NAMED, 'stff');
+                list($in_arc, $arc_p) = $DB->get_in_or_equal($staff_archetypes, SQL_PARAMS_NAMED, 'arcc');
+                $stf_roles = $DB->get_records_select('role', "shortname $in_stf OR archetype $in_arc", array_merge($stf_p, $arc_p), '', 'id');
+                if (!empty($stf_roles)) {
+                    $staff_role_ids = array_map('intval', array_keys($stf_roles));
+                }
+            } catch (\Throwable $rex) {
+                $student_role_ids = [];
+                $staff_role_ids = [];
+            }
+
             foreach ($to_fetch as $cid) {
+                if (empty($student_role_ids)) {
+                    continue;
+                }
                 try {
                     $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
                     if (!$c_ctx) {
                         continue;
                     }
-                    $c_users = get_enrolled_users($c_ctx, '', 0, 'u.id');
+
+                    // Collect staff users in this course context to prevent staff role leakage
+                    $staff_uids = [];
+                    if (!empty($staff_role_ids)) {
+                        $stf_users = get_role_users($staff_role_ids, $c_ctx, false, 'u.id');
+                        if (!empty($stf_users)) {
+                            $staff_uids = array_fill_keys(array_map('intval', array_keys($stf_users)), true);
+                        }
+                    }
+
+                    $c_users = get_role_users($student_role_ids, $c_ctx, false, 'u.id, u.deleted, u.suspended');
                     if (!empty($c_users)) {
                         foreach ($c_users as $u) {
                             $uid = (int)$u->id;
+                            if (!empty($u->deleted) || !empty($u->suspended)) {
+                                continue;
+                            }
                             if (isset($siteadmin_ids[$uid]) || (function_exists('is_siteadmin') && is_siteadmin($uid))) {
+                                continue;
+                            }
+                            if (isset($staff_uids[$uid])) {
+                                continue;
+                            }
+                            if (!is_enrolled($c_ctx, $uid, '', true)) {
                                 continue;
                             }
                             $newly_fetched[$cid][$uid] = true;

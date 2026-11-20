@@ -235,7 +235,7 @@ class task_service {
                 if (!$assigned_class_mentor || !$assigned_lab_mentor) {
                     $modules = util::decode_module_data($sec->moduledata ?? '', true);
                     foreach ($modules as $m) {
-                        $cid = (int)($m['moodlecourseid'] ?? 0);
+                        $cid = util::get_module_course_id($m);
                         $is_enrolled = ($cid > 0) && in_array($cid, $user_course_ids, true);
 
                         if ($is_enrolled) {
@@ -360,20 +360,58 @@ class task_service {
             ];
             $default_role = 'admin';
         } else {
+            // Query Moodle core role sortorders for user's assigned roles in system or category context.
+            $role_ranks = [];
+            $user_role_sortorders = [];
+            try {
+                $user_roles_sql = "SELECT ra.roleid, r.sortorder
+                                     FROM {role_assignments} ra
+                                     JOIN {role} r ON r.id = ra.roleid
+                                     JOIN {context} ctx ON ctx.id = ra.contextid
+                                    WHERE ra.userid = :uid
+                                      AND ctx.contextlevel IN (:ctxsys, :ctxcat)";
+                $user_roles_records = $DB->get_records_sql($user_roles_sql, [
+                    'uid'    => $userid,
+                    'ctxsys' => CONTEXT_SYSTEM,
+                    'ctxcat' => defined('CONTEXT_COURSECAT') ? CONTEXT_COURSECAT : 40,
+                ]);
+                foreach ($user_roles_records as $rec) {
+                    $user_role_sortorders[(int)$rec->roleid] = (int)$rec->sortorder;
+                }
+            } catch (\Throwable $e) {
+                $user_role_sortorders = [];
+            }
+
+            $resolve_role_rank = static function(string $setting_key, int $fallback_rank) use ($user_role_sortorders): int {
+                $cfg_ids = self::get_configured_role_ids($setting_key);
+                $min = null;
+                foreach ($cfg_ids as $rid) {
+                    if (isset($user_role_sortorders[$rid])) {
+                        $min = ($min === null) ? $user_role_sortorders[$rid] : min($min, $user_role_sortorders[$rid]);
+                    }
+                }
+                return ($min !== null) ? $min : $fallback_rank;
+            };
+
             if ($personas['is_asst']) {
                 $available_roles['am'] = 'Assistant Manager';
+                $role_ranks['am'] = $resolve_role_rank('assistant_manager_roles', 10);
             }
             if ($personas['is_pm'] || $personas['assigned_pm']) {
                 $available_roles['pm'] = 'Program Manager';
+                $role_ranks['pm'] = $resolve_role_rank('program_manager_roles', 20);
             }
             if (!empty($personas['is_sslead'])) {
                 $available_roles['sslead'] = 'SS Lead';
+                $role_ranks['sslead'] = $resolve_role_rank('sslead_roles', 30);
             }
             if ($personas['is_sse'] || $personas['assigned_sse']) {
                 $available_roles['sse'] = 'SS Executive';
+                $role_ranks['sse'] = $resolve_role_rank('ssexecutive_roles', 40);
             }
             if ($personas['is_mentor']) {
                 $available_roles['mentors'] = 'Mentors';
+                $role_ranks['mentors'] = $resolve_role_rank('mentor_roles', 50);
             }
 
             // Fallback for managers with no explicit persona mapped
@@ -386,22 +424,22 @@ class task_service {
                     'sslead'  => 'SS Lead',
                     'am'      => 'Assistant Manager',
                 ];
+                $role_ranks = ['admin' => 1, 'am' => 10, 'pm' => 20, 'sslead' => 30, 'sse' => 40, 'mentors' => 50];
             }
 
             if (empty($available_roles)) {
                 $available_roles['mentors'] = 'Mentors';
                 $default_role = 'mentors';
-            } else if ($personas['is_asst']) {
-                $default_role = 'am';
-            } else if ($personas['is_pm'] || $personas['assigned_pm']) {
-                $default_role = 'pm';
-            } else if (!empty($personas['is_sslead'])) {
-                $default_role = 'sslead';
-            } else if ($personas['is_sse'] || $personas['assigned_sse']) {
-                $default_role = 'sse';
-            } else if ($personas['is_mentor']) {
-                $default_role = 'mentors';
             } else {
+                // Sort available roles according to Moodle core role sortorder (lowest sortorder = highest priority)
+                uksort($available_roles, static function($k_a, $k_b) use ($role_ranks) {
+                    $rank_a = $role_ranks[$k_a] ?? 9999;
+                    $rank_b = $role_ranks[$k_b] ?? 9999;
+                    if ($rank_a === $rank_b) {
+                        return 0;
+                    }
+                    return ($rank_a < $rank_b) ? -1 : 1;
+                });
                 $default_role = array_key_first($available_roles);
             }
         }
@@ -428,9 +466,8 @@ class task_service {
         }
 
         $assigned_batch_ids = [];
-        $assigned_section_ids = [];
 
-        // Role-specific filtering of sections
+        // Role-specific filtering of sections: strictly scoped to assigned batches/sections
         $filtered_sections = [];
         foreach ($sections as $sec) {
             $match = false;
@@ -439,19 +476,13 @@ class task_service {
             } else if ($active_role === 'pm') {
                 if ($is_user_match($sec->pmmanager)) {
                     $match = true;
-                } else if (!$personas['assigned_pm'] && ($personas['is_pm'] || $is_manager)) {
-                    $match = true;
                 }
             } else if ($active_role === 'sse') {
                 if ($is_user_match($sec->maacexecutive)) {
                     $match = true;
-                } else if (!$personas['assigned_sse'] && ($personas['is_sse'] || $is_manager)) {
-                    $match = true;
                 }
             } else if ($active_role === 'sspm') {
                 if ($is_user_match($sec->maacexecutive) || $is_user_match($sec->pmmanager)) {
-                    $match = true;
-                } else if (!$personas['assigned_sse'] && !$personas['assigned_pm'] && ($personas['is_sse'] || $personas['is_pm'] || $is_manager)) {
                     $match = true;
                 }
             } else if ($active_role === 'mentors') {
@@ -474,7 +505,7 @@ class task_service {
                     }
 
                     if ($is_mentor_in_mod) {
-                        $cid = (int)($sm['moodlecourseid'] ?? 0);
+                        $cid = util::get_module_course_id($sm);
                         if ($cid > 0) {
                             $c_ctx = \context_course::instance($cid, IGNORE_MISSING);
                             if ($c_ctx && is_enrolled($c_ctx, $userid)) {
@@ -489,7 +520,6 @@ class task_service {
             if ($match) {
                 $sec->clean_name = util::clean_section_name($sec->name ?: ('Batch ' . $sec->id));
                 $filtered_sections[$sec->id] = $sec;
-                $assigned_section_ids[(int)$sec->id] = true;
                 if (!empty($sec->batchid)) {
                     $assigned_batch_ids[(int)$sec->batchid] = true;
                 }
@@ -503,7 +533,7 @@ class task_service {
         foreach ($filtered_sections as $sec) {
             $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
             foreach ($s_modules as $sm) {
-                $cid = !empty($sm['moodlecourseid']) ? (int)$sm['moodlecourseid'] : (!empty($sm['courseid']) ? (int)$sm['courseid'] : 0);
+                $cid = util::get_module_course_id($sm);
                 if ($cid > 1) {
                     if ($active_role === 'mentors') {
                         $mentors = [
@@ -524,19 +554,6 @@ class task_service {
                             $courseids_to_count[$cid] = $cid;
                         }
                     } else {
-                        $courseids_to_count[$cid] = $cid;
-                    }
-                }
-            }
-        }
-
-        // If mentor role didn't match specific modules but matched sections, include all section module courses.
-        if ($active_role === 'mentors' && empty($courseids_to_count)) {
-            foreach ($filtered_sections as $sec) {
-                $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
-                foreach ($s_modules as $sm) {
-                    $cid = !empty($sm['moodlecourseid']) ? (int)$sm['moodlecourseid'] : (!empty($sm['courseid']) ? (int)$sm['courseid'] : 0);
-                    if ($cid > 1) {
                         $courseids_to_count[$cid] = $cid;
                     }
                 }
@@ -570,7 +587,7 @@ class task_service {
                 $batch_name = $sec->clean_name;
                 $s_modules = util::decode_module_data($sec->moduledata ?? '', true);
                 foreach ($s_modules as $sm) {
-                    $courseid = (int)($sm['moodlecourseid'] ?? 0);
+                    $courseid = util::get_module_course_id($sm);
                     if ($courseid <= 0) {
                         continue;
                     }
@@ -985,7 +1002,7 @@ class task_service {
                     $mod_key = $module_keys[$i];
                     $m = $modules[$mod_key];
                     $mod_name = $m['name'] ?? ('Module ' . ($i + 1));
-                    $cid = (int)($m['moodlecourseid'] ?? 0);
+                    $cid = util::get_module_course_id($m);
                     $p_start = (int)($m['plannedstart'] ?? 0);
                     $p_end = (int)($m['plannedend'] ?? 0);
                     $a_start = (int)($m['actualstart'] ?? 0);
@@ -1057,7 +1074,7 @@ class task_service {
 
                                 if (empty($next_a_end) && ($next_primary_mentor === '' || $next_primary_mentor === '0' || strtolower($next_primary_mentor) === 'none')) {
                                     $next_mod_name = $next_m['name'] ?? ('Module ' . ($i + 2));
-                                    $next_cid = (int)($next_m['moodlecourseid'] ?? 0);
+                                    $next_cid = util::get_module_course_id($next_m);
                                     $next_mentor_url = $edit_tracker_url . '#id_module_' . $next_mod_key . '_primarymentor';
 
                                     $todo_list[] = [
@@ -1223,7 +1240,7 @@ class task_service {
                         // If the next module is pending completion
                         if (empty($next_a_end)) {
                             $next_mod_name = $next_m['name'] ?? ('Module ' . ($i + 2));
-                            $next_cid = (int)($next_m['moodlecourseid'] ?? 0);
+                            $next_cid = util::get_module_course_id($next_m);
                             $next_p_start = (int)($next_m['plannedstart'] ?? 0);
 
                             if ($next_p_start <= 0) {
