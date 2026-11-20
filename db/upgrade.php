@@ -865,7 +865,7 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026110403, 'local', 'batchanalytics');
     }
 
-        if ($oldversion < 2026111601) {
+    if ($oldversion < 2026111601) {
         // Drop the over-length dedup_recipient_ix index if it exists in the database.
         $table = new xmldb_table('local_batchanalytics_cliq_log');
         if ($dbman->table_exists($table)) {
@@ -877,6 +877,151 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
 
         upgrade_plugin_savepoint(true, 2026111601, 'local', 'batchanalytics');
     }
-    
+
+    // Helper closure to create ESSCI tables idempotently.
+    $create_essci_tables = static function() use ($dbman) {
+        // Table 1: local_batchanalytics_program
+        $table = new xmldb_table('local_batchanalytics_program');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('code', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('tagline', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('sponsor_name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('pmo_name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('partner_name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('sites', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('program_window', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('startdate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('enddate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('candidates_reached', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('candidates_eligible', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('test_participants', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('interview_participants', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('final_selects', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('code_ix', XMLDB_INDEX_UNIQUE, ['code']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 2: local_batchanalytics_prog_batch
+        $table = new xmldb_table('local_batchanalytics_prog_batch');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('programid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('site', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('sponsor_batch_code', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, '');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('program_sec_ix', XMLDB_INDEX_NOTUNIQUE, ['programid', 'sectionid']);
+        $table->add_index('sectionid_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 3: local_batchanalytics_lesson_plan
+        $table = new xmldb_table('local_batchanalytics_lesson_plan');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('day_index', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '1');
+        $table->add_field('planned_date', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('actual_date', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('topic', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('status', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, 'Pending');
+        $table->add_field('class_mentor_att', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, 'Present');
+        $table->add_field('lab_mentor_att', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, 'Present');
+        $table->add_field('sortorder', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('sec_course_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid', 'courseid']);
+        $table->add_index('day_ix', XMLDB_INDEX_NOTUNIQUE, ['day_index']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 4: local_batchanalytics_evidence
+        $table = new xmldb_table('local_batchanalytics_evidence');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('week_index', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '1');
+        $table->add_field('session_type', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'Class');
+        $table->add_field('session_date', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('caption', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('filename', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('fileurl', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('sec_course_week_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid', 'courseid', 'week_index']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 5: local_batchanalytics_bio_att
+        $table = new xmldb_table('local_batchanalytics_bio_att');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('session_code', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('session_date', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('status', XMLDB_TYPE_CHAR, '5', null, XMLDB_NOTNULL, null, 'P');
+        $table->add_field('punch_in', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('punch_out', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('duration_mins', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('sec_user_sess_uix', XMLDB_INDEX_UNIQUE, ['sectionid', 'userid', 'session_code']);
+        $table->add_index('sec_sess_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid', 'session_code']);
+        $table->add_index('userid_ix', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 6: local_batchanalytics_counseling
+        $table = new xmldb_table('local_batchanalytics_counseling');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('authorid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('author', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('note', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('user_batch_ix', XMLDB_INDEX_NOTUNIQUE, ['userid', 'batchid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Table 7: local_batchanalytics_pet
+        $table = new xmldb_table('local_batchanalytics_pet');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('status', XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, 'Cleared');
+        $table->add_field('attempt_number', XMLDB_TYPE_INTEGER, '5', null, XMLDB_NOTNULL, null, '1');
+        $table->add_field('score', XMLDB_TYPE_NUMBER, '5, 2', null, null, null, '0.00');
+        $table->add_field('date_taken', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, '');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('sec_user_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid', 'userid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+    };
+
+    if ($oldversion < 2026111603) {
+        $create_essci_tables();
+        upgrade_plugin_savepoint(true, 2026111603, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026112012) {
+        // Self-healing check: ensure all ESSCI tables exist even if upgrading from an intermediate version >= 2026111603.
+        $create_essci_tables();
+        upgrade_plugin_savepoint(true, 2026112012, 'local', 'batchanalytics');
+    }
     return true;
 }

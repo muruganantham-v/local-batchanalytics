@@ -42,6 +42,14 @@ if (!has_capability('local/batchanalytics:view', $context)) {
 }
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
+
+if ($action === 'export_batch_pdf') {
+    $batchid_param = optional_param('id', 0, PARAM_INT);
+    $batch_label = optional_param('batchcode', 'MVL26001', PARAM_ALPHANUMEXT);
+    \local_batchanalytics\pdf_report_service::export_batch_report($batchid_param, $batch_label);
+    exit;
+}
+
 if ($action === 'addnote') {
     require_sesskey();
 
@@ -49,6 +57,12 @@ if ($action === 'addnote') {
     try {
         $batchid = required_param('batchid', PARAM_INT);
         $note = required_param('note', PARAM_RAW);
+
+        if (\local_batchanalytics\program_service::is_sponsor_user((int)$USER->id) || !\local_batchanalytics\program_service::can_write_operations($context, (int)$USER->id)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Permission denied: write access is restricted.']);
+            exit;
+        }
 
         global $DB;
         $sec = null;
@@ -109,6 +123,12 @@ if ($action === 'editnote') {
         $batchid = required_param('batchid', PARAM_INT);
         $noteid = required_param('noteid', PARAM_INT);
         $note = required_param('note', PARAM_RAW);
+
+        if (\local_batchanalytics\program_service::is_sponsor_user((int)$USER->id) || !\local_batchanalytics\program_service::can_write_operations($context, (int)$USER->id)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Permission denied: write access is restricted.']);
+            exit;
+        }
 
         global $DB;
 
@@ -260,9 +280,11 @@ if ($action === 'get_note_history') {
     exit;
 }
 
-$id = optional_param('id', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+$id = optional_param('id', optional_param('sectionid', 0, PARAM_INT), PARAM_INT);
+$param_batchid = optional_param('batchid', 0, PARAM_INT);
 
-$is_manager = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
+$is_sponsor = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
+$is_manager = $is_sponsor || \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
 
 // -------------------------------------------------------------------------
 // 1. Data Retrieval from Batch Management (local_bm_classsection / local_bm_batch)
@@ -278,21 +300,22 @@ $batch = null;
 
 if ($has_bm_section && $id > 0) {
     $section = $DB->get_record('local_bm_classsection', ['id' => $id]);
-    if (!$section) {
-        $candidate_secs = $DB->get_records('local_bm_classsection', ['batchid' => $id], 'id ASC');
-        if (!empty($candidate_secs)) {
-            if (!$is_manager) {
-                foreach ($candidate_secs as $sec_cand) {
-                    $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_cand, $USER);
-                    if ($assignment['is_assigned']) {
-                        $section = $sec_cand;
-                        break;
-                    }
+}
+
+if (!$section && $has_bm_section && $param_batchid > 0) {
+    $candidate_secs = $DB->get_records('local_bm_classsection', ['batchid' => $param_batchid], 'id ASC');
+    if (!empty($candidate_secs)) {
+        if (!$is_manager) {
+            foreach ($candidate_secs as $sec_cand) {
+                $assignment = \local_batchanalytics\util::get_section_user_assignment($sec_cand, $USER);
+                if ($assignment['is_assigned']) {
+                    $section = $sec_cand;
+                    break;
                 }
             }
-            if (!$section) {
-                $section = reset($candidate_secs);
-            }
+        }
+        if (!$section) {
+            $section = reset($candidate_secs);
         }
     }
 }
@@ -319,7 +342,7 @@ if ($section) {
     $id = (int)$section->id;
 }
 
-if (!$is_manager) {
+if (!$is_manager && !$is_sponsor) {
     if (!$section) {
         redirect(
             new \moodle_url('/local/batchanalytics/index.php'),
@@ -557,23 +580,34 @@ if (!empty($raw_modules)) {
 
 // Determine active module and tentative end date
 $cur_module = '';
+$cur_module_row = null;
 foreach ($schedule_rows as $row) {
     if ($row['delay'] === 'prog') {
         $cur_module = $row['name'];
+        $cur_module_row = $row;
         break;
     }
 }
-if ($cur_module === '' && !empty($schedule_rows)) {
+if (!$cur_module_row && !empty($schedule_rows)) {
     foreach ($schedule_rows as $row) {
         if ($row['a_end'] === '—') {
             $cur_module = $row['name'];
+            $cur_module_row = $row;
             break;
         }
     }
 }
-if ($cur_module === '') {
-    $cur_module = !empty($schedule_rows[0]['name']) ? $schedule_rows[0]['name'] : '—';
+if (!$cur_module_row && !empty($schedule_rows)) {
+    $cur_module_row = $schedule_rows[0];
+    $cur_module = $cur_module_row['name'] ?? '—';
 }
+
+$batch_class_mentors = $cur_module_row['class_mentors'] ?? [];
+$batch_lab_mentors = $cur_module_row['lab_mentors'] ?? [];
+$batch_class_mentor_name = !empty($cur_module_row['class_mentor']) ? $cur_module_row['class_mentor'] : '—';
+$batch_lab_mentor_name = !empty($cur_module_row['lab_mentor']) ? $cur_module_row['lab_mentor'] : '—';
+$batch_class_mentor_user = !empty($batch_class_mentors[0]['user']) ? $batch_class_mentors[0]['user'] : null;
+$batch_lab_mentor_user = !empty($batch_lab_mentors[0]['user']) ? $batch_lab_mentors[0]['user'] : null;
 
 $tentative_end = '—';
 if (!empty($schedule_rows)) {
@@ -705,7 +739,9 @@ $can_manage_all_notes = is_siteadmin()
     || has_capability('local/batchanalytics:manage', $context);
 
 // Edit notes allowed for: assigned PM on this batch, SS Lead on any batch, or Admin/Manager (subject to editreviewnotes capability).
-$can_edit_notes = $can_manage_all_notes || ($has_edit_notes_cap && ($is_assigned_pm || $is_sslead));
+$can_edit_notes = ($can_manage_all_notes || ($has_edit_notes_cap && ($is_assigned_pm || $is_sslead)))
+    && \local_batchanalytics\program_service::can_write_operations($context, (int)$USER->id)
+    && !\local_batchanalytics\program_service::is_sponsor_user((int)$USER->id);
 
 // View notes allowed for: anyone with view capability, assigned PM, SS Lead, or Admin/Manager.
 $can_view_notes = has_capability('local/batchanalytics:viewreviewnotes', $context)
@@ -785,11 +821,33 @@ $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]))
 $PAGE->set_title('Batch ' . $batchid_label . ' – Batch Analytics');
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css');
+$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => '3.2.0']);
 $PAGE->requires->css($styleurl);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => '3.2.0']);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/batch', 'init');
+
+$is_sponsor = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
+$hours_coverage = \local_batchanalytics\lesson_plan_service::get_hours_and_coverage($batch_id);
+$pet_summary = \local_batchanalytics\pet_service::get_batch_pet_summary($batch_id);
+
+$site_name = !empty($section->classlocation) ? $section->classlocation : 'Bangalore';
+
+if (empty($ss_activities) && $is_sponsor) {
+    // Fallback prototype milestone structure only if section has no softskills data configured
+    $ss_activities = [
+        ['activity' => 'Program Kick-Off', 'p_date' => '04 Aug 2026', 'a_date' => '04 Aug 2026', 'status' => 'done', 'label' => 'Done'],
+        ['activity' => 'Student Counseling Framework', 'p_date' => '07 Aug 2026', 'a_date' => '07 Aug 2026', 'status' => 'done', 'label' => 'Done'],
+        ['activity' => 'Placement Induction – Part I', 'p_date' => '20 Aug 2026', 'a_date' => '20 Aug 2026', 'status' => 'done', 'label' => 'Done'],
+        ['activity' => 'Placement Induction – Part II', 'p_date' => '10 Sep 2026', 'a_date' => '—', 'status' => 'due', 'label' => 'Due'],
+        ['activity' => 'Placement Induction – Part III', 'p_date' => '01 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+        ['activity' => 'LinkedIn Profile Building Workshop', 'p_date' => '15 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+        ['activity' => 'LinkedIn Profile Building – Review', 'p_date' => '22 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+        ['activity' => 'Resume Prep Workshop', 'p_date' => '12 Nov 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+        ['activity' => 'Resume Review', 'p_date' => '19 Nov 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+        ['activity' => 'Interview Facing Workshop', 'p_date' => '10 Dec 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
+    ];
+}
 
 // Use the same configured CRM field list and explicit capability check as index.php.
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
@@ -799,12 +857,60 @@ $batch_can_manage = is_siteadmin($USER->id)
 $batch_can_view_crm = $batch_can_manage
     || has_capability('local/batchanalytics:viewcrmdata', $context);
 $crm_index_url = (new moodle_url('/local/batchanalytics/index.php'))->out(false);
+$export_batch_pdf_url = (new moodle_url('/local/batchanalytics/batch.php', [
+    'id' => $id,
+    'action' => 'export_batch_pdf',
+    'batchcode' => $batchid_label,
+]))->out(false);
 
 echo $OUTPUT->header();
 
 ?>
+<style>
+/* Full width and transparent container override across themes */
+@media (min-width: 768px) {
+  .pagelayout-standard #page.drawers .main-inner,
+  body.limitedwidth #page.drawers .main-inner,
+  body.path-local-batchanalytics #page.drawers .main-inner,
+  body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
+  body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
+  body.path-local-batchanalytics #topofscroll.main-inner,
+  body.path-local-batchanalytics .main-inner,
+  #page.drawers .main-inner,
+  #topofscroll.main-inner,
+  .main-inner {
+    max-width: 100% !important;
+    width: 100% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+#page.drawers .main-inner,
+#topofscroll.main-inner,
+.main-inner {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+#page-content,
+#region-main-box,
+#region-main,
+.local-batchanalytics-wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+</style>
 
 <div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"
+  data-is-sponsor="<?= $is_sponsor ? '1' : '0' ?>"
   data-batchid="<?= (int)$batch_id ?>"
   data-sesskey="<?= sesskey() ?>"
   data-students="<?= s(json_encode($students_data)) ?>"
@@ -831,7 +937,7 @@ echo $OUTPUT->header();
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>"><?= $is_sponsor ? 'Program MIS' : 'Home' ?></a>
       <span class="crumb-sep">›</span>
       <b><?= s($batchid_label) ?></b>
     </span>
@@ -847,13 +953,25 @@ echo $OUTPUT->header();
             <h1>Batch <?= s($batchid_label) ?></h1>
             <div class="idrow">
               <span class="pill pill-course"><?= s($coursename) ?></span>
-              <span class="pill mode-<?= strtolower(s($deliverymode)) ?>"><?= s($deliverymode) ?></span>
-              <span class="pill type-<?= strtolower(s($submode)) ?>"><?= s($submode) ?></span>
+              <?php if ($is_sponsor): ?>
+                <span class="pill" style="background:#eff6ff; color:#1d4ed8; font-weight:700;">● <?= s($site_name) ?></span>
+              <?php else: ?>
+                <span class="pill mode-<?= strtolower(s($deliverymode)) ?>"><?= s($deliverymode) ?></span>
+                <span class="pill type-<?= strtolower(s($submode)) ?>"><?= s($submode) ?></span>
+              <?php endif; ?>
               <span class="pill pill-date">Start <?= s($startdate_str) ?></span>
             </div>
             <div class="curmod">Current module: <b><?= s($cur_module) ?></b> &nbsp;·&nbsp; Tentative end <?= s($tentative_end) ?></div>
           </div>
-          <div class="status-chip <?= $batch_status_chip_class ?>"><?= $batch_status_chip_text ?></div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="status-chip <?= $batch_status_chip_class ?>"><?= $batch_status_chip_text ?></div>
+            <?php if ($is_sponsor): ?>
+              <a href="<?= s($export_batch_pdf_url) ?>" class="ba-btn-download-profile">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download Batch Report (PDF)
+              </a>
+            <?php endif; ?>
+          </div>
         </div>
 
         <!-- Constant Roles: Program Manager and SS / MAAC Executive -->
@@ -868,7 +986,7 @@ echo $OUTPUT->header();
             </div>
           </div>
           <div class="person">
-            <div class="role"><?= s(get_string('role_ss_executive', 'local_batchanalytics')) ?></div>
+            <div class="role"><?= $is_sponsor ? s(get_string('role_student_counsellor', 'local_batchanalytics')) : s(get_string('role_ss_executive', 'local_batchanalytics')) ?></div>
             <div class="pwrap">
               <div class="pav">
                 <?= \local_batchanalytics\util::render_user_avatar($sseuser, 38, 'pav-avatar', $ssename) ?>
@@ -876,18 +994,104 @@ echo $OUTPUT->header();
               <span class="name"><?= s($ssename) ?></span>
             </div>
           </div>
+          <?php if ($is_sponsor): ?>
+            <div class="person">
+              <div class="role"><?= s(get_string('col_class_mentor', 'local_batchanalytics')) ?></div>
+              <div class="pwrap">
+                <div class="pav">
+                  <?= \local_batchanalytics\util::render_user_avatar($batch_class_mentor_user, 38, 'pav-avatar', $batch_class_mentor_name) ?>
+                </div>
+                <span class="name"><?= !empty($batch_class_mentors) ? s($batch_class_mentor_name) : '<span class="muted">—</span>' ?></span>
+              </div>
+            </div>
+            <div class="person">
+              <div class="role"><?= s(get_string('col_lab_mentor', 'local_batchanalytics')) ?></div>
+              <div class="pwrap">
+                <div class="pav">
+                  <?= \local_batchanalytics\util::render_user_avatar($batch_lab_mentor_user, 38, 'pav-avatar', $batch_lab_mentor_name) ?>
+                </div>
+                <span class="name"><?= !empty($batch_lab_mentors) ? s($batch_lab_mentor_name) : '<span class="muted">—</span>' ?></span>
+              </div>
+            </div>
+          <?php endif; ?>
         </div>
       </div>
+
+    <?php if ($is_sponsor): ?>
+      <!-- 1. Hours & Coverage Summary Strip -->
+      <div class="ba-summary-strip">
+        <div class="ba-strip-header">
+          <span class="ba-strip-title">Batch KPIs &mdash; Hours & Coverage</span>
+          <span class="ba-strip-headline"><?= s($hours_coverage['delivered_hrs']) ?> / <?= s($hours_coverage['target_hrs']) ?> hrs delivered</span>
+        </div>
+        <div class="ba-strip-grid">
+          <div class="ba-strip-card">
+            <div class="num"><?= s($hours_coverage['target_hrs']) ?></div>
+            <div class="lbl">Course target (hrs)</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num text-emerald-green"><?= s($hours_coverage['delivered_hrs']) ?></div>
+            <div class="lbl">Delivered (hrs)</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($hours_coverage['class_hrs']) ?></div>
+            <div class="lbl">Class hrs</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($hours_coverage['lab_hrs']) ?></div>
+            <div class="lbl">Lab hrs</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($hours_coverage['modules_covered']) ?> <span style="font-size: 13px; color: #94a3b8;">/ <?= s($hours_coverage['total_modules']) ?></span></div>
+            <div class="lbl">Modules covered</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Placement Eligibility Test (PET) Strip -->
+      <div class="ba-summary-strip">
+        <div class="ba-strip-header">
+          <span class="ba-strip-title">Placement Eligibility Test (PET)</span>
+          <span class="ba-strip-headline"><?= s($pet_summary['qualified_pct']) ?> qualified</span>
+        </div>
+        <div class="ba-strip-grid">
+          <div class="ba-strip-card">
+            <div class="num"><?= s($pet_summary['total_students']) ?></div>
+            <div class="lbl">Total students</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num text-emerald-green"><?= s($pet_summary['pet_cleared']) ?></div>
+            <div class="lbl">PET cleared</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($pet_summary['first_attempt']) ?></div>
+            <div class="lbl">1st attempt</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($pet_summary['second_attempt']) ?></div>
+            <div class="lbl">2nd attempt</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num"><?= s($pet_summary['third_attempt']) ?></div>
+            <div class="lbl">3rd attempt</div>
+          </div>
+          <div class="ba-strip-card">
+            <div class="num text-delayed-red"><?= s($pet_summary['not_appeared']) ?></div>
+            <div class="lbl">Not appeared</div>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
 
       <!-- Navigation Tabs in Prototype Underline Style -->
       <div class="tabs ba-batch-tabs">
         <button type="button" class="tab active" data-tab="sched"><?= s(get_string('tab_schedule', 'local_batchanalytics')) ?></button>
-        <button type="button" class="tab" data-tab="ss"><?= s(get_string('tab_ss_activities', 'local_batchanalytics')) ?></button>
+        <button type="button" class="tab" data-tab="ss"><?= $is_sponsor ? 'Softskills & Placement Coaching' : s(get_string('tab_ss_activities', 'local_batchanalytics')) ?></button>
         <button type="button" class="tab" data-tab="students"><?= s(get_string('tab_student_performance', 'local_batchanalytics')) ?></button>
-        <?php if ($can_view_notes || $can_edit_notes): ?>
+        <?php if (($can_view_notes || $can_edit_notes) && !$is_sponsor): ?>
           <button type="button" class="tab" data-tab="notes"><?= s(get_string('tab_review_notes', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
-        <?php if ($batch_can_view_crm): ?>
+        <?php if ($batch_can_view_crm && !$is_sponsor): ?>
           <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn"><?= s(get_string('tab_crm_data', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
       </div>
@@ -1029,10 +1233,16 @@ echo $OUTPUT->header();
             <?= get_string('perf_panel_note', 'local_batchanalytics') ?>
           </div>
           <div class="filterbar">
+            <?php if (!$is_sponsor): ?>
             <div class="toggle">
               <span class="on" id="tg-grade">Grade</span>
               <span id="tg-pct">Completion %</span>
             </div>
+            <?php else: ?>
+            <div class="toggle">
+              <span class="on" id="tg-pct">Completion %</span>
+            </div>
+            <?php endif; ?>
             <button type="button" class="exp" id="ba-btn-export"><?= s(get_string('btn_export_filtered', 'local_batchanalytics')) ?></button>
           </div>
 
@@ -1047,7 +1257,9 @@ echo $OUTPUT->header();
                 <tr>
                   <th class="sortable" data-sort="band" title="Sort by Band"><?= s(get_string('col_band', 'local_batchanalytics')) ?></th>
                   <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name"><?= s(get_string('col_student', 'local_batchanalytics')) ?></th>
+                  <?php if (!$is_sponsor): ?>
                   <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade"><?= s(get_string('col_grade', 'local_batchanalytics')) ?></th>
+                  <?php endif; ?>
                   <th class="sortable" data-sort="attendance" title="Sort by Attendance"><?= s(get_string('col_attendance', 'local_batchanalytics')) ?></th>
                   <?php foreach ($performance_columns as $column): ?>
                     <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>

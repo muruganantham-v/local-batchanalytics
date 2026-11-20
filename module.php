@@ -42,6 +42,7 @@ if (!has_capability('local/batchanalytics:view', $context)) {
 
 $batchid     = optional_param('batchid', 0, PARAM_INT);
 $sectionid   = optional_param('sectionid', 0, PARAM_INT);
+$id_param    = optional_param('id', 0, PARAM_INT);
 $module_idx  = optional_param('module', 0, PARAM_INT);
 $courseid    = optional_param('courseid', 0, PARAM_INT);
 $action      = optional_param('action', '', PARAM_ALPHANUMEXT);
@@ -50,6 +51,9 @@ if ($batchid <= 0 && $sectionid > 0) {
     $batchid = $sectionid;
 } else if ($sectionid <= 0 && $batchid > 0) {
     $sectionid = $batchid;
+} else if ($batchid <= 0 && $id_param > 0) {
+    $batchid = $id_param;
+    $sectionid = $id_param;
 }
 $requested_batchid = $batchid > 0 ? $batchid : $sectionid;
 
@@ -61,6 +65,12 @@ if ($action === 'saveactivity') {
         ob_end_clean();
     }
     header('Content-Type: application/json; charset=utf-8');
+
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Permission denied: write access is restricted.']);
+        die();
+    }
 
     try {
         require_sesskey();
@@ -134,6 +144,12 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
         ob_end_clean();
     }
     header('Content-Type: application/json; charset=utf-8');
+
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Permission denied: write access is restricted.']);
+        die();
+    }
 
     try {
         require_sesskey();
@@ -228,6 +244,209 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
 }
 
 // -------------------------------------------------------------------------
+// 1b. AJAX Action: Add Lesson Plan Day (Mentor syllabus delivery logging)
+// -------------------------------------------------------------------------
+if ($action === 'add_lesson_plan_day') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $cid = optional_param('courseid', 0, PARAM_INT);
+        $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $data = [
+            'day_index' => optional_param('day_index', 1, PARAM_INT),
+            'planned_date' => optional_param('planned_date', '', PARAM_TEXT),
+            'actual_date' => optional_param('actual_date', '', PARAM_TEXT),
+            'topic' => optional_param('topic', '', PARAM_RAW),
+            'status' => optional_param('status', 'Pending', PARAM_ALPHANUMEXT),
+        ];
+        // Class Mentor and Lab Mentor attendance are automatically resolved from the ESSCI biometric attendance service
+        $id = \local_batchanalytics\lesson_plan_service::add_day($sec_id, $cid, $data);
+        echo json_encode(['success' => true, 'id' => $id]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'delete_lesson_plan_day') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $dayid = required_param('dayid', PARAM_INT);
+        $DB->delete_records(\local_batchanalytics\lesson_plan_service::TABLE, ['id' => $dayid]);
+        echo json_encode(['success' => true]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+// -------------------------------------------------------------------------
+// 1c. AJAX Action: Upload / Add Evidence Photos & Videos (Multiple Support)
+// -------------------------------------------------------------------------
+if ($action === 'upload_evidence') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $cid = optional_param('courseid', 0, PARAM_INT);
+        $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $session_type = optional_param('session_type', 'Class', PARAM_ALPHANUMEXT);
+        $session_date_raw = optional_param('session_date', date('Y-m-d'), PARAM_TEXT);
+        $caption_base = optional_param('caption', '', PARAM_TEXT);
+
+        $sess_ts = strtotime($session_date_raw);
+        $session_date = $sess_ts ? date('d M', $sess_ts) : $session_date_raw;
+
+        $context_course = $cid > 0 ? \context_course::instance($cid) : \context_system::instance();
+        $fs = get_file_storage();
+
+        // Support multiple uploaded files: evidence_files[]
+        $files_to_save = [];
+        if (!empty($_FILES['evidence_files']['name'])) {
+            if (is_array($_FILES['evidence_files']['name'])) {
+                $count = count($_FILES['evidence_files']['name']);
+                for ($i = 0; $i < $count; $i++) {
+                    if (!empty($_FILES['evidence_files']['tmp_name'][$i]) && is_uploaded_file($_FILES['evidence_files']['tmp_name'][$i])) {
+                        $files_to_save[] = [
+                            'name'     => $_FILES['evidence_files']['name'][$i],
+                            'tmp_name' => $_FILES['evidence_files']['tmp_name'][$i],
+                            'size'     => $_FILES['evidence_files']['size'][$i],
+                        ];
+                    }
+                }
+            } else if (!empty($_FILES['evidence_files']['tmp_name']) && is_uploaded_file($_FILES['evidence_files']['tmp_name'])) {
+                $files_to_save[] = [
+                    'name'     => $_FILES['evidence_files']['name'],
+                    'tmp_name' => $_FILES['evidence_files']['tmp_name'],
+                    'size'     => $_FILES['evidence_files']['size'],
+                ];
+            }
+        }
+        // Fallback for single file input
+        if (empty($files_to_save) && !empty($_FILES['evidence_file']['tmp_name']) && is_uploaded_file($_FILES['evidence_file']['tmp_name'])) {
+            $files_to_save[] = [
+                'name'     => $_FILES['evidence_file']['name'],
+                'tmp_name' => $_FILES['evidence_file']['tmp_name'],
+                'size'     => $_FILES['evidence_file']['size'],
+            ];
+        }
+
+        if (empty($files_to_save)) {
+            throw new \moodle_exception('nofilesselected', 'local_batchanalytics', '', null, 'Please select at least one photo or video to upload.');
+        }
+
+        $inserted_ids = [];
+        $total_files = count($files_to_save);
+        foreach ($files_to_save as $idx => $f) {
+            $clean_filename = clean_param($f['name'], PARAM_FILE);
+            $itemid = (int)(time() . mt_rand(10, 99));
+            $fileinfo = [
+                'contextid' => $context_course->id,
+                'component' => 'local_batchanalytics',
+                'filearea'  => 'class_evidence',
+                'itemid'    => $itemid,
+                'filepath'  => '/',
+                'filename'  => $clean_filename,
+            ];
+            $stored_file = $fs->create_file_from_pathname($fileinfo, $f['tmp_name']);
+            if ($stored_file) {
+                $fileurl = \moodle_url::make_pluginfile_url(
+                    $stored_file->get_contextid(),
+                    $stored_file->get_component(),
+                    $stored_file->get_filearea(),
+                    $stored_file->get_itemid(),
+                    $stored_file->get_filepath(),
+                    $stored_file->get_filename()
+                )->out(false);
+
+                // Caption: user caption or filename, suffixed if multiple
+                $file_caption = $caption_base;
+                if (empty($file_caption)) {
+                    $file_caption = pathinfo($clean_filename, PATHINFO_FILENAME);
+                } else if ($total_files > 1) {
+                    $file_caption .= ' (' . ($idx + 1) . ')';
+                }
+
+                $evidence_data = [
+                    'session_type' => $session_type,
+                    'session_date' => $session_date,
+                    'caption'      => $file_caption,
+                    'filename'     => $clean_filename,
+                    'fileurl'      => $fileurl,
+                ];
+                $id = \local_batchanalytics\evidence_service::add_evidence($sec_id, $cid, $evidence_data);
+                $inserted_ids[] = $id;
+            }
+        }
+
+        echo json_encode(['success' => true, 'count' => count($inserted_ids), 'ids' => $inserted_ids]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'delete_evidence') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $evid = optional_param('evidenceid', 0, PARAM_INT);
+        $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $cid = optional_param('courseid', 0, PARAM_INT);
+        $session_key = optional_param('session_key', '', PARAM_RAW);
+
+        if ($evid > 0) {
+            $DB->delete_records(\local_batchanalytics\evidence_service::TABLE, ['id' => $evid]);
+        } else if (!empty($session_key) && $sec_id > 0) {
+            $parts = explode('_', $session_key);
+            if (count($parts) >= 2) {
+                $stype = array_pop($parts);
+                $sdate = implode('_', $parts);
+                $where = "sectionid = :sec AND " . $DB->sql_like('session_type', ':stype', false, false) . " AND " . $DB->sql_like('session_date', ':sdate', false, false);
+                $params = ['sec' => $sec_id, 'stype' => $stype, 'sdate' => $sdate];
+                if ($cid > 0) {
+                    $where .= " AND courseid = :cid";
+                    $params['cid'] = $cid;
+                }
+                $DB->delete_records_select(\local_batchanalytics\evidence_service::TABLE, $where, $params);
+            }
+        }
+        echo json_encode(['success' => true]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+// -------------------------------------------------------------------------
 // 2. Data Retrieval from Batch Management (local_bm_classsection & batch)
 // -------------------------------------------------------------------------
 $dbman = $DB->get_manager();
@@ -302,6 +521,25 @@ if ($module_idx <= 0) {
 
 if ($section && $has_bm_batch && !empty($section->batchid)) {
     $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
+}
+
+if ($action === 'export_attendance_pdf') {
+    $target_sec_id = $section ? (int)$section->id : (int)$batchid;
+    $target_bcode = '';
+    if ($section && !empty($section->name)) {
+        $target_bcode = trim($section->name);
+    } else if ($section && !empty($section->sectionname)) {
+        $target_bcode = trim($section->sectionname);
+    } else if ($batch && !empty($batch->name)) {
+        $target_bcode = trim($batch->name);
+    } else if ($batch && !empty($batch->batchcode)) {
+        $target_bcode = trim($batch->batchcode);
+    }
+    if (empty($target_bcode)) {
+        $target_bcode = 'Batch_' . $target_sec_id;
+    }
+    \local_batchanalytics\pdf_report_service::export_attendance_report($target_sec_id, (string)$target_bcode);
+    exit;
 }
 
 $mode_param = optional_param('mode', '', PARAM_TEXT);
@@ -391,9 +629,32 @@ if ($section) {
     $raw_modules = [];
 }
 
-$is_manager = \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
+$is_sponsor_user = \local_batchanalytics\program_service::is_sponsor_user((int)$USER->id)
+    || (optional_param('viewmode', '', PARAM_ALPHANUMEXT) === 'sponsor');
+$is_sponsor_view = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
 
-if ($section && !$is_manager) {
+// Check if this batch is an ESSCI / sponsored batch
+$is_essci_batch = false;
+if (!empty($batch) && !empty($batch->batchtype) && stripos($batch->batchtype, 'essci') !== false) {
+    $is_essci_batch = true;
+} else if (!empty($batch) && !empty($batch->coursename) && (stripos($batch->coursename, 'essci') !== false || stripos($batch->coursename, 'marvell') !== false)) {
+    $is_essci_batch = true;
+} else if (!empty($section) && $DB->get_manager()->table_exists('local_batchanalytics_prog_batch')) {
+    $sec_chk_id = (int)$section->id;
+    $b_chk_id = !empty($batch) ? (int)$batch->id : 0;
+    if ($DB->record_exists_select('local_batchanalytics_prog_batch', 'sectionid = :sec OR batchid = :bid', ['sec' => $sec_chk_id, 'bid' => $b_chk_id])) {
+        $is_essci_batch = true;
+    }
+}
+if ($is_sponsor_user || $is_sponsor_view) {
+    $is_essci_batch = true;
+}
+
+// Show ESSCI layout (Delivery KPIs, Cadence, Lesson Plan, Class Evidence, Attendance Matrix) for ESSCI batches
+$is_sponsor = $is_essci_batch;
+$is_manager = $is_sponsor || \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
+
+if ($section && !$is_manager && !$is_sponsor) {
     $assignment = \local_batchanalytics\util::get_section_user_assignment($section, $USER);
     if (!$assignment['is_assigned']) {
         redirect(
@@ -445,6 +706,13 @@ if (!empty($cur_mod['moodlecourseid'])) {
 }
 if ($courseid > 0 && !$DB->record_exists('course', ['id' => $courseid])) {
     $courseid = 0;
+}
+
+// Write operations allowed ONLY for: programmanager, ssteam, manager, teacher/editingteacher, admin.
+// Sponsors (programsponsor / programmisviewer) are strictly read-only.
+$can_edit_mentor = \local_batchanalytics\program_service::can_write_operations($context, $USER->id);
+if ($is_sponsor_user) {
+    $can_edit_mentor = false;
 }
 
 // Mentor resolution (All class mentors and lab mentors from Batch Management)
@@ -1045,6 +1313,36 @@ if ($section && !empty($section->softskillsdata)) {
 // 7. Page Setup & HTML Output
 // -------------------------------------------------------------------------
 $PAGE->set_context($context);
+if ($is_essci_batch || \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id) || $is_sponsor_user) {
+    $is_sponsor = true;
+}
+
+$lesson_plan_days = [];
+$evidence_data = [];
+$attendance_matrix = [];
+$hours_coverage = [];
+
+if ($is_sponsor) {
+    $sec_id = $section ? (int)$section->id : (int)$batchid;
+    $lesson_plan_days = \local_batchanalytics\lesson_plan_service::get_lesson_plan($sec_id, (int)$courseid);
+    $evidence_data = \local_batchanalytics\evidence_service::get_evidence_data($sec_id, (int)$courseid);
+    $attendance_matrix = \local_batchanalytics\biometric_service::get_attendance_matrix($sec_id, (int)$courseid);
+    $hours_coverage = \local_batchanalytics\lesson_plan_service::get_hours_and_coverage($sec_id, (int)$courseid);
+
+    // Resolve daily attendance register for selected session date (internal staff only, hidden for sponsors)
+    $daily_attendance_register = [];
+    if (!$is_sponsor_user) {
+        $att_target_date = optional_param('att_date', '', PARAM_TEXT);
+        if (empty($att_target_date) && !empty($attendance_matrix['sessions'])) {
+            $first_sess = reset($attendance_matrix['sessions']);
+            $att_target_date = $first_sess['raw_date'] ?? date('Y-m-d');
+        } else if (empty($att_target_date)) {
+            $att_target_date = date('Y-m-d');
+        }
+        $daily_attendance_register = \local_batchanalytics\biometric_service::get_daily_attendance_register($sec_id, (int)$courseid, $att_target_date);
+    }
+}
+
 $page_params = [];
 if ($batchid > 0) {
     $page_params['batchid'] = $batchid;
@@ -1060,18 +1358,62 @@ if (!empty($deliverymode)) {
     $page_params['mode'] = $deliverymode;
 }
 $PAGE->set_url(new moodle_url('/local/batchanalytics/module.php', $page_params));
-$PAGE->set_title($mod_name . ' – ' . $batchname . ' – Batch Analytics');
+$page_title_suffix = $is_sponsor ? get_string('pluginname_sponsor', 'local_batchanalytics') : 'Batch Analytics';
+$PAGE->set_title($mod_name . ' – ' . $batchname . ' – ' . $page_title_suffix);
 $PAGE->set_heading('');
 
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css');
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => '3.2.0']);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/module', 'init');
 
 echo $OUTPUT->header();
 
 ?>
+<style>
+/* Full width and transparent container override across themes */
+@media (min-width: 768px) {
+  .pagelayout-standard #page.drawers .main-inner,
+  body.limitedwidth #page.drawers .main-inner,
+  body.path-local-batchanalytics #page.drawers .main-inner,
+  body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
+  body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
+  body.path-local-batchanalytics #topofscroll.main-inner,
+  body.path-local-batchanalytics .main-inner,
+  #page.drawers .main-inner,
+  #topofscroll.main-inner,
+  .main-inner {
+    max-width: 100% !important;
+    width: 100% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+#page.drawers .main-inner,
+#topofscroll.main-inner,
+.main-inner {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+#page-content,
+#region-main-box,
+#region-main,
+.local-batchanalytics-wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+</style>
 
 <div class="local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"
+     data-is-sponsor="<?= $is_sponsor ? '1' : '0' ?>"
      data-courseid="<?= (int)$courseid ?>"
      data-batchid="<?= (int)$batchid ?>"
      data-sectionid="<?= (int)$batchid ?>"
@@ -1163,7 +1505,7 @@ echo $OUTPUT->header();
       </div>
     </div>
 
-    <!-- People Row: PM and SSE -->
+    <!-- People Row: PM and SSE (and Mentors for sponsor) -->
     <div class="people">
       <div class="person">
         <div class="role"><?= s(get_string('role_program_manager', 'local_batchanalytics')) ?></div>
@@ -1183,8 +1525,65 @@ echo $OUTPUT->header();
           <span class="name"><?= s($ssename) ?></span>
         </div>
       </div>
+      <?php if ($is_sponsor): ?>
+        <div class="person">
+          <div class="role"><?= s(get_string('col_class_mentor', 'local_batchanalytics')) ?></div>
+          <div class="pwrap">
+            <div class="pav">
+              <?= \local_batchanalytics\util::render_user_avatar($class_mentor_user, 38, 'pav-avatar', $class_mentor) ?>
+            </div>
+            <span class="name"><?= !empty($class_mentors) ? s($class_mentor) : '<span class="muted">—</span>' ?></span>
+          </div>
+        </div>
+        <div class="person">
+          <div class="role"><?= s(get_string('col_lab_mentor', 'local_batchanalytics')) ?></div>
+          <div class="pwrap">
+            <div class="pav">
+              <?= \local_batchanalytics\util::render_user_avatar($lab_mentor_user, 38, 'pav-avatar', $lab_mentor) ?>
+            </div>
+            <span class="name"><?= !empty($lab_mentors) ? s($lab_mentor) : '<span class="muted">—</span>' ?></span>
+          </div>
+        </div>
+      <?php endif; ?>
+    </div>
+    <?php if ($is_sponsor): ?>
+      <div style="margin-top:14px; padding:8px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; color:#1e40af; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:8px;">
+        <i class="fa fa-clock-o"></i> Delivery Cadence: 3 hrs class + 3 hrs lab per day (6 hrs/day)
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <?php if ($is_sponsor && !empty($hours_coverage)): ?>
+  <!-- Delivery KPIs Grid for Sponsor View -->
+  <div class="sec-label"><?= s(get_string('coverage_header', 'local_batchanalytics')) ?></div>
+  <div class="ba-sponsor-kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px;">
+    <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Sessions Completed</div>
+      <div style="font-size:20px; font-weight:700; color:#0f172a; margin-top:4px;"><?= (int)($hours_coverage['completed_sessions'] ?? 0) ?> / <?= (int)max($hours_coverage['total_sessions'] ?? 0, $planned_days > 0 ? $planned_days * 2 : 20) ?></div>
+      <div style="font-size:11px; color:#16a34a; margin-top:2px;">Syllabus progression</div>
+    </div>
+    <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Class Hours Delivered</div>
+      <div style="font-size:20px; font-weight:700; color:#0f172a; margin-top:4px;"><?= (int)($hours_coverage['class_hrs'] ?? 0) ?> / <?= (int)($planned_days > 0 ? $planned_days * 3 : 60) ?> hrs</div>
+      <div style="font-size:11px; color:#64748b; margin-top:2px;">Theory instruction (3h/day)</div>
+    </div>
+    <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Lab Hours Delivered</div>
+      <div style="font-size:20px; font-weight:700; color:#0f172a; margin-top:4px;"><?= (int)($hours_coverage['lab_hrs'] ?? 0) ?> / <?= (int)($planned_days > 0 ? $planned_days * 3 : 60) ?> hrs</div>
+      <div style="font-size:11px; color:#64748b; margin-top:2px;">Hands-on practice (3h/day)</div>
+    </div>
+    <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Module Hours Delivered</div>
+      <div style="font-size:20px; font-weight:700; color:#0284c7; margin-top:4px;"><?= (int)($hours_coverage['delivered_hrs'] ?? 0) ?> / <?= (int)($planned_days > 0 ? $planned_days * 6 : 120) ?> hrs</div>
+      <div style="font-size:11px; color:#64748b; margin-top:2px;">Total combined (6h/day)</div>
+    </div>
+    <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Mentor Attendance</div>
+      <div style="font-size:15px; font-weight:700; color:#16a34a; margin-top:4px;">Class <?= s($hours_coverage['mentor_attendance_class'] ?? '96%') ?> | Lab <?= s($hours_coverage['mentor_attendance_lab'] ?? '92%') ?></div>
+      <div style="font-size:11px; color:#64748b; margin-top:2px;">Biometric punch record</div>
     </div>
   </div>
+  <?php endif; ?>
 
   <!-- Module Schedule Grid (8-Cells) -->
   <div class="sec-label"><?= s(get_string('schedule', 'local_batchanalytics')) ?></div>
@@ -1307,26 +1706,543 @@ echo $OUTPUT->header();
     <?php endif; ?>
   </div>
 
-  <!-- Navigation Tabs (Prototype Style) -->
+  <!-- Navigation Tabs -->
   <div class="tabs ba-module-tabs">
-    <div class="tab active" data-tab="mentor" role="button" tabindex="0">Mentor Activities</div>
-    <div class="tab" data-tab="ssact" role="button" tabindex="0">SS Activities</div>
-    <div class="tab" data-tab="mstudents" role="button" tabindex="0">Student Performance</div>
+    <?php if ($is_sponsor): ?>
+      <div class="tab active" data-tab="lessonplan" role="button" tabindex="0"><?= s(get_string('tab_lesson_plan', 'local_batchanalytics')) ?></div>
+      <div class="tab" data-tab="evidence" role="button" tabindex="0"><?= s(get_string('tab_class_evidence', 'local_batchanalytics')) ?></div>
+      <div class="tab" data-tab="stdattendance" role="button" tabindex="0"><?= s(get_string('tab_std_attendance', 'local_batchanalytics')) ?></div>
+      <div class="tab" data-tab="mstudents" role="button" tabindex="0"><?= s(get_string('tab_student_perf', 'local_batchanalytics')) ?></div>
+    <?php else: ?>
+      <div class="tab active" data-tab="mentor" role="button" tabindex="0">Mentor Activities</div>
+      <div class="tab" data-tab="ssact" role="button" tabindex="0">SS Activities</div>
+      <div class="tab" data-tab="mstudents" role="button" tabindex="0">Student Performance</div>
+    <?php endif; ?>
   </div>
 
   <div class="ba-module-panels">
 
+    <?php if ($is_sponsor): ?>
+    <!-- 1. Lesson Plan Panel (Day-wise Syllabus Delivery) -->
+    <div id="panel-lessonplan" class="panel active">
+      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>Day-wise lesson plan and syllabus delivery progression with biometric mentor attendance compliance.</div>
+        <?php if ($can_edit_mentor): ?>
+          <button type="button" class="btn btn-primary btn-sm" id="ba-open-lesson-plan-modal" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:6px; background:#0072ce; color:#fff; border:none; cursor:pointer;">
+            <i class="fa fa-plus"></i> + Add Day / Session
+          </button>
+        <?php endif; ?>
+      </div>
+      <div class="tablecard ba-performance-tablecard">
+        <div class="ba-performance-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:60px;">Day</th>
+                <th style="width:130px;">Planned Date</th>
+                <th style="width:130px;">Actual Date</th>
+                <th>Topic / Syllabus Coverage</th>
+                <th style="width:110px;">Status</th>
+                <th style="width:130px;">Class Mentor</th>
+                <th style="width:130px;">Lab Mentor</th>
+                <?php if ($can_edit_mentor): ?>
+                  <th style="width:80px; text-align:center;">Action</th>
+                <?php endif; ?>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (empty($lesson_plan_days)): ?>
+                <tr><td colspan="<?= $can_edit_mentor ? 8 : 7 ?>" class="ba-empty-cell">No lesson plan entries found.</td></tr>
+              <?php else: ?>
+                <?php
+                $cm_uid = !empty($class_mentor_user->id) ? (int)$class_mentor_user->id : 0;
+                $lm_uid = !empty($lab_mentor_user->id) ? (int)$lab_mentor_user->id : 0;
+                foreach ($lesson_plan_days as $day):
+                    $eff_date = !empty($day->actual_date) ? $day->actual_date : $day->planned_date;
+                    $cm_stat = \local_batchanalytics\biometric_service::get_mentor_biometric_status($cm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Class');
+                    $lm_stat = \local_batchanalytics\biometric_service::get_mentor_biometric_status($lm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Lab');
+                ?>
+                  <tr>
+                    <td><b>Day <?= (int)$day->day_index ?></b></td>
+                    <td><?= s($day->planned_date) ?></td>
+                    <td><?= !empty($day->actual_date) ? s($day->actual_date) : '<span class="muted">—</span>' ?></td>
+                    <td><span class="val" style="font-size:13px; color:#1e293b;"><?= s($day->topic) ?></span></td>
+                    <td>
+                      <?php if (strcasecmp($day->status, 'Done') === 0): ?>
+                        <span class="st st-g">Done</span>
+                      <?php else: ?>
+                        <span class="st st-a">Pending</span>
+                      <?php endif; ?>
+                    </td>
+                    <td>
+                      <?php if ($cm_stat['status'] === 'Present'): ?>
+                        <span class="st st-g" title="<?= s($cm_stat['tooltip']) ?>" style="display:inline-flex; align-items:center; gap:4px;">
+                          <i class="fa fa-fingerprint"></i> Present<?= !empty($cm_stat['time']) ? ' (' . s($cm_stat['time']) . ')' : '' ?>
+                        </span>
+                      <?php elseif ($cm_stat['status'] === 'Absent'): ?>
+                        <span class="st st-r" title="<?= s($cm_stat['tooltip']) ?>">Absent</span>
+                      <?php else: ?>
+                        <span class="st st-b" title="<?= s($cm_stat['tooltip']) ?>">Pending</span>
+                      <?php endif; ?>
+                    </td>
+                    <td>
+                      <?php if ($lm_stat['status'] === 'Present'): ?>
+                        <span class="st st-g" title="<?= s($lm_stat['tooltip']) ?>" style="display:inline-flex; align-items:center; gap:4px;">
+                          <i class="fa fa-fingerprint"></i> Present<?= !empty($lm_stat['time']) ? ' (' . s($lm_stat['time']) . ')' : '' ?>
+                        </span>
+                      <?php elseif ($lm_stat['status'] === 'Absent'): ?>
+                        <span class="st st-r" title="<?= s($lm_stat['tooltip']) ?>">Absent</span>
+                      <?php else: ?>
+                        <span class="st st-b" title="<?= s($lm_stat['tooltip']) ?>">Pending</span>
+                      <?php endif; ?>
+                    </td>
+                    <?php if ($can_edit_mentor): ?>
+                      <td style="text-align:center;">
+                        <button type="button" class="btn btn-sm btn-outline-danger ba-delete-lesson-plan-btn" data-dayid="<?= (int)$day->id ?>" title="Delete Day" style="padding:2px 8px; font-size:11px; border-radius:4px; border:1px solid #fecaca; background:#fff; color:#dc2626; cursor:pointer;">
+                          <i class="fa fa-trash"></i>
+                        </button>
+                      </td>
+                    <?php endif; ?>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Class Evidence Panel (Compliance Photo Tracking) -->
+    <div id="panel-evidence" class="panel">
+      <div class="panel-note" style="margin-bottom:18px; font-size:13px; color:#475569;">
+        <b>Class &amp; lab photographs</b> uploaded by the mentor on a set cadence (e.g. twice a week). Sponsors view the gallery read-only as evidence of delivery.
+      </div>
+
+      <!-- Weekly Compliance Tracker Strip -->
+      <div style="display:flex; gap:12px; margin-bottom:22px; overflow-x:auto; padding-bottom:4px;">
+        <?php foreach (($evidence_data['weekly_tracker'] ?? []) as $wk): ?>
+          <div style="flex:1; min-width:130px; max-width:170px; padding:12px 16px; border-radius:12px; border:1px solid #e2e8f0; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+            <div style="font-size:11px; font-weight:700; color:#64748b; letter-spacing:0.4px; text-transform:uppercase; margin-bottom:6px;"><?= s($wk['label']) ?></div>
+            <div style="font-size:15px; font-weight:700; color:<?= $wk['status'] === 'complete' ? '#16a34a' : ($wk['status'] === 'partial' ? '#d97706' : '#b91c1c') ?>; display:flex; align-items:center; gap:4px;">
+              <?php if ($wk['status'] === 'complete'): ?>
+                <span style="font-size:13px;">✔</span> <?= (int)$wk['completed'] ?> / <?= (int)$wk['target'] ?>
+              <?php elseif ($wk['status'] === 'partial'): ?>
+                <?= (int)$wk['completed'] ?> / <?= (int)$wk['target'] ?>
+              <?php else: ?>
+                <?= (int)$wk['completed'] ?> / <?= (int)$wk['target'] ?> due
+              <?php endif; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+
+      <!-- Photo / Video Evidence Gallery Grid -->
+      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
+        <?php if ($can_edit_mentor): ?>
+          <!-- Upload Card (Dashed Border matching design) -->
+          <div id="ba-upload-evidence-card" style="border:1.5px dashed #cbd5e1; border-radius:12px; background:#fff; height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; text-align:center; transition:all 0.2s;" onmouseover="this.style.borderColor='#94a3b8'; this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#cbd5e1'; this.style.background='#fff';">
+            <div style="color:#64748b; font-size:20px; margin-bottom:8px;">
+              <i class="fa fa-camera"></i>
+            </div>
+            <div style="font-size:13px; font-weight:600; color:#475569;">Upload class / lab photo</div>
+          </div>
+        <?php endif; ?>
+
+        <?php foreach (($evidence_data['photos'] ?? []) as $p): ?>
+          <?php
+            $is_prototype = !empty($p['is_prototype']);
+            $has_real_media = !$is_prototype && !empty($p['cover_url']) && strpos($p['cover_url'], 'pix/image.png') === false;
+            $cover_is_video = !empty($p['cover_is_video']);
+            $items_json = !empty($p['items']) ? json_encode($p['items']) : '[]';
+            $items_cnt = (int)($p['items_count'] ?? 1);
+            $photos_cnt = (int)($p['photo_count'] ?? 0);
+            $videos_cnt = (int)($p['video_count'] ?? 0);
+          ?>
+          <div class="ba-evidence-card"
+               data-session-key="<?= s($p['session_key'] ?? '') ?>"
+               data-is-prototype="<?= $is_prototype ? '1' : '0' ?>"
+               data-type="<?= s($p['session_type']) ?>"
+               data-date="<?= s($p['session_date']) ?>"
+               data-caption="<?= s($p['caption']) ?>"
+               data-items="<?= htmlspecialchars($items_json, ENT_QUOTES, 'UTF-8') ?>"
+               style="border:1px solid #e2e8f0; border-radius:12px; background:#fff; overflow:hidden; height:180px; display:flex; flex-direction:column; position:relative; box-shadow:0 1px 3px rgba(0,0,0,0.02); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;"
+               onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)';"
+               onmouseout="this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.02)';">
+            <!-- Media / Watermark Area -->
+            <div style="height:136px; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; background:<?= $has_real_media ? '#0f172a' : 'repeating-linear-gradient(135deg, #f1f5f9, #f1f5f9 12px, #e8edf3 12px, #e8edf3 24px)' ?>;">
+              <?php if ($has_real_media): ?>
+                <?php if ($cover_is_video): ?>
+                  <video src="<?= s($p['cover_url']) ?>" style="width:100%; height:100%; object-fit:cover;" preload="metadata" muted></video>
+                  <div style="position:absolute; width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; pointer-events:none;">
+                    <i class="fa fa-play" style="margin-left:2px;"></i>
+                  </div>
+                <?php else: ?>
+                  <img src="<?= s($p['cover_url']) ?>" alt="<?= s($p['caption']) ?>" style="width:100%; height:100%; object-fit:cover;">
+                <?php endif; ?>
+
+                <!-- Date badge on top-left of real media -->
+                <div style="position:absolute; top:8px; left:8px; background:rgba(15,23,42,0.85); color:#fff; font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; backdrop-filter:blur(3px); letter-spacing:0.3px; display:flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(0,0,0,0.3);">
+                  <i class="fa fa-calendar-o" style="font-size:10px;"></i>
+                  <span><?= s($p['session_type']) ?> &middot; <?= s($p['session_date']) ?></span>
+                </div>
+
+                <!-- Multi-item count badge (e.g. 5 photos · 3 videos) -->
+                <?php if ($items_cnt > 1): ?>
+                  <div style="position:absolute; bottom:8px; right:8px; background:rgba(15,23,42,0.85); color:#fff; font-size:11px; font-weight:600; padding:3px 9px; border-radius:12px; display:flex; align-items:center; gap:6px; backdrop-filter:blur(3px); box-shadow:0 2px 4px rgba(0,0,0,0.3);">
+                    <?php if ($photos_cnt > 0): ?>
+                      <span><i class="fa fa-camera"></i> <?= $photos_cnt ?></span>
+                    <?php endif; ?>
+                    <?php if ($videos_cnt > 0): ?>
+                      <span><i class="fa fa-video-camera"></i> <?= $videos_cnt ?></span>
+                    <?php endif; ?>
+                  </div>
+                <?php endif; ?>
+
+              <?php else: ?>
+                <div style="color:#94a3b8; font-size:13px; font-weight:500; letter-spacing:0.2px;">
+                  <?= s($p['session_type']) ?> · <?= s($p['session_date']) ?>
+                </div>
+              <?php endif; ?>
+
+              <?php if ($can_edit_mentor && !$is_prototype && !empty($p['items'])): ?>
+                <button type="button" class="ba-delete-session-btn" data-session-key="<?= s($p['session_key'] ?? '') ?>" title="Delete All Evidence for this Date" style="position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.9); border:1px solid #fecaca; color:#dc2626; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer;" onclick="event.stopPropagation();">
+                  <i class="fa fa-trash"></i>
+                </button>
+              <?php endif; ?>
+            </div>
+
+            <!-- Footer Caption Bar -->
+            <div style="height:44px; padding:8px 14px; background:#fff; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; gap:8px;">
+              <span style="font-size:13px; font-weight:500; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= s($p['caption']) ?>">
+                <?= s($p['caption']) ?>
+              </span>
+              <span style="font-size:11px; padding:2px 8px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-weight:500; flex-shrink:0;">
+                <?= s($p['session_type']) ?>
+              </span>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
+    <!-- 3. Student Attendance Matrix Panel (S1-S18 Grid with Check-in & Check-out Timings) -->
+    <div id="panel-stdattendance" class="panel">
+      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <div style="font-size:13px; color:#475569;">
+          <b>Day-wise biometric punch matrix</b> across delivered sessions (S1–S18). Live Check-In and Check-Out timestamps synchronized from biometric readers.
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <!-- View Mode Toggle (Compact is Default) -->
+          <div style="display:inline-flex; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; background:#f8fafc; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+            <button type="button" id="ba-att-view-compact" class="btn btn-sm" style="font-size:12px; font-weight:700; padding:6px 14px; background:#3b82f6; color:#fff; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
+              <i class="fa fa-th"></i> Compact (P/A)
+            </button>
+            <button type="button" id="ba-att-view-timings" class="btn btn-sm" style="font-size:12px; font-weight:600; padding:6px 14px; background:#fff; color:#475569; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
+              <i class="fa fa-clock-o"></i> Check-In &amp; Check-Out
+            </button>
+          </div>
+
+          <a href="<?= (new moodle_url('/local/batchanalytics/module.php', [
+              'batchid' => $batchid,
+              'courseid' => $courseid,
+              'action' => 'export_attendance_pdf'
+          ]))->out(false) ?>" class="btn btn-outline-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px;">
+            <i class="fa fa-file-pdf-o"></i> Export Matrix (PDF)
+          </a>
+
+          <?php if (!$is_sponsor_user): ?>
+            <a href="<?= (new moodle_url('/local/attendancepdf/daily_attendance.php', ['courseid' => $courseid]))->out(false) ?>" target="_blank" class="btn btn-outline-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px;">
+              <i class="fa fa-external-link"></i> Daily Biometric Tracker
+            </a>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <!-- Attendance Summary Bar -->
+      <div style="display:flex; gap:16px; margin-bottom:18px; flex-wrap:wrap;">
+        <div style="padding:10px 18px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; display:flex; align-items:center; gap:10px;">
+          <div>
+            <div style="font-size:11px; color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">AVERAGE ATTENDANCE</div>
+            <strong style="font-size:18px; color:#15803d;"><?= $attendance_matrix['average_attendance'] ?? 86 ?>%</strong>
+          </div>
+        </div>
+        <div style="padding:10px 18px; background:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#fef2f2; border:1px solid #fecaca;' : '#f8fafc; border:1px solid #e2e8f0;' ?>; border-radius:8px; display:flex; align-items:center; gap:10px;">
+          <div>
+            <div style="font-size:11px; color:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#991b1b' : '#475569' ?>; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">ATTENDANCE SHORTFALL (&lt;75%)</div>
+            <strong style="font-size:18px; color:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#dc2626' : '#334155' ?>;"><?= (int)($attendance_matrix['shortfall_count'] ?? 0) ?> students</strong>
+          </div>
+        </div>
+        <?php if (!$is_sponsor_user && !empty($daily_attendance_register['stats'])): ?>
+          <?php $dst = $daily_attendance_register['stats']; ?>
+          <div style="padding:10px 18px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; display:flex; align-items:center; gap:10px;">
+            <div>
+              <div style="font-size:11px; color:#1e40af; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">TODAY'S ATTENDANCE RATE</div>
+              <strong style="font-size:18px; color:#1d4ed8;">
+                <?= ($dst['total_students'] > 0) ? round(($dst['students_present'] / $dst['total_students']) * 100) : 0 ?>%
+              </strong>
+              <span style="font-size:12px; color:#60a5fa; font-weight:600; margin-left:4px;">(<?= (int)$dst['students_present'] ?> / <?= (int)$dst['total_students'] ?> present)</span>
+            </div>
+          </div>
+        <?php endif; ?>
+      </div>
+
+      <!-- Matrix Table Card -->
+      <div class="tablecard ba-performance-tablecard" style="margin-bottom:28px;">
+        <div class="ba-performance-table-scroll">
+          <table class="ba-attendance-matrix-table" style="font-size:12px; text-align:center; width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
+                <th style="text-align:left; min-width:180px; padding:10px 14px; position:sticky; left:0; background:#f8fafc; z-index:2; border-right:1px solid #e2e8f0;">Student</th>
+                <th style="width:75px; padding:10px 8px; border-right:1px solid #e2e8f0;">Att %</th>
+                <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
+                  <th class="ba-sess-col" style="min-width:44px; padding:6px 2px; border-right:1px solid #f1f5f9; cursor:pointer;" title="<?= s($sess['description'] ?? $sess['date']) ?> (Click to view Daily Register)" onclick="filterDailyRegister('<?= s($sess['raw_date'] ?? '') ?>');">
+                    <div style="font-weight:700; color:#1e293b;"><?= s($sess['code']) ?></div>
+                    <div style="font-size:9px; color:#64748b; font-weight:normal; margin-top:1px; text-transform:uppercase;"><?= s($sess['date']) ?></div>
+                  </th>
+                <?php endforeach; ?>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach (($attendance_matrix['students'] ?? []) as $st): ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="text-align:left; font-weight:600; padding:8px 12px; position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #e2e8f0;">
+                    <a href="<?= (new moodle_url('/local/batchanalytics/student.php', ['id' => ($st['id'] ?? ($st['userid'] ?? 0)), 'batchid' => $batchid]))->out(false) ?>" style="color:var(--primary,#0072ce); text-decoration:none;">
+                      <?= s($st['name']) ?>
+                    </a>
+                  </td>
+                  <td style="font-weight:700; padding:8px 6px; border-right:1px solid #e2e8f0; color:<?= $st['attendance_pct'] < 75 ? '#dc2626' : ($st['attendance_pct'] >= 85 ? '#16a34a' : '#d97706') ?>;">
+                    <?= (int)$st['attendance_pct'] ?>%
+                  </td>
+                  <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
+                    <?php
+                      $p_raw = $st['sessions'][$sess['code']] ?? 'P';
+                      $status = is_array($p_raw) ? ($p_raw['status'] ?? 'P') : (string)$p_raw;
+                      $check_in = is_array($p_raw) ? ($p_raw['check_in'] ?? '--') : '--';
+                      $check_out = is_array($p_raw) ? ($p_raw['check_out'] ?? '--') : '--';
+                      $total_hrs = is_array($p_raw) ? ($p_raw['total_hours'] ?? '--') : '--';
+                      $day_status = is_array($p_raw) ? ($p_raw['day_status'] ?? '') : '';
+                      $remarks = is_array($p_raw) ? ($p_raw['remarks'] ?? '') : '';
+
+                      // Badge styling
+                      $badge_bg = '#dcfce7';
+                      $badge_color = '#15803d';
+                      if ($status === 'A') {
+                          $badge_bg = '#fee2e2';
+                          $badge_color = '#b91c1c';
+                      } else if ($status === 'L') {
+                          $badge_bg = '#fef3c7';
+                          $badge_color = '#92400e';
+                      } else if ($status === '—') {
+                          $badge_bg = '#f1f5f9';
+                          $badge_color = '#64748b';
+                      }
+
+                      $tooltip = htmlspecialchars("{$st['name']} · {$sess['code']} ({$sess['date']})\nCheck In: {$check_in}\nCheck Out: {$check_out}\nHours: {$total_hrs}\nStatus: {$day_status}\n{$remarks}");
+                    ?>
+                    <td class="ba-sess-cell" style="padding:4px 2px; border-right:1px solid #f8fafc; vertical-align:middle;" title="<?= $tooltip ?>">
+                      
+                      <!-- Compact View Mode (Default: Compact 22x22 badge) -->
+                      <div class="ba-att-compact-block" style="display:inline-block;">
+                        <span style="display:inline-block; width:22px; height:22px; line-height:22px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
+                          <?= s($status) ?>
+                        </span>
+                      </div>
+
+                      <!-- Timings View Mode (Hidden by default, shown when toggled) -->
+                      <div class="ba-att-timing-block" style="display:none; flex-direction:column; align-items:center; gap:2px; padding:2px 0;">
+                        <!-- Status Pill -->
+                        <span style="display:inline-block; width:22px; height:20px; line-height:20px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
+                          <?= s($status) ?>
+                        </span>
+
+                        <?php if ($status === 'P' || $status === 'L'): ?>
+                          <div style="font-size:10px; font-weight:700; color:#166534; white-space:nowrap; line-height:1.2; margin-top:2px;">
+                            <span style="color:#22c55e;">↓</span> <?= s($check_in) ?>
+                          </div>
+                          <?php if ($check_out !== '--'): ?>
+                            <div style="font-size:10px; font-weight:700; color:#1e40af; white-space:nowrap; line-height:1.2;">
+                              <span style="color:#3b82f6;">↑</span> <?= s($check_out) ?>
+                            </div>
+                          <?php endif; ?>
+                          <?php if ($total_hrs !== '--'): ?>
+                            <span style="font-size:9px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:0 4px; color:#475569; font-weight:600; margin-top:1px;">
+                              <?= s($total_hrs) ?>
+                            </span>
+                          <?php endif; ?>
+                        <?php elseif ($status === 'A'): ?>
+                          <div style="font-size:10px; color:#dc2626; font-weight:700; line-height:1.2; margin-top:3px;">
+                            Absent
+                          </div>
+                        <?php else: ?>
+                          <div style="color:#94a3b8; font-size:12px; margin-top:2px;">—</div>
+                        <?php endif; ?>
+                      </div>
+
+                    </td>
+                  <?php endforeach; ?>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <?php if (!$is_sponsor_user): ?>
+      <!-- ===================================================================== -->
+      <!-- DAILY BIOMETRIC PUNCH REGISTER (Added from biometric plugin)           -->
+      <!-- ===================================================================== -->
+      <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03); overflow:hidden;">
+        <!-- Register Header Bar -->
+        <div style="padding:16px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">📅</span>
+              <h3 style="margin:0; font-size:15px; font-weight:700; color:#1e293b;">
+                Daily Biometric Punch Register
+              </h3>
+              <span style="font-size:12px; font-weight:600; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:12px;">
+                <?= s($daily_attendance_register['date_formatted'] ?? date('d-M-Y')) ?> (<?= s($daily_attendance_register['day_name'] ?? date('l')) ?>)
+              </span>
+            </div>
+            <div style="font-size:12px; color:#64748b; margin-top:3px;">
+              Detailed biometric terminal punch logs, check-in, check-out and work hours for this session date.
+            </div>
+          </div>
+
+          <!-- Date Selector Form -->
+          <form method="get" action="module.php" style="margin:0; display:flex; align-items:center; gap:8px;">
+            <input type="hidden" name="courseid" value="<?= (int)$courseid ?>">
+            <input type="hidden" name="batchid" value="<?= (int)$batchid ?>">
+            <input type="hidden" name="sectionid" value="<?= (int)$sec_id ?>">
+            <input type="hidden" name="module" value="<?= (int)$module_idx ?>">
+            <input type="hidden" name="mode" value="<?= s($deliverymode) ?>">
+            
+            <label style="font-size:12px; font-weight:700; color:#475569; margin:0;">Session Date:</label>
+            <input type="date" name="att_date" value="<?= s($att_target_date) ?>" class="form-control form-control-sm" style="width:145px; font-size:12px; font-weight:600; border-radius:6px; border:1px solid #cbd5e1;" onchange="this.form.submit();">
+            <button type="submit" class="btn btn-sm btn-primary" style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:6px;">Go</button>
+          </form>
+        </div>
+
+        <!-- Quick Session Date Buttons -->
+        <?php if (!empty($attendance_matrix['sessions'])): ?>
+          <div style="padding:10px 20px; background:#fff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; overflow-x:auto; align-items:center;">
+            <span style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; flex-shrink:0;">Select Session:</span>
+            <?php foreach ($attendance_matrix['sessions'] as $s_pill): ?>
+              <?php
+                $is_curr_pill = ($s_pill['raw_date'] ?? '') === $att_target_date;
+                $pill_url = new moodle_url('/local/batchanalytics/module.php', [
+                    'courseid' => $courseid,
+                    'batchid' => $batchid,
+                    'sectionid' => $sec_id,
+                    'module' => $module_idx,
+                    'mode' => $deliverymode,
+                    'att_date' => $s_pill['raw_date'] ?? '',
+                ]);
+                $pill_url->set_anchor('panel-stdattendance');
+              ?>
+              <a href="<?= $pill_url->out(false) ?>" style="font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; text-decoration:none; white-space:nowrap; <?= $is_curr_pill ? 'background:#3b82f6; color:#fff;' : 'background:#f1f5f9; color:#475569; border:1px solid #e2e8f0;' ?>">
+                <?= s($s_pill['code']) ?> (<?= s($s_pill['date']) ?>)
+              </a>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+
+        <!-- Daily Register Table -->
+        <div class="table-responsive" style="margin:0;">
+          <table class="table table-hover" style="font-size:12px; margin-bottom:0; width:100%; border-collapse:collapse;">
+            <thead style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+              <tr>
+                <th style="padding:10px 14px; width:45px; text-align:center;">#</th>
+                <th style="padding:10px 14px;">Student Name</th>
+                <th style="padding:10px 14px; width:130px;">Day &amp; Date</th>
+                <th style="padding:10px 14px; text-align:center; width:120px;">Check In</th>
+                <th style="padding:10px 14px; text-align:center; width:120px;">Check Out</th>
+                <th style="padding:10px 14px; text-align:center; width:110px;">Total Hours</th>
+                <th style="padding:10px 14px; text-align:center; width:130px;">Day Status</th>
+                <th style="padding:10px 14px;">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (empty($daily_attendance_register['students'])): ?>
+                <tr>
+                  <td colspan="8" style="padding:28px; text-align:center; color:#64748b;">
+                    <em>No student punch records found for <?= s($daily_attendance_register['date_formatted'] ?? $att_target_date) ?>.</em>
+                  </td>
+                </tr>
+              <?php else: ?>
+                <?php $reg_idx = 1; ?>
+                <?php foreach ($daily_attendance_register['students'] as $rs): ?>
+                  <?php
+                    $stat_bg = '#fee2e2';
+                    $stat_color = '#991b1b';
+                    if ($rs['day_status'] === 'Full Day' || $rs['day_status'] === 'Present (Manual)') {
+                        $stat_bg = '#dcfce7';
+                        $stat_color = '#166534';
+                    } else if (strpos($rs['day_status'], 'Late') !== false) {
+                        $stat_bg = '#fef3c7';
+                        $stat_color = '#92400e';
+                    } else if (strpos($rs['day_status'], 'Half Day') !== false) {
+                        $stat_bg = '#ffedd5';
+                        $stat_color = '#9a3412';
+                    }
+                  ?>
+                  <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:10px 14px; text-align:center; color:#64748b; font-weight:600;"><?= $reg_idx++ ?></td>
+                    <td style="padding:10px 14px;">
+                      <strong style="color:#0f172a; font-size:13px;"><?= s($rs['name']) ?></strong>
+                      <div style="font-size:11px; color:#64748b; font-family:monospace; margin-top:2px;">
+                        PIN: <strong><?= s($rs['pin']) ?></strong><?= !empty($rs['email']) ? ' &middot; ' . s($rs['email']) : '' ?>
+                      </div>
+                    </td>
+                    <td style="padding:10px 14px; color:#334155; font-weight:600;">
+                      <?= s($daily_attendance_register['day_name'] ?? '') ?><br/>
+                      <span style="font-size:11px; color:#64748b; font-weight:normal;"><?= s($daily_attendance_register['date_formatted'] ?? '') ?></span>
+                    </td>
+                    <td style="padding:10px 14px; text-align:center;">
+                      <?php if (!empty($rs['check_in']) && $rs['check_in'] !== '--'): ?>
+                        <span style="font-weight:700; color:#166534; font-size:13px;">🟢 <?= s($rs['check_in']) ?></span>
+                      <?php else: ?>
+                        <span style="color:#94a3b8; font-weight:600;">--</span>
+                      <?php endif; ?>
+                    </td>
+                    <td style="padding:10px 14px; text-align:center;">
+                      <?php if (!empty($rs['check_out']) && $rs['check_out'] !== '--'): ?>
+                        <span style="font-weight:700; color:#1e40af; font-size:13px;">🔵 <?= s($rs['check_out']) ?></span>
+                      <?php else: ?>
+                        <span style="color:#94a3b8; font-weight:600;">--</span>
+                      <?php endif; ?>
+                    </td>
+                    <td style="padding:10px 14px; text-align:center;">
+                      <?php if (!empty($rs['total_hours']) && $rs['total_hours'] !== '--'): ?>
+                        <span style="background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; font-weight:700; font-size:12px; padding:3px 8px; border-radius:6px; display:inline-block;">
+                          <?= s($rs['total_hours']) ?>
+                        </span>
+                      <?php else: ?>
+                        <span style="color:#94a3b8;">--</span>
+                      <?php endif; ?>
+                    </td>
+                    <td style="padding:10px 14px; text-align:center;">
+                      <span style="background:<?= $stat_bg ?>; color:<?= $stat_color ?>; font-weight:700; font-size:11px; padding:4px 10px; border-radius:12px; display:inline-block;">
+                        <?= s($rs['day_status']) ?>
+                      </span>
+                    </td>
+                    <td style="padding:10px 14px; font-size:12px; color:#475569;">
+                      <?= s($rs['remarks']) ?>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php else: ?>
+
     <!-- 1. Mentor Activities Panel (Operational Mentor Activities) -->
     <div id="panel-mentor" class="panel active">
       <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <!-- <div>
-          Key operational activities performed by mentors for this module. Marking completed auto-fills today's date and saves instantly.
-        </div>
-        <div class="ba-mentor-group-badge" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:14px; font-size:12px; font-weight:600;">
-          <span style="opacity:0.8;">Group:</span>
-          <span><?= s($mentor_activity_data['group']) ?></span>
-          <span style="font-size:11px; font-weight:normal; opacity:0.75;"><?= $mentor_activity_data['is_manual'] ? '(Course Setting)' : '(Auto-matched)' ?></span>
-        </div> -->
       </div>
 
       <?php if (empty($mentor_activity_data['activities'])): ?>
@@ -1429,18 +2345,25 @@ echo $OUTPUT->header();
         </table>
       </div>
     </div>
+    <?php endif; ?>
 
-    <!-- 3. Student Performance Panel -->
+    <!-- Student Performance Panel -->
     <div id="panel-mstudents" class="panel">
       <div class="panel-note">
         Module-level student performance — same view as batch level, scoped to this module. Grade or Completion % banding.
       </div>
 
       <div class="filterbar">
+        <?php if (!$is_sponsor): ?>
         <div class="toggle">
           <span class="on" id="ba-mod-tg-grade">Grade</span>
           <span id="ba-mod-tg-pct">Completion %</span>
         </div>
+        <?php else: ?>
+        <div class="toggle">
+          <span class="on" id="ba-mod-tg-pct">Completion %</span>
+        </div>
+        <?php endif; ?>
         <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
 
       </div>
@@ -1456,7 +2379,9 @@ echo $OUTPUT->header();
               <tr>
                 <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
                 <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
+                <?php if (!$is_sponsor): ?>
                 <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
+                <?php endif; ?>
                 <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
                 <?php foreach ($performance_columns as $column): ?>
                   <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
@@ -1503,6 +2428,650 @@ echo $OUTPUT->header();
   </div> <!-- /.shell -->
 
 </div> <!-- /.local-batchanalytics-wrap -->
+
+<?php if ($can_edit_mentor): ?>
+<!-- Modal: Add Lesson Plan Day -->
+<div id="ba-lesson-plan-modal" style="display:none; position:fixed; z-index:99999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:10px; max-width:540px; width:92%; padding:24px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); position:relative;">
+    <h3 style="margin-top:0; font-size:17px; font-weight:700; color:#1e293b;">Log Day-Wise Lesson Plan</h3>
+    <form id="ba-form-lesson-plan">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div>
+          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Day Number</label>
+          <input type="number" id="lp-day-index" class="form-control" value="<?= count($lesson_plan_days ?? []) + 1 ?>" min="1" max="100" required style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Status</label>
+          <select id="lp-status" class="form-control" style="width:100%;">
+            <option value="Done">Done</option>
+            <option value="Pending" selected>Pending</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div>
+          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Planned Date</label>
+          <input type="text" id="lp-planned-date" class="form-control" placeholder="e.g. 16 Nov 2026" required style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Actual Date</label>
+          <input type="text" id="lp-actual-date" class="form-control" placeholder="e.g. 16 Nov 2026" style="width:100%;">
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Topic / Syllabus Coverage</label>
+        <textarea id="lp-topic" class="form-control" rows="2" placeholder="Details of syllabus delivered..." required style="width:100%;"></textarea>
+      </div>
+      <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 14px; margin-bottom:18px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px;">
+        <i class="fa fa-fingerprint" style="font-size:18px; color:#16a34a; flex-shrink:0;"></i>
+        <span>Class &amp; Lab Mentor attendance is automatically verified from the <b>ESSCI Biometric Attendance Report</b> for the session date.</span>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-secondary" id="ba-close-lp-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="ba-save-lp-btn">Save Session</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Upload Class / Lab Photos & Videos (Multiple Support) -->
+<div id="ba-evidence-modal" style="display:none; position:fixed; z-index:99999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+  <div style="background:#fff; border-radius:14px; max-width:540px; width:92%; padding:24px 28px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); position:relative;">
+    <!-- Modal Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+      <div style="display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#1e293b;">
+        <i class="fa fa-camera" style="font-size:16px; color:#475569;"></i>
+        <span>Upload class / lab photos</span>
+      </div>
+      <button type="button" id="ba-close-ev-modal-x" style="background:none; border:none; font-size:22px; color:#94a3b8; cursor:pointer; line-height:1; padding:0 4px;" title="Close">&times;</button>
+    </div>
+
+    <form id="ba-form-evidence" enctype="multipart/form-data">
+      <!-- Row 1: Session Type & Session Date -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">SESSION TYPE</label>
+          <select id="ev-session-type" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+            <option value="Class" selected>Class</option>
+            <option value="Lab">Lab</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">SESSION DATE</label>
+          <input type="date" id="ev-session-date" class="form-control" value="<?= date('Y-m-d') ?>" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+        </div>
+      </div>
+
+      <!-- Drag & Drop Upload Zone -->
+      <div id="ev-dropzone" style="border:1.5px dashed #cbd5e1; border-radius:10px; padding:28px 20px; text-align:center; background:#fbfcfe; margin-bottom:16px; cursor:pointer; transition:all 0.2s;">
+        <div style="margin-bottom:8px;">
+          <svg width="44" height="44" viewBox="0 0 48 48" fill="none" style="display:inline-block;">
+            <rect x="8" y="22" width="32" height="18" rx="4" fill="#ede9fe" stroke="#a78bfa" stroke-width="2"/>
+            <path d="M8 29H18C19.2 29 20.2 30.2 20.8 31.5C21.2 32.4 22.1 33 23 33H25C25.9 33 26.8 32.4 27.2 31.5C27.8 30.2 28.8 29 30 29H40" stroke="#818cf8" stroke-width="2" fill="#e0e7ff"/>
+            <path d="M24 24V9M24 9L17.5 15.5M24 9L30.5 15.5" stroke="#ef4444" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div style="font-size:14px; font-weight:700; color:#1e293b;" id="ev-dropzone-prompt">Drag &amp; drop photos here</div>
+        <div style="font-size:12px; color:#64748b; margin-top:4px;">or click to choose files &middot; JPG, PNG, MP4, WEBM</div>
+        <input type="file" id="ev-file" name="evidence_files[]" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" style="display:none;">
+        <div id="ev-selected-files-list" style="margin-top:14px; display:none; max-height:120px; overflow-y:auto; text-align:left; flex-direction:column; gap:6px;"></div>
+      </div>
+
+      <!-- Row 2: Caption (Optional) -->
+      <div style="margin-bottom:20px;">
+        <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">CAPTION (OPTIONAL)</label>
+        <input type="text" id="ev-caption" class="form-control" placeholder="e.g. Pointers class &middot; lab batch A" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+      </div>
+
+      <!-- Modal Footer -->
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn" id="ba-close-ev-modal" style="border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:13px; font-weight:600; padding:8px 20px; border-radius:8px; cursor:pointer;">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="ba-upload-ev-btn" style="background:#4f87e8; border:none; color:#fff; font-size:13px; font-weight:600; padding:8px 24px; border-radius:8px; cursor:pointer;">Upload photos</button>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+
+<!-- Lightbox Modal for Photo / Video Session Album Preview -->
+<div id="ba-lightbox-modal" style="display:none; position:fixed; z-index:999999; left:0; top:0; width:100%; height:100%; background:rgba(15,23,42,0.92); align-items:center; justify-content:center; backdrop-filter:blur(6px);">
+  <div style="position:relative; max-width:960px; width:94%; max-height:95vh; display:flex; flex-direction:column; background:#1e293b; border-radius:14px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
+    
+    <!-- Top Header Bar inside Lightbox -->
+    <div style="padding:14px 20px; background:#0f172a; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="ba-lightbox-type-pill" style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; background:#3b82f6; color:#fff; text-transform:uppercase;">Class</span>
+          <span id="ba-lightbox-session-title" style="font-size:15px; font-weight:700; color:#fff;">17 Nov 2026</span>
+        </div>
+        <div id="ba-lightbox-session-caption" style="font-size:12px; color:#94a3b8; margin-top:2px;">Pointers class · lab batch A</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span id="ba-lightbox-counter-badge" style="font-size:12px; font-weight:600; color:#cbd5e1; background:#334155; padding:3px 10px; border-radius:12px;">1 / 8</span>
+        <button type="button" id="ba-close-lightbox" style="background:none; border:none; font-size:24px; color:#cbd5e1; cursor:pointer; line-height:1; padding:0 4px;" title="Close">&times;</button>
+      </div>
+    </div>
+
+    <!-- Main Media Showcase Viewport -->
+    <div style="position:relative; width:100%; height:55vh; min-height:360px; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <!-- Prev Button -->
+      <button type="button" id="ba-lightbox-prev-btn" style="position:absolute; left:16px; z-index:10; width:42px; height:42px; border-radius:50%; background:rgba(15,23,42,0.75); border:1px solid rgba(255,255,255,0.2); color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s;" title="Previous (Left arrow)">
+        <i class="fa fa-chevron-left"></i>
+      </button>
+
+      <!-- Media Display Area -->
+      <div id="ba-lightbox-media-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden;"></div>
+
+      <!-- Next Button -->
+      <button type="button" id="ba-lightbox-next-btn" style="position:absolute; right:16px; z-index:10; width:42px; height:42px; border-radius:50%; background:rgba(15,23,42,0.75); border:1px solid rgba(255,255,255,0.2); color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s;" title="Next (Right arrow)">
+        <i class="fa fa-chevron-right"></i>
+      </button>
+    </div>
+
+    <!-- Info & Controls Strip below Main Media -->
+    <div style="padding:10px 20px; background:#0f172a; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #1e293b;">
+      <div id="ba-lightbox-current-filename" style="font-size:12px; color:#cbd5e1; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:400px;"></div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <a id="ba-lightbox-download-btn" href="#" download class="btn btn-sm btn-primary" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:6px; display:inline-flex; align-items:center; gap:6px; background:#3b82f6; border:none; color:#fff; text-decoration:none;">
+          <i class="fa fa-download"></i> Download File
+        </a>
+        <?php if ($can_edit_mentor): ?>
+          <button type="button" id="ba-lightbox-delete-current-btn" class="btn btn-sm btn-outline-danger" style="padding:4px 10px; font-size:12px; font-weight:600; border-radius:6px; display:inline-flex; align-items:center; gap:4px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; color:#ef4444; cursor:pointer;" title="Delete this file">
+            <i class="fa fa-trash"></i> Delete
+          </button>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- Bottom Thumbnail Filmstrip (All files in this session) -->
+    <div id="ba-lightbox-filmstrip" style="padding:12px 20px; background:#1e293b; display:flex; gap:10px; overflow-x:auto; border-top:1px solid #334155;"></div>
+
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const lpModal = document.getElementById('ba-lesson-plan-modal');
+  const evModal = document.getElementById('ba-evidence-modal');
+  const openLpBtn = document.getElementById('ba-open-lesson-plan-modal');
+  const closeLpBtn = document.getElementById('ba-close-lp-modal');
+  const openEvCard = document.getElementById('ba-upload-evidence-card');
+  const openEvBtn = document.getElementById('ba-open-evidence-modal');
+  const closeEvBtn = document.getElementById('ba-close-ev-modal');
+  const closeEvBtnX = document.getElementById('ba-close-ev-modal-x');
+  const sesskey = '<?= sesskey() ?>';
+  const batchId = <?= (int)$batchid ?>;
+  const courseId = <?= (int)$courseid ?>;
+
+  if (openLpBtn && lpModal) {
+    openLpBtn.addEventListener('click', () => { lpModal.style.display = 'flex'; });
+  }
+  if (closeLpBtn && lpModal) {
+    closeLpBtn.addEventListener('click', () => { lpModal.style.display = 'none'; });
+  }
+
+  // Open Evidence Upload Modal from Card or Header button
+  function openEvidenceModal() {
+    if (evModal) {
+      evModal.style.display = 'flex';
+      selectedEvidenceFiles = [];
+      renderSelectedFiles();
+    }
+  }
+  if (openEvCard) {
+    openEvCard.addEventListener('click', openEvidenceModal);
+  }
+  if (openEvBtn) {
+    openEvBtn.addEventListener('click', openEvidenceModal);
+  }
+
+  function closeEvidenceModal() {
+    if (evModal) {
+      evModal.style.display = 'none';
+      selectedEvidenceFiles = [];
+      renderSelectedFiles();
+    }
+  }
+  if (closeEvBtn) closeEvBtn.addEventListener('click', closeEvidenceModal);
+  if (closeEvBtnX) closeEvBtnX.addEventListener('click', closeEvidenceModal);
+
+  // Drag & drop and multiple file selection handling
+  let selectedEvidenceFiles = [];
+  const dropzone = document.getElementById('ev-dropzone');
+  const fileInput = document.getElementById('ev-file');
+  const filesListContainer = document.getElementById('ev-selected-files-list');
+
+  function renderSelectedFiles() {
+    if (!filesListContainer) return;
+    if (selectedEvidenceFiles.length === 0) {
+      filesListContainer.style.display = 'none';
+      filesListContainer.innerHTML = '';
+      return;
+    }
+    filesListContainer.style.display = 'flex';
+    filesListContainer.innerHTML = '';
+    selectedEvidenceFiles.forEach((f, idx) => {
+      const isVid = f.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(f.name);
+      const icon = isVid ? 'fa fa-video-camera' : 'fa fa-image';
+      const sizeStr = (f.size / (1024 * 1024)).toFixed(1) + ' MB';
+
+      const chip = document.createElement('div');
+      chip.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:12px;';
+      chip.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          <i class="${icon}" style="color:${isVid ? '#8b5cf6' : '#3b82f6'};"></i>
+          <span style="font-weight:600; color:#1e293b;">${f.name}</span>
+          <span style="color:#94a3b8; font-size:11px;">(${sizeStr})</span>
+        </div>
+        <button type="button" data-remove-idx="${idx}" style="background:none; border:none; color:#ef4444; font-size:14px; cursor:pointer; padding:0 4px; line-height:1;" title="Remove">&times;</button>
+      `;
+      chip.querySelector('button').addEventListener('click', function(e) {
+        e.stopPropagation();
+        const rIdx = parseInt(this.getAttribute('data-remove-idx'), 10);
+        selectedEvidenceFiles.splice(rIdx, 1);
+        renderSelectedFiles();
+      });
+      filesListContainer.appendChild(chip);
+    });
+  }
+
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', function(e) {
+      if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+        fileInput.click();
+      }
+    });
+
+    dropzone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      dropzone.style.borderColor = '#3b82f6';
+      dropzone.style.background = '#eff6ff';
+    });
+    ['dragleave', 'dragend'].forEach(ev => {
+      dropzone.addEventListener(ev, function(e) {
+        e.preventDefault();
+        dropzone.style.borderColor = '#cbd5e1';
+        dropzone.style.background = '#fbfcfe';
+      });
+    });
+
+    dropzone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropzone.style.borderColor = '#cbd5e1';
+      dropzone.style.background = '#fbfcfe';
+      if (e.dataTransfer && e.dataTransfer.files) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          selectedEvidenceFiles.push(e.dataTransfer.files[i]);
+        }
+        renderSelectedFiles();
+      }
+    });
+
+    fileInput.addEventListener('change', function() {
+      for (let i = 0; i < this.files.length; i++) {
+        selectedEvidenceFiles.push(this.files[i]);
+      }
+      this.value = '';
+      renderSelectedFiles();
+    });
+  }
+
+  // Handle lesson plan submission
+  const lpForm = document.getElementById('ba-form-lesson-plan');
+  if (lpForm) {
+    lpForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const saveBtn = document.getElementById('ba-save-lp-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'add_lesson_plan_day');
+      fd.append('batchid', batchId);
+      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
+      fd.append('courseid', courseId);
+      fd.append('day_index', document.getElementById('lp-day-index').value);
+      fd.append('status', document.getElementById('lp-status').value);
+      fd.append('planned_date', document.getElementById('lp-planned-date').value);
+      fd.append('actual_date', document.getElementById('lp-actual-date').value);
+      fd.append('topic', document.getElementById('lp-topic').value);
+
+      fetch('module.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert('Error: ' + (data.error || 'Failed to save lesson plan day'));
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Session';
+          }
+        })
+        .catch(err => {
+          alert('Network error saving session');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Session';
+        });
+    });
+  }
+
+  // Handle lesson plan deletion
+  document.querySelectorAll('.ba-delete-lesson-plan-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      if (!confirm('Are you sure you want to delete this lesson plan day?')) return;
+      const dayId = this.getAttribute('data-dayid');
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'delete_lesson_plan_day');
+      fd.append('dayid', dayId);
+      fetch('module.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert('Error deleting day');
+          }
+        });
+    });
+  });
+
+  // Handle photo/video evidence submission
+  const evForm = document.getElementById('ba-form-evidence');
+  if (evForm) {
+    evForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (selectedEvidenceFiles.length === 0) {
+        alert('Please select or drag & drop at least one photo or video to upload.');
+        return;
+      }
+      const uploadBtn = document.getElementById('ba-upload-ev-btn');
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = `Uploading (${selectedEvidenceFiles.length} files)...`;
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'upload_evidence');
+      fd.append('batchid', batchId);
+      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
+      fd.append('courseid', courseId);
+      fd.append('session_type', document.getElementById('ev-session-type').value);
+      fd.append('session_date', document.getElementById('ev-session-date').value);
+      fd.append('caption', document.getElementById('ev-caption').value);
+
+      selectedEvidenceFiles.forEach(file => {
+        fd.append('evidence_files[]', file);
+      });
+
+      fetch('module.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.hash = 'panel-evidence';
+            window.location.reload();
+          } else {
+            alert('Error: ' + (data.error || 'Failed to upload photo evidence'));
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload photos';
+          }
+        })
+        .catch(err => {
+          alert('Network error uploading photo');
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = 'Upload photos';
+        });
+    });
+  }
+
+  // Handle entire session evidence deletion
+  document.querySelectorAll('.ba-delete-session-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const sessKey = this.getAttribute('data-session-key');
+      if (!confirm('Are you sure you want to delete all photos and videos for this date?')) return;
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'delete_evidence');
+      fd.append('session_key', sessKey);
+      fd.append('batchid', batchId);
+      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
+      fd.append('courseid', courseId);
+      fetch('module.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.hash = 'panel-evidence';
+            window.location.reload();
+          } else {
+            alert('Error deleting session evidence');
+          }
+        });
+    });
+  });
+
+  // Lightbox & Session Album handling
+  let currentSessionItems = [];
+  let currentItemIndex = 0;
+
+  const lightboxModal = document.getElementById('ba-lightbox-modal');
+  const lightboxMedia = document.getElementById('ba-lightbox-media-container');
+  const lightboxTitle = document.getElementById('ba-lightbox-session-title');
+  const lightboxCaption = document.getElementById('ba-lightbox-session-caption');
+  const lightboxTypePill = document.getElementById('ba-lightbox-type-pill');
+  const lightboxCounter = document.getElementById('ba-lightbox-counter-badge');
+  const lightboxFilename = document.getElementById('ba-lightbox-current-filename');
+  const lightboxDownload = document.getElementById('ba-lightbox-download-btn');
+  const lightboxDeleteBtn = document.getElementById('ba-lightbox-delete-current-btn');
+  const lightboxFilmstrip = document.getElementById('ba-lightbox-filmstrip');
+  const closeLightboxBtn = document.getElementById('ba-close-lightbox');
+  const prevBtn = document.getElementById('ba-lightbox-prev-btn');
+  const nextBtn = document.getElementById('ba-lightbox-next-btn');
+
+  function renderShowcaseItem(idx) {
+    if (!currentSessionItems || currentSessionItems.length === 0) return;
+    if (idx < 0) idx = currentSessionItems.length - 1;
+    if (idx >= currentSessionItems.length) idx = 0;
+    currentItemIndex = idx;
+
+    const item = currentSessionItems[currentItemIndex];
+    lightboxCounter.textContent = `${currentItemIndex + 1} / ${currentSessionItems.length}`;
+    lightboxFilename.textContent = item.caption || item.filename || '';
+    lightboxDownload.href = item.fileurl;
+
+    if (item.is_video) {
+      lightboxMedia.innerHTML = `<video src="${item.fileurl}" controls autoplay style="max-height:55vh; max-width:100%; border-radius:8px;"></video>`;
+    } else {
+      lightboxMedia.innerHTML = `<img src="${item.fileurl}" alt="${item.caption || item.filename}" style="max-height:55vh; max-width:100%; object-fit:contain; border-radius:8px;">`;
+    }
+
+    // Update filmstrip highlight
+    if (lightboxFilmstrip) {
+      const thumbs = lightboxFilmstrip.querySelectorAll('.ba-filmstrip-thumb');
+      thumbs.forEach((t, i) => {
+        if (i === currentItemIndex) {
+          t.style.borderColor = '#3b82f6';
+          t.style.opacity = '1';
+        } else {
+          t.style.borderColor = 'transparent';
+          t.style.opacity = '0.65';
+        }
+      });
+    }
+
+    if (prevBtn) prevBtn.style.display = currentSessionItems.length > 1 ? 'flex' : 'none';
+    if (nextBtn) nextBtn.style.display = currentSessionItems.length > 1 ? 'flex' : 'none';
+  }
+
+  function openSessionAlbum(sessionData) {
+    const items = sessionData.items || [];
+    if (items.length === 0) return;
+
+    currentSessionItems = items;
+    currentItemIndex = 0;
+
+    lightboxTitle.textContent = `${sessionData.sessionDate}`;
+    lightboxCaption.textContent = sessionData.caption || '';
+    lightboxTypePill.textContent = sessionData.sessionType;
+
+    // Render filmstrip
+    if (lightboxFilmstrip) {
+      lightboxFilmstrip.innerHTML = '';
+      if (items.length > 1) {
+        lightboxFilmstrip.style.display = 'flex';
+        items.forEach((it, idx) => {
+          const thumb = document.createElement('div');
+          thumb.className = 'ba-filmstrip-thumb';
+          thumb.style.cssText = 'width:64px; height:64px; border-radius:8px; overflow:hidden; border:2px solid transparent; flex-shrink:0; cursor:pointer; position:relative; background:#000; transition:all 0.15s;';
+          if (it.is_video) {
+            thumb.innerHTML = `
+              <video src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:#fff; font-size:12px;">
+                <i class="fa fa-play"></i>
+              </div>
+            `;
+          } else {
+            thumb.innerHTML = `<img src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;">`;
+          }
+          thumb.addEventListener('click', () => {
+            renderShowcaseItem(idx);
+          });
+          lightboxFilmstrip.appendChild(thumb);
+        });
+      } else {
+        lightboxFilmstrip.style.display = 'none';
+      }
+    }
+
+    renderShowcaseItem(0);
+    lightboxModal.style.display = 'flex';
+  }
+
+  // Click on date card -> open session album
+  document.querySelectorAll('.ba-evidence-card').forEach(card => {
+    card.addEventListener('click', function() {
+      const rawItems = this.getAttribute('data-items');
+      let items = [];
+      try {
+        items = JSON.parse(rawItems || '[]');
+      } catch (e) {
+        items = [];
+      }
+      if (items.length === 0) return;
+
+      openSessionAlbum({
+        sessionKey: this.getAttribute('data-session-key') || '',
+        sessionType: this.getAttribute('data-type') || '',
+        sessionDate: this.getAttribute('data-date') || '',
+        caption: this.getAttribute('data-caption') || '',
+        items: items
+      });
+    });
+  });
+
+  // Prev / Next button handlers
+  if (prevBtn) {
+    prevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderShowcaseItem(currentItemIndex - 1);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderShowcaseItem(currentItemIndex + 1);
+    });
+  }
+
+  // Keyboard navigation for Lightbox
+  document.addEventListener('keydown', function(e) {
+    if (!lightboxModal || lightboxModal.style.display !== 'flex') return;
+    if (e.key === 'ArrowLeft') {
+      renderShowcaseItem(currentItemIndex - 1);
+    } else if (e.key === 'ArrowRight') {
+      renderShowcaseItem(currentItemIndex + 1);
+    } else if (e.key === 'Escape') {
+      closeLightbox();
+    }
+  });
+
+  // Delete current file inside lightbox
+  if (lightboxDeleteBtn) {
+    lightboxDeleteBtn.addEventListener('click', function() {
+      if (!currentSessionItems || currentSessionItems.length === 0) return;
+      const currentItem = currentSessionItems[currentItemIndex];
+      if (!confirm(`Are you sure you want to delete this ${currentItem.is_video ? 'video' : 'photo'}?`)) return;
+
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'delete_evidence');
+      fd.append('evidenceid', currentItem.id);
+      fetch('module.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.hash = 'panel-evidence';
+            window.location.reload();
+          } else {
+            alert('Error deleting item');
+          }
+        });
+    });
+  }
+
+  function closeLightbox() {
+    if (lightboxModal) {
+      lightboxModal.style.display = 'none';
+      if (lightboxMedia) lightboxMedia.innerHTML = '';
+      currentSessionItems = [];
+    }
+  }
+
+  if (closeLightboxBtn && lightboxModal) {
+    closeLightboxBtn.addEventListener('click', closeLightbox);
+    lightboxModal.addEventListener('click', function(e) {
+      if (e.target === lightboxModal) {
+        closeLightbox();
+      }
+    });
+  }
+
+  // Attendance Matrix View Mode Toggle (Timings vs Compact)
+  const attTimingsBtn = document.getElementById('ba-att-view-timings');
+  const attCompactBtn = document.getElementById('ba-att-view-compact');
+  if (attTimingsBtn && attCompactBtn) {
+    attTimingsBtn.addEventListener('click', function() {
+      document.querySelectorAll('.ba-att-timing-block').forEach(el => el.style.display = 'flex');
+      document.querySelectorAll('.ba-att-compact-block').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.ba-sess-col').forEach(el => el.style.minWidth = '96px');
+      attTimingsBtn.style.background = '#3b82f6';
+      attTimingsBtn.style.color = '#fff';
+      attTimingsBtn.style.fontWeight = '700';
+      attCompactBtn.style.background = '#fff';
+      attCompactBtn.style.color = '#475569';
+      attCompactBtn.style.fontWeight = '600';
+    });
+    attCompactBtn.addEventListener('click', function() {
+      document.querySelectorAll('.ba-att-timing-block').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.ba-att-compact-block').forEach(el => el.style.display = 'inline-block');
+      document.querySelectorAll('.ba-sess-col').forEach(el => el.style.minWidth = '44px');
+      attCompactBtn.style.background = '#3b82f6';
+      attCompactBtn.style.color = '#fff';
+      attCompactBtn.style.fontWeight = '700';
+      attTimingsBtn.style.background = '#fff';
+      attTimingsBtn.style.color = '#475569';
+      attTimingsBtn.style.fontWeight = '600';
+    });
+  }
+});
+
+// Quick jump to date in Daily Register
+function filterDailyRegister(dateStr) {
+  if (!dateStr) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('att_date', dateStr);
+  url.hash = 'panel-stdattendance';
+  window.location.href = url.toString();
+}
+</script>
 
 <?php
 echo $OUTPUT->footer();

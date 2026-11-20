@@ -52,7 +52,65 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
         new pix_icon('i/report', '')
     );
     $node->showinflatnavigation = true;
+
+    $misnode = navigation_node::create(
+        'Program MIS (Marvell & ESSCI)',
+        new moodle_url('/local/batchanalytics/marvel_essci_mis.php'),
+        navigation_node::TYPE_CUSTOM,
+        null,
+        'local_batchanalytics_mis',
+        new pix_icon('i/dashboard', '')
+    );
+    $misnode->showinflatnavigation = true;
+    $node->add_node($misnode);
+
+    $datanode = navigation_node::create(
+        'ESSCI Data Page',
+        new moodle_url('/local/batchanalytics/marvel_essci_data.php'),
+        navigation_node::TYPE_CUSTOM,
+        null,
+        'local_batchanalytics_essci_data',
+        new pix_icon('i/settings', '')
+    );
+    $datanode->showinflatnavigation = true;
+    $node->add_node($datanode);
+
     $navigation->add_node($node);
 }
+
+/**
+ * Serve files from the local_batchanalytics file areas.
+ *
+ * @param stdClass $course course settings object
+ * @param stdClass $cm_or_context_module
+ * @param context $context context object
+ * @param string $filearea file area
+ * @param array $args extra arguments
+ * @param bool $forcedownload whether or not force download
+ * @param array $options additional options affecting the file serving
+ * @return bool false if the file not found, just send the file otherwise and do not return
+ */
+function local_batchanalytics_pluginfile($course, $cm_or_context_module, $context, $filearea, $args, $forcedownload, array $options = []) {
+    if (!isloggedin() || isguestuser()) {
+        return false;
+    }
+
+    if ($filearea !== 'class_evidence') {
+        return false;
+    }
+
+    $itemid = (int)array_shift($args);
+    $filename = array_pop($args);
+    $filepath = $args ? '/' . implode('/', $args) . '/' : '/';
+
+    $fs = get_file_storage();
+    $file = $fs->get_file($context->id, 'local_batchanalytics', $filearea, $itemid, $filepath, $filename);
+    if (!$file) {
+        return false;
+    }
+
+    send_stored_file($file, 0, 0, $forcedownload, $options);
+}
+
 
 

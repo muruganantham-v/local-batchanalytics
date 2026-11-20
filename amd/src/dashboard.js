@@ -161,7 +161,11 @@ function initNewBatchAnalytics() {
    * Determine available batches under Section 1 and Section 2 filters
    */
   function getFilteredUniverse() {
-    if (!rawData || !rawData.batches) return [];
+    if (!rawData) return [];
+    if (rawData.isSponsor && Array.isArray(rawData.sponsorBatches)) {
+      return rawData.sponsorBatches;
+    }
+    if (!rawData.batches) return [];
 
     let effectiveMode = "";
     if (currentStatFilter === "offline" || currentStatFilter === "online") {
@@ -262,6 +266,10 @@ function initNewBatchAnalytics() {
   function updateTableTitle() {
     const titleEl = document.getElementById("ba-table-title-text");
     if (!titleEl) return;
+    if (rawData && rawData.isSponsor) {
+      titleEl.textContent = "Cohorts";
+      return;
+    }
     if (currentSubTab === "completed") {
       titleEl.textContent = "Completed Batches";
     } else if (currentSubTab === "my_completed") {
@@ -630,7 +638,22 @@ function initNewBatchAnalytics() {
   }
 
   function getTableFilteredBatches() {
-    if (!rawData || !rawData.batches) return [];
+    if (!rawData) return [];
+    if (rawData.isSponsor && Array.isArray(rawData.sponsorBatches)) {
+      const searchInput = document.getElementById("ba-new-search-input");
+      const searchTerm = (searchInput?.value || "").toLowerCase().trim();
+      if (!searchTerm) {
+        return rawData.sponsorBatches;
+      }
+      return rawData.sponsorBatches.filter((b) => {
+        const code = (b.sponsor_batch_code || b.batchId || "").toLowerCase();
+        const crs = (b.course || b.courseName || "").toLowerCase();
+        const site = (b.site || "").toLowerCase();
+        return code.includes(searchTerm) || crs.includes(searchTerm) || site.includes(searchTerm);
+      });
+    }
+
+    if (!rawData.batches) return [];
 
     const searchTerm = (document.getElementById("ba-new-search-input")?.value || "").toLowerCase().trim();
     const yearVal = document.getElementById("ba-filter-year")?.value || "";
@@ -840,8 +863,63 @@ function initNewBatchAnalytics() {
       return;
     }
 
+    const isSponsor = rawData && Boolean(rawData.isSponsor);
+    if (isSponsor && Array.isArray(rawData.sponsorBatches) && rawData.sponsorBatches.length > 0) {
+      items = rawData.sponsorBatches;
+    }
+
     tbody.innerHTML = items
       .map((b) => {
+        let batchUrl = "";
+        const secId = b.sectionid || b.sectionId || b.id || 0;
+        const modeParam = b.mode ? `&mode=${encodeURIComponent(b.mode)}` : "";
+        if (secId > 0) {
+          batchUrl = `batch.php?id=${encodeURIComponent(secId)}${modeParam}`;
+        } else {
+          batchUrl = `batch.php${modeParam ? '?' + modeParam.substring(1) : ''}`;
+        }
+
+        if (isSponsor) {
+          const siteName = b.site || "Bangalore";
+          const siteClass = siteName.toLowerCase().indexOf("hyderabad") !== -1 ? "hyderabad" : "bangalore";
+          const siteDotColor = siteClass === "hyderabad" ? "#8b5cf6" : "#0284c7";
+          const rawSectionCode = b.section_name || b.sponsor_batch_code || b.batchId || String(b.batchid || b.id || "");
+          const batchCode = rawSectionCode.replace(/^MVL/i, "");
+          const enrolled = b.enrolled || b.studentCount || 12;
+          const statusText = b.status_label || "On schedule";
+          const courseTitle = b.course || b.courseName || "Embedded Systems";
+          const startVal = b.startdate || b.startDate || "18 Jul 2026";
+          const currentMod = b.current_module || b.currentModule || "Advanced C";
+
+          return `
+            <tr>
+              <td class="td-batch-id">
+                <a href="${batchUrl}" class="ba-batch-link" title="View Cohort Overview">
+                  <b>${escapeHtml(batchCode)}</b>
+                </a>
+              </td>
+              <td class="td-course-name">
+                <span class="ba-course-title">${escapeHtml(courseTitle)}</span>
+              </td>
+              <td>
+                <span class="ba-pill-site" style="display:inline-flex; align-items:center; gap:6px; font-weight:600; font-size:12.5px;">
+                  <span style="width:7px; height:7px; border-radius:50%; background:${siteDotColor};"></span>
+                  ${escapeHtml(siteName)}
+                </span>
+              </td>
+              <td class="td-date">${escapeHtml(startVal)}</td>
+              <td class="td-module">${escapeHtml(currentMod)}</td>
+              <td style="text-align:center; font-weight:700;">${escapeHtml(String(enrolled))}</td>
+              <td>
+                <span class="ba-status-pill status-ok"><span class="ba-dot dot-green"></span> ${escapeHtml(statusText)}</span>
+              </td>
+              <td style="text-align:right;">
+                <a href="${batchUrl}" class="ba-btn-view-outline">View Batch</a>
+              </td>
+            </tr>
+          `;
+        }
+
         const modeLower = (b.mode || "").toLowerCase();
         const modeBadgeClass = modeLower === "online" ? "online" : (modeLower === "offline" ? "offline" : "hybrid");
 
@@ -866,15 +944,6 @@ function initNewBatchAnalytics() {
         } else {
           const daysText = delta > 0 ? ` (+${delta}d)` : ` (0d)`;
           statusHtml = `<span class="ba-status-pill status-ok"><span class="ba-dot dot-green"></span> On schedule${daysText}</span>`;
-        }
-
-        let batchUrl = "";
-        const secId = b.sectionId && b.sectionId > 0 ? b.sectionId : (b.id && b.id > 0 ? b.id : 0);
-        const modeParam = b.mode ? `&mode=${encodeURIComponent(b.mode)}` : "";
-        if (secId > 0) {
-          batchUrl = `batch.php?id=${encodeURIComponent(secId)}${modeParam}`;
-        } else {
-          batchUrl = `batch.php${modeParam ? '?' + modeParam.substring(1) : ''}`;
         }
 
         let moduleUrl = "";
@@ -1100,13 +1169,37 @@ function initNewBatchAnalytics() {
     if (!exportBtn) return;
 
     exportBtn.addEventListener("click", () => {
-      if (!rawData || !rawData.batches) {
+      if (!rawData || (!rawData.batches && !rawData.sponsorBatches)) {
         alert("Batch data is not available yet. Please wait.");
         return;
       }
       const batches = getTableFilteredBatches();
       if (!batches || batches.length === 0) {
         alert("No batches found to export for the current tab and filter criteria.");
+        return;
+      }
+
+      if (rawData.isSponsor) {
+        const headers = ["Class Section", "Course", "Site", "Start Date", "Current Module", "Enrolled", "Status"];
+        const rows = batches.map((b) => [
+          (b.section_name || b.sponsor_batch_code || b.batchId || "").replace(/^MVL/i, ""),
+          b.course || b.courseName || "Embedded Systems",
+          b.site || "Bangalore",
+          b.startdate || b.startDate || "",
+          b.current_module || b.currentModule || "",
+          b.enrolled || b.studentCount || 0,
+          b.status_label || "On schedule"
+        ]);
+        const csvLines = [headers.map((h) => `"${String(h).replace(/"/g, '""')}"`).join(","), ...rows.map((r) => r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))];
+        const blob = new Blob(["\ufeff" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const dateStr = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `sponsor_program_mis_cohorts_${dateStr}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 150);
         return;
       }
 

@@ -493,6 +493,11 @@ class util {
             return true;
         }
 
+        // Program sponsors and MIS viewers have portfolio-wide view access to all batches/cohorts.
+        if (\local_batchanalytics\program_service::is_sponsor_view($context, $userid)) {
+            return true;
+        }
+
         return has_capability('local/batchanalytics:viewallcourses', $context, $userid);
     }
 
@@ -1673,7 +1678,7 @@ class util {
               AND gg.finalgrade IS NOT NULL
             GROUP BY gi.id, gi.grademax, gi.grademin
         ";
-        $rec = $DB->get_record_sql($sql, $params);
+        $rec = $DB->get_record_sql($sql, $params, IGNORE_MULTIPLE);
         if ($rec && ($rec->grademax - $rec->grademin) > 0) {
             $pct = (($rec->avg_grade - $rec->grademin) / ($rec->grademax - $rec->grademin)) * 100;
             return round(max(0, min(100, $pct)), 1);

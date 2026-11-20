@@ -63,6 +63,12 @@ if ($hassiteconfig) {
         new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_roles'])
     ));
 
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_sponsor_link',
+        get_string('settings_sponsor_config', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_sponsor'])
+    ));
+
     // =========================================================================
     // Page 1: Zoho Credential Config (Dedicated Form Page)
     // Includes: Zoho Configuration, Zoho Cliq Notifications configuration
@@ -316,4 +322,48 @@ if ($hassiteconfig) {
         $role_choices
     ));
     $ADMIN->add('local_batchanalytics', $page_roles);
+
+    // =========================================================================
+    // Page 7: Sponsor Portal & Program MIS (Dedicated Form Page)
+    // =========================================================================
+    $page_sponsor = new admin_settingpage(
+        'local_batchanalytics_sponsor',
+        get_string('settings_sponsor_config', 'local_batchanalytics'),
+        'moodle/site:config',
+        true
+    );
+    $page_sponsor->add(new admin_setting_heading(
+        'local_batchanalytics/sponsor_configuration',
+        get_string('sponsor_configuration', 'local_batchanalytics'),
+        get_string('sponsor_configuration_desc', 'local_batchanalytics')
+    ));
+    $page_sponsor->add(new admin_setting_configtext(
+        'local_batchanalytics/target_hours',
+        get_string('target_hours', 'local_batchanalytics'),
+        get_string('target_hours_desc', 'local_batchanalytics'),
+        '570',
+        PARAM_INT
+    ));
+
+    $quiz_choices = [0 => get_string('none')];
+    if ($DB->get_manager()->table_exists('quiz')) {
+        $quizzes = $DB->get_records_sql(
+            "SELECT q.id, q.name, c.fullname as coursename 
+             FROM {quiz} q 
+             JOIN {course} c ON c.id = q.course 
+             ORDER BY c.fullname ASC, q.name ASC"
+        );
+        foreach ($quizzes as $q) {
+            $quiz_choices[(int)$q->id] = $q->coursename . ' → ' . $q->name;
+        }
+    }
+
+    $page_sponsor->add(new admin_setting_configselect(
+        'local_batchanalytics/pet_quiz_id',
+        get_string('pet_quiz_activity', 'local_batchanalytics'),
+        get_string('pet_quiz_activity_desc', 'local_batchanalytics'),
+        0,
+        $quiz_choices
+    ));
+    $ADMIN->add('local_batchanalytics', $page_sponsor);
 }

@@ -22,6 +22,68 @@ body#page-local-batchanalytics-module #page-header h1,
   display: none !important;
 }
 
+/* ==================== FULL WIDTH CONTAINER OVERRIDES ==================== */
+.pagelayout-standard #page.drawers .main-inner,
+body.limitedwidth #page.drawers .main-inner,
+body.pagelayout-standard #page.drawers .main-inner,
+body.path-local-batchanalytics #page.drawers .main-inner,
+body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
+body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
+body.path-local-batchanalytics #topofscroll.main-inner,
+body.path-local-batchanalytics .main-inner,
+#page.drawers .main-inner,
+#topofscroll.main-inner,
+.main-inner,
+body#page-local-batchanalytics-index #page.drawers .main-inner,
+body#page-local-batchanalytics-batch #page.drawers .main-inner,
+body#page-local-batchanalytics-module #page.drawers .main-inner,
+body#page-local-batchanalytics-marvel_essci_mis #page.drawers .main-inner,
+body#page-local-batchanalytics-marvel_essci_data #page.drawers .main-inner {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+body.path-local-batchanalytics #page-content,
+body.path-local-batchanalytics #region-main-box,
+body.path-local-batchanalytics #region-main,
+body.path-local-batchanalytics .local-batchanalytics-wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+@media (min-width: 768px) {
+  .pagelayout-standard #page.drawers .main-inner,
+  body.limitedwidth #page.drawers .main-inner,
+  body.pagelayout-standard #page.drawers .main-inner,
+  body.path-local-batchanalytics #page.drawers .main-inner,
+  body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
+  body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
+  body.path-local-batchanalytics #topofscroll.main-inner,
+  body.path-local-batchanalytics .main-inner,
+  #page.drawers .main-inner,
+  #topofscroll.main-inner,
+  .main-inner,
+  body#page-local-batchanalytics-index #page.drawers .main-inner,
+  body#page-local-batchanalytics-batch #page.drawers .main-inner,
+  body#page-local-batchanalytics-module #page.drawers .main-inner,
+  body#page-local-batchanalytics-marvel_essci_mis #page.drawers .main-inner,
+  body#page-local-batchanalytics-marvel_essci_data #page.drawers .main-inner {
+    max-width: 100% !important;
+    width: 100% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
 /* ==================== ROOT CONTAINER & TYPOGRAPHY ==================== */
 .ba-new-dashboard {
   display: flex;
@@ -5029,4 +5091,532 @@ body#page-local-batchanalytics-module #page-header h1,
   line-height: 1.55 !important;
   word-break: break-word !important;
 }
+
+/* ==================== SPONSOR PROGRAM MIS & STUDENT PROFILE STYLES ==================== */
+.ba-program-header-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.ba-program-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.ba-prog-detail-item label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.ba-prog-detail-item .val {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.ba-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #a7f3d0;
+}
+
+.ba-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
+.ba-sponsor-footer-banner {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-top: 30px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* ==================== SUMMARY STRIPS (BATCH PAGE) ==================== */
+.ba-summary-strip {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.ba-strip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.ba-strip-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ba-strip-headline {
+  font-size: 16px;
+  font-weight: 800;
+  color: #059669;
+}
+
+.ba-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.ba-strip-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.ba-strip-card .num {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.ba-strip-card .lbl {
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+/* ==================== STUDENT 360 PROFILE PAGE ==================== */
+.ba-student-header-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.ba-student-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ba-student-avatar-lg {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.25);
+}
+
+.ba-student-name {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.ba-student-subrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.ba-sid-tag {
+  font-weight: 600;
+  color: #475569;
+}
+
+.ba-student-badges-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ba-badge-pet {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.ba-badge-spot {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.ba-badge-rating-neutral {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.ba-student-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.ba-student-kpi-summary {
+  text-align: right;
+}
+
+.ba-kpi-att-num {
+  font-size: 32px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1;
+}
+
+.ba-kpi-att-lbl {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.ba-kpi-att-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.ba-btn-download-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #0284c7;
+  color: #ffffff !important;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-decoration: none !important;
+  transition: all 0.2s;
+}
+
+.ba-btn-download-profile:hover {
+  background: #0369a1;
+}
+
+/* ==================== CARD GRIDS & DATA FIELDS ==================== */
+.ba-academic-block, .ba-card-block {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.ba-card-grid-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ba-badge-crm-pull {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ba-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.ba-info-grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ba-info-cell label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.ba-info-cell .val {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ba-val-highlight {
+  font-size: 20px !important;
+  color: #059669 !important;
+}
+
+.ba-ews-card {
+  background: #fdf2f8;
+  border: 1px solid #fbcfe8;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ba-ews-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #be185d;
+}
+
+.ba-ews-sub {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #831843;
+  margin: 2px 0;
+}
+
+.ba-ews-hint {
+  font-size: 11.5px;
+  color: #9d174d;
+}
+
+.ba-btn-view-doc {
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ba-private-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #92400e;
+  font-size: 12.5px;
+  margin-bottom: 20px;
+}
+
+.ba-counseling-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.ba-counseling-box textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.ba-counseling-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.ba-posting-as {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.ba-btn-add-note {
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ba-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ba-note-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #8b5cf6;
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
+.ba-note-meta {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.ba-note-body {
+  font-size: 13px;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+/* ==================== PLACEMENT STYLES ==================== */
+.ba-placement-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.ba-placement-status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.pill-placed {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.pill-selected {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.pill-not-selected {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.pill-in-process {
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
+}
+
+.ba-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ba-matrix-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: center;
+}
+
+.ba-matrix-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  text-align: center;
+}
+
+.ba-matrix-table td.metric-name {
+  text-align: left;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ba-table-scroll-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 

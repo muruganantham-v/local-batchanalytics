@@ -102,4 +102,37 @@ $capabilities = array(
             'manager' => CAP_ALLOW,
         ),
     ),
+    'local/batchanalytics:viewsponsorportal' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:viewcounselingnotes' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:manageevidence' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+        ),
+    ),
+    'local/batchanalytics:managelessonplan' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+        ),
+    ),
 );
