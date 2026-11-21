@@ -290,7 +290,7 @@ echo $OUTPUT->header();
               <th style="width:10%; text-align:center;">Include</th>
               <th style="width:20%;">Batch Name / Code</th>
               <th style="width:35%;">Course Name</th>
-              <th style="width:15%;">Batch Type</th>
+              <th style="width:15%;">Course Badge</th>
               <th style="width:20%;">Start Date</th>
             </tr>
           </thead>
@@ -306,7 +306,7 @@ echo $OUTPUT->header();
                 </td>
                 <td><strong style="color:#0f172a;"><?= s($bitem->name) ?></strong> (ID: <?= (int)$bitem->id ?>)</td>
                 <td><?= s($bitem->coursename ?: '—') ?></td>
-                <td><span class="pill" style="background:#f1f5f9; color:#475569;"><?= s(strtoupper($bitem->batchtype ?: 'REGULAR')) ?></span></td>
+                <td><span class="pill" style="background:#f1f5f9; color:#475569;"><?= s(strtoupper(trim($bitem->coursename ?: 'ECEP'))) ?></span></td>
                 <td><?= s($b_start_str) ?></td>
               </tr>
             <?php endforeach; ?>

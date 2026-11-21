@@ -99,14 +99,12 @@ function marvel_essci_get_cohort_batches(): array {
                 }
             }
 
-            // Batches to fetch: ESSCI designated batches, Marvell/ESSCI courses, and active training batch 4
+            // Batches to fetch: ESSCI designated batches by coursename or Marvell course/name
             $where_clauses = [
-                "LOWER(b.batchtype) = 'essci'",
-                "LOWER(b.batchtype) LIKE '%essci%'",
+                "LOWER(b.coursename) = 'essci'",
+                "LOWER(b.coursename) LIKE '%essci%'",
                 "b.name LIKE 'MVL%'",
-                "b.coursename LIKE '%Marvell%'",
-                "b.coursename LIKE '%ESSCI%'",
-                "b.id = 4"
+                "b.coursename LIKE '%Marvell%'"
             ];
             if (!empty($explicit_ids)) {
                 $where_clauses[] = "b.id IN (" . implode(',', $explicit_ids) . ")";

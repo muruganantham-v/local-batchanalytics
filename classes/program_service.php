@@ -268,7 +268,7 @@ class program_service {
 
     /**
      * Get mapped cohorts for a program.
-     * Sourced dynamically from Batch Management (local_bm_batch) where batchtype is 'essci'.
+     * Sourced dynamically from Batch Management (local_bm_batch) where coursename is 'essci'.
      *
      * @param int $programid
      * @return array
@@ -378,11 +378,11 @@ class program_service {
             }
         }
 
-        // 2. Query Batch Management (local_bm_batch) for batches where batchtype is 'essci'
+        // 2. Query Batch Management (local_bm_batch) for batches where coursename is 'essci'
         if ($DB->get_manager()->table_exists('local_bm_batch')) {
             $bm_batches = $DB->get_records_sql(
                 "SELECT * FROM {local_bm_batch} 
-                 WHERE LOWER(batchtype) = 'essci' OR LOWER(batchtype) LIKE '%essci%' 
+                 WHERE LOWER(coursename) = 'essci' OR LOWER(coursename) LIKE '%essci%' 
                  ORDER BY id ASC"
             );
 

@@ -635,9 +635,7 @@ $is_sponsor_view = \local_batchanalytics\program_service::is_sponsor_view($conte
 
 // Check if this batch is an ESSCI / sponsored batch
 $is_essci_batch = false;
-if (!empty($batch) && !empty($batch->batchtype) && stripos($batch->batchtype, 'essci') !== false) {
-    $is_essci_batch = true;
-} else if (!empty($batch) && !empty($batch->coursename) && (stripos($batch->coursename, 'essci') !== false || stripos($batch->coursename, 'marvell') !== false)) {
+if (!empty($batch) && !empty($batch->coursename) && (stripos($batch->coursename, 'essci') !== false || stripos($batch->coursename, 'marvell') !== false)) {
     $is_essci_batch = true;
 } else if (!empty($section) && $DB->get_manager()->table_exists('local_batchanalytics_prog_batch')) {
     $sec_chk_id = (int)$section->id;
