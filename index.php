@@ -491,7 +491,7 @@ if ($action === 'getnewbatchdata') {
             foreach ($sections as $sec) {
                 $parent = !empty($sec->batchid) && isset($batches[$sec->batchid]) ? $batches[$sec->batchid] : null;
                 $sec_name = \local_batchanalytics\util::clean_section_name($sec->name ?: ($parent ? $parent->name : 'Section ' . $sec->id));
-                $coursename = ($parent && !empty($parent->coursename)) ? $parent->coursename : 'Embedded Systems & IoT';
+                $coursename = ($parent && !empty($parent->coursename)) ? $parent->coursename : 'ECEP';
                 $raw_mode = ($parent && !empty($parent->deliverymode)) ? $parent->deliverymode : 'Offline';
                 $normalizedmode = $raw_mode !== '' ? ucfirst(strtolower(trim($raw_mode))) : 'Offline';
                 $is_online = \local_batchanalytics\util::is_online_mode($normalizedmode);
