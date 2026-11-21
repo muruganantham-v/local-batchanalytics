@@ -43,7 +43,7 @@ if ($layout === 'embedded' || $layout === 'bare') {
     $PAGE->set_pagelayout($layout);
 }
 
-$PAGE->requires->css(new moodle_url('/local/batchanalytics/marvel_essci_mis.css', ['v' => '3.4.0']));
+$PAGE->requires->css(new moodle_url('/local/batchanalytics/marvel_essci_mis.css', ['v' => '3.3.0']));
 
 $emertxe_logo_url = (new moodle_url('/local/batchanalytics/pix/emertxe_logo.png'))->out(false);
 $essci_logo_url   = (new moodle_url('/local/batchanalytics/pix/essci_logo.png'))->out(false);
