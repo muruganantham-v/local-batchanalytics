@@ -36,9 +36,11 @@
   width: 100% !important;
   margin: 10px auto;
   padding: 20px 24px;
-  background: #fff;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
   border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  box-shadow: none !important;
   font-family:
     system-ui,
     -apple-system,

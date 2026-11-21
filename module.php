@@ -1368,41 +1368,26 @@ echo $OUTPUT->header();
 
 ?>
 <style>
-/* Full width and transparent container override across themes */
-@media (min-width: 768px) {
-  .pagelayout-standard #page.drawers .main-inner,
-  body.limitedwidth #page.drawers .main-inner,
-  body.path-local-batchanalytics #page.drawers .main-inner,
-  body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
-  body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
-  body.path-local-batchanalytics #topofscroll.main-inner,
-  body.path-local-batchanalytics .main-inner,
-  #page.drawers .main-inner,
-  #topofscroll.main-inner,
-  .main-inner {
-    max-width: 100% !important;
-    width: 100% !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
+/* Full width and unified white container override across themes */
+body.path-local-batchanalytics,
+body#page-local-batchanalytics-module {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
 }
+#page,
 #page.drawers .main-inner,
 #topofscroll.main-inner,
-.main-inner {
-  max-width: 100% !important;
-  width: 100% !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-}
+.main-inner,
 #page-content,
 #region-main-box,
 #region-main,
 .local-batchanalytics-wrap {
   max-width: 100% !important;
   width: 100% !important;
-  background: transparent !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
   box-shadow: none !important;
   border: none !important;
   padding: 0 !important;

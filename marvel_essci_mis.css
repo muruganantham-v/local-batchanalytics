@@ -15,7 +15,9 @@
   #page-local-batchanalytics-marvel_essci_data #page,
   #page-local-batchanalytics-index #page,
   .path-local-batchanalytics #page {
-    background: transparent !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
   }
   #page-local-batchanalytics-marvel_essci_mis #page-header,
   #page-local-batchanalytics-marvel_essci_data #page-header,
@@ -39,7 +41,9 @@
   #page-local-batchanalytics-marvel_essci_mis .main-inner,
   #page-local-batchanalytics-marvel_essci_data .main-inner,
   #page-local-batchanalytics-index .main-inner {
-    background: transparent !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
@@ -67,7 +71,9 @@
     #page-local-batchanalytics-index .main-inner {
       max-width: 100% !important;
       width: 100% !important;
-      background: transparent !important;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      background-image: none !important;
       box-shadow: none !important;
       border: none !important;
     }
@@ -81,10 +87,15 @@
     margin: 0 auto !important;
     width: 100% !important;
     padding: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
   }
 
   body#page-local-batchanalytics-marvel_essci_mis, body#page-local-batchanalytics-marvel_essci_data, body.path-local-batchanalytics{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink);
-    background: #f8fafc !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
     min-height:100vh; padding-bottom:60px; }
 
   /* shared shell */
@@ -102,8 +113,8 @@
   .crumb{ font-size:12.5px; color:var(--mute); }
   .crumb b{ color:#3a3f44; }
 
-  .wrap{ max-width:100% !important; width:100% !important; margin:14px auto 36px !important; padding:0 24px !important; }
-  .shell{ background:transparent !important; border:none !important; box-shadow:none !important; border-radius:0 !important; padding:10px 0 36px !important; max-width:100% !important; width:100% !important; box-sizing:border-box; }
+  .wrap{ max-width:100% !important; width:100% !important; margin:14px auto 36px !important; padding:0 24px !important; background:#ffffff !important; }
+  .shell{ background:#ffffff !important; border:none !important; box-shadow:none !important; border-radius:0 !important; padding:10px 0 36px !important; max-width:100% !important; width:100% !important; box-sizing:border-box; }
   h1{ font-size:26px; font-weight:800; letter-spacing:-.2px; }
   h1 .accent{ color:var(--brand); }
   .sub{ font-size:13.5px; color:var(--mute); margin:4px 0 22px; }
@@ -211,7 +222,7 @@
 .ptitle{ flex:1 1 auto; min-width:0; }
 .phdr h1.pink{ color:#be185d; font-size:26px; font-weight:800; letter-spacing:-.3px; margin:0 0 6px; }
 .slogan{ font-size:14px; font-weight:600; color:#6b21a8; margin-top:4px; font-style:normal; }
-.phdr .meta{ display:flex; gap:26px; flex-wrap:wrap; margin-top:18px; border:1px solid #e2e8f0; border-radius:12px; padding:15px 22px; background:#f8fafc; }
+.phdr .meta{ display:flex; gap:26px; flex-wrap:wrap; margin-top:18px; border:1px solid #e2e8f0; border-radius:12px; padding:15px 22px; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,.02); }
 .phdr .meta .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; color:#64748b; font-weight:700; margin-bottom:2px; }
 .phdr .meta .v{ font-size:13.5px; font-weight:700; color:#0f172a; margin-top:1px; }
 .phdr .meta .v-select{ font-family:inherit; font-size:13px; font-weight:700; color:#0f172a; margin-top:1px; background-color:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:4px 28px 4px 10px; cursor:pointer; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat:no-repeat; background-position:right 8px center; background-size:12px; transition:border-color .15s ease, box-shadow .15s ease; }
@@ -224,7 +235,7 @@
 
 /* Modern Mobilization Metrics Cards */
 .metrics-grid{ display:grid; grid-template-columns:repeat(5, 1fr); gap:14px; margin-top:12px; margin-bottom:6px; }
-.metric-card{ background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px 14px; text-align:center; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.metric-card{ background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px 14px; text-align:center; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; box-shadow:0 1px 3px rgba(0,0,0,.02); }
 .metric-card:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(15,23,42,.06); border-color:#cbd5e1; }
 .metric-card .m-label{ font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; line-height:1.35; }
 .metric-card .m-val{ font-size:28px; font-weight:800; color:#0f172a; letter-spacing:-.5px; font-variant-numeric:tabular-nums; }

@@ -355,41 +355,26 @@ if ($interview_selects === false || $interview_selects === '') {
 echo $OUTPUT->header();
 ?>
 <style>
-/* Full width and transparent container override across themes */
-@media (min-width: 768px) {
-  .pagelayout-standard #page.drawers .main-inner,
-  body.limitedwidth #page.drawers .main-inner,
-  body.path-local-batchanalytics #page.drawers .main-inner,
-  body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
-  body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
-  body.path-local-batchanalytics #topofscroll.main-inner,
-  body.path-local-batchanalytics .main-inner,
-  #page.drawers .main-inner,
-  #topofscroll.main-inner,
-  .main-inner {
-    max-width: 100% !important;
-    width: 100% !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
+/* Full width and unified white container override across themes */
+body.path-local-batchanalytics,
+body#page-local-batchanalytics-marvel_essci_mis {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
 }
+#page,
 #page.drawers .main-inner,
 #topofscroll.main-inner,
-.main-inner {
-  max-width: 100% !important;
-  width: 100% !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-}
+.main-inner,
 #page-content,
 #region-main-box,
 #region-main,
 .local-batchanalytics-wrap {
   max-width: 100% !important;
   width: 100% !important;
-  background: transparent !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
   box-shadow: none !important;
   border: none !important;
   padding: 0 !important;
@@ -400,6 +385,7 @@ echo $OUTPUT->header();
   width: 100% !important;
   padding-left: 20px !important;
   padding-right: 20px !important;
+  background: #ffffff !important;
 }
 </style>
 
@@ -426,6 +412,7 @@ echo $OUTPUT->header();
       width: 100% !important;
       padding-left: 24px !important;
       padding-right: 24px !important;
+      background: #ffffff !important;
     }
   }
   .wrap {
@@ -433,9 +420,10 @@ echo $OUTPUT->header();
     width: 100% !important;
     padding: 0 24px !important;
     margin: 10px auto 36px !important;
+    background: #ffffff !important;
   }
   .shell {
-    background: transparent !important;
+    background: #ffffff !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
