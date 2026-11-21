@@ -22,40 +22,6 @@ body#page-local-batchanalytics-module #page-header h1,
   display: none !important;
 }
 
-/* ==================== UNIFIED WHITE BACKGROUND ACROSS ALL VIEWS ==================== */
-body.path-local-batchanalytics,
-body#page-local-batchanalytics-index,
-body#page-local-batchanalytics-batch,
-body#page-local-batchanalytics-module,
-body#page-local-batchanalytics-marvel_essci_mis,
-body#page-local-batchanalytics-marvel_essci_data,
-body#page-local-batchanalytics-student {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  background-image: none !important;
-}
-
-.path-local-batchanalytics #page,
-#page-local-batchanalytics-index #page,
-#page-local-batchanalytics-batch #page,
-#page-local-batchanalytics-module #page,
-#page-local-batchanalytics-marvel_essci_mis #page,
-#page-local-batchanalytics-marvel_essci_data #page,
-#page-local-batchanalytics-student #page,
-body.path-local-batchanalytics #page.drawers .main-inner,
-body.path-local-batchanalytics #topofscroll.main-inner,
-body.path-local-batchanalytics .main-inner,
-body.path-local-batchanalytics #page-content,
-body.path-local-batchanalytics #region-main-box,
-body.path-local-batchanalytics #region-main,
-body.path-local-batchanalytics .local-batchanalytics-wrap {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
 /* ==================== FULL WIDTH CONTAINER OVERRIDES ==================== */
 .pagelayout-standard #page.drawers .main-inner,
 body.limitedwidth #page.drawers .main-inner,
@@ -75,9 +41,7 @@ body#page-local-batchanalytics-marvel_essci_mis #page.drawers .main-inner,
 body#page-local-batchanalytics-marvel_essci_data #page.drawers .main-inner {
   max-width: 100% !important;
   width: 100% !important;
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  background-image: none !important;
+  background: transparent !important;
   box-shadow: none !important;
   border: none !important;
 }
@@ -88,9 +52,7 @@ body.path-local-batchanalytics #region-main,
 body.path-local-batchanalytics .local-batchanalytics-wrap {
   max-width: 100% !important;
   width: 100% !important;
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  background-image: none !important;
+  background: transparent !important;
   box-shadow: none !important;
   border: none !important;
   padding: 0 !important;
@@ -116,9 +78,7 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   body#page-local-batchanalytics-marvel_essci_data #page.drawers .main-inner {
     max-width: 100% !important;
     width: 100% !important;
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    background-image: none !important;
+    background: transparent !important;
     box-shadow: none !important;
     border: none !important;
   }
