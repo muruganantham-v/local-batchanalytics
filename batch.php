@@ -283,7 +283,9 @@ if ($action === 'get_note_history') {
 $id = optional_param('id', optional_param('sectionid', 0, PARAM_INT), PARAM_INT);
 $param_batchid = optional_param('batchid', 0, PARAM_INT);
 
-$is_sponsor = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
+$is_sponsor_view = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
+$is_sponsor_user = \local_batchanalytics\program_service::is_sponsor_user((int)$USER->id);
+$is_sponsor = $is_sponsor_view;
 $is_manager = $is_sponsor || \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
 
 // -------------------------------------------------------------------------
@@ -342,6 +344,21 @@ if ($section) {
     $id = (int)$section->id;
 }
 
+if ($section && $has_bm_batch && !empty($section->batchid)) {
+    $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
+}
+
+// Check if this batch is an ESSCI / Marvell sponsored cohort
+$is_essci_batch = false;
+if (!empty($batch) && !empty($batch->coursename) && (stripos($batch->coursename, 'essci') !== false || stripos($batch->coursename, 'marvell') !== false)) {
+    $is_essci_batch = true;
+} else if (!empty($section) && !empty($section->coursename) && (stripos($section->coursename, 'essci') !== false || stripos($section->coursename, 'marvell') !== false)) {
+    $is_essci_batch = true;
+}
+
+$is_sponsor = $is_sponsor_view || $is_essci_batch;
+$is_manager = $is_sponsor || \local_batchanalytics\util::can_view_all_batches($context, $USER->id);
+
 if (!$is_manager && !$is_sponsor) {
     if (!$section) {
         redirect(
@@ -360,10 +377,6 @@ if (!$is_manager && !$is_sponsor) {
             \core\output\notification::NOTIFY_ERROR
         );
     }
-}
-
-if ($section && $has_bm_batch && !empty($section->batchid)) {
-    $batch = $DB->get_record('local_bm_batch', ['id' => $section->batchid]);
 }
 
 $batch_id = $section ? (int)$section->id : ($id > 0 ? (int)$id : 1);
@@ -776,15 +789,17 @@ if ($can_manage_all_notes) {
 }
 
 // Helper formatting functions
-function format_delay_chip($d, $mod_name = '', $mod_days = 0) {
-    if ($d === 'prog') {
-        return '<span class="st st-a">In progress</span>';
+if (!function_exists('format_delay_chip')) {
+    function format_delay_chip($d, $mod_name = '', $mod_days = 0) {
+        if ($d === 'prog') {
+            return '<span class="st st-a">In progress</span>';
+        }
+        if ($d === null) {
+            return '<span class="muted">—</span>';
+        }
+        $ms = \local_batchanalytics\util::get_module_status($d, $mod_name, $mod_days);
+        return '<span class="st st-' . s($ms['chip_class']) . '">' . s($ms['label']) . '</span>';
     }
-    if ($d === null) {
-        return '<span class="muted">—</span>';
-    }
-    $ms = \local_batchanalytics\util::get_module_status($d, $mod_name, $mod_days);
-    return '<span class="st st-' . s($ms['chip_class']) . '">' . s($ms['label']) . '</span>';
 }
 
 if (!function_exists('format_cell_muted')) {
@@ -827,27 +842,20 @@ $dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' 
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/batch', 'init');
 
-$is_sponsor = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
+$is_sponsor = $is_sponsor_view || $is_essci_batch;
 $hours_coverage = \local_batchanalytics\lesson_plan_service::get_hours_and_coverage($batch_id);
 $pet_summary = \local_batchanalytics\pet_service::get_batch_pet_summary($batch_id);
 
 $site_name = !empty($section->classlocation) ? $section->classlocation : 'Bangalore';
 
-if (empty($ss_activities) && $is_sponsor) {
-    // Fallback prototype milestone structure only if section has no softskills data configured
-    $ss_activities = [
-        ['activity' => 'Program Kick-Off', 'p_date' => '04 Aug 2026', 'a_date' => '04 Aug 2026', 'status' => 'done', 'label' => 'Done'],
-        ['activity' => 'Student Counseling Framework', 'p_date' => '07 Aug 2026', 'a_date' => '07 Aug 2026', 'status' => 'done', 'label' => 'Done'],
-        ['activity' => 'Placement Induction – Part I', 'p_date' => '20 Aug 2026', 'a_date' => '20 Aug 2026', 'status' => 'done', 'label' => 'Done'],
-        ['activity' => 'Placement Induction – Part II', 'p_date' => '10 Sep 2026', 'a_date' => '—', 'status' => 'due', 'label' => 'Due'],
-        ['activity' => 'Placement Induction – Part III', 'p_date' => '01 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-        ['activity' => 'LinkedIn Profile Building Workshop', 'p_date' => '15 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-        ['activity' => 'LinkedIn Profile Building – Review', 'p_date' => '22 Oct 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-        ['activity' => 'Resume Prep Workshop', 'p_date' => '12 Nov 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-        ['activity' => 'Resume Review', 'p_date' => '19 Nov 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-        ['activity' => 'Interview Facing Workshop', 'p_date' => '10 Dec 2026', 'a_date' => '—', 'status' => 'pending', 'label' => 'Pending'],
-    ];
+if (empty($ss_activities)) {
+    $ss_activities = [];
 }
+
+$breadcrumb_url = $is_sponsor_view
+    ? (new moodle_url('/local/batchanalytics/marvel_essci_mis.php'))->out(false)
+    : (new moodle_url('/local/batchanalytics/index.php'))->out(false);
+$breadcrumb_label = $is_sponsor_view ? 'Program MIS' : 'Home';
 
 // Use the same configured CRM field list and explicit capability check as index.php.
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
@@ -937,7 +945,7 @@ echo $OUTPUT->header();
   <!-- Breadcrumb Bar -->
   <div class="crumbbar">
     <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>"><?= $is_sponsor ? 'Program MIS' : 'Home' ?></a>
+      <a href="<?= s($breadcrumb_url) ?>"><?= s($breadcrumb_label) ?></a>
       <span class="crumb-sep">›</span>
       <b><?= s($batchid_label) ?></b>
     </span>
@@ -1088,10 +1096,10 @@ echo $OUTPUT->header();
         <button type="button" class="tab active" data-tab="sched"><?= s(get_string('tab_schedule', 'local_batchanalytics')) ?></button>
         <button type="button" class="tab" data-tab="ss"><?= $is_sponsor ? 'Softskills & Placement Coaching' : s(get_string('tab_ss_activities', 'local_batchanalytics')) ?></button>
         <button type="button" class="tab" data-tab="students"><?= s(get_string('tab_student_performance', 'local_batchanalytics')) ?></button>
-        <?php if (($can_view_notes || $can_edit_notes) && !$is_sponsor): ?>
+        <?php if (($can_view_notes || $can_edit_notes) && !$is_sponsor_user): ?>
           <button type="button" class="tab" data-tab="notes"><?= s(get_string('tab_review_notes', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
-        <?php if ($batch_can_view_crm && !$is_sponsor): ?>
+        <?php if ($batch_can_view_crm && !$is_sponsor_user): ?>
           <button type="button" class="tab" data-tab="crm" id="ba-crm-tab-btn"><?= s(get_string('tab_crm_data', 'local_batchanalytics')) ?></button>
         <?php endif; ?>
       </div>
@@ -1296,7 +1304,7 @@ echo $OUTPUT->header();
           </div>
         </div>
 
-        <?php if ($batch_can_view_crm): ?>
+        <?php if ($batch_can_view_crm && !$is_sponsor_user): ?>
         <!-- 5. CRM Data Panel -->
         <div id="panel-crm" class="panel">
           <div class="panel-note">
@@ -1415,7 +1423,7 @@ echo $OUTPUT->header();
         </div>
         <?php endif; ?>
 
-        <?php if ($can_view_notes || $can_edit_notes): ?>
+        <?php if (($can_view_notes || $can_edit_notes) && !$is_sponsor_user): ?>
         <!-- 4. Review Notes Panel -->
         <div id="panel-notes" class="panel">
           <div class="panel-note">

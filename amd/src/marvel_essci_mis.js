@@ -41,14 +41,7 @@ define([], function() {
     }
 
     /* ---------- HOME (Dynamic Cohorts & Program Window) ---------- */
-    var DEFAULT_COHORTS = [
-        ["26001","Embedded Systems (Marvell)","Bangalore","var(--blue-d)","04 Aug 2026","Advanced C",60,"On schedule"],
-        ["26002","Embedded Systems (Marvell)","Hyderabad","var(--brand-d)","11 Aug 2026","Advanced C",57,"On schedule"],
-        ["27001","Embedded Systems (Marvell)","Bangalore","var(--blue-d)","03 Aug 2027","Planned",60,"Upcoming"],
-        ["27002","Embedded Systems (Marvell)","Hyderabad","var(--brand-d)","10 Aug 2027","Planned",60,"Upcoming"],
-        ["28001","Embedded Systems (Marvell)","Bangalore","var(--blue-d)","01 Aug 2028","Planned",60,"Upcoming"],
-        ["28002","Embedded Systems (Marvell)","Hyderabad","var(--brand-d)","08 Aug 2028","Planned",60,"Upcoming"]
-    ];
+    var DEFAULT_COHORTS = [];
 
     var ALL_COHORTS = [];
 
@@ -144,6 +137,15 @@ define([], function() {
             var w = computeWindowFromStartDate(startDate);
             return w.key === String(yr);
         });
+
+        if (!cohorts || cohorts.length === 0) {
+            el.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">No sponsored cohorts found for this cycle</td></tr>';
+            var infoEmpty = document.getElementById('cohortCountInfo');
+            if (infoEmpty) {
+                infoEmpty.textContent = '0 sponsored cohorts · offline & online';
+            }
+            return;
+        }
 
         el.innerHTML = cohorts.map(function(c) {
             var bid = Array.isArray(c) ? c[0] : c.id;

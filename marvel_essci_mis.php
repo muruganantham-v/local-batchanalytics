@@ -221,8 +221,8 @@ function marvel_essci_get_cohort_batches(): array {
                         $student_count = count($bm_students);
                     } catch (\Throwable $e) {}
                 }
-                if ($student_count <= 0) {
-                    $student_count = ($ts > time()) ? 60 : 12;
+                if ($student_count < 0) {
+                    $student_count = 0;
                 }
 
                 // Status
@@ -250,62 +250,6 @@ function marvel_essci_get_cohort_batches(): array {
             }
         }
     } catch (\Throwable $e) {}
-
-    // 2. Future planned cohort defaults for subsequent Financial Years (2027, 2028)
-    $planned_defaults = [
-        [
-            'id'             => '27001',
-            'course'         => 'Embedded Systems (Marvell)',
-            'site'           => 'Bangalore',
-            'site_color'     => 'var(--blue-d)',
-            'start'          => '03 Aug 2027',
-            'start_timestamp'=> strtotime('2027-08-03'),
-            'current_module' => 'Planned',
-            'enrolled'       => 60,
-            'status'         => 'Upcoming',
-            'batchid'        => 4,
-        ],
-        [
-            'id'             => '27002',
-            'course'         => 'Embedded Systems (Marvell)',
-            'site'           => 'Hyderabad',
-            'site_color'     => 'var(--brand-d)',
-            'start'          => '10 Aug 2027',
-            'start_timestamp'=> strtotime('2027-08-10'),
-            'current_module' => 'Planned',
-            'enrolled'       => 60,
-            'status'         => 'Upcoming',
-            'batchid'        => 4,
-        ],
-        [
-            'id'             => '28001',
-            'course'         => 'Embedded Systems (Marvell)',
-            'site'           => 'Bangalore',
-            'site_color'     => 'var(--blue-d)',
-            'start'          => '01 Aug 2028',
-            'start_timestamp'=> strtotime('2028-08-01'),
-            'current_module' => 'Planned',
-            'enrolled'       => 60,
-            'status'         => 'Upcoming',
-            'batchid'        => 4,
-        ],
-        [
-            'id'             => '28002',
-            'course'         => 'Embedded Systems (Marvell)',
-            'site'           => 'Hyderabad',
-            'site_color'     => 'var(--brand-d)',
-            'start'          => '08 Aug 2028',
-            'start_timestamp'=> strtotime('2028-08-08'),
-            'current_module' => 'Planned',
-            'enrolled'       => 60,
-            'status'         => 'Upcoming',
-            'batchid'        => 4,
-        ],
-    ];
-
-    foreach ($planned_defaults as $pd) {
-        $cohorts[] = $pd;
-    }
 
     return $cohorts;
 }

@@ -442,8 +442,8 @@ class program_service {
                                 $inparams
                             );
                         }
-                        if ($student_count <= 0) {
-                            $student_count = 14;
+                        if ($student_count < 0) {
+                            $student_count = 0;
                         }
 
                         $results[] = (object)[
@@ -454,7 +454,7 @@ class program_service {
                             'site' => $site,
                             'sponsor_batch_code' => $sec_name,
                             'course' => $coursename,
-                            'startdate' => $b->startdate > 0 ? userdate($b->startdate, '%d %b %Y') : '04 Aug 2026',
+                            'startdate' => $b->startdate > 0 ? userdate($b->startdate, '%d %b %Y') : (!empty($sec->timecreated) ? userdate($sec->timecreated, '%d %b %Y') : '—'),
                             'current_module' => $currentmodule,
                             'enrolled' => $student_count,
                             'status' => 'on_schedule',
@@ -463,43 +463,11 @@ class program_service {
                     }
                 }
 
-                if (!empty($results)) {
-                    return $results;
-                }
+                return $results;
             }
         }
 
-        // 3. Return prototype default batch mappings if no DB rows configured yet
-        return [
-            (object)[
-                'id' => 1,
-                'programid' => $programid,
-                'batchid' => 26001,
-                'sectionid' => 1,
-                'site' => 'Bangalore',
-                'sponsor_batch_code' => 'MVL26001',
-                'course' => 'Embedded Systems (Marvell)',
-                'startdate' => '04 Aug 2026',
-                'current_module' => 'Advanced C',
-                'enrolled' => 60,
-                'status' => 'on_schedule',
-                'status_label' => 'On schedule · 0 days'
-            ],
-            (object)[
-                'id' => 2,
-                'programid' => $programid,
-                'batchid' => 26002,
-                'sectionid' => 2,
-                'site' => 'Hyderabad',
-                'sponsor_batch_code' => 'MVL26002',
-                'course' => 'Embedded Systems (Marvell)',
-                'startdate' => '11 Aug 2026',
-                'current_module' => 'Advanced C',
-                'enrolled' => 57,
-                'status' => 'on_schedule',
-                'status_label' => 'On schedule · 0 days'
-            ]
-        ];
+        return [];
     }
 
     /**

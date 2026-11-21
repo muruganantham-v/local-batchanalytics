@@ -885,11 +885,11 @@ function initNewBatchAnalytics() {
           const siteDotColor = siteClass === "hyderabad" ? "#8b5cf6" : "#0284c7";
           const rawSectionCode = b.section_name || b.sponsor_batch_code || b.batchId || String(b.batchid || b.id || "");
           const batchCode = rawSectionCode.replace(/^MVL/i, "");
-          const enrolled = b.enrolled || b.studentCount || 12;
+          const enrolled = typeof b.enrolled !== "undefined" ? b.enrolled : (typeof b.studentCount !== "undefined" ? b.studentCount : 0);
           const statusText = b.status_label || "On schedule";
-          const courseTitle = b.course || b.courseName || "Embedded Systems";
-          const startVal = b.startdate || b.startDate || "18 Jul 2026";
-          const currentMod = b.current_module || b.currentModule || "Advanced C";
+          const courseTitle = b.course || b.courseName || "ESSCI";
+          const startVal = b.startdate || b.startDate || "—";
+          const currentMod = b.current_module || b.currentModule || "—";
 
           return `
             <tr>
@@ -1183,7 +1183,7 @@ function initNewBatchAnalytics() {
         const headers = ["Class Section", "Course", "Site", "Start Date", "Current Module", "Enrolled", "Status"];
         const rows = batches.map((b) => [
           (b.section_name || b.sponsor_batch_code || b.batchId || "").replace(/^MVL/i, ""),
-          b.course || b.courseName || "Embedded Systems",
+          b.course || b.courseName || "ESSCI",
           b.site || "Bangalore",
           b.startdate || b.startDate || "",
           b.current_module || b.currentModule || "",
