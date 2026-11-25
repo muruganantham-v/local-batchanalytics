@@ -478,7 +478,6 @@ body.pagelayout-embedded #page-header {
   display: none !important;
 }
 
-body[id^="page-local-batchanalytics-marvel"],
 body.pagelayout-embedded {
   background: transparent !important;
   padding: 0 !important;

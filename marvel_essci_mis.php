@@ -36,11 +36,9 @@ if (empty($PAGE->url)) {
 $PAGE->set_title('Advanced Skilling of Women in Semiconductors — Program MIS');
 $PAGE->set_heading('');
 
-$layout = optional_param('layout', 'standard', PARAM_ALPHA);
+$layout = optional_param('layout', '', PARAM_ALPHA);
 if ($layout === 'embedded' || $layout === 'bare') {
     $PAGE->set_pagelayout('embedded');
-} else {
-    $PAGE->set_pagelayout($layout);
 }
 
 $mis_css_v = file_exists(__DIR__ . '/marvel_essci_mis.css') ? filemtime(__DIR__ . '/marvel_essci_mis.css') : '3.5.0';
