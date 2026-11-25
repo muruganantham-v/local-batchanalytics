@@ -170,7 +170,7 @@ $can_view_crm = $can_manage
 
 $is_sponsor = \local_batchanalytics\program_service::is_sponsor_view($context, $userid);
 if ($is_sponsor && empty($action)) {
-    require_once(__DIR__ . '/marvel_essci_mis.php');
+    \local_batchanalytics\essci_dashboard_helper::render($context, (int)$userid);
     exit;
 }
 $program_data = \local_batchanalytics\program_service::get_program(1);
@@ -783,13 +783,35 @@ if ($action === 'getnewbatchdata') {
 $PAGE->set_title($is_sponsor ? get_string('program_mis', 'local_batchanalytics') : get_string('pluginname', 'local_batchanalytics'));
 $PAGE->set_heading('');
 
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => '3.2.0']);
+$dash_v = file_exists(__DIR__ . '/dashboard.css') ? filemtime(__DIR__ . '/dashboard.css') : '3.3.1';
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => $dash_v]);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/dashboard', 'init');
 
 echo $OUTPUT->header();
 
+echo '<script>
+(function() {
+  var p = document.getElementById("page");
+  if (p) p.classList.remove("drawers", "drag-container");
+})();
+document.addEventListener("DOMContentLoaded", function() {
+  var p = document.getElementById("page");
+  if (p) p.classList.remove("drawers", "drag-container");
+});
+</script>';
+
 echo '<style>
+/* Reset drawers & container to clean full-width */
+#page,
+#page.drawers,
+.drawers.drag-container,
+#page-wrapper {
+  overflow: visible !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
 /* Full width and transparent container override across themes */
 @media (min-width: 768px) {
   .pagelayout-standard #page.drawers .main-inner,
@@ -830,17 +852,50 @@ echo '<style>
   padding: 0 !important;
   margin: 0 !important;
 }
+.wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+  box-sizing: border-box !important;
+}
+.crumbbar {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 12px 0 6px 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.crumbbar .crumb {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+.shell {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30, 50, 70, 0.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
 </style>';
 
 if (is_siteadmin($userid) || has_capability('local/batchanalytics:manage', $context)) {
-    echo '<div style="max-width:1400px; margin:16px auto 0; padding:12px 20px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#166534; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
-    echo '  <div style="display:flex; align-items:center; gap:8px;">';
-    echo '    <span style="font-weight:700; color:#15803d;"><i class="fa fa-info-circle"></i> Program MIS:</span>';
-    echo '    <span>You are in <strong>Internal Operations View</strong>. Sponsors (ESSCI &amp; Marvell) view the Program MIS dashboard.</span>';
+    echo '<div class="wrap" style="margin-bottom:0; padding-top:14px;">';
+    echo '  <div style="padding:12px 20px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#166534; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
+    echo '    <div style="display:flex; align-items:center; gap:8px;">';
+    echo '      <span style="font-weight:700; color:#15803d;"><i class="fa fa-info-circle"></i> Program MIS:</span>';
+    echo '      <span>You are in <strong>Internal Operations View</strong>. Sponsors (ESSCI &amp; Marvell) view the Program MIS dashboard.</span>';
+    echo '    </div>';
+    echo '    <a href="' . s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'sponsor']))->out(false)) . '" class="btn btn-sm btn-success" style="padding:6px 16px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:6px; border-radius:6px; background:#16a34a; border-color:#15803d; color:#fff;">';
+    echo '      <i class="fa fa-eye"></i> Switch to ESSCI Program MIS View';
+    echo '    </a>';
     echo '  </div>';
-    echo '  <a href="' . s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'sponsor']))->out(false)) . '" class="btn btn-sm btn-success" style="padding:6px 16px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:6px; border-radius:6px; background:#16a34a; border-color:#15803d; color:#fff;">';
-    echo '    <i class="fa fa-eye"></i> Switch to ESSCI Program MIS View';
-    echo '  </a>';
     echo '</div>';
 }
 
@@ -850,91 +905,10 @@ echo '<div class="local-batchanalytics-wrap" data-is-sponsor="' . ($is_sponsor ?
 echo '<div id="ba-toast-container" class="ba-toast-container"></div>';
 
 // Batch Analytics Dashboard
-echo '<div id="ba-top-tab-new" class="ba-top-tab-pane active">';
-echo '  <div class="ba-new-dashboard">';
-
-if ($can_manage || is_siteadmin($USER->id)) {
-    echo '    <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:12px;">';
-    echo '      <a href="' . s((new moodle_url('/local/batchanalytics/marvel_essci_mis.php'))->out(false)) . '" class="btn btn-sm btn-outline-primary" style="font-size:11.5px; font-weight:600;"><i class="fa fa-tachometer"></i> Program MIS (Marvell & ESSCI)</a>';
-    if ($is_sponsor) {
-        echo '      <a href="' . s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'internal']))->out(false)) . '" class="btn btn-sm btn-outline-secondary" style="font-size:11.5px; font-weight:600;"><i class="fa fa-exchange"></i> Switch to Internal Operations View</a>';
-    } else {
-        echo '      <a href="' . s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'sponsor']))->out(false)) . '" class="btn btn-sm btn-outline-secondary" style="font-size:11.5px; font-weight:600;"><i class="fa fa-eye"></i> Preview Sponsor Portal</a>';
-    }
-    echo '    </div>';
-}
-
-if ($is_sponsor) {
-    echo '    <!-- Sponsor Program MIS Header & Mobilization Funnel -->';
-    echo '    <div class="ba-program-header-box">';
-    echo '      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">';
-    echo '        <div>';
-    echo '          <h1 class="ba-portfolio-title" style="margin-bottom: 4px;">' . s($program_data->name) . '</h1>';
-    echo '          <div class="ba-portfolio-subtitle">' . s($program_data->tagline) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-live-indicator">';
-    echo '          <span class="ba-live-dot"></span>';
-    echo '          <span>' . s(get_string('live_updated_just_now', 'local_batchanalytics')) . '</span>';
-    echo '        </div>';
-    echo '      </div>';
-
-    echo '      <div class="ba-program-details-grid">';
-    echo '        <div class="ba-prog-detail-item">';
-    echo '          <label>' . s(get_string('sponsor', 'local_batchanalytics')) . '</label>';
-    echo '          <div class="val">' . s($program_data->sponsor_name) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-prog-detail-item">';
-    echo '          <label>' . s(get_string('pmo_skill_body', 'local_batchanalytics')) . '</label>';
-    echo '          <div class="val">' . s($program_data->pmo_name) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-prog-detail-item">';
-    echo '          <label>' . s(get_string('training_partner', 'local_batchanalytics')) . '</label>';
-    echo '          <div class="val">' . s($program_data->partner_name) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-prog-detail-item">';
-    echo '          <label>' . s(get_string('sites', 'local_batchanalytics')) . '</label>';
-    echo '          <div class="val">' . s($program_data->sites) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-prog-detail-item">';
-    echo '          <label>' . s(get_string('program_window', 'local_batchanalytics')) . '</label>';
-    echo '          <div class="val">' . s($program_data->program_window) . '</div>';
-    echo '        </div>';
-    echo '      </div>';
-    echo '    </div>';
-
-    echo '    <!-- Mobilization Funnel Strip -->';
-    echo '    <div class="ba-portfolio-card" style="margin-bottom: 24px;">';
-    echo '      <div class="ba-portfolio-header" style="margin-bottom: 14px;">';
-    echo '        <div class="ba-portfolio-glance-bar">';
-    echo '          <span class="ba-glance-indicator" style="background: #0284c7;"></span>';
-    echo '          <span class="ba-glance-label">' . s(get_string('mobilization_funnel', 'local_batchanalytics')) . '</span>';
-    echo '        </div>';
-    echo '      </div>';
-    echo '      <div class="ba-portfolio-grid ba-portfolio-grid-5">';
-    echo '        <div class="ba-stat-box">';
-    echo '          <div class="ba-stat-num">' . number_format($mobilization_data['total_reached']) . '</div>';
-    echo '          <div class="ba-stat-lbl">' . s(get_string('candidates_reached', 'local_batchanalytics')) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-stat-box">';
-    echo '          <div class="ba-stat-num">' . number_format($mobilization_data['eligible_candidates']) . '</div>';
-    echo '          <div class="ba-stat-lbl">' . s(get_string('eligible_candidates', 'local_batchanalytics')) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-stat-box">';
-    echo '          <div class="ba-stat-num">' . number_format($mobilization_data['test_participants']) . '</div>';
-    echo '          <div class="ba-stat-lbl">' . s(get_string('test_participants', 'local_batchanalytics')) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-stat-box">';
-    echo '          <div class="ba-stat-num">' . number_format($mobilization_data['interview_participants']) . '</div>';
-    echo '          <div class="ba-stat-lbl">' . s(get_string('interview_participants', 'local_batchanalytics')) . '</div>';
-    echo '        </div>';
-    echo '        <div class="ba-stat-box">';
-    echo '          <div class="ba-stat-num text-emerald-green">' . number_format($mobilization_data['interview_selects_final']) . '</div>';
-    echo '          <div class="ba-stat-lbl">' . s(get_string('interview_selects_final', 'local_batchanalytics')) . '</div>';
-    echo '          <div style="font-size: 10.5px; color: #94a3b8; margin-top: 4px;">Bangalore & Hyderabad</div>';
-    echo '        </div>';
-    echo '      </div>';
-    echo '    </div>';
-} else {
+echo '<div class="wrap">';
+echo '  <div class="shell">';
+echo '    <div id="ba-top-tab-new" class="ba-top-tab-pane active">';
+echo '      <div class="ba-new-dashboard">';
 
 echo '    <!-- Header & Portfolio Stat Cards Container -->';
 echo '    <div class="ba-portfolio-card">';
@@ -1083,7 +1057,6 @@ echo '          <div class="ba-stat-lbl">Students (current)</div>';
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';
-}
 
 echo '    <!-- Search & Filters Controls Card -->';
 echo '    <div class="ba-new-card ba-new-controls-card">';
@@ -1194,7 +1167,12 @@ echo '          <div>';
 echo '            <h3 id="ba-mentor-modal-title" class="ba-mentor-modal-title">' . s(get_string('modal_mentors_title', 'local_batchanalytics')) . '</h3>';
 echo '            <p id="ba-mentor-modal-sub" class="ba-mentor-modal-sub">' . s(get_string('modal_mentors_sub', 'local_batchanalytics')) . '</p>';
 echo '          </div>';
-echo '          <button type="button" class="ba-mentor-modal-close" id="ba-mentor-modal-close-btn" aria-label="Close">&times;</button>';
+echo '          <button type="button" class="ba-modal-btn-close-circle ba-mentor-modal-close" id="ba-mentor-modal-close-btn" aria-label="' . s(get_string('modal_close', 'local_batchanalytics')) . '">';
+echo '            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">';
+echo '              <line x1="18" y1="6" x2="6" y2="18"></line>';
+echo '              <line x1="6" y1="6" x2="18" y2="18"></line>';
+echo '            </svg>';
+echo '          </button>';
 echo '        </div>';
 echo '        <div class="ba-mentor-modal-search">';
 echo '          <input type="text" id="ba-mentor-search-input" placeholder="' . s(get_string('modal_search_placeholder', 'local_batchanalytics')) . '" />';
@@ -1203,7 +1181,7 @@ echo '        <div class="ba-mentor-modal-body" id="ba-mentor-modal-list">';
 echo '          <!-- Mentor items rendered here -->';
 echo '        </div>';
 echo '        <div class="ba-mentor-modal-footer">';
-echo '          <button type="button" class="ba-btn-secondary" id="ba-mentor-modal-cancel-btn">' . s(get_string('close', 'local_batchanalytics')) . '</button>';
+echo '          <button type="button" class="ba-modal-btn-footer-close ba-btn-secondary" id="ba-mentor-modal-cancel-btn">' . s(get_string('close', 'local_batchanalytics')) . '</button>';
 echo '        </div>';
 echo '      </div>';
 echo '    </div>';
@@ -1212,8 +1190,10 @@ if ($is_sponsor) {
     echo '    <div class="ba-sponsor-footer-banner">' . s(get_string('readonly_mis_notice', 'local_batchanalytics')) . '</div>';
 }
 echo '';
-echo '  </div>';
-echo '</div>'; // #ba-top-tab-new
+      echo '  </div>'; // .ba-new-dashboard
+    echo '</div>'; // #ba-top-tab-new
+  echo '  </div>'; // .shell
+echo '</div>'; // .wrap
 
 echo '</div>'; // .local-batchanalytics-wrap
 

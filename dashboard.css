@@ -22,6 +22,41 @@ body#page-local-batchanalytics-module #page-header h1,
   display: none !important;
 }
 
+/* Reset drawers & container to clean full-width */
+#page,
+#page.drawers,
+.drawers.drag-container,
+#page-wrapper {
+  overflow: visible !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
+.wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+  box-sizing: border-box !important;
+}
+
+.crumbbar {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 12px 0 6px 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  background: transparent !important;
+}
+
+.crumbbar .crumb {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
 /* ==================== FULL WIDTH CONTAINER OVERRIDES ==================== */
 .pagelayout-standard #page.drawers .main-inner,
 body.limitedwidth #page.drawers .main-inner,
@@ -46,6 +81,7 @@ body#page-local-batchanalytics-marvel_essci_data #page.drawers .main-inner {
   border: none !important;
 }
 
+body.path-local-batchanalytics #page-wrapper,
 body.path-local-batchanalytics #page-content,
 body.path-local-batchanalytics #region-main-box,
 body.path-local-batchanalytics #region-main,
@@ -877,7 +913,7 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   display: flex;
   align-items: center;
   width: 100%;
-  background: #f8fafc;
+  background: #ffffff;
   border: 1.5px solid #cbd5e1;
   border-radius: 10px;
   padding: 9px 16px;
@@ -989,7 +1025,7 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 }
 
 .ba-new-subtabs-wrap {
-  background: #f8fafc;
+  background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   padding: 12px 20px 0 20px;
 }
@@ -1502,29 +1538,41 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 
 /* ==================== BATCH & MODULE PAGES DESIGN SYSTEM ==================== */
 
-/* Outer Shell / Canvas Alignment */
+/* Outer Shell / Canvas Alignment - Standard White Layer Card */
 .ba-batch-page .shell,
-.ba-module-page .shell {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
+.ba-module-page .shell,
+.ba-new-dashboard .shell,
+.shell {
+  background: var(--card, #ffffff) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30, 50, 70, 0.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
 }
 
 /* Breadcrumb Bar */
 .ba-batch-page .crumbbar,
-.ba-module-page .crumbbar {
+.ba-module-page .crumbbar,
+.ba-student-page .crumbbar,
+.crumbbar {
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
-  margin-bottom: 20px !important;
+  margin: 0 !important;
+  padding: 12px 0 6px 0 !important;
   font-size: 13.5px !important;
   color: #64748b !important;
   font-weight: 500 !important;
 }
 
 .ba-batch-page .crumbbar a,
-.ba-module-page .crumbbar a {
+.ba-module-page .crumbbar a,
+.ba-student-page .crumbbar a,
+.crumbbar a {
   color: #0284c7 !important;
   text-decoration: none !important;
   font-weight: 600 !important;
@@ -1532,15 +1580,25 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 }
 
 .ba-batch-page .crumbbar a:hover,
-.ba-module-page .crumbbar a:hover {
+.ba-module-page .crumbbar a:hover,
+.ba-student-page .crumbbar a:hover,
+.crumbbar a:hover {
   color: #0369a1 !important;
   text-decoration: underline !important;
 }
 
 .ba-batch-page .crumbbar b,
-.ba-module-page .crumbbar b {
+.ba-module-page .crumbbar b,
+.ba-student-page .crumbbar b,
+.crumbbar b {
   color: #0f172a !important;
   font-weight: 700 !important;
+}
+
+.crumb-sep {
+  color: #cbd5e1 !important;
+  margin: 0 4px !important;
+  font-size: 14px !important;
 }
 
 /* Header Cards (.bhead & .mhead) */
@@ -1705,13 +1763,15 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 }
 
 .ba-batch-page .crumbbar {
-  margin: 12px 0 16px !important;
-  padding: 0 4px !important;
+  margin: 0 0 14px 0 !important;
+  padding: 12px 0 6px 0 !important;
 }
 
 .ba-batch-page .crumb {
   font-size: 12.5px !important;
   color: var(--mute) !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
 }
 
 .ba-batch-page .crumb a {
@@ -3486,10 +3546,10 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 }
 
 .ba-mentor-modal-header {
-  padding: 20px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid #f1f5f9;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
 }
 
@@ -3506,21 +3566,41 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   color: #64748b;
 }
 
-.ba-mentor-modal-close {
-  background: transparent;
-  border: none;
-  font-size: 24px;
-  line-height: 1;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: all 0.15s;
+.ba-mentor-modal-close,
+.ba-modal-btn-close-circle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+  outline: none !important;
+  line-height: 1 !important;
 }
 
-.ba-mentor-modal-close:hover {
-  color: #0f172a;
-  background: #f1f5f9;
+.ba-mentor-modal-close:hover,
+.ba-modal-btn-close-circle:hover {
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  transform: scale(1.05) !important;
+}
+
+.ba-mentor-modal-close:active,
+.ba-modal-btn-close-circle:active {
+  transform: scale(0.95) !important;
+}
+
+.ba-mentor-modal-close svg,
+.ba-modal-btn-close-circle svg {
+  display: block;
 }
 
 .ba-mentor-modal-search {
@@ -3641,6 +3721,36 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: flex-end;
+}
+
+.ba-mentor-modal-footer .ba-btn-secondary,
+.ba-mentor-modal-footer .ba-modal-btn-footer-close {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 20px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  outline: none !important;
+}
+
+.ba-mentor-modal-footer .ba-btn-secondary:hover,
+.ba-mentor-modal-footer .ba-modal-btn-footer-close:hover {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+.ba-mentor-modal-footer .ba-btn-secondary:active,
+.ba-mentor-modal-footer .ba-modal-btn-footer-close:active {
+  background: #cbd5e1 !important;
 }
 
 /* Table Card & Elements */
@@ -4343,8 +4453,12 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   }
 
   .ba-category-modal-dialog .ba-student-name {
+    font-size: 13.5px !important;
     font-weight: 600 !important;
     color: #0f172a !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    display: inline-block !important;
   }
 
   .ba-category-modal-dialog .ba-grade-text {
@@ -5158,63 +5272,126 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   font-weight: 500;
 }
 
-/* ==================== SUMMARY STRIPS (BATCH PAGE) ==================== */
+/* ==================== SUMMARY STRIPS (BATCH PAGE & PROTOTYPE PARITY) ==================== */
+.strip,
 .ba-summary-strip {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-left: 4px solid #663399 !important;
+  border-radius: 12px !important;
+  padding: 16px 20px !important;
+  margin-bottom: 18px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
 }
 
+.strip.grey,
+.ba-summary-strip.grey {
+  border-left-color: #8a9097 !important;
+  background: #ffffff !important;
+}
+
+.strip-head,
 .ba-strip-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: baseline !important;
+  margin-bottom: 13px !important;
 }
 
+.strip-title,
 .ba-strip-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  color: #4a4f54 !important;
+  letter-spacing: 0.2px !important;
 }
 
+.strip-hero,
 .ba-strip-headline {
-  font-size: 16px;
-  font-weight: 800;
-  color: #059669;
+  font-size: 25px !important;
+  font-weight: 800 !important;
+  color: #1e8e4e !important;
+  line-height: 1 !important;
 }
 
+.strip-hero small,
+.ba-strip-headline small {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #6e7377 !important;
+}
+
+.sct,
 .ba-strip-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
+  display: grid !important;
+  gap: 10px !important;
 }
 
+.sct5 {
+  grid-template-columns: repeat(5, 1fr) !important;
+}
+
+.sct6 {
+  grid-template-columns: repeat(6, 1fr) !important;
+}
+
+.sc,
 .ba-strip-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
-  text-align: center;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 11px 12px !important;
+  text-align: center !important;
 }
 
+.sc .v,
 .ba-strip-card .num {
-  font-size: 20px;
-  font-weight: 800;
-  color: #1e293b;
-  line-height: 1.2;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  color: #222222;
+  line-height: 1.2 !important;
 }
 
+.sc .v.val-green,
+.sc .v.text-emerald-green,
+.ba-strip-card .num.text-emerald-green {
+  color: #1e8e4e !important;
+}
+
+.sc .v.val-red,
+.sc .v.text-delayed-red,
+.ba-strip-card .num.text-delayed-red {
+  color: #c0392b !important;
+}
+
+.sc .v small,
+.ba-strip-card .num small {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #6e7377 !important;
+}
+
+.sc .l,
 .ba-strip-card .lbl {
-  font-size: 11.5px;
-  color: #64748b;
-  font-weight: 500;
-  margin-top: 4px;
+  font-size: 11px !important;
+  color: #6e7377 !important;
+  font-weight: 500 !important;
+  margin-top: 3px !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 900px) {
+  .sct5,
+  .sct6 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .sct5,
+  .sct6 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 /* ==================== STUDENT 360 PROFILE PAGE ==================== */
@@ -5252,7 +5429,8 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
   box-shadow: 0 4px 10px rgba(139, 92, 246, 0.25);
 }
 
-.ba-student-name {
+.ba-student-header-card .ba-student-name,
+.ba-student-page .ba-student-name {
   font-size: 24px;
   font-weight: 800;
   color: #0f172a;
@@ -5592,7 +5770,7 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 }
 
 .ba-matrix-table th {
-  background: #f8fafc;
+  background: #ffffff;
   color: #475569;
   font-size: 11.5px;
   font-weight: 700;
@@ -5617,6 +5795,274 @@ body.path-local-batchanalytics .local-batchanalytics-wrap {
 .ba-table-scroll-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* =========================================================================
+   Placement Eligibility Test (PET) Qualification Section
+   ========================================================================= */
+.ba-batch-page .ba-pet-card,
+.ba-pet-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-left: 5px solid #6b21a8 !important;
+  border-radius: 12px !important;
+  padding: 20px 24px !important;
+  margin-top: 16px !important;
+  margin-bottom: 24px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+}
+
+.ba-batch-page .ba-pet-card-header,
+.ba-pet-card .ba-pet-card-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 18px !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+}
+
+.ba-batch-page .ba-pet-title,
+.ba-pet-card .ba-pet-title {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #581c87 !important;
+  margin: 0 !important;
+  letter-spacing: 0.1px !important;
+}
+
+.ba-batch-page .ba-pet-qualified-badge,
+.ba-pet-card .ba-pet-qualified-badge {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  gap: 5px !important;
+}
+
+.ba-batch-page .ba-pet-pct,
+.ba-pet-card .ba-pet-pct {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  color: #16a34a !important;
+  line-height: 1 !important;
+  letter-spacing: -0.5px !important;
+}
+
+.ba-batch-page .ba-pet-pct-label,
+.ba-pet-card .ba-pet-pct-label {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #16a34a !important;
+}
+
+/* Layout container */
+.ba-batch-page .ba-pet-layout,
+.ba-pet-card .ba-pet-layout {
+  display: flex !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+/* Col 1: Total Students (Left, Full Height) */
+.ba-batch-page .ba-pet-col-total,
+.ba-pet-card .ba-pet-col-total {
+  flex: 0 0 150px !important;
+  display: flex !important;
+}
+
+.ba-batch-page .ba-pet-box-total,
+.ba-pet-card .ba-pet-box-total {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  padding: 20px 12px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+.ba-batch-page .ba-pet-box-total .ba-pet-stat-val,
+.ba-pet-card .ba-pet-box-total .ba-pet-stat-val {
+  font-size: 36px !important;
+  font-weight: 800 !important;
+  color: #1e293b !important;
+  margin-bottom: 8px !important;
+  line-height: 1 !important;
+}
+
+/* Col 2-4: Attempts Breakdown (Middle, 2 Rows) */
+.ba-batch-page .ba-pet-col-attempts,
+.ba-pet-card .ba-pet-col-attempts {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+.ba-batch-page .ba-pet-row-card,
+.ba-pet-card .ba-pet-row-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  padding: 10px 14px 14px 14px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.01) !important;
+}
+
+.ba-batch-page .ba-pet-row-header,
+.ba-pet-card .ba-pet-row-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  margin-bottom: 10px !important;
+}
+
+.ba-batch-page .ba-pet-row-title,
+.ba-pet-card .ba-pet-row-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+  color: #475569 !important;
+  text-align: center !important;
+}
+
+.ba-batch-page .ba-pet-row-grid-3,
+.ba-pet-card .ba-pet-row-grid-3 {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 10px !important;
+}
+
+.ba-batch-page .ba-pet-row-grid-3 .ba-pet-stat-box,
+.ba-pet-card .ba-pet-row-grid-3 .ba-pet-stat-box {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 12px 10px !important;
+  text-align: center !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.ba-batch-page .ba-pet-row-grid-3 .ba-pet-stat-box:hover,
+.ba-pet-card .ba-pet-row-grid-3 .ba-pet-stat-box:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Col 5: Separate Outcomes Column (Right, 2 Rows) */
+.ba-batch-page .ba-pet-col-outcomes,
+.ba-pet-card .ba-pet-col-outcomes {
+  flex: 0 0 160px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.ba-batch-page .ba-pet-box-outcome,
+.ba-pet-card .ba-pet-box-outcome {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  padding: 14px 12px !important;
+  text-align: center !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.ba-batch-page .ba-pet-box-outcome:hover,
+.ba-pet-card .ba-pet-box-outcome:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+.ba-batch-page .ba-pet-box-outcome.outcome-cleared,
+.ba-pet-card .ba-pet-box-outcome.outcome-cleared {
+  border-left: 3px solid #16a34a !important;
+}
+
+.ba-batch-page .ba-pet-box-outcome.outcome-not-appeared,
+.ba-pet-card .ba-pet-box-outcome.outcome-not-appeared {
+  border-left: 3px solid #dc2626 !important;
+}
+
+/* Values and labels */
+.ba-batch-page .ba-pet-stat-val,
+.ba-pet-card .ba-pet-stat-val {
+  font-size: 24px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+  color: #1e293b !important;
+  margin-bottom: 4px !important;
+  letter-spacing: -0.5px !important;
+}
+
+.ba-batch-page .ba-pet-stat-val.val-cleared,
+.ba-pet-card .ba-pet-stat-val.val-cleared {
+  color: #16a34a !important;
+}
+
+.ba-batch-page .ba-pet-stat-val.val-not-appeared,
+.ba-pet-card .ba-pet-stat-val.val-not-appeared {
+  color: #dc2626 !important;
+}
+
+.ba-batch-page .ba-pet-stat-label,
+.ba-pet-card .ba-pet-stat-label {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 992px) {
+  .ba-batch-page .ba-pet-layout,
+  .ba-pet-card .ba-pet-layout {
+    flex-direction: column !important;
+  }
+  .ba-batch-page .ba-pet-col-total,
+  .ba-batch-page .ba-pet-col-outcomes,
+  .ba-pet-card .ba-pet-col-total,
+  .ba-pet-card .ba-pet-col-outcomes {
+    flex: none !important;
+    width: 100% !important;
+  }
+  .ba-batch-page .ba-pet-col-outcomes,
+  .ba-pet-card .ba-pet-col-outcomes {
+    flex-direction: row !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .ba-batch-page .ba-pet-row-grid-3,
+  .ba-pet-card .ba-pet-row-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+  .ba-batch-page .ba-pet-col-outcomes,
+  .ba-pet-card .ba-pet-col-outcomes {
+    flex-direction: column !important;
+  }
+}
+
+/* Class Evidence Upload Animated Progress & Tick Keyframes */
+@keyframes ba-shimmer-linear {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes ba-pop-scale {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 

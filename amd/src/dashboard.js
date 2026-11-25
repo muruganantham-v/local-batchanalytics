@@ -10,6 +10,8 @@ define([], function() {
   'use strict';
 
   function init() {
+    var p = document.getElementById('page');
+    if (p) p.classList.remove('drawers', 'drag-container');
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initNewBatchAnalytics);
     } else {

@@ -1020,13 +1020,15 @@ class util {
                     // Collect staff users in this course context to prevent staff role leakage
                     $staff_uids = [];
                     if (!empty($staff_role_ids)) {
-                        $stf_users = get_role_users($staff_role_ids, $c_ctx, false, 'u.id');
+                        $stf_users = get_role_users($staff_role_ids, $c_ctx, false, 'ra.id AS raid, u.id');
                         if (!empty($stf_users)) {
-                            $staff_uids = array_fill_keys(array_map('intval', array_keys($stf_users)), true);
+                            foreach ($stf_users as $stf_rec) {
+                                $staff_uids[(int)$stf_rec->id] = true;
+                            }
                         }
                     }
 
-                    $c_users = get_role_users($student_role_ids, $c_ctx, false, 'u.id, u.deleted, u.suspended');
+                    $c_users = get_role_users($student_role_ids, $c_ctx, false, 'ra.id AS raid, u.id, u.deleted, u.suspended');
                     if (!empty($c_users)) {
                         foreach ($c_users as $u) {
                             $uid = (int)$u->id;

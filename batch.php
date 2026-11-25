@@ -836,26 +836,36 @@ $PAGE->set_url(new moodle_url('/local/batchanalytics/batch.php', ['id' => $id]))
 $PAGE->set_title('Batch ' . $batchid_label . ' – Batch Analytics');
 $PAGE->set_heading('');
 
-$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => '3.2.0']);
+$dash_v = file_exists(__DIR__ . '/dashboard.css') ? filemtime(__DIR__ . '/dashboard.css') : '3.5.0';
+$style_v = file_exists(__DIR__ . '/styles.css') ? filemtime(__DIR__ . '/styles.css') : '3.5.0';
+$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => (string)$style_v]);
 $PAGE->requires->css($styleurl);
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => '3.2.0']);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => (string)$dash_v]);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/batch', 'init');
 
 $is_sponsor = $is_sponsor_view || $is_essci_batch;
 $hours_coverage = \local_batchanalytics\lesson_plan_service::get_hours_and_coverage($batch_id);
-$pet_summary = \local_batchanalytics\pet_service::get_batch_pet_summary($batch_id);
+$batch_name_for_pet = ($section && !empty($section->name)) ? $section->name : $batchid_label;
+$pet_stats = \local_batchanalytics\pet_qualification_service::get_batch_pet_stats(
+    $batch_name_for_pet,
+    (int)$batch_id,
+    $students_data
+);
 
-$site_name = !empty($section->classlocation) ? $section->classlocation : 'Bangalore';
+$site_name = '';
+if (!empty($batch) && $DB->get_manager()->table_exists('local_bm_batch') && $DB->get_manager()->field_exists('local_bm_batch', 'location') && !empty($batch->location) && trim($batch->location) !== '') {
+    $site_name = trim($batch->location);
+} else if (!empty($section->classlocation) && trim($section->classlocation) !== '') {
+    $site_name = trim($section->classlocation);
+}
 
 if (empty($ss_activities)) {
     $ss_activities = [];
 }
 
-$breadcrumb_url = $is_sponsor_view
-    ? (new moodle_url('/local/batchanalytics/marvel_essci_mis.php'))->out(false)
-    : (new moodle_url('/local/batchanalytics/index.php'))->out(false);
-$breadcrumb_label = $is_sponsor_view ? 'Program MIS' : 'Home';
+$breadcrumb_url = (new moodle_url('/local/batchanalytics/index.php', $is_sponsor ? ['viewmode' => 'sponsor'] : []))->out(false);
+$breadcrumb_label = $is_sponsor ? 'Program MIS' : 'Home';
 
 // Use the same configured CRM field list and explicit capability check as index.php.
 $crm_fields_config = \local_batchanalytics\crm_fields_helper::get_fields();
@@ -874,7 +884,26 @@ $export_batch_pdf_url = (new moodle_url('/local/batchanalytics/batch.php', [
 echo $OUTPUT->header();
 
 ?>
+<script>
+(function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+})();
+document.addEventListener('DOMContentLoaded', function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+});
+</script>
 <style>
+/* Reset drawers & container to clean full-width */
+#page,
+#page.drawers,
+.drawers.drag-container {
+  overflow: visible !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
 /* Full width and transparent container override across themes */
 @media (min-width: 768px) {
   .pagelayout-standard #page.drawers .main-inner,
@@ -915,6 +944,38 @@ echo $OUTPUT->header();
   padding: 0 !important;
   margin: 0 !important;
 }
+.wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+  box-sizing: border-box !important;
+}
+.crumbbar {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 12px 0 6px 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.crumbbar .crumb {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+.shell,
+.ba-batch-page .shell {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30, 50, 70, 0.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
 </style>
 
 <div class="local-batchanalytics-wrap ba-batch-page" id="ba-batch-detail-container"
@@ -942,17 +1003,17 @@ echo $OUTPUT->header();
       'close'       => get_string('close', 'local_batchanalytics'),
   ])) ?>">
 
-  <!-- Breadcrumb Bar -->
-  <div class="crumbbar">
-    <span class="crumb">
-      <a href="<?= s($breadcrumb_url) ?>"><?= s($breadcrumb_label) ?></a>
-      <span class="crumb-sep">›</span>
-      <b><?= s($batchid_label) ?></b>
-    </span>
-  </div>
+  <div class="wrap">
+    <!-- Breadcrumb Bar -->
+    <div class="crumbbar">
+      <span class="crumb">
+        <a href="<?= s($breadcrumb_url) ?>"><?= s($breadcrumb_label) ?></a>
+        <span class="crumb-sep">›</span>
+        <b><?= s($batchid_label) ?></b>
+      </span>
+    </div>
 
-
-  <div class="shell">
+    <div class="shell">
 
     <!-- Batch Header Card in Prototype Style -->
     <div class="bhead">
@@ -962,7 +1023,9 @@ echo $OUTPUT->header();
             <div class="idrow">
               <span class="pill pill-course"><?= s($coursename) ?></span>
               <?php if ($is_sponsor): ?>
-                <span class="pill" style="background:#eff6ff; color:#1d4ed8; font-weight:700;">● <?= s($site_name) ?></span>
+                <?php if ($site_name !== ''): ?>
+                  <span class="pill" style="background:#eff6ff; color:#1d4ed8; font-weight:700;">● <?= s($site_name) ?></span>
+                <?php endif; ?>
               <?php else: ?>
                 <span class="pill mode-<?= strtolower(s($deliverymode)) ?>"><?= s($deliverymode) ?></span>
                 <span class="pill type-<?= strtolower(s($submode)) ?>"><?= s($submode) ?></span>
@@ -1026,68 +1089,80 @@ echo $OUTPUT->header();
       </div>
 
     <?php if ($is_sponsor): ?>
-      <!-- 1. Hours & Coverage Summary Strip -->
-      <div class="ba-summary-strip">
-        <div class="ba-strip-header">
-          <span class="ba-strip-title">Batch KPIs &mdash; Hours & Coverage</span>
-          <span class="ba-strip-headline"><?= s($hours_coverage['delivered_hrs']) ?> / <?= s($hours_coverage['target_hrs']) ?> hrs delivered</span>
+      <!-- 1. Hours & Coverage Summary Strip (Matches Prototype marvel_essci_mis.html) -->
+      <div class="strip grey">
+        <div class="strip-head">
+          <span class="strip-title">Batch KPIs &mdash; Hours &amp; Coverage</span>
+          <span class="strip-hero"><?= s($hours_coverage['delivered_hrs']) ?><small> / <?= s($hours_coverage['target_hrs']) ?> hrs delivered</small></span>
         </div>
-        <div class="ba-strip-grid">
-          <div class="ba-strip-card">
-            <div class="num"><?= s($hours_coverage['target_hrs']) ?></div>
-            <div class="lbl">Course target (hrs)</div>
+        <div class="sct sct5">
+          <div class="sc">
+            <div class="v"><?= s($hours_coverage['target_hrs']) ?></div>
+            <div class="l">Course target (hrs)</div>
           </div>
-          <div class="ba-strip-card">
-            <div class="num text-emerald-green"><?= s($hours_coverage['delivered_hrs']) ?></div>
-            <div class="lbl">Delivered (hrs)</div>
+          <div class="sc">
+            <div class="v val-green text-emerald-green" style="color: var(--green, #1e8e4e);"><?= s($hours_coverage['delivered_hrs']) ?></div>
+            <div class="l">Delivered (hrs)</div>
           </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($hours_coverage['class_hrs']) ?></div>
-            <div class="lbl">Class hrs</div>
+          <div class="sc">
+            <div class="v"><?= s($hours_coverage['class_hrs']) ?></div>
+            <div class="l">Class hrs</div>
           </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($hours_coverage['lab_hrs']) ?></div>
-            <div class="lbl">Lab hrs</div>
+          <div class="sc">
+            <div class="v"><?= s($hours_coverage['lab_hrs']) ?></div>
+            <div class="l">Lab hrs</div>
           </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($hours_coverage['modules_covered']) ?> <span style="font-size: 13px; color: #94a3b8;">/ <?= s($hours_coverage['total_modules']) ?></span></div>
-            <div class="lbl">Modules covered</div>
+          <div class="sc">
+            <div class="v"><?= s($hours_coverage['modules_covered']) ?> <small>/ <?= s($hours_coverage['total_modules']) ?></small></div>
+            <div class="l">Modules covered</div>
           </div>
         </div>
       </div>
 
-      <!-- 2. Placement Eligibility Test (PET) Strip -->
-      <div class="ba-summary-strip">
-        <div class="ba-strip-header">
-          <span class="ba-strip-title">Placement Eligibility Test (PET)</span>
-          <span class="ba-strip-headline"><?= s($pet_summary['qualified_pct']) ?> qualified</span>
+      <!-- 2. Placement Eligibility Test (PET) Strip (Matches Prototype marvel_essci_mis.html) -->
+      <div class="strip grey">
+        <div class="strip-head">
+          <span class="strip-title">Batch KPIs &mdash; Placement Eligibility Test (PET)</span>
+          <?php if (!empty($pet_stats['pet_conducted'])): ?>
+            <span class="strip-hero"><?= number_format($pet_stats['qualified_pct'], 1) ?>% <small>qualified</small></span>
+          <?php else: ?>
+            <span class="status-chip sc-a" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-size:12px; font-weight:700; padding:4px 12px; border-radius:20px; display:inline-flex; align-items:center; gap:5px;">
+              <i class="fa fa-info-circle"></i> PET not conducted
+            </span>
+          <?php endif; ?>
         </div>
-        <div class="ba-strip-grid">
-          <div class="ba-strip-card">
-            <div class="num"><?= s($pet_summary['total_students']) ?></div>
-            <div class="lbl">Total students</div>
+        <?php if (!empty($pet_stats['pet_conducted'])): ?>
+          <div class="sct sct6">
+            <div class="sc">
+              <div class="v"><?= (int)$pet_stats['total_students'] ?></div>
+              <div class="l">Total students</div>
+            </div>
+            <div class="sc">
+              <div class="v val-green text-emerald-green" style="color: var(--green, #1e8e4e);"><?= (int)$pet_stats['pet_cleared'] ?></div>
+              <div class="l">PET cleared</div>
+            </div>
+            <div class="sc">
+              <div class="v"><?= (int)$pet_stats['first_attempt_cleared'] ?></div>
+              <div class="l">1st attempt</div>
+            </div>
+            <div class="sc">
+              <div class="v"><?= (int)$pet_stats['second_attempt_cleared'] ?></div>
+              <div class="l">2nd attempt</div>
+            </div>
+            <div class="sc">
+              <div class="v"><?= (int)$pet_stats['third_attempt_cleared'] ?></div>
+              <div class="l">3rd attempt</div>
+            </div>
+            <div class="sc">
+              <div class="v val-red text-delayed-red" style="color: var(--red, #c0392b);"><?= (int)$pet_stats['not_appeared'] ?></div>
+              <div class="l">Not appeared</div>
+            </div>
           </div>
-          <div class="ba-strip-card">
-            <div class="num text-emerald-green"><?= s($pet_summary['pet_cleared']) ?></div>
-            <div class="lbl">PET cleared</div>
+        <?php else: ?>
+          <div class="striphint" style="margin-top:6px; color:#64748b; font-size:12.5px; display:flex; align-items:center; gap:8px;">
+            <span>Placement Eligibility Test (PET) has not been conducted for batch <b><?= s($batch_name_for_pet) ?></b> yet. Student groups will appear once registered for the test.</span>
           </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($pet_summary['first_attempt']) ?></div>
-            <div class="lbl">1st attempt</div>
-          </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($pet_summary['second_attempt']) ?></div>
-            <div class="lbl">2nd attempt</div>
-          </div>
-          <div class="ba-strip-card">
-            <div class="num"><?= s($pet_summary['third_attempt']) ?></div>
-            <div class="lbl">3rd attempt</div>
-          </div>
-          <div class="ba-strip-card">
-            <div class="num text-delayed-red"><?= s($pet_summary['not_appeared']) ?></div>
-            <div class="lbl">Not appeared</div>
-          </div>
-        </div>
+        <?php endif; ?>
       </div>
     <?php endif; ?>
 
@@ -1146,6 +1221,9 @@ echo $OUTPUT->header();
                           'module'    => $mod_num,
                           'mode'      => $deliverymode,
                       ]);
+                      if ($is_sponsor) {
+                          $module_tracker_params['viewmode'] = 'sponsor';
+                      }
                       $module_tracker_url = (new moodle_url('/local/batchanalytics/module.php', $module_tracker_params))->out(false);
                     ?>
                     <tr>
@@ -1241,16 +1319,10 @@ echo $OUTPUT->header();
             <?= get_string('perf_panel_note', 'local_batchanalytics') ?>
           </div>
           <div class="filterbar">
-            <?php if (!$is_sponsor): ?>
             <div class="toggle">
               <span class="on" id="tg-grade">Grade</span>
               <span id="tg-pct">Completion %</span>
             </div>
-            <?php else: ?>
-            <div class="toggle">
-              <span class="on" id="tg-pct">Completion %</span>
-            </div>
-            <?php endif; ?>
             <button type="button" class="exp" id="ba-btn-export"><?= s(get_string('btn_export_filtered', 'local_batchanalytics')) ?></button>
           </div>
 
@@ -1265,9 +1337,7 @@ echo $OUTPUT->header();
                 <tr>
                   <th class="sortable" data-sort="band" title="Sort by Band"><?= s(get_string('col_band', 'local_batchanalytics')) ?></th>
                   <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name"><?= s(get_string('col_student', 'local_batchanalytics')) ?></th>
-                  <?php if (!$is_sponsor): ?>
                   <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade"><?= s(get_string('col_grade', 'local_batchanalytics')) ?></th>
-                  <?php endif; ?>
                   <th class="sortable" data-sort="attendance" title="Sort by Attendance"><?= s(get_string('col_attendance', 'local_batchanalytics')) ?></th>
                   <?php foreach ($performance_columns as $column): ?>
                     <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
@@ -1493,6 +1563,7 @@ echo $OUTPUT->header();
   </div> <!-- /.ba-batch-panels -->
 
   </div> <!-- /.shell -->
+  </div> <!-- /.wrap -->
 
 </div> <!-- /.local-batchanalytics-wrap -->
 

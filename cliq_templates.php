@@ -282,4 +282,3 @@ echo $OUTPUT->header();
 <?php
 $PAGE->requires->js_call_amd('local_batchanalytics/cliq_templates', 'init');
 echo $OUTPUT->footer();
-echo $OUTPUT->footer();

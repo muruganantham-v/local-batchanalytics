@@ -410,8 +410,14 @@ $string['class_hrs'] = 'Class hrs';
 $string['lab_hrs'] = 'Lab hrs';
 $string['modules_covered'] = 'Modules covered';
 $string['pet_headline'] = 'Placement Eligibility Test';
+$string['pet_qualification_title'] = 'Placement Eligibility Test (PET) — Qualification';
 $string['pet_qualified'] = 'qualified';
+$string['pet_qualified_label'] = 'qualified';
+$string['pet_total_students'] = 'Total students';
 $string['pet_cleared'] = 'PET cleared';
+$string['pet_cleared_group'] = 'PET Cleared';
+$string['pet_not_cleared_group'] = 'PET Not Cleared';
+$string['pet_total_cleared'] = 'Total Cleared';
 $string['pet_1st_attempt'] = '1st attempt';
 $string['pet_2nd_attempt'] = '2nd attempt';
 $string['pet_3rd_attempt'] = '3rd attempt';
@@ -456,7 +462,17 @@ $string['class_sessions_recorded'] = 'Class sessions recorded';
 $string['students_enrolled_module'] = 'Students enrolled in module';
 $string['pluginname_sponsor'] = 'Program MIS & Sponsor Portal';
 $string['coverage_header'] = 'Hours & Coverage Progression';
-$string['tab_std_attendance'] = 'Attendance Matrix';
+$string['tab_std_attendance'] = 'Student Attendance';
 $string['tab_student_perf'] = 'Student Performance';
+$string['settings_pet_config'] = 'Placement Eligibility Test (PET) Configuration';
+$string['pet_configuration_heading'] = 'Placement Eligibility Test (PET) Settings';
+$string['pet_configuration_heading_desc'] = 'Configure course mapping and section pass mark thresholds for the Placement Eligibility Test.';
+$string['pet_course_mapping'] = 'PET Course';
+$string['pet_course_mapping_desc'] = 'Select the course mapped as the Placement Eligibility Test (PET) course (e.g. Placement Eligibility Test 2026). Batch students are enrolled and grouped by attempt (_2nd, _3rd) within this course.';
+$string['pet_objective_pass_mark'] = 'Objective Pass Mark';
+$string['pet_objective_pass_mark_desc'] = 'Minimum marks required in the Objective section to pass (default: 40).';
+$string['pet_programming_pass_mark'] = 'Programming Pass Mark';
+$string['pet_programming_pass_mark_desc'] = 'Minimum marks required in the Programming section to pass (default: 30).';
+
 
 

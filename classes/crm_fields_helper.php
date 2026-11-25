@@ -87,6 +87,24 @@ class crm_fields_helper {
                 $keys[] = $f['key'];
             }
         }
+        // Ensure PET attempt result & score fields are always fetched
+        $pet_fields = [
+            'st_Attempt_Result_PET',
+            'st_Attempt_Programming_Score',
+            'st_Attempt_Objective_Score',
+            'nd_Attempt_Result_PET',
+            'nd_Attempt_Programming_Score',
+            'nd_Attempt_Objective_Score',
+            'rd_Attempt_Result_PET',
+            'rd_Attempt_Programming_Score',
+            'rd_Attempt_Objective_Score',
+            'PowerTrack_Cohort',
+        ];
+        foreach ($pet_fields as $pet_k) {
+            if (!in_array($pet_k, $keys, true)) {
+                $keys[] = $pet_k;
+            }
+        }
         return $keys;
     }
 

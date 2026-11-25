@@ -10,6 +10,8 @@ define([], function() {
     'use strict';
 
     function init() {
+        var p = document.getElementById('page');
+        if (p) p.classList.remove('drawers', 'drag-container');
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initBatchDetail);
         } else {
@@ -68,7 +70,7 @@ define([], function() {
             return num.toFixed(2) + (column.ismaac ? '' : '%');
         }
 
-        var perfMode = isSponsor ? 'percentile' : 'grade'; // 'grade' or 'percentile'
+        var perfMode = 'grade'; // 'grade' or 'percentile'
         var studentsData = [];
 
         try {
@@ -731,7 +733,7 @@ define([], function() {
         }
 
         function getVisiblePerformanceColumnCount() {
-            return (isSponsor ? 4 : 5) + performanceColumns.length;
+            return 5 + performanceColumns.length;
         }
 
         function renderPerformanceHeaders() {
@@ -742,11 +744,9 @@ define([], function() {
             var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             var html = '<tr>' +
                 '<th class="sortable" data-sort="band" title="Sort by Band">Band</th>' +
-                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>';
-            if (!isSponsor) {
-                html += '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>';
-            }
-            html += '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
+                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
+                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>' +
+                '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
             performanceColumns.forEach(function(column) {
                 html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
@@ -1358,10 +1358,8 @@ define([], function() {
                     for (var k = 0; k < spotCount; k++) stars += '★';
                     meritHtml += '<span class="m m-spot">' + stars + ' Spot</span> ';
                 }
-                if (!isSponsor) {
-                    if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
-                    else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
-                }
+                if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
+                else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
                 if (!meritHtml) meritHtml = '<span class="muted">—</span>';
 
                 var avatarHtml = '';
@@ -1375,10 +1373,10 @@ define([], function() {
                 }
 
                 var studentNameDisplay = escapeHtml(s.name);
-                if (isSponsor && s.userid) {
+                if (s.userid) {
                     studentNameDisplay = '<a href="student.php?id=' + encodeURIComponent(s.userid) + (batchId ? '&batchid=' + encodeURIComponent(batchId) : '') + '" class="ba-student-profile-link" style="color:var(--primary,#0072ce);font-weight:600;text-decoration:none;">' + escapeHtml(s.name) + '</a>';
                 }
-                var studentIdDisplay = isSponsor ? '' : '<span class="sid">' + escapeHtml(s.id) + '</span>';
+                var studentIdDisplay = '<span class="sid">' + escapeHtml(s.id) + '</span>';
 
                 html += '<tr>' +
                     '<td><span class="bdot bdot-' + b + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
@@ -1390,11 +1388,9 @@ define([], function() {
                                 studentIdDisplay +
                             '</div>' +
                         '</div>' +
-                    '</td>';
-                if (!isSponsor) {
-                    html += '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>';
-                }
-                html += '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
+                    '</td>' +
+                    '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                    '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
                     performanceColumns.map(function(column) {
                         return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
                     }).join('') +
@@ -1572,9 +1568,7 @@ define([], function() {
         // Export Filtered Students to CSV
         if (expBtn && stuBody) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = isSponsor
-                    ? ['Band', 'Student Name', 'Attendance']
-                    : ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
                 performanceColumns.forEach(function(column) {
                     var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
                     csvHeaders.push(column.label + suffix);
@@ -1597,12 +1591,10 @@ define([], function() {
                     var merits = [];
                     var spot = Number(s.spot_count || (s.spot ? 1 : 0));
                     if (spot > 0) merits.push(spot + ' Spot');
-                    if (!isSponsor) {
-                        if (s.pt === 'nom') merits.push('PT-Nom');
-                        else if (s.pt === 'sel') merits.push('PT-Sel');
-                    }
+                    if (s.pt === 'nom') merits.push('PT-Nom');
+                    else if (s.pt === 'sel') merits.push('PT-Sel');
                     var merit = merits.join('; ');
-                    var row = isSponsor ? [band, name, attVal] : [band, name, id, grade, attVal];
+                    var row = [band, name, id, grade, attVal];
                     performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     row.push(merit);
                     csv.push(row.map(function(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(','));

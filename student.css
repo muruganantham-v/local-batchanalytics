@@ -1,0 +1,1485 @@
+/**
+ * Stylesheet for Student Details Page in local_batchanalytics v3.0.
+ * Scoped under .ba-student-page to ensure clean isolation and rich aesthetics.
+ */
+
+.ba-student-page {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1e293b;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 auto;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* Breadcrumb Navigation */
+.ba-student-page .crumbbar {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 12px 0 6px 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+}
+.ba-student-page .crumbbar .crumb {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+.ba-student-page .ba-crumbbar {
+    font-size: 13.5px;
+    color: #64748b;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+.ba-student-page .ba-crumbbar a {
+    color: #0284c7;
+    text-decoration: none;
+    font-weight: 500;
+}
+.ba-student-page .ba-crumbbar a:hover {
+    text-decoration: underline;
+}
+.ba-student-page .ba-crumbbar .sep {
+    margin: 0 8px;
+    color: #94a3b8;
+}
+.ba-student-page .ba-crumb-current {
+    font-weight: 700;
+    color: #1e293b;
+}
+
+/* Student Profile Hero Header Card */
+.ba-student-page .ba-profile-hero {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    padding: 24px 28px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+.ba-student-page .ba-profile-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+.ba-student-page .ba-avatar-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #831843;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(131, 24, 67, 0.2);
+}
+.ba-student-page .ba-profile-info .name {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1e293b;
+    letter-spacing: -0.02em;
+    margin: 0 0 4px;
+}
+.ba-student-page .ba-profile-info .sub {
+    font-size: 13.5px;
+    color: #64748b;
+    font-weight: 400;
+    margin: 0 0 10px;
+}
+.ba-student-page .ba-badges-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ba-student-page .ba-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+}
+.ba-student-page .ba-pill-green {
+    background: #e6f4ea;
+    color: #137333;
+    border: 1px solid #b7e1cd;
+}
+.ba-student-page .ba-pill-orange {
+    background: #ffedd5;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+.ba-student-page .ba-pill-amber {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+.ba-student-page .ba-pill-purple {
+    background: #f3e8ff;
+    color: #6b21a8;
+    border: 1px solid #e9d5ff;
+}
+.ba-student-page .ba-pill-red {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* Hero Right KPI & Action */
+.ba-student-page .ba-profile-right {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+.ba-student-page .ba-hero-rating {
+    font-size: 26px;
+    font-weight: 800;
+    color: #1e293b;
+    line-height: 1;
+    margin-bottom: 2px;
+}
+.ba-student-page .ba-hero-rating-lbl {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.3px;
+}
+.ba-student-page .ba-hero-subkpi {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+    margin: 4px 0 12px;
+}
+.ba-student-page .ba-btn-download {
+    background: #0284c7;
+    color: #ffffff;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s ease, transform 0.1s ease;
+    box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+}
+.ba-student-page .ba-btn-download:hover {
+    background: #0369a1;
+    color: #ffffff;
+    text-decoration: none;
+}
+.ba-student-page .ba-btn-download:active {
+    transform: translateY(1px);
+}
+
+/* Tab Navigation Bar */
+.ba-student-page .ba-tabs-bar {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 4px;
+}
+.ba-student-page .ba-tabs-bar::-webkit-scrollbar {
+    display: none;
+}
+.ba-student-page .ba-tab-btn {
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #475569;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.ba-student-page .ba-tab-btn:hover {
+    color: #be185d;
+}
+.ba-student-page .ba-tab-btn.active {
+    color: #be185d;
+    border-bottom-color: #be185d;
+    font-weight: 700;
+}
+
+/* Tab Content Panels */
+.ba-student-page .ba-tab-panel {
+    display: none;
+}
+.ba-student-page .ba-tab-panel.active {
+    display: block;
+    animation: baFadeIn 0.2s ease-in-out;
+}
+@keyframes baFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Card Containers inside Panels */
+.ba-student-page .ba-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 0;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.ba-student-page .ba-card-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    margin: 0;
+    background: #ffffff;
+}
+.ba-student-page .ba-card-body {
+    padding: 20px 24px;
+}
+.ba-student-page .ba-card-header .title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+.ba-student-page .ba-tag-pull {
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-left: 10px;
+}
+
+/* 3-Column Bordered Info Table (Matches Exact Screenshot Design) */
+.ba-student-page .ba-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: none;
+    margin: 0;
+}
+.ba-student-page .ba-info-table td {
+    border: none;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 15px 24px;
+    width: 33.333%;
+    vertical-align: top;
+    background: #ffffff;
+}
+.ba-student-page .ba-info-table tr td:last-child {
+    border-right: none;
+}
+.ba-student-page .ba-info-table tr:last-child td {
+    border-bottom: none;
+}
+.ba-student-page .ba-info-table-4col td {
+    width: 25%;
+}
+.ba-student-page .ba-info-table .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+}
+.ba-student-page .ba-info-table .field-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1e293b;
+}
+
+/* Course Performance Table (Level 2 Matrix) */
+.ba-student-page .ba-table-wrap {
+    overflow-x: auto;
+    border: none;
+    margin: 0;
+}
+.ba-student-page .ba-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+.ba-student-page .ba-matrix-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: center;
+    vertical-align: middle;
+}
+.ba-student-page .ba-matrix-table th:first-child {
+    text-align: left;
+}
+.ba-student-page .ba-mod-th {
+    text-align: center;
+    vertical-align: middle;
+    padding: 10px 14px;
+}
+.ba-student-page .ba-mod-code {
+    font-weight: 800;
+    font-size: 14.5px;
+    color: #0f172a;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+.ba-student-page .ba-mod-section {
+    font-weight: 500;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 3px;
+    line-height: 1.1;
+    letter-spacing: normal;
+    text-transform: none;
+}
+.ba-student-page .ba-matrix-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: center;
+    color: #334155;
+    font-weight: 500;
+}
+.ba-student-page .ba-matrix-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: #0f172a;
+}
+.ba-student-page .ba-matrix-table tbody tr:hover {
+    background: #fbfcfe;
+}
+.ba-student-page .ba-matrix-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Counseling Notes Private Feed & Cards */
+.ba-student-page .ba-notes-warning {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #92400e;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ba-student-page .ba-notes-warning-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.ba-student-page .ba-notes-box {
+    padding: 20px 24px;
+    margin-bottom: 24px;
+}
+.ba-student-page .ba-notes-box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.ba-student-page .ba-notes-box-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+}
+.ba-student-page .ba-notes-crm-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #0369a1;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+.ba-student-page .ba-notes-textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 14px;
+    color: #0f172a;
+    font-family: inherit;
+    min-height: 80px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+.ba-student-page .ba-notes-textarea:focus {
+    border-color: #be185d;
+    box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.15);
+}
+.ba-student-page .ba-notes-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+.ba-student-page .ba-notes-author-tag {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+}
+.ba-student-page .ba-notes-author-tag strong {
+    color: #1e293b;
+}
+.ba-student-page .ba-btn-add-note {
+    background: #831843;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.ba-student-page .ba-btn-add-note:hover:not(:disabled) {
+    background: #701a35;
+}
+.ba-student-page .ba-btn-add-note:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Feed Header */
+.ba-student-page .ba-notes-feed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    margin-top: 8px;
+}
+.ba-student-page .ba-notes-feed-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e293b;
+}
+.ba-student-page .ba-notes-count-badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+
+/* Counseling Note Cards */
+.ba-student-page .ba-card.ba-note-card {
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    border-left: 4px solid #831843;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.15s ease;
+}
+.ba-student-page .ba-card.ba-note-card:hover {
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+.ba-student-page .ba-note-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ba-student-page .ba-note-meta-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #64748b;
+    flex-wrap: wrap;
+}
+.ba-student-page .ba-note-title {
+    font-weight: 700;
+    color: #831843;
+    font-size: 12px;
+    background: #fdf2f8;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #fce7f3;
+}
+.ba-student-page .ba-note-author strong {
+    color: #0f172a;
+}
+.ba-student-page .ba-note-dot {
+    color: #cbd5e1;
+}
+.ba-student-page .ba-note-date {
+    color: #64748b;
+    font-size: 12px;
+}
+.ba-student-page .ba-note-meta-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ba-student-page .ba-note-badge-editable {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b45309;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.ba-student-page .ba-note-badge-readonly {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    padding: 3px 8px;
+    border-radius: 12px;
+}
+.ba-student-page .ba-btn-edit-note {
+    font-size: 12px;
+    font-weight: 600;
+    color: #831843;
+    background: #ffffff;
+    border: 1px solid #fbcfe8;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.ba-student-page .ba-btn-edit-note:hover {
+    background: #fdf2f8;
+    border-color: #f472b6;
+}
+.ba-student-page .ba-note-body-view {
+    font-size: 14px;
+    color: #1e293b;
+    line-height: 1.6;
+    word-break: break-word;
+}
+.ba-student-page .ba-note-body-edit {
+    margin-top: 10px;
+}
+.ba-student-page .ba-note-edit-textarea {
+    width: 100%;
+    min-height: 90px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #0f172a;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+.ba-student-page .ba-note-edit-textarea:focus {
+    border-color: #831843;
+    box-shadow: 0 0 0 3px rgba(131, 24, 67, 0.12);
+}
+.ba-student-page .ba-note-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+.ba-student-page .ba-btn-cancel-edit {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.ba-student-page .ba-btn-cancel-edit:hover {
+    background: #e2e8f0;
+}
+.ba-student-page .ba-btn-save-note {
+    background: #831843;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.ba-student-page .ba-btn-save-note:hover:not(:disabled) {
+    background: #701a35;
+}
+.ba-student-page .ba-btn-save-note:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Empty State */
+.ba-student-page .ba-empty-notes {
+    text-align: center;
+    padding: 40px 20px;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+.ba-student-page .ba-empty-notes-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+.ba-student-page .ba-empty-notes-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Legacy fallback */
+.ba-student-page .ba-note-item {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #be185d;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+}
+.ba-student-page .ba-note-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 6px;
+}
+.ba-student-page .ba-note-body {
+    font-size: 14px;
+    color: #334155;
+    line-height: 1.5;
+}
+
+/* Toast Notification */
+.ba-toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ba-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    color: #ffffff;
+}
+.ba-toast.success {
+    background: #0f766e;
+}
+.ba-toast.error {
+    background: #b91c1c;
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+    .ba-student-page .ba-profile-hero {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .ba-student-page .ba-profile-right {
+        text-align: left;
+        align-items: flex-start;
+    }
+}
+@media (max-width: 600px) {
+    .ba-student-page .ba-info-table,
+    .ba-student-page .ba-info-table tbody,
+    .ba-student-page .ba-info-table tr,
+    .ba-student-page .ba-info-table td {
+        display: block;
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+    .ba-student-page .ba-info-table td {
+        border-bottom: 1px solid #e2e8f0;
+    }
+}
+
+/* Print to PDF Styles (When printed or saved as PDF) */
+@media print {
+    body, #page, #page-content {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    .ba-student-page .ba-crumbbar,
+    .ba-student-page .ba-tabs-bar,
+    .ba-student-page .ba-btn-download,
+    .ba-student-page .ba-notes-box,
+    .ba-toast-container,
+    #page-header,
+    #page-footer,
+    nav,
+    header {
+        display: none !important;
+    }
+    .ba-student-page {
+        max-width: 100% !important;
+        padding: 0 !important;
+    }
+    .ba-student-page .ba-tab-panel {
+        display: block !important;
+        page-break-inside: avoid;
+        margin-bottom: 24px;
+    }
+    .ba-student-page .ba-card {
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+    }
+    .ba-student-page .ba-info-table,
+    .ba-student-page .ba-matrix-table {
+        border: 1px solid #cbd5e1 !important;
+    }
+    .ba-student-page .ba-info-table td,
+    .ba-student-page .ba-matrix-table td,
+    .ba-student-page .ba-matrix-table th {
+        border: 1px solid #cbd5e1 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* ==========================================================================
+   Exact Prototype Styles for Student Profile & PDF Generation
+   ========================================================================== */
+:root {
+  --ink: #2e2e2e;
+  --mute: #6e7377;
+  --line: #e3e6ea;
+  --brand: #cc0066;
+  --brand-d: #663399;
+  --blue: #1b6ec2;
+  --blue-d: #1559a0;
+  --green: #1e8e4e;
+  --green-bg: #e7f4ec;
+  --amber: #c77a0a;
+  --amber-bg: #fdf2e0;
+  --red: #c0392b;
+  --red-bg: #fbeceb;
+  --gold: #b8860b;
+  --gold-bg: #fbf2d9;
+  --card: #fff;
+}
+
+.shell,
+.ba-student-page .shell {
+  background: var(--card, #ffffff) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30,50,70,.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+.ba-pdf-render-root {
+  --purple: #6b2d8f;
+  --magenta: #b5237a;
+  --ink: #2b2b2b;
+  --mute: #777;
+  --muted: #8a8a94;
+  --line: #dfe1e8;
+  --card-head: #f7f8fb;
+  --gold-bg: #fdf1d6;
+  --gold-line: #ecd59a;
+  --gold-text: #a8730a;
+  --green-bg: #e3f4e8;
+  --green-line: #8fcea1;
+  --green-text: #2a8a4a;
+
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0 11px 0 1px !important;
+  margin: 0 !important;
+  background: #ffffff !important;
+  color: var(--ink) !important;
+  font-family: "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.ba-pdf-render-root * {
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .page {
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .page + .page {
+  page-break-before: always !important;
+  break-before: page !important;
+}
+
+/* Header card */
+.ba-pdf-render-root .header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  gap: 20px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  padding: 18px 22px !important;
+  margin-bottom: 34px !important;
+  background: #fff !important;
+}
+
+.ba-pdf-render-root .header-left {
+  display: flex !important;
+  gap: 18px !important;
+  align-items: flex-start !important;
+}
+
+.ba-pdf-render-root .avatar {
+  flex: 0 0 66px !important;
+  width: 66px !important;
+  height: 66px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #c2127a, #6b2d8f) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 22px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.ba-pdf-render-root .name {
+  margin: 0 !important;
+  font-size: 24px !important;
+  font-weight: 800 !important;
+  color: var(--ink) !important;
+}
+
+.ba-pdf-render-root .meta {
+  margin: 4px 0 12px !important;
+  color: var(--mute) !important;
+  font-size: 12.5px !important;
+}
+
+.ba-pdf-render-root .header-badges {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px 10px !important;
+  margin-top: 6px !important;
+  line-height: 1.4 !important;
+}
+
+.ba-pdf-render-root .badge {
+  display: inline-block !important;
+  margin-right: 8px !important;
+  margin-bottom: 8px !important;
+  background: var(--gold-bg) !important;
+  border: 1px solid var(--gold-line) !important;
+  color: var(--gold-text) !important;
+  font-weight: 700 !important;
+  font-size: 11.5px !important;
+  padding: 4px 11px !important;
+  border-radius: 8px !important;
+  text-align: center !important;
+  line-height: 1.3 !important;
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .badge.pt {
+  background: #f0ecf6 !important;
+  border-color: #c9b8e0 !important;
+  color: var(--purple) !important;
+}
+
+.ba-pdf-render-root .badge.pet {
+  background: var(--green-bg) !important;
+  border-color: var(--green-line) !important;
+  color: var(--green-text) !important;
+}
+.ba-pdf-render-root .badge.pet.badge-green {
+  background: #dcfce7 !important;
+  border-color: #bbf7d0 !important;
+  color: #15803d !important;
+}
+.ba-pdf-render-root .badge.pet.badge-orange {
+  background: #ffedd5 !important;
+  border-color: #fed7aa !important;
+  color: #ea580c !important;
+}
+.ba-pdf-render-root .badge.pet.badge-red {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+.ba-pdf-render-root .header-right {
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+.ba-pdf-render-root .rating {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  line-height: 1.1 !important;
+  color: #333 !important;
+}
+
+.ba-pdf-render-root .header-right small {
+  display: block !important;
+  color: var(--mute) !important;
+  font-size: 12.5px !important;
+  margin-top: 3px !important;
+}
+
+/* Section titles */
+.ba-pdf-render-root .section {
+  margin-bottom: 34px !important;
+}
+
+.ba-pdf-render-root .section-title {
+  margin: 0 0 16px !important;
+  padding-bottom: 6px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: var(--purple) !important;
+  border-bottom: 2px solid var(--magenta) !important;
+  page-break-after: avoid !important;
+  break-after: avoid !important;
+}
+
+/* Cards */
+.ba-pdf-render-root .card {
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  margin-bottom: 14px !important;
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .card:last-child {
+  margin-bottom: 0 !important;
+}
+
+.ba-pdf-render-root .card-title {
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  background: var(--card-head) !important;
+  border-bottom: 1px solid var(--line) !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  letter-spacing: .3px !important;
+  color: #333 !important;
+}
+
+/* Grid with inner dividers only (no clipped right border) */
+.ba-pdf-render-root .grid {
+  display: grid !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .cols-3 {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+.ba-pdf-render-root .cols-4 {
+  grid-template-columns: repeat(4, 1fr) !important;
+}
+
+.ba-pdf-render-root .cell {
+  padding: 8px 14px !important;
+  border-right: 1px solid var(--line) !important;
+  border-bottom: 1px solid var(--line) !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root .cols-3 .cell:nth-child(3n),
+.ba-pdf-render-root .cols-4 .cell:nth-child(4n) {
+  border-right: 0 !important;
+}
+
+.ba-pdf-render-root .cols-3 .cell:nth-last-child(-n+3):nth-child(3n+1),
+.ba-pdf-render-root .cols-3 .cell:nth-last-child(-n+3):nth-child(3n+1) ~ .cell {
+  border-bottom: 0 !important;
+}
+
+.ba-pdf-render-root .cols-4 .cell:nth-last-child(-n+4):nth-child(4n+1),
+.ba-pdf-render-root .cols-4 .cell:nth-last-child(-n+4):nth-child(4n+1) ~ .cell {
+  border-bottom: 0 !important;
+}
+
+.ba-pdf-render-root .label {
+  display: block !important;
+  font-size: 9.5px !important;
+  color: var(--muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .4px !important;
+  margin-bottom: 3px !important;
+}
+
+.ba-pdf-render-root .value {
+  display: block !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+}
+
+.ba-pdf-render-root .mock-score {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.ba-pdf-render-root .mock-score strong {
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  color: var(--ink) !important;
+}
+
+.ba-student-page .ba-info-table .field-value.ba-mock-score strong {
+  font-weight: 800;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.ba-pdf-render-root .pill-status {
+  display: inline-block !important;
+  min-width: 36px !important;
+  text-align: center !important;
+  border-radius: 9px !important;
+  padding: 2px 10px !important;
+  font-weight: 700 !important;
+  font-size: 11.5px !important;
+}
+.ba-pdf-render-root .pill-status.pill-green,
+.ba-pdf-render-root .pill-status.cleared {
+  background: #dcfce7 !important;
+  border: 1px solid #bbf7d0 !important;
+  color: #15803d !important;
+}
+.ba-pdf-render-root .pill-status.pill-orange,
+.ba-pdf-render-root .pill-status.not-cleared {
+  background: #ffedd5 !important;
+  border: 1px solid #fed7aa !important;
+  color: #ea580c !important;
+}
+.ba-pdf-render-root .pill-status.pill-red,
+.ba-pdf-render-root .pill-status.not-attented,
+.ba-pdf-render-root .pill-status.not-attended {
+  background: #fee2e2 !important;
+  border: 1px solid #fca5a5 !important;
+  color: #dc2626 !important;
+}
+.ba-pdf-render-root .pill-status.pill-neutral {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+/* Merit */
+.ba-pdf-render-root .merit-body {
+  padding: 10px 16px 12px !important;
+}
+
+.ba-pdf-render-root .merit-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.ba-pdf-render-root .merit-tags .badge {
+  font-size: 11px !important;
+}
+
+.ba-pdf-render-root .merit-note {
+  margin: 0 !important;
+  color: var(--mute) !important;
+  font-size: 11.5px !important;
+}
+
+/* Module table */
+.ba-pdf-render-root .table-wrap {
+  padding: 12px 16px 14px !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root table {
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  font-size: 11.5px !important;
+  box-sizing: border-box !important;
+}
+
+.ba-pdf-render-root th,
+.ba-pdf-render-root td {
+  padding: 6.5px 8px !important;
+  text-align: center !important;
+  border-bottom: 1px solid var(--line) !important;
+}
+
+.ba-pdf-render-root th:first-child,
+.ba-pdf-render-root td:first-child {
+  text-align: left !important;
+  font-weight: 700 !important;
+}
+
+.ba-pdf-render-root thead th {
+  background: var(--card-head) !important;
+  color: #555 !important;
+  font-size: 10.5px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .3px !important;
+}
+
+.ba-pdf-render-root tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+.ba-pdf-render-root .footer {
+  margin-top: 18px !important;
+  color: #9a9aa4 !important;
+  font-size: 11px !important;
+}
+
+.phead,
+.ba-pdf-render-root .phead {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 22px;
+  background: linear-gradient(180deg, #fbfcfd, #fff);
+  margin-bottom: 14px;
+  box-sizing: border-box;
+}
+
+.pphoto,
+.ba-pdf-render-root .pphoto {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), var(--brand-d));
+  color: #fff;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.pmain,
+.ba-pdf-render-root .pmain {
+  flex: 1;
+}
+
+.pmain h1,
+.ba-pdf-render-root .pmain h1 {
+  font-size: 21px;
+  margin: 0 0 4px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.pmain .psub,
+.ba-pdf-render-root .pmain .psub {
+  font-size: 12.5px;
+  color: var(--mute);
+  margin-bottom: 10px;
+}
+
+.pbadges,
+.ba-pdf-render-root .pbadges {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.pb,
+.ba-pdf-render-root .pb {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.pb.spot,
+.ba-pdf-render-root .pb.spot {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-color: #e6d19a;
+  text-align: center;
+}
+
+.pb.pt,
+.ba-pdf-render-root .pb.pt {
+  background: #f0ecf6;
+  color: var(--brand-d);
+  border-color: #c9b8e0;
+  text-align: center;
+}
+
+.pb.pet,
+.ba-pdf-render-root .pb.pet {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: #9ec9ac;
+  text-align: center;
+}
+
+.pquick,
+.ba-pdf-render-root .pquick {
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
+.pquick .big,
+.ba-pdf-render-root .pquick .big {
+  font-size: 20px;
+  font-weight: 800;
+  color: #333;
+}
+
+.tabs,
+.ba-pdf-render-root .tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.tab,
+.ba-pdf-render-root .tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  color: var(--mute);
+  cursor: pointer;
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -2px;
+  font-weight: 600;
+}
+
+.tab.active,
+.ba-pdf-render-root .tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+.card,
+.ba-pdf-render-root .card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.card .ch,
+.ba-pdf-render-root .card .ch {
+  padding: 12px 16px;
+  background: #fbfcfd;
+  font-size: 13px;
+  font-weight: 800;
+  color: #3a3f44;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+}
+
+.card .cb,
+.ba-pdf-render-root .card .cb {
+  padding: 16px;
+}
+
+.srct,
+.ba-pdf-render-root .srct {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 7px;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.src-crm,
+.ba-pdf-render-root .src-crm {
+  background: #eef1f4;
+  color: #5a6066;
+}
+
+.src-lms,
+.ba-pdf-render-root .src-lms {
+  background: var(--green-bg);
+  color: #3a7d4a;
+}
+
+.grid2,
+.grid3,
+.grid4,
+.ba-pdf-render-root .grid2,
+.ba-pdf-render-root .grid3,
+.ba-pdf-render-root .grid4 {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+
+.grid2, .ba-pdf-render-root .grid2 { grid-template-columns: repeat(2, 1fr); }
+.grid3, .ba-pdf-render-root .grid3 { grid-template-columns: repeat(3, 1fr); }
+.grid4, .ba-pdf-render-root .grid4 { grid-template-columns: repeat(4, 1fr); }
+
+.fcell,
+.ba-pdf-render-root .fcell {
+  background: #fff;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eef1f4;
+  box-sizing: border-box;
+}
+
+.fcell .k,
+.ba-pdf-render-root .fcell .k {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: #999;
+}
+
+.fcell .v,
+.ba-pdf-render-root .fcell .v {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #444;
+  margin-top: 3px;
+}
+
+.fcell .v.muted,
+.ba-pdf-render-root .fcell .v.muted {
+  color: #bbb;
+  font-weight: 400;
+}
+
+.tablecard,
+.ba-pdf-render-root .tablecard {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow-x: auto;
+  background: #fff;
+}
+
+.tablecard table,
+.ba-pdf-render-root .tablecard table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.tablecard thead th,
+.ba-pdf-render-root .tablecard thead th {
+  text-align: left;
+  padding: 12px 15px;
+  background: #f4f6f8;
+  color: #565c62;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+
+.tablecard tbody td,
+.ba-pdf-render-root .tablecard tbody td {
+  padding: 13px 15px;
+  border-bottom: 1px solid #eef1f4;
+  vertical-align: middle;
+}
+
+.tablecard tbody tr:last-child td,
+.ba-pdf-render-root .tablecard tbody tr:last-child td {
+  border-bottom: none;
+}
+

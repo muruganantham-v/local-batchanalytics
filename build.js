@@ -6,28 +6,51 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
+const terser = require('terser');
 
-const modules = ['batch', 'dashboard', 'module', 'cliq_templates'];
+const modules = ['batch', 'dashboard', 'module', 'cliq_templates', 'student'];
 
 console.log('Compiling AMD modules with Terser...\n');
 
-modules.forEach(mod => {
-    const srcFile = `amd/src/${mod}.js`;
-    const destFile = `amd/build/${mod}.min.js`;
-    const mapFile = `amd/build/${mod}.min.js.map`;
+async function build() {
+    for (const mod of modules) {
+        const srcFile = path.join(__dirname, `amd/src/${mod}.js`);
+        const destFile = path.join(__dirname, `amd/build/${mod}.min.js`);
+        const mapFile = path.join(__dirname, `amd/build/${mod}.min.js.map`);
 
-    process.stdout.write(`Compiling ${mod}... `);
-    const cmd = `npx terser "${srcFile}" -o "${destFile}" --source-map "url='${mod}.min.js.map',includeSources" --comments "/^!|@license|@copyright/i"`;
-    execSync(cmd, { stdio: ['ignore', 'ignore', 'inherit'] });
+        if (!fs.existsSync(srcFile)) continue;
 
-    const srcStat = fs.statSync(srcFile);
-    const destStat = fs.statSync(destFile);
-    const reduction = (((srcStat.size - destStat.size) / srcStat.size) * 100).toFixed(1);
+        process.stdout.write(`Compiling ${mod}... `);
+        const code = fs.readFileSync(srcFile, 'utf8');
+        const result = await terser.minify(code, {
+            sourceMap: {
+                filename: `${mod}.min.js`,
+                url: `${mod}.min.js.map`,
+                includeSources: true
+            },
+            format: {
+                comments: /^!|@license|@copyright/i
+            }
+        });
 
-    console.log(`done! (${(srcStat.size / 1024).toFixed(1)} KB -> ${(destStat.size / 1024).toFixed(1)} KB, -${reduction}%)`);
+        fs.writeFileSync(destFile, result.code, 'utf8');
+        if (result.map) {
+            fs.writeFileSync(mapFile, result.map, 'utf8');
+        }
+
+        const srcStat = fs.statSync(srcFile);
+        const destStat = fs.statSync(destFile);
+        const reduction = (((srcStat.size - destStat.size) / srcStat.size) * 100).toFixed(1);
+
+        console.log(`done! (${(srcStat.size / 1024).toFixed(1)} KB -> ${(destStat.size / 1024).toFixed(1)} KB, -${reduction}%)`);
+    }
+    console.log('\nAll AMD modules compiled successfully with source maps.\n');
+}
+
+build().catch(err => {
+    console.error(err);
+    process.exit(1);
 });
-
-console.log('\nAll AMD modules compiled successfully with source maps.\n');
 

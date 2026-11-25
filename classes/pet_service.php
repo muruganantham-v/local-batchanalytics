@@ -23,152 +23,51 @@ class pet_service {
 
     /**
      * Get batch-level PET summary stats.
-     * Sourced dynamically from the configured Moodle Quiz activity (local_batchanalytics/pet_quiz_id)
-     * or from local_batchanalytics_pet persistent table.
+     * Sourced dynamically through pet_qualification_service using live Moodle PET course quizzes & groups,
+     * Zoho CRM data, or local_batchanalytics_pet persistent table.
      *
      * @param int $batchid
      * @param int $sectionid
+     * @param array $students
      * @return array
      */
-    public static function get_batch_pet_summary(int $batchid, int $sectionid = 0): array {
+    public static function get_batch_pet_summary(int $batchid, int $sectionid = 0, array $students = []): array {
         global $DB;
 
         $target_sectionid = $sectionid > 0 ? $sectionid : $batchid;
+        $batch_name = '';
 
-        // 1. Check if an admin selected a PET Quiz activity in settings
-        $pet_quiz_id = (int)get_config('local_batchanalytics', 'pet_quiz_id');
-        if ($pet_quiz_id > 0 && $DB->get_manager()->table_exists('quiz') && $DB->get_manager()->table_exists('quiz_attempts')) {
-            $quiz = $DB->get_record('quiz', ['id' => $pet_quiz_id]);
-            if ($quiz) {
-                // Find enrolled users for this batch/section across linked module courses
-                $enrolled_uids = [];
-                if ($target_sectionid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
-                    $sec = $DB->get_record('local_bm_classsection', ['id' => $target_sectionid]);
-                    if (!$sec) {
-                        $secs = $DB->get_records('local_bm_classsection', ['batchid' => $target_sectionid], 'id ASC', '*', 0, 1);
-                        if (!empty($secs)) {
-                            $sec = reset($secs);
-                        }
-                    }
-                    if ($sec && !empty($sec->moduledata)) {
-                        $mods = \local_batchanalytics\util::decode_module_data($sec->moduledata, true);
-                        foreach ($mods as $m) {
-                            $cid = !empty($m['moodlecourseid']) ? (int)$m['moodlecourseid'] : (!empty($m['courseid']) ? (int)$m['courseid'] : 0);
-                            if ($cid > 0) {
-                                $cusers = get_enrolled_users(\context_course::instance($cid), '', 0, 'u.id');
-                                foreach ($cusers as $cu) {
-                                    $enrolled_uids[(int)$cu->id] = (int)$cu->id;
-                                }
-                            }
-                        }
-                    }
+        if ($target_sectionid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $target_sectionid]);
+            if (!$sec) {
+                $secs = $DB->get_records('local_bm_classsection', ['batchid' => $target_sectionid], 'id ASC', '*', 0, 1);
+                if (!empty($secs)) {
+                    $sec = reset($secs);
                 }
-
-                // If no specific enrolled users found from sections, use the quiz course users
-                if (empty($enrolled_uids)) {
-                    $cusers = get_enrolled_users(\context_course::instance($quiz->course), '', 0, 'u.id');
-                    foreach ($cusers as $cu) {
-                        $enrolled_uids[(int)$cu->id] = (int)$cu->id;
-                    }
-                }
-
-                if (!empty($enrolled_uids)) {
-                    list($insql, $params) = $DB->get_in_or_equal(array_values($enrolled_uids));
-                    $params[] = $pet_quiz_id;
-
-                    $attempts = $DB->get_records_sql(
-                        "SELECT id, userid, attempt, state, sumgrades 
-                         FROM {quiz_attempts} 
-                         WHERE userid $insql AND quiz = ? AND preview = 0
-                         ORDER BY userid ASC, attempt ASC",
-                        $params
-                    );
-
-                    $students_res = [];
-                    foreach ($attempts as $att) {
-                        $uid = (int)$att->userid;
-                        if (!isset($students_res[$uid])) {
-                            $students_res[$uid] = ['attempts' => 0, 'cleared' => false, 'cleared_attempt' => 0];
-                        }
-                        $students_res[$uid]['attempts']++;
-                        $grade = (float)($att->sumgrades ?? 0);
-                        if ($grade > 0 && !$students_res[$uid]['cleared']) {
-                            $students_res[$uid]['cleared'] = true;
-                            $students_res[$uid]['cleared_attempt'] = (int)$att->attempt;
-                        }
-                    }
-
-                    $total = count($enrolled_uids);
-                    $first = 0; $second = 0; $third = 0; $cleared = 0;
-                    foreach ($students_res as $uid => $data) {
-                        if ($data['cleared']) {
-                            $cleared++;
-                            if ($data['cleared_attempt'] === 1) $first++;
-                            else if ($data['cleared_attempt'] === 2) $second++;
-                            else $third++;
-                        }
-                    }
-
-                    $not_appeared = max(0, $total - count($students_res));
-                    $pct = $total > 0 ? round(($cleared / $total) * 100, 1) : 0;
-
-                    return [
-                        'qualified_pct' => $pct . '%',
-                        'total_students' => $total,
-                        'pet_cleared' => $cleared,
-                        'first_attempt' => $first,
-                        'second_attempt' => $second,
-                        'third_attempt' => $third,
-                        'not_appeared' => $not_appeared,
-                    ];
-                }
+            }
+            if ($sec && !empty($sec->name)) {
+                $batch_name = $sec->name;
             }
         }
 
-        // 2. Check persistent table local_batchanalytics_pet
-        if ($DB->get_manager()->table_exists(self::TABLE)) {
-            $records = $DB->get_records(self::TABLE, ['batchid' => $batchid]);
-            if (!empty($records)) {
-                $total = count($records);
-                $cleared = 0;
-                $first = 0;
-                $second = 0;
-                $third = 0;
-                $not_appeared = 0;
-
-                foreach ($records as $r) {
-                    if (strcasecmp($r->status, 'Cleared') === 0) {
-                        $cleared++;
-                        if ($r->attempt_number == 1) $first++;
-                        else if ($r->attempt_number == 2) $second++;
-                        else if ($r->attempt_number == 3) $third++;
-                    } else if (strcasecmp($r->status, 'Not appeared') === 0) {
-                        $not_appeared++;
-                    }
-                }
-
-                $pct = $total > 0 ? round(($cleared / $total) * 100, 1) : 0;
-                return [
-                    'qualified_pct' => $pct . '%',
-                    'total_students' => $total,
-                    'pet_cleared' => $cleared,
-                    'first_attempt' => $first,
-                    'second_attempt' => $second,
-                    'third_attempt' => $third,
-                    'not_appeared' => $not_appeared,
-                ];
+        if ($batch_name === '' && $target_sectionid > 0 && $DB->get_manager()->table_exists('local_bm_batch')) {
+            $b = $DB->get_record('local_bm_batch', ['id' => $target_sectionid]);
+            if ($b && !empty($b->batchname)) {
+                $batch_name = $b->batchname;
             }
         }
 
-        // 3. Prototype default values matching document if no quiz or DB configured
+        $stats = pet_qualification_service::get_batch_pet_stats($batch_name, $target_sectionid, $students);
+
         return [
-            'qualified_pct' => '84.5%',
-            'total_students' => 58,
-            'pet_cleared' => 49,
-            'first_attempt' => 31,
-            'second_attempt' => 12,
-            'third_attempt' => 6,
-            'not_appeared' => 3,
+            'pet_conducted'  => !empty($stats['pet_conducted']),
+            'qualified_pct'  => number_format($stats['qualified_pct'], 1) . '%',
+            'total_students' => (int)$stats['total_students'],
+            'pet_cleared'    => (int)$stats['pet_cleared'],
+            'first_attempt'  => (int)$stats['first_attempt_cleared'],
+            'second_attempt' => (int)$stats['second_attempt_cleared'],
+            'third_attempt'  => (int)$stats['third_attempt_cleared'],
+            'not_appeared'   => (int)$stats['not_appeared'],
         ];
     }
 
@@ -182,24 +81,46 @@ class pet_service {
     public static function get_student_pet_status(int $userid, int $batchid = 0): array {
         global $DB;
 
+        // 1. Try from live PET course
+        $course_status = pet_qualification_service::get_student_pet_status_from_course($userid);
+        if ($course_status !== null) {
+            return $course_status;
+        }
+
+        // 2. Try persistent table local_batchanalytics_pet
         if ($DB->get_manager()->table_exists(self::TABLE)) {
             $record = $DB->get_record(self::TABLE, ['userid' => $userid]);
             if ($record) {
                 return [
-                    'status' => $record->status,
+                    'status'  => $record->status,
                     'attempt' => (int)$record->attempt_number,
-                    'badge' => $record->status . ' (' . self::ordinal((int)$record->attempt_number) . ' attempt)',
+                    'badge'   => $record->status . ' (' . self::ordinal((int)$record->attempt_number) . ' attempt)',
                 ];
             }
         }
 
+        // If prototype mock user (id <= 0), provide demo benchmark badge
+        if ($userid <= 0) {
+            return [
+                'status'  => 'Cleared',
+                'attempt' => 1,
+                'badge'   => 'Cleared (1st attempt)',
+            ];
+        }
+
         return [
-            'status' => 'Cleared',
+            'status'  => 'Not appeared',
             'attempt' => 1,
-            'badge' => 'Cleared (1st attempt)',
+            'badge'   => 'Not appeared',
         ];
     }
 
+    /**
+     * Helper to format numbers with ordinal suffixes.
+     *
+     * @param int $num
+     * @return string
+     */
     protected static function ordinal(int $num): string {
         $ends = ['th','st','nd','rd','th','th','th','th','th','th'];
         if ((($num % 100) >= 11) && (($num % 100) <= 13)) {
@@ -208,4 +129,3 @@ class pet_service {
         return $num . $ends[$num % 10];
     }
 }
-

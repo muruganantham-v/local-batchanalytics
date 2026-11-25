@@ -12,6 +12,13 @@
 }
 
 /* ==================== FULL WIDTH CONTAINER OVERRIDES ==================== */
+#page,
+#page.drawers,
+.drawers.drag-container,
+#page-wrapper {
+  background: transparent !important;
+}
+
 @media (min-width: 768px) {
   body.path-local-batchanalytics.pagelayout-standard #page.drawers .main-inner,
   body.path-local-batchanalytics.limitedwidth #page.drawers .main-inner,
@@ -25,8 +32,11 @@
   #page-local-batchanalytics-module #page.drawers .main-inner {
     max-width: 100% !important;
     width: 100% !important;
-    padding-left: 20px !important;
-    padding-right: 20px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 }
 
@@ -34,11 +44,12 @@
 .local-batchanalytics-wrap {
   max-width: 100% !important;
   width: 100% !important;
-  margin: 10px auto;
-  padding: 20px 24px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
   font-family:
     system-ui,
     -apple-system,
@@ -924,32 +935,74 @@
 }
 
 /* Circular Close Button */
-.ba-modal-close {
+.ba-modal-close,
+.ba-modal-btn-close-circle,
+.ba-mentor-modal-close {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: none;
+  border: 1px solid #e2e8f0;
   background: #f1f5f9;
   color: #64748b;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   padding: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.ba-modal-close:hover,
+.ba-modal-btn-close-circle:hover,
+.ba-mentor-modal-close:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  transform: scale(1.05);
+}
+
+.ba-modal-close:active,
+.ba-modal-btn-close-circle:active,
+.ba-mentor-modal-close:active {
+  transform: scale(0.95);
+}
+
+.ba-modal-close svg,
+.ba-modal-btn-close-circle svg,
+.ba-mentor-modal-close svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.5;
+  display: block;
+}
+
+.ba-modal-btn-footer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   outline: none;
 }
 
-.ba-modal-close:hover {
-  background: #fee2e2;
-  color: #ef4444;
-  transform: rotate(90deg);
+.ba-modal-btn-footer-close:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
 }
 
-.ba-modal-close svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2.5;
+.ba-modal-btn-footer-close:active {
+  background: #cbd5e1;
 }
 
 /* Toolbar Row */
@@ -1732,8 +1785,8 @@ input:checked+.ba-slider:before {
 }
 
 .ba-batch-page .crumbbar {
-  margin: 8px 0 16px;
-  padding: 0 4px;
+  margin: 0 0 14px 0;
+  padding: 12px 0 6px 0;
 }
 .ba-batch-page .crumb {
   font-size: 13px;
@@ -1750,9 +1803,12 @@ input:checked+.ba-slider:before {
 .ba-batch-page .crumb b {
   color: #3a3f44;
 }
-.ba-batch-page .crumb-sep {
+.ba-batch-page .crumb-sep,
+.ba-module-page .crumb-sep,
+.ba-student-page .crumb-sep,
+.crumb-sep {
   color: #cbd5e1;
-  margin: 0 6px;
+  margin: 0 4px;
 }
 
 .ba-batch-page .wrap {
@@ -2827,8 +2883,8 @@ input:checked+.ba-slider:before {
 }
 
 .ba-module-page .crumbbar {
-  margin: 0 0 16px 0;
-  padding: 0 4px;
+  margin: 0 0 14px 0;
+  padding: 12px 0 6px 0;
   font-size: 13.5px;
   color: var(--mute);
 }

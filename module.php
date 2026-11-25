@@ -244,12 +244,12 @@ if ($action === 'save_mentor_activity' || $action === 'savementoractivity') {
 }
 
 // -------------------------------------------------------------------------
-// 1b. AJAX Action: Add Lesson Plan Day (Mentor syllabus delivery logging)
+// 1b. AJAX Action: Add / Reorder / Delete Lesson Plan Day
 // -------------------------------------------------------------------------
 if ($action === 'add_lesson_plan_day') {
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json; charset=utf-8');
-    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+    if (!\local_batchanalytics\program_service::has_write_permission($context)) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
         die();
@@ -258,16 +258,37 @@ if ($action === 'add_lesson_plan_day') {
         require_sesskey();
         $cid = optional_param('courseid', 0, PARAM_INT);
         $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $after = optional_param('after', 'end', PARAM_RAW);
         $data = [
-            'day_index' => optional_param('day_index', 1, PARAM_INT),
+            'day_index' => optional_param('day_index', 0, PARAM_INT),
             'planned_date' => optional_param('planned_date', '', PARAM_TEXT),
             'actual_date' => optional_param('actual_date', '', PARAM_TEXT),
             'topic' => optional_param('topic', '', PARAM_RAW),
-            'status' => optional_param('status', 'Pending', PARAM_ALPHANUMEXT),
+            'status' => optional_param('status', 'Pending', PARAM_TEXT),
         ];
-        // Class Mentor and Lab Mentor attendance are automatically resolved from the ESSCI biometric attendance service
-        $id = \local_batchanalytics\lesson_plan_service::add_day($sec_id, $cid, $data);
+        $id = \local_batchanalytics\lesson_plan_service::add_day($sec_id, $cid, $data, $after);
         echo json_encode(['success' => true, 'id' => $id]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'reorder_lesson_plan_day') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    if (!\local_batchanalytics\program_service::has_write_permission($context)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $dayid = required_param('dayid', PARAM_INT);
+        $direction = required_param('direction', PARAM_INT);
+        $res = \local_batchanalytics\lesson_plan_service::reorder_day($dayid, $direction);
+        echo json_encode(['success' => $res]);
     } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -278,7 +299,7 @@ if ($action === 'add_lesson_plan_day') {
 if ($action === 'delete_lesson_plan_day') {
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json; charset=utf-8');
-    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+    if (!\local_batchanalytics\program_service::has_write_permission($context)) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
         die();
@@ -286,8 +307,8 @@ if ($action === 'delete_lesson_plan_day') {
     try {
         require_sesskey();
         $dayid = required_param('dayid', PARAM_INT);
-        $DB->delete_records(\local_batchanalytics\lesson_plan_service::TABLE, ['id' => $dayid]);
-        echo json_encode(['success' => true]);
+        $res = \local_batchanalytics\lesson_plan_service::delete_day($dayid);
+        echo json_encode(['success' => $res]);
     } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -301,14 +322,18 @@ if ($action === 'delete_lesson_plan_day') {
 if ($action === 'upload_evidence') {
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json; charset=utf-8');
-    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+    $cid = optional_param('courseid', 0, PARAM_INT);
+    $coursecontext = $cid > 0 ? \context_course::instance($cid, IGNORE_MISSING) : null;
+    $can_write = is_siteadmin() 
+        || \local_batchanalytics\program_service::can_write_operations($context)
+        || ($coursecontext && \local_batchanalytics\program_service::can_write_operations($coursecontext));
+    if (!$can_write) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
         die();
     }
     try {
         require_sesskey();
-        $cid = optional_param('courseid', 0, PARAM_INT);
         $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
         $session_type = optional_param('session_type', 'Class', PARAM_ALPHANUMEXT);
         $session_date_raw = optional_param('session_date', date('Y-m-d'), PARAM_TEXT);
@@ -355,11 +380,10 @@ if ($action === 'upload_evidence') {
             throw new \moodle_exception('nofilesselected', 'local_batchanalytics', '', null, 'Please select at least one photo or video to upload.');
         }
 
-        $inserted_ids = [];
-        $total_files = count($files_to_save);
+        $saved_files = [];
         foreach ($files_to_save as $idx => $f) {
             $clean_filename = clean_param($f['name'], PARAM_FILE);
-            $itemid = (int)(time() . mt_rand(10, 99));
+            $itemid = (int)time() + (int)$idx;
             $fileinfo = [
                 'contextid' => $context_course->id,
                 'component' => 'local_batchanalytics',
@@ -379,27 +403,52 @@ if ($action === 'upload_evidence') {
                     $stored_file->get_filename()
                 )->out(false);
 
-                // Caption: user caption or filename, suffixed if multiple
-                $file_caption = $caption_base;
-                if (empty($file_caption)) {
-                    $file_caption = pathinfo($clean_filename, PATHINFO_FILENAME);
-                } else if ($total_files > 1) {
-                    $file_caption .= ' (' . ($idx + 1) . ')';
-                }
-
-                $evidence_data = [
-                    'session_type' => $session_type,
-                    'session_date' => $session_date,
-                    'caption'      => $file_caption,
-                    'filename'     => $clean_filename,
-                    'fileurl'      => $fileurl,
+                $saved_files[] = [
+                    'filename' => $clean_filename,
+                    'fileurl'  => $fileurl,
+                    'filepath' => '/',
+                    'filesize' => (int)$stored_file->get_filesize(),
                 ];
-                $id = \local_batchanalytics\evidence_service::add_evidence($sec_id, $cid, $evidence_data);
-                $inserted_ids[] = $id;
             }
         }
 
-        echo json_encode(['success' => true, 'count' => count($inserted_ids), 'ids' => $inserted_ids]);
+        $session_meta = [
+            'evidenceid'   => optional_param('evidenceid', 0, PARAM_INT),
+            'session_type' => $session_type,
+            'session_date' => $session_date,
+            'caption'      => $caption_base,
+            'topic'        => $caption_base,
+            'week_index'   => optional_param('week_index', 0, PARAM_INT),
+        ];
+        $res = \local_batchanalytics\evidence_service::save_session_evidence($sec_id, $cid, $session_meta, $saved_files);
+
+        // Fetch all media items for this session to allow immediate in-place viewer update
+        $updated_items = [];
+        if (!empty($res['evidenceid']) && $DB->get_manager()->table_exists(\local_batchanalytics\evidence_service::TABLE_MEDIA)) {
+            $media_recs = $DB->get_records(\local_batchanalytics\evidence_service::TABLE_MEDIA, ['evidenceid' => $res['evidenceid']], 'sortorder ASC, id ASC');
+            foreach ($media_recs as $m) {
+                $is_vid = ($m->media_type === 'video') || (bool)preg_match('/\.(mp4|webm|mov|m4v|ogg)$/i', $m->filename);
+                $updated_items[] = [
+                    'id' => (int)$m->id,
+                    'evidenceid' => (int)$m->evidenceid,
+                    'filename' => $m->filename,
+                    'fileurl' => $m->fileurl ?: '',
+                    'caption' => $caption_base ?: $session_type,
+                    'session_type' => $session_type,
+                    'session_date' => $session_date,
+                    'is_video' => $is_vid,
+                    'timecreated' => (int)$m->timecreated,
+                ];
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'count' => count($saved_files),
+            'evidenceid' => $res['evidenceid'],
+            'session_type' => $session_type,
+            'items' => $updated_items,
+        ]);
     } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -410,7 +459,12 @@ if ($action === 'upload_evidence') {
 if ($action === 'delete_evidence') {
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json; charset=utf-8');
-    if (!\local_batchanalytics\program_service::can_write_operations($context)) {
+    $cid = optional_param('courseid', 0, PARAM_INT);
+    $coursecontext = $cid > 0 ? \context_course::instance($cid, IGNORE_MISSING) : null;
+    $can_write = is_siteadmin() 
+        || \local_batchanalytics\program_service::can_write_operations($context)
+        || ($coursecontext && \local_batchanalytics\program_service::can_write_operations($coursecontext));
+    if (!$can_write) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
         die();
@@ -418,26 +472,136 @@ if ($action === 'delete_evidence') {
     try {
         require_sesskey();
         $evid = optional_param('evidenceid', 0, PARAM_INT);
+        $mediaid = optional_param('mediaid', 0, PARAM_INT);
         $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
-        $cid = optional_param('courseid', 0, PARAM_INT);
         $session_key = optional_param('session_key', '', PARAM_RAW);
 
-        if ($evid > 0) {
-            $DB->delete_records(\local_batchanalytics\evidence_service::TABLE, ['id' => $evid]);
-        } else if (!empty($session_key) && $sec_id > 0) {
-            $parts = explode('_', $session_key);
-            if (count($parts) >= 2) {
-                $stype = array_pop($parts);
-                $sdate = implode('_', $parts);
-                $where = "sectionid = :sec AND " . $DB->sql_like('session_type', ':stype', false, false) . " AND " . $DB->sql_like('session_date', ':sdate', false, false);
-                $params = ['sec' => $sec_id, 'stype' => $stype, 'sdate' => $sdate];
-                if ($cid > 0) {
-                    $where .= " AND courseid = :cid";
-                    $params['cid'] = $cid;
+        $remaining = 0;
+        if ($mediaid > 0) {
+            $mrec = $DB->get_record(\local_batchanalytics\evidence_service::TABLE_MEDIA, ['id' => $mediaid]);
+            $parent_eid = $mrec ? (int)$mrec->evidenceid : $evid;
+            \local_batchanalytics\evidence_service::delete_evidence_media($mediaid);
+            if ($parent_eid > 0 && $DB->get_manager()->table_exists(\local_batchanalytics\evidence_service::TABLE_MEDIA)) {
+                $remaining = (int)$DB->count_records(\local_batchanalytics\evidence_service::TABLE_MEDIA, ['evidenceid' => $parent_eid]);
+            }
+        } else if ($evid > 0) {
+            \local_batchanalytics\evidence_service::delete_evidence_session($evid);
+        } else if (!empty($session_key)) {
+            if (strpos($session_key, 'sess_') === 0) {
+                $eid = (int)str_replace('sess_', '', $session_key);
+                \local_batchanalytics\evidence_service::delete_evidence_session($eid);
+            } else if ($sec_id > 0) {
+                $parts = explode('_', $session_key);
+                if (count($parts) >= 2) {
+                    $stype = array_pop($parts);
+                    $sdate = implode('_', $parts);
+                    $where = "sectionid = :sec AND " . $DB->sql_like('session_type', ':stype', false, false) . " AND " . $DB->sql_like('session_date', ':sdate', false, false);
+                    $params = ['sec' => $sec_id, 'stype' => $stype, 'sdate' => $sdate];
+                    if ($cid > 0) {
+                        $where .= " AND courseid = :cid";
+                        $params['cid'] = $cid;
+                    }
+                    $records = $DB->get_records_select(\local_batchanalytics\evidence_service::TABLE, $where, $params);
+                    foreach ($records as $r) {
+                        \local_batchanalytics\evidence_service::delete_evidence_session($r->id);
+                    }
                 }
-                $DB->delete_records_select(\local_batchanalytics\evidence_service::TABLE, $where, $params);
             }
         }
+        echo json_encode(['success' => true, 'remaining' => $remaining]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'add_evidence_week') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    $cid = optional_param('courseid', 0, PARAM_INT);
+    $coursecontext = $cid > 0 ? \context_course::instance($cid, IGNORE_MISSING) : null;
+    $can_write = is_siteadmin() 
+        || \local_batchanalytics\program_service::can_write_operations($context)
+        || ($coursecontext && \local_batchanalytics\program_service::can_write_operations($coursecontext));
+    if (!$can_write) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $target_count = optional_param('target_count', 2, PARAM_INT);
+        $new_week = \local_batchanalytics\evidence_service::add_evidence_week($sec_id, $cid, $target_count);
+        echo json_encode(['success' => true, 'week' => $new_week]);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'delete_evidence_week') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    $cid = optional_param('courseid', 0, PARAM_INT);
+    $coursecontext = $cid > 0 ? \context_course::instance($cid, IGNORE_MISSING) : null;
+    $can_write = is_siteadmin() 
+        || \local_batchanalytics\program_service::can_write_operations($context)
+        || ($coursecontext && \local_batchanalytics\program_service::can_write_operations($coursecontext));
+    if (!$can_write) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $sec_id = optional_param('sectionid', optional_param('batchid', 0, PARAM_INT), PARAM_INT);
+        $w_idx = required_param('week_index', PARAM_INT);
+        $deleted = \local_batchanalytics\evidence_service::delete_evidence_week($sec_id, $cid, $w_idx);
+        if ($deleted) {
+            echo json_encode(['success' => true]);
+        } else {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Cannot delete week because evidence records are uploaded under it.']);
+        }
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    die();
+}
+
+if ($action === 'edit_evidence_session') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    $cid = optional_param('courseid', 0, PARAM_INT);
+    $coursecontext = $cid > 0 ? \context_course::instance($cid, IGNORE_MISSING) : null;
+    $can_write = is_siteadmin() 
+        || \local_batchanalytics\program_service::can_write_operations($context)
+        || ($coursecontext && \local_batchanalytics\program_service::can_write_operations($coursecontext));
+    if (!$can_write) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied: write access is restricted.']);
+        die();
+    }
+    try {
+        require_sesskey();
+        $evidenceid = required_param('evidenceid', PARAM_INT);
+        $week_index = required_param('week_index', PARAM_INT);
+        $session_type = optional_param('session_type', 'Class', PARAM_ALPHANUMEXT);
+        $session_date = optional_param('session_date', '', PARAM_TEXT);
+        $caption = optional_param('caption', '', PARAM_TEXT);
+
+        \local_batchanalytics\evidence_service::edit_evidence_session(
+            $evidenceid,
+            $week_index,
+            $session_type,
+            $session_date,
+            $caption
+        );
+
         echo json_encode(['success' => true]);
     } catch (\Throwable $e) {
         http_response_code(400);
@@ -629,20 +793,13 @@ if ($section) {
     $raw_modules = [];
 }
 
-$is_sponsor_user = \local_batchanalytics\program_service::is_sponsor_user((int)$USER->id)
-    || (optional_param('viewmode', '', PARAM_ALPHANUMEXT) === 'sponsor');
+$is_sponsor_user = \local_batchanalytics\program_service::is_sponsor_user((int)$USER->id);
 $is_sponsor_view = \local_batchanalytics\program_service::is_sponsor_view($context, (int)$USER->id);
 
 // Check if this batch is an ESSCI / sponsored batch
 $is_essci_batch = false;
 if (!empty($batch) && !empty($batch->coursename) && (stripos($batch->coursename, 'essci') !== false || stripos($batch->coursename, 'marvell') !== false)) {
     $is_essci_batch = true;
-} else if (!empty($section) && $DB->get_manager()->table_exists('local_batchanalytics_prog_batch')) {
-    $sec_chk_id = (int)$section->id;
-    $b_chk_id = !empty($batch) ? (int)$batch->id : 0;
-    if ($DB->record_exists_select('local_batchanalytics_prog_batch', 'sectionid = :sec OR batchid = :bid', ['sec' => $sec_chk_id, 'bid' => $b_chk_id])) {
-        $is_essci_batch = true;
-    }
 }
 if ($is_sponsor_user || $is_sponsor_view) {
     $is_essci_batch = true;
@@ -708,8 +865,8 @@ if ($courseid > 0 && !$DB->record_exists('course', ['id' => $courseid])) {
 
 // Write operations allowed ONLY for: programmanager, ssteam, manager, teacher/editingteacher, admin.
 // Sponsors (programsponsor / programmisviewer) are strictly read-only.
-$can_edit_mentor = \local_batchanalytics\program_service::can_write_operations($context, $USER->id);
-if ($is_sponsor_user) {
+$can_edit_mentor = is_siteadmin() || \local_batchanalytics\program_service::can_write_operations($context, $USER->id);
+if (\local_batchanalytics\program_service::is_sponsor_user((int)$USER->id) && !is_siteadmin()) {
     $can_edit_mentor = false;
 }
 
@@ -885,19 +1042,20 @@ if ($courseid > 0) {
         $studentroles = $DB->get_records_select('role', "shortname = 'student' OR archetype = 'student'", null, '', 'id');
         $studentroleids = !empty($studentroles) ? array_map('intval', array_keys($studentroles)) : [];
         if (!empty($studentroleids)) {
-            $enrolledstudents = get_role_users(
+            $role_users = get_role_users(
                 $studentroleids,
                 $coursecontext,
                 false,
-                'u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
+                'ra.id AS raid, u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
             );
-        }
-        // Filter strictly through util::get_courses_student_uids to guarantee active enrolment and no staff leakage
-        if (!empty($enrolledstudents)) {
+            // Filter strictly through util::get_courses_student_uids to guarantee active enrolment and no staff leakage
             $valid_map = \local_batchanalytics\util::get_courses_student_uids([$courseid])[$courseid] ?? [];
-            foreach ($enrolledstudents as $uid => $userrec) {
-                if (!isset($valid_map[$uid])) {
-                    unset($enrolledstudents[$uid]);
+            if (!empty($role_users)) {
+                foreach ($role_users as $userrec) {
+                    $uid = (int)$userrec->id;
+                    if (isset($valid_map[$uid]) && !isset($enrolledstudents[$uid])) {
+                        $enrolledstudents[$uid] = $userrec;
+                    }
                 }
             }
         }
@@ -1322,22 +1480,36 @@ $hours_coverage = [];
 
 if ($is_sponsor) {
     $sec_id = $section ? (int)$section->id : (int)$batchid;
+    $allowed_student_uids = !empty($enrolledstudents) ? array_keys($enrolledstudents) : [];
     $lesson_plan_days = \local_batchanalytics\lesson_plan_service::get_lesson_plan($sec_id, (int)$courseid);
     $evidence_data = \local_batchanalytics\evidence_service::get_evidence_data($sec_id, (int)$courseid);
-    $attendance_matrix = \local_batchanalytics\biometric_service::get_attendance_matrix($sec_id, (int)$courseid);
+    $attendance_matrix = \local_batchanalytics\biometric_service::get_attendance_matrix($sec_id, (int)$courseid, $allowed_student_uids);
     $hours_coverage = \local_batchanalytics\lesson_plan_service::get_hours_and_coverage($sec_id, (int)$courseid);
 
     // Resolve daily attendance register for selected session date (internal staff only, hidden for sponsors)
     $daily_attendance_register = [];
+    $att_target_sess_id = optional_param('att_sess_id', 0, PARAM_INT);
     if (!$is_sponsor_user) {
         $att_target_date = optional_param('att_date', '', PARAM_TEXT);
         if (empty($att_target_date) && !empty($attendance_matrix['sessions'])) {
             $first_sess = reset($attendance_matrix['sessions']);
             $att_target_date = $first_sess['raw_date'] ?? date('Y-m-d');
+            if ($att_target_sess_id <= 0 && !empty($first_sess['id'])) {
+                $att_target_sess_id = (int)$first_sess['id'];
+            }
         } else if (empty($att_target_date)) {
             $att_target_date = date('Y-m-d');
         }
-        $daily_attendance_register = \local_batchanalytics\biometric_service::get_daily_attendance_register($sec_id, (int)$courseid, $att_target_date);
+        $daily_attendance_register = \local_batchanalytics\biometric_service::get_daily_attendance_register($sec_id, (int)$courseid, $att_target_date, $allowed_student_uids, $att_target_sess_id);
+    }
+
+    // Today's attendance stats strictly based on today's actual date
+    $today_actual_date = date('Y-m-d');
+    if (!$is_sponsor_user && !empty($att_target_date) && $att_target_date === $today_actual_date && !empty($daily_attendance_register['stats'])) {
+        $today_attendance_stats = $daily_attendance_register['stats'];
+    } else {
+        $today_reg = \local_batchanalytics\biometric_service::get_daily_attendance_register($sec_id, (int)$courseid, $today_actual_date, $allowed_student_uids);
+        $today_attendance_stats = $today_reg['stats'] ?? [];
     }
 }
 
@@ -1360,14 +1532,37 @@ $page_title_suffix = $is_sponsor ? get_string('pluginname_sponsor', 'local_batch
 $PAGE->set_title($mod_name . ' – ' . $batchname . ' – ' . $page_title_suffix);
 $PAGE->set_heading('');
 
-$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => '3.2.0']);
+$dash_v = file_exists(__DIR__ . '/dashboard.css') ? filemtime(__DIR__ . '/dashboard.css') : '3.5.0';
+$style_v = file_exists(__DIR__ . '/styles.css') ? filemtime(__DIR__ . '/styles.css') : '3.5.0';
+$styleurl = new moodle_url('/local/batchanalytics/styles.css', ['v' => (string)$style_v]);
+$PAGE->requires->css($styleurl);
+$dashboardstyleurl = new moodle_url('/local/batchanalytics/dashboard.css', ['v' => (string)$dash_v]);
 $PAGE->requires->css($dashboardstyleurl);
 $PAGE->requires->js_call_amd('local_batchanalytics/module', 'init');
 
 echo $OUTPUT->header();
 
 ?>
+<script>
+(function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+})();
+document.addEventListener('DOMContentLoaded', function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+});
+</script>
 <style>
+/* Reset drawers & container to clean full-width */
+#page,
+#page.drawers,
+.drawers.drag-container {
+  overflow: visible !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
 /* Full width and transparent container override across themes */
 @media (min-width: 768px) {
   .pagelayout-standard #page.drawers .main-inner,
@@ -1408,6 +1603,386 @@ echo $OUTPUT->header();
   padding: 0 !important;
   margin: 0 !important;
 }
+.wrap {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+  box-sizing: border-box !important;
+}
+.crumbbar {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 12px 0 6px 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.crumbbar .crumb {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+.shell,
+.ba-module-page .shell {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30, 50, 70, 0.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* Lesson Plan Table & Alignment matching design screenshot */
+.lp-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.bio-note {
+  font-size: 12px;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ba-lp-tablecard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.ba-lp-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+.ba-lp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.45;
+  min-width: 840px;
+}
+.ba-lp-table thead th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: middle;
+}
+.ba-lp-table thead th.col-day {
+  width: 60px;
+  text-align: left;
+  padding-left: 20px;
+}
+.ba-lp-table thead th.col-planned {
+  width: 125px;
+  text-align: left;
+}
+.ba-lp-table thead th.col-topic {
+  min-width: 220px;
+  text-align: left;
+}
+.ba-lp-table thead th.col-status {
+  width: 120px;
+  text-align: center;
+}
+.ba-lp-table thead th.col-actual {
+  width: 125px;
+  text-align: left;
+}
+.ba-lp-table thead th.col-class-mentor {
+  width: 110px;
+  text-align: center;
+  line-height: 1.25;
+}
+.ba-lp-table thead th.col-lab-mentor {
+  width: 110px;
+  text-align: center;
+  line-height: 1.25;
+}
+.ba-lp-table thead th.col-actions {
+  width: 110px;
+  text-align: center;
+}
+.ba-lp-table tbody td {
+  padding: 13px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  font-size: 13px;
+  color: #1e293b;
+}
+.ba-lp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ba-lp-table tbody tr:hover {
+  background: #f8fafc;
+}
+.ba-lp-table .lp-day {
+  font-weight: 700;
+  color: #0f172a;
+  text-align: left;
+  padding-left: 20px;
+  font-size: 13.5px;
+}
+.ba-lp-table .lp-planned-date,
+.ba-lp-table .lp-actual-date {
+  white-space: nowrap;
+  color: #334155;
+  font-size: 13px;
+}
+.ba-lp-table .lp-topic {
+  color: #1e293b;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.lp-date input {
+  width: 122px;
+  padding: 6px 8px;
+  border: 1px solid #cfd6dc;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* Status Pill Badges */
+.stp {
+  font-size: 11.5px;
+  padding: 4px 13px;
+  border-radius: 9999px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.25;
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+.stp-done, .stp.done {
+  background: #dcfce7;
+  color: #15803d;
+}
+.stp-inp, .stp.inp {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.stp-pend, .stp.pend {
+  background: #f1f3f4;
+  color: #64748b;
+}
+
+/* Biometric Mentor Attendance Pill Badges */
+.att {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 13px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.25;
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+.att-p {
+  background: #dcfce7;
+  color: #15803d;
+}
+.att-a {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.att-s {
+  background: #fef3c7;
+  color: #b45309;
+}
+.att-m {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+/* Row Action Buttons (▲ ▼ ×) */
+.mv {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.mv button {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  color: #475569;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+.mv button:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+.mv button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.mv button.ba-delete-lesson-plan-btn {
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 700;
+}
+.mv button.ba-delete-lesson-plan-btn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+/* Smooth row highlight animation on move */
+@keyframes baRowHighlight {
+  0% { background-color: #ecfdf5; }
+  100% { background-color: transparent; }
+}
+.ba-row-highlight {
+  animation: baRowHighlight 1.2s ease-out;
+}
+
+#ba-confirm-del-day-btn:hover:not(:disabled) {
+  background: #be123c !important;
+}
+#ba-confirm-del-day-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Modal Overlay & Form styles matching #dayOv */
+.ov {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 20, 30, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+.ov.show {
+  display: flex !important;
+}
+.ovbox {
+  background: #fff;
+  border-radius: 12px;
+  width: 520px;
+  max-width: 94vw;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+.ovhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line, #e3e6ea);
+  background: #f4f6f8;
+}
+.ovhead .t {
+  font-size: 13px;
+  font-weight: 800;
+  color: #565c62;
+}
+.ovhead .x {
+  cursor: pointer;
+  color: #9aa0a6;
+  font-size: 20px;
+  border: none;
+  background: none;
+  line-height: 1;
+}
+.mbody {
+  padding: 20px 22px;
+}
+.frow {
+  margin-bottom: 14px;
+}
+.frow.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.frow label {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #64748b;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.frow input, .frow select, .frow textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cfd6dc;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+.frow textarea {
+  min-height: 66px;
+  resize: vertical;
+}
+.frow input:focus, .frow select:focus, .frow textarea:focus {
+  outline: none;
+  border-color: #0072ce;
+  box-shadow: 0 0 0 3px rgba(0, 114, 206, 0.12);
+}
+.frow .hint {
+  font-size: 10.5px;
+  color: #64748b;
+  margin-top: 5px;
+}
+.mfoot {
+  padding: 14px 18px;
+  border-top: 1px solid var(--line, #e3e6ea);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #fafafa;
+}
+.btn-light {
+  background: #eef0f2;
+  color: #444;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-light:hover {
+  background: #e2e5e8;
+}
 </style>
 
 <div class="local-batchanalytics-wrap ba-module-page" id="ba-module-detail-container"
@@ -1422,22 +1997,28 @@ echo $OUTPUT->header();
      data-performance-custom-groups="<?= s(json_encode($performance_custom_groups)) ?>"
      data-kpi-data="<?= s(json_encode($kpi_categories_data)) ?>">
 
-  <!-- Breadcrumb Bar in Prototype Style -->
-  <div class="crumbbar">
-    <span class="crumb">
-      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php'))->out(false)) ?>">Home</a>
-      <span style="color:#cbd5e1; margin:0 6px;">›</span>
-      <a href="<?= s((new moodle_url('/local/batchanalytics/batch.php', array_filter(['id' => $batchid, 'batchid' => $batchid, 'mode' => $deliverymode])))->out(false)) ?>"><?= s($batchname) ?></a>
-      <span style="color:#cbd5e1; margin:0 6px;">›</span>
-      <?php if ($courseid > 0): ?>
-        <a href="<?= s((new moodle_url('/course/view.php', ['id' => $courseid]))->out(false)) ?>" target="_blank" rel="noopener noreferrer" title="Open course" style="font-weight:700; color:inherit; text-decoration:none;"><b><?= s($mod_name) ?></b></a>
-      <?php else: ?>
+<?php
+$breadcrumb_url = (new moodle_url('/local/batchanalytics/index.php', $is_sponsor ? ['viewmode' => 'sponsor'] : []))->out(false);
+$breadcrumb_label = $is_sponsor ? 'Program MIS' : 'Home';
+$batch_params = array_filter(['id' => $batchid, 'batchid' => $batchid, 'mode' => $deliverymode]);
+if ($is_sponsor) {
+    $batch_params['viewmode'] = 'sponsor';
+}
+$batch_breadcrumb_url = (new moodle_url('/local/batchanalytics/batch.php', $batch_params))->out(false);
+?>
+  <div class="wrap">
+    <!-- Breadcrumb Bar in Prototype Style -->
+    <div class="crumbbar">
+      <span class="crumb">
+        <a href="<?= s($breadcrumb_url) ?>"><?= s($breadcrumb_label) ?></a>
+        <span class="crumb-sep">›</span>
+        <a href="<?= s($batch_breadcrumb_url) ?>"><?= s($batchname) ?></a>
+        <span class="crumb-sep">›</span>
         <b><?= s($mod_name) ?></b>
-      <?php endif; ?>
-    </span>
-  </div>
+      </span>
+    </div>
 
-  <div class="shell">
+    <div class="shell">
 
   <!-- Module Header Card -->
   <div class="mhead">
@@ -1577,7 +2158,11 @@ echo $OUTPUT->header();
     </div>
     <div class="card" style="padding:14px; background:#fff; border:1px solid #e2e8f0; border-radius:8px;">
       <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Mentor Attendance</div>
-      <div style="font-size:15px; font-weight:700; color:#16a34a; margin-top:4px;">Class <?= s($hours_coverage['mentor_attendance_class'] ?? '96%') ?> | Lab <?= s($hours_coverage['mentor_attendance_lab'] ?? '92%') ?></div>
+      <?php if (!empty($hours_coverage['mentor_attendance_class']) && $hours_coverage['mentor_attendance_class'] !== '—' && $hours_coverage['mentor_attendance_class'] !== '-'): ?>
+        <div style="font-size:15px; font-weight:700; color:#16a34a; margin-top:4px;">Class <?= s($hours_coverage['mentor_attendance_class']) ?> | Lab <?= s($hours_coverage['mentor_attendance_lab'] ?? '—') ?></div>
+      <?php else: ?>
+        <div style="font-size:20px; font-weight:700; color:#64748b; margin-top:4px;">-</div>
+      <?php endif; ?>
       <div style="font-size:11px; color:#64748b; margin-top:2px;">Biometric punch record</div>
     </div>
   </div>
@@ -1705,16 +2290,21 @@ echo $OUTPUT->header();
   </div>
 
   <!-- Navigation Tabs -->
+  <?php
+    $req_tab = optional_param('tab', '', PARAM_ALPHANUMEXT);
+    $active_tab = !empty($req_tab) ? $req_tab : 'lessonplan';
+    $non_sponsor_active = !empty($req_tab) ? $req_tab : 'mentor';
+  ?>
   <div class="tabs ba-module-tabs">
     <?php if ($is_sponsor): ?>
-      <div class="tab active" data-tab="lessonplan" role="button" tabindex="0"><?= s(get_string('tab_lesson_plan', 'local_batchanalytics')) ?></div>
-      <div class="tab" data-tab="evidence" role="button" tabindex="0"><?= s(get_string('tab_class_evidence', 'local_batchanalytics')) ?></div>
-      <div class="tab" data-tab="stdattendance" role="button" tabindex="0"><?= s(get_string('tab_std_attendance', 'local_batchanalytics')) ?></div>
-      <div class="tab" data-tab="mstudents" role="button" tabindex="0"><?= s(get_string('tab_student_perf', 'local_batchanalytics')) ?></div>
+      <div class="tab <?= $active_tab === 'lessonplan' ? 'active' : '' ?>" data-tab="lessonplan" role="button" tabindex="0"><?= s(get_string('tab_lesson_plan', 'local_batchanalytics')) ?></div>
+      <div class="tab <?= $active_tab === 'evidence' ? 'active' : '' ?>" data-tab="evidence" role="button" tabindex="0"><?= s(get_string('tab_class_evidence', 'local_batchanalytics')) ?></div>
+      <div class="tab <?= $active_tab === 'stdattendance' ? 'active' : '' ?>" data-tab="stdattendance" role="button" tabindex="0"><?= s(get_string('tab_std_attendance', 'local_batchanalytics')) ?></div>
+      <div class="tab <?= $active_tab === 'mstudents' ? 'active' : '' ?>" data-tab="mstudents" role="button" tabindex="0"><?= s(get_string('tab_student_perf', 'local_batchanalytics')) ?></div>
     <?php else: ?>
-      <div class="tab active" data-tab="mentor" role="button" tabindex="0">Mentor Activities</div>
-      <div class="tab" data-tab="ssact" role="button" tabindex="0">SS Activities</div>
-      <div class="tab" data-tab="mstudents" role="button" tabindex="0">Student Performance</div>
+      <div class="tab <?= $non_sponsor_active === 'mentor' ? 'active' : '' ?>" data-tab="mentor" role="button" tabindex="0">Mentor Activities</div>
+      <div class="tab <?= $non_sponsor_active === 'ssact' ? 'active' : '' ?>" data-tab="ssact" role="button" tabindex="0">SS Activities</div>
+      <div class="tab <?= $non_sponsor_active === 'mstudents' ? 'active' : '' ?>" data-tab="mstudents" role="button" tabindex="0">Student Performance</div>
     <?php endif; ?>
   </div>
 
@@ -1722,85 +2312,93 @@ echo $OUTPUT->header();
 
     <?php if ($is_sponsor): ?>
     <!-- 1. Lesson Plan Panel (Day-wise Syllabus Delivery) -->
-    <div id="panel-lessonplan" class="panel active">
-      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>Day-wise lesson plan and syllabus delivery progression with biometric mentor attendance compliance.</div>
-        <?php if ($can_edit_mentor): ?>
-          <button type="button" class="btn btn-primary btn-sm" id="ba-open-lesson-plan-modal" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:6px; background:#0072ce; color:#fff; border:none; cursor:pointer;">
-            <i class="fa fa-plus"></i> + Add Day / Session
-          </button>
-        <?php endif; ?>
+    <div id="panel-lessonplan" class="panel <?= $active_tab === 'lessonplan' ? 'active' : '' ?>">
+      <div class="panel-note">
+        <b>Mentor-updated.</b> The class mentor records the <b>actual date</b> and <b>status</b> each day. Days can be <b>added in between</b> or <b>moved up/down</b>. <b>Class &amp; Lab mentor attendance is auto-fetched via the biometric reader.</b> Completed sessions roll up to the Hours &amp; Coverage above.
       </div>
-      <div class="tablecard ba-performance-tablecard">
-        <div class="ba-performance-table-scroll">
-          <table>
+      <div class="lp-bar">
+        <?php if ($can_edit_mentor): ?>
+          <button type="button" class="btn btn-primary" id="ba-open-lesson-plan-modal" style="padding:9px 16px; font-size:12.5px; font-weight:600; border-radius:8px; cursor:pointer;">+ Add day</button>
+        <?php else: ?>
+          <div></div>
+        <?php endif; ?>
+        <span class="bio-note">&#128100; Mentor attendance via biometric integration</span>
+      </div>
+      <div class="tablecard ba-lp-tablecard">
+        <div class="ba-lp-table-scroll">
+          <table class="ba-lp-table">
             <thead>
               <tr>
-                <th style="width:60px;">Day</th>
-                <th style="width:130px;">Planned Date</th>
-                <th style="width:130px;">Actual Date</th>
-                <th>Topic / Syllabus Coverage</th>
-                <th style="width:110px;">Status</th>
-                <th style="width:130px;">Class Mentor</th>
-                <th style="width:130px;">Lab Mentor</th>
-                <?php if ($can_edit_mentor): ?>
-                  <th style="width:80px; text-align:center;">Action</th>
-                <?php endif; ?>
+                <th class="col-day">Day</th>
+                <th class="col-planned">Planned</th>
+                <th class="col-topic">Topic / content</th>
+                <th class="col-status">Status</th>
+                <th class="col-actual">Actual date</th>
+                <th class="col-class-mentor">Class<br>Mentor</th>
+                <th class="col-lab-mentor">Lab<br>Mentor</th>
+                <th class="col-actions"><span style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;">Actions</span></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="lpBody">
               <?php if (empty($lesson_plan_days)): ?>
-                <tr><td colspan="<?= $can_edit_mentor ? 8 : 7 ?>" class="ba-empty-cell">No lesson plan entries found.</td></tr>
+                <tr><td colspan="8" class="ba-empty-cell" style="text-align:center; padding:32px 16px; color:#64748b; font-size:13.5px;">No lesson plan entries found.</td></tr>
               <?php else: ?>
                 <?php
                 $cm_uid = !empty($class_mentor_user->id) ? (int)$class_mentor_user->id : 0;
                 $lm_uid = !empty($lab_mentor_user->id) ? (int)$lab_mentor_user->id : 0;
                 foreach ($lesson_plan_days as $day):
                     $eff_date = !empty($day->actual_date) ? $day->actual_date : $day->planned_date;
-                    $cm_stat = \local_batchanalytics\biometric_service::get_mentor_biometric_status($cm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Class');
-                    $lm_stat = \local_batchanalytics\biometric_service::get_mentor_biometric_status($lm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Lab');
+                    $cm_stat = \local_batchanalytics\lesson_plan_service::resolve_mentor_biometric_attendance($cm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Class');
+                    $lm_stat = \local_batchanalytics\lesson_plan_service::resolve_mentor_biometric_attendance($lm_uid, $eff_date, (int)$courseid, (int)$sec_id, 'Lab');
+
+                    $st_class = 'stp-pend';
+                    $st_label = 'Pending';
+                    if (strcasecmp($day->status, 'Done') === 0) {
+                        $st_class = 'stp-done';
+                        $st_label = 'Done';
+                    } else if (strcasecmp($day->status, 'In progress') === 0 || strcasecmp($day->status, 'inp') === 0 || strcasecmp($day->status, 'in-progress') === 0) {
+                        $st_class = 'stp-inp';
+                        $st_label = 'In progress';
+                    }
                 ?>
-                  <tr>
-                    <td><b>Day <?= (int)$day->day_index ?></b></td>
-                    <td><?= s($day->planned_date) ?></td>
-                    <td><?= !empty($day->actual_date) ? s($day->actual_date) : '<span class="muted">—</span>' ?></td>
-                    <td><span class="val" style="font-size:13px; color:#1e293b;"><?= s($day->topic) ?></span></td>
-                    <td>
-                      <?php if (strcasecmp($day->status, 'Done') === 0): ?>
-                        <span class="st st-g">Done</span>
-                      <?php else: ?>
-                        <span class="st st-a">Pending</span>
-                      <?php endif; ?>
-                    </td>
-                    <td>
-                      <?php if ($cm_stat['status'] === 'Present'): ?>
-                        <span class="st st-g" title="<?= s($cm_stat['tooltip']) ?>" style="display:inline-flex; align-items:center; gap:4px;">
-                          <i class="fa fa-fingerprint"></i> Present<?= !empty($cm_stat['time']) ? ' (' . s($cm_stat['time']) . ')' : '' ?>
+                  <tr data-dayid="<?= (int)$day->id ?>"
+                      data-dayindex="<?= (int)$day->day_index ?>"
+                      data-planned="<?= s($day->planned_date) ?>"
+                      data-actual="<?= s($day->actual_date) ?>"
+                      data-topic="<?= s($day->topic) ?>"
+                      data-status="<?= s($st_label) ?>">
+                    <td class="lp-day"><?= (int)$day->day_index ?></td>
+                    <td class="lp-planned-date"><?= s($day->planned_date) ?></td>
+                    <td class="lp-topic"><?= s($day->topic) ?></td>
+                    <td style="text-align:center;"><span class="stp <?= $st_class ?>"><?= $st_label ?></span></td>
+                    <td class="lp-actual-date"><?= !empty($day->actual_date) ? s($day->actual_date) : '<span class="muted">—</span>' ?></td>
+                    <td style="text-align:center;">
+                      <?php if (!empty($cm_stat['status']) && in_array(strtolower($cm_stat['status']), ['present', 'absent'])): ?>
+                        <span class="att <?= strcasecmp($cm_stat['status'], 'Present') === 0 ? 'att-p' : 'att-a' ?>" title="<?= s($cm_stat['tooltip'] ?? '') ?>">
+                          <?= s($cm_stat['status']) ?>
                         </span>
-                      <?php elseif ($cm_stat['status'] === 'Absent'): ?>
-                        <span class="st st-r" title="<?= s($cm_stat['tooltip']) ?>">Absent</span>
                       <?php else: ?>
-                        <span class="st st-b" title="<?= s($cm_stat['tooltip']) ?>">Pending</span>
+                        <span style="color:#64748b; font-weight:600; font-size:14px;" title="<?= s($cm_stat['tooltip'] ?? 'Pending biometric integration') ?>">-</span>
                       <?php endif; ?>
                     </td>
-                    <td>
-                      <?php if ($lm_stat['status'] === 'Present'): ?>
-                        <span class="st st-g" title="<?= s($lm_stat['tooltip']) ?>" style="display:inline-flex; align-items:center; gap:4px;">
-                          <i class="fa fa-fingerprint"></i> Present<?= !empty($lm_stat['time']) ? ' (' . s($lm_stat['time']) . ')' : '' ?>
+                    <td style="text-align:center;">
+                      <?php if (!empty($lm_stat['status']) && in_array(strtolower($lm_stat['status']), ['present', 'absent'])): ?>
+                        <span class="att <?= strcasecmp($lm_stat['status'], 'Present') === 0 ? 'att-p' : 'att-a' ?>" title="<?= s($lm_stat['tooltip'] ?? '') ?>">
+                          <?= s($lm_stat['status']) ?>
                         </span>
-                      <?php elseif ($lm_stat['status'] === 'Absent'): ?>
-                        <span class="st st-r" title="<?= s($lm_stat['tooltip']) ?>">Absent</span>
                       <?php else: ?>
-                        <span class="st st-b" title="<?= s($lm_stat['tooltip']) ?>">Pending</span>
+                        <span style="color:#64748b; font-weight:600; font-size:14px;" title="<?= s($lm_stat['tooltip'] ?? 'Pending biometric integration') ?>">-</span>
                       <?php endif; ?>
                     </td>
-                    <?php if ($can_edit_mentor): ?>
-                      <td style="text-align:center;">
-                        <button type="button" class="btn btn-sm btn-outline-danger ba-delete-lesson-plan-btn" data-dayid="<?= (int)$day->id ?>" title="Delete Day" style="padding:2px 8px; font-size:11px; border-radius:4px; border:1px solid #fecaca; background:#fff; color:#dc2626; cursor:pointer;">
-                          <i class="fa fa-trash"></i>
-                        </button>
-                      </td>
-                    <?php endif; ?>
+                    <td style="text-align:center;">
+                      <?php if ($can_edit_mentor): ?>
+                        <div class="mv">
+                          <button type="button" class="ba-lp-move-btn" data-dayid="<?= (int)$day->id ?>" data-dir="-1" title="Move up">&#9650;</button>
+                          <button type="button" class="ba-lp-move-btn" data-dayid="<?= (int)$day->id ?>" data-dir="1" title="Move down">&#9660;</button>
+                          <button type="button" class="ba-delete-lesson-plan-btn" data-dayid="<?= (int)$day->id ?>" title="Delete">&times;</button>
+                        </div>
+                      <?php endif; ?>
+                    </td>
                   </tr>
                 <?php endforeach; ?>
               <?php endif; ?>
@@ -1811,17 +2409,22 @@ echo $OUTPUT->header();
     </div>
 
     <!-- 2. Class Evidence Panel (Compliance Photo Tracking) -->
-    <div id="panel-evidence" class="panel">
+    <div id="panel-evidence" class="panel <?= $active_tab === 'evidence' ? 'active' : '' ?>">
       <div class="panel-note" style="margin-bottom:18px; font-size:13px; color:#475569;">
         <b>Class &amp; lab photographs</b> uploaded by the mentor on a set cadence (e.g. twice a week). Sponsors view the gallery read-only as evidence of delivery.
       </div>
 
       <!-- Weekly Compliance Tracker Strip -->
-      <div style="display:flex; gap:12px; margin-bottom:22px; overflow-x:auto; padding-bottom:4px;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:22px; overflow-x:auto; padding-bottom:4px;">
         <?php foreach (($evidence_data['weekly_tracker'] ?? []) as $wk): ?>
-          <div style="flex:1; min-width:130px; max-width:170px; padding:12px 16px; border-radius:12px; border:1px solid #e2e8f0; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-            <div style="font-size:11px; font-weight:700; color:#64748b; letter-spacing:0.4px; text-transform:uppercase; margin-bottom:6px;"><?= s($wk['label']) ?></div>
-            <div style="font-size:15px; font-weight:700; color:<?= $wk['status'] === 'complete' ? '#16a34a' : ($wk['status'] === 'partial' ? '#d97706' : '#b91c1c') ?>; display:flex; align-items:center; gap:4px;">
+          <div class="ba-week-tracker-pill" data-week="<?= (int)$wk['week'] ?>" data-target="<?= (int)$wk['target'] ?>" style="flex:0 0 auto; min-width:130px; max-width:170px; padding:12px 16px; border-radius:12px; border:1px solid #e2e8f0; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.02); position:relative;">
+            <div class="ba-week-pill-top" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div style="font-size:11px; font-weight:700; color:#64748b; letter-spacing:0.4px; text-transform:uppercase;"><?= s($wk['label']) ?></div>
+              <?php if ($can_edit_mentor && (int)$wk['completed'] === 0): ?>
+                <button type="button" class="ba-delete-week-btn" data-week="<?= (int)$wk['week'] ?>" title="Remove empty week" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; line-height:1; padding:0 2px;" onmouseover="this.style.color='#ef4444';" onmouseout="this.style.color='#94a3b8';">&times;</button>
+              <?php endif; ?>
+            </div>
+            <div class="ba-week-pill-stat" style="font-size:15px; font-weight:700; color:<?= $wk['status'] === 'complete' ? '#16a34a' : ($wk['status'] === 'partial' ? '#d97706' : '#b91c1c') ?>; display:flex; align-items:center; gap:4px;">
               <?php if ($wk['status'] === 'complete'): ?>
                 <span style="font-size:13px;">✔</span> <?= (int)$wk['completed'] ?> / <?= (int)$wk['target'] ?>
               <?php elseif ($wk['status'] === 'partial'): ?>
@@ -1832,10 +2435,19 @@ echo $OUTPUT->header();
             </div>
           </div>
         <?php endforeach; ?>
+
+        <?php if ($can_edit_mentor): ?>
+          <button type="button" id="ba-add-week-btn" style="flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; height:68px; padding:0 20px; border-radius:12px; border:1.5px dashed #94a3b8; background:#f8fafc; color:#2563eb; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.borderColor='#2563eb'; this.style.background='#eff6ff';" onmouseout="this.style.borderColor='#94a3b8'; this.style.background='#f8fafc';">
+            <i class="fa fa-plus-circle" style="font-size:15px;"></i>
+            <span> Add Week</span>
+          </button>
+        <?php elseif (empty($evidence_data['weekly_tracker'])): ?>
+          <div style="font-size:13px; color:#64748b; font-style:italic; padding:12px 0;">No weekly compliance targets configured for this module yet.</div>
+        <?php endif; ?>
       </div>
 
       <!-- Photo / Video Evidence Gallery Grid -->
-      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
+      <div id="ba-evidence-cards-grid" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
         <?php if ($can_edit_mentor): ?>
           <!-- Upload Card (Dashed Border matching design) -->
           <div id="ba-upload-evidence-card" style="border:1.5px dashed #cbd5e1; border-radius:12px; background:#fff; height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; text-align:center; transition:all 0.2s;" onmouseover="this.style.borderColor='#94a3b8'; this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#cbd5e1'; this.style.background='#fff';">
@@ -1846,31 +2458,32 @@ echo $OUTPUT->header();
           </div>
         <?php endif; ?>
 
-        <?php foreach (($evidence_data['photos'] ?? []) as $p): ?>
-          <?php
-            $is_prototype = !empty($p['is_prototype']);
-            $has_real_media = !$is_prototype && !empty($p['cover_url']) && strpos($p['cover_url'], 'pix/image.png') === false;
-            $cover_is_video = !empty($p['cover_is_video']);
-            $items_json = !empty($p['items']) ? json_encode($p['items']) : '[]';
-            $items_cnt = (int)($p['items_count'] ?? 1);
-            $photos_cnt = (int)($p['photo_count'] ?? 0);
-            $videos_cnt = (int)($p['video_count'] ?? 0);
-          ?>
-          <div class="ba-evidence-card"
-               data-session-key="<?= s($p['session_key'] ?? '') ?>"
-               data-is-prototype="<?= $is_prototype ? '1' : '0' ?>"
-               data-type="<?= s($p['session_type']) ?>"
-               data-date="<?= s($p['session_date']) ?>"
-               data-caption="<?= s($p['caption']) ?>"
-               data-items="<?= htmlspecialchars($items_json, ENT_QUOTES, 'UTF-8') ?>"
-               style="border:1px solid #e2e8f0; border-radius:12px; background:#fff; overflow:hidden; height:180px; display:flex; flex-direction:column; position:relative; box-shadow:0 1px 3px rgba(0,0,0,0.02); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;"
-               onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)';"
-               onmouseout="this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.02)';">
-            <!-- Media / Watermark Area -->
-            <div style="height:136px; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; background:<?= $has_real_media ? '#0f172a' : 'repeating-linear-gradient(135deg, #f1f5f9, #f1f5f9 12px, #e8edf3 12px, #e8edf3 24px)' ?>;">
-              <?php if ($has_real_media): ?>
+        <?php if (!empty($evidence_data['photos'])): ?>
+          <?php foreach ($evidence_data['photos'] as $p): ?>
+            <?php
+              $cover_is_video = !empty($p['cover_is_video']);
+              $items_json = !empty($p['items']) ? json_encode($p['items']) : '[]';
+              $items_cnt = (int)($p['items_count'] ?? 1);
+              $photos_cnt = (int)($p['photo_count'] ?? 0);
+              $videos_cnt = (int)($p['video_count'] ?? 0);
+            ?>
+            <div class="ba-evidence-card"
+                 data-session-key="<?= s($p['session_key'] ?? '') ?>"
+                 data-evidenceid="<?= (int)($p['id'] ?? 0) ?>"
+                 data-week="<?= (int)($p['week_index'] ?? 1) ?>"
+                 data-type="<?= s($p['session_type']) ?>"
+                 data-date="<?= s($p['session_date']) ?>"
+                 data-rawdate="<?= s($p['raw_date'] ?? $p['session_date']) ?>"
+                 data-isodate="<?= s($p['iso_date'] ?? '') ?>"
+                 data-caption="<?= s($p['caption']) ?>"
+                 data-items="<?= htmlspecialchars($items_json, ENT_QUOTES, 'UTF-8') ?>"
+                 style="border:1px solid #e2e8f0; border-radius:12px; background:#fff; overflow:hidden; height:180px; display:flex; flex-direction:column; position:relative; box-shadow:0 1px 3px rgba(0,0,0,0.02); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;"
+                 onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)';"
+                 onmouseout="this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.02)';">
+              <!-- Media Area -->
+              <div style="height:136px; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#0f172a;">
                 <?php if ($cover_is_video): ?>
-                  <video src="<?= s($p['cover_url']) ?>" style="width:100%; height:100%; object-fit:cover;" preload="metadata" muted></video>
+                  <video src="<?= s($p['cover_url']) ?><?= strpos($p['cover_url'], '#') === false ? '#t=0.5' : '' ?>" style="width:100%; height:100%; object-fit:cover;" preload="metadata" muted playsinline></video>
                   <div style="position:absolute; width:36px; height:36px; border-radius:50%; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; pointer-events:none;">
                     <i class="fa fa-play" style="margin-left:2px;"></i>
                   </div>
@@ -1896,46 +2509,111 @@ echo $OUTPUT->header();
                   </div>
                 <?php endif; ?>
 
-              <?php else: ?>
-                <div style="color:#94a3b8; font-size:13px; font-weight:500; letter-spacing:0.2px;">
-                  <?= s($p['session_type']) ?> · <?= s($p['session_date']) ?>
-                </div>
-              <?php endif; ?>
+                <?php if ($can_edit_mentor && !empty($p['items'])): ?>
+                  <!-- Top-right Actions: Edit & Delete buttons -->
+                  <div style="position:absolute; top:6px; right:6px; display:flex; gap:6px; z-index:10;" onclick="event.stopPropagation();">
+                    <button type="button" class="ba-edit-session-btn"
+                            data-evidenceid="<?= (int)($p['id'] ?? 0) ?>"
+                            data-week="<?= (int)($p['week_index'] ?? 1) ?>"
+                            data-type="<?= s($p['session_type']) ?>"
+                            data-rawdate="<?= s($p['raw_date'] ?? $p['session_date']) ?>"
+                            data-isodate="<?= s($p['iso_date'] ?? '') ?>"
+                            data-caption="<?= s($p['caption']) ?>"
+                            title="Edit Session Details"
+                            style="width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.95); border:1px solid #cbd5e1; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.12); transition:all 0.15s;"
+                            onmouseover="this.style.background='#2563eb'; this.style.color='#fff'; this.style.borderColor='#1d4ed8';"
+                            onmouseout="this.style.background='rgba(255,255,255,0.95)'; this.style.color='#2563eb'; this.style.borderColor='#cbd5e1';">
+                      <i class="fa fa-pencil" style="pointer-events:none;"></i>
+                    </button>
+                    <button type="button" class="ba-delete-session-btn"
+                            data-session-key="<?= s($p['session_key'] ?? '') ?>"
+                            data-evidenceid="<?= (int)($p['id'] ?? 0) ?>"
+                            data-week="<?= (int)($p['week_index'] ?? 1) ?>"
+                            data-date="<?= s($p['session_date']) ?>"
+                            title="Delete All Evidence for this Date"
+                            style="width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.95); border:1px solid #fecaca; color:#dc2626; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.12); transition:all 0.15s;"
+                            onmouseover="this.style.background='#dc2626'; this.style.color='#fff'; this.style.borderColor='#b91c1c';"
+                            onmouseout="this.style.background='rgba(255,255,255,0.95)'; this.style.color='#dc2626'; this.style.borderColor='#fecaca';">
+                      <i class="fa fa-trash" style="pointer-events:none;"></i>
+                    </button>
+                  </div>
+                <?php endif; ?>
+              </div>
 
-              <?php if ($can_edit_mentor && !$is_prototype && !empty($p['items'])): ?>
-                <button type="button" class="ba-delete-session-btn" data-session-key="<?= s($p['session_key'] ?? '') ?>" title="Delete All Evidence for this Date" style="position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.9); border:1px solid #fecaca; color:#dc2626; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer;" onclick="event.stopPropagation();">
-                  <i class="fa fa-trash"></i>
-                </button>
-              <?php endif; ?>
+              <!-- Footer Caption Bar -->
+              <div style="height:44px; padding:8px 14px; background:#fff; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; gap:8px;">
+                <span style="font-size:13px; font-weight:500; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= s($p['caption']) ?>">
+                  <?= s($p['caption']) ?>
+                </span>
+                <span style="font-size:11px; padding:2px 8px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-weight:500; flex-shrink:0;">
+                  <?= s($p['session_type']) ?>
+                </span>
+              </div>
             </div>
-
-            <!-- Footer Caption Bar -->
-            <div style="height:44px; padding:8px 14px; background:#fff; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f1f5f9; gap:8px;">
-              <span style="font-size:13px; font-weight:500; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= s($p['caption']) ?>">
-                <?= s($p['caption']) ?>
-              </span>
-              <span style="font-size:11px; padding:2px 8px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; font-weight:500; flex-shrink:0;">
-                <?= s($p['session_type']) ?>
-              </span>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <?php if (!$can_edit_mentor): ?>
+            <div style="grid-column:1 / -1; padding:36px 20px; text-align:center; background:#fff; border:1px dashed #cbd5e1; border-radius:12px; color:#64748b;">
+              <i class="fa fa-picture-o" style="font-size:28px; color:#94a3b8; margin-bottom:8px; display:block;"></i>
+              <div style="font-size:14px; font-weight:600; color:#475569;">No class or lab photos uploaded yet</div>
+              <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Photographs uploaded by the mentor will appear here as evidence of delivery.</div>
             </div>
-          </div>
-        <?php endforeach; ?>
+          <?php endif; ?>
+        <?php endif; ?>
       </div>
     </div>
 
-    <!-- 3. Student Attendance Matrix Panel (S1-S18 Grid with Check-in & Check-out Timings) -->
-    <div id="panel-stdattendance" class="panel">
-      <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-        <div style="font-size:13px; color:#475569;">
-          <b>Day-wise biometric punch matrix</b> across delivered sessions (S1–S18). Live Check-In and Check-Out timestamps synchronized from biometric readers.
+    <!-- 3. Student Attendance Panel (Dynamic Sessions Grid with Check-in & Check-out Timings) -->
+    <div id="panel-stdattendance" class="panel <?= $active_tab === 'stdattendance' ? 'active' : '' ?>">
+      
+      <!-- Top Action & Metric Bar: Cards on Left, Buttons on Right -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:18px;">
+        
+        <!-- Left Side: Table Top Summary Cards -->
+        <div style="display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;">
+          
+          <!-- Card 1: Average Attendance -->
+          <div style="padding:10px 16px; background:#fff; border:1px solid #bbf7d0; border-left:4px solid #16a34a; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03); min-width:140px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:10.5px; color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">Average Attendance</div>
+            <div style="font-size:18px; font-weight:800; color:#15803d; margin-top:2px;">
+              <?= (int)($attendance_matrix['average_attendance'] ?? 100) ?>%
+            </div>
+          </div>
+
+          <!-- Card 2: Attendance Shortfall (<75%) -->
+          <?php $sf_cnt = (int)($attendance_matrix['shortfall_count'] ?? 0); ?>
+          <div style="padding:10px 16px; background:#fff; border:1px solid <?= $sf_cnt > 0 ? '#fecaca; border-left:4px solid #dc2626' : '#e2e8f0; border-left:4px solid #94a3b8' ?>; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03); min-width:165px; display:flex; flex-direction:column; justify-content:center;" title="Students whose overall module attendance is below the 75% certification & exam threshold">
+            <div style="font-size:10.5px; color:<?= $sf_cnt > 0 ? '#991b1b' : '#475569' ?>; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">Attendance Shortfall (&lt;75%)</div>
+            <div style="font-size:18px; font-weight:800; color:<?= $sf_cnt > 0 ? '#dc2626' : '#334155' ?>; margin-top:2px;">
+              <?= $sf_cnt ?> <span style="font-size:12px; font-weight:600; color:#64748b;">students</span>
+            </div>
+          </div>
+
+          <!-- Card 3: Today's Attendance Rate (Strictly based on today's actual date) -->
+          <?php
+            $today_present = (int)($today_attendance_stats['students_present'] ?? 0);
+            $today_total = (int)($today_attendance_stats['total_students'] ?? (!empty($enrolledstudents) ? count($enrolledstudents) : 0));
+            $today_rate = $today_total > 0 ? (int)round(($today_present / $today_total) * 100) : 0;
+          ?>
+          <div style="padding:10px 16px; background:#fff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03); min-width:165px; display:flex; flex-direction:column; justify-content:center;" title="Biometric attendance recorded strictly for today (<?= s(date('d-M-Y')) ?>)">
+            <div style="font-size:10.5px; color:#1e40af; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">Today's Attendance (<?= s(date('d M')) ?>)</div>
+            <div style="font-size:18px; font-weight:800; color:#1d4ed8; margin-top:2px;">
+              <?= $today_rate ?>%
+              <span style="font-size:11.5px; color:#60a5fa; font-weight:600; margin-left:4px;">(<?= $today_present ?> / <?= $today_total ?> present)</span>
+            </div>
+          </div>
+
         </div>
+
+        <!-- Right Side: View Toggle & Action Buttons -->
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          
           <!-- View Mode Toggle (Compact is Default) -->
           <div style="display:inline-flex; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; background:#f8fafc; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
-            <button type="button" id="ba-att-view-compact" class="btn btn-sm" style="font-size:12px; font-weight:700; padding:6px 14px; background:#3b82f6; color:#fff; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
+            <button type="button" id="ba-att-view-compact" class="btn btn-sm" style="font-size:12px; font-weight:700; padding:8px 14px; background:#3b82f6; color:#fff; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
               <i class="fa fa-th"></i> Compact (P/A)
             </button>
-            <button type="button" id="ba-att-view-timings" class="btn btn-sm" style="font-size:12px; font-weight:600; padding:6px 14px; background:#fff; color:#475569; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
+            <button type="button" id="ba-att-view-timings" class="btn btn-sm" style="font-size:12px; font-weight:600; padding:8px 14px; background:#fff; color:#475569; border:none; cursor:pointer; display:flex; align-items:center; gap:5px;">
               <i class="fa fa-clock-o"></i> Check-In &amp; Check-Out
             </button>
           </div>
@@ -1944,144 +2622,169 @@ echo $OUTPUT->header();
               'batchid' => $batchid,
               'courseid' => $courseid,
               'action' => 'export_attendance_pdf'
-          ]))->out(false) ?>" class="btn btn-outline-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px;">
-            <i class="fa fa-file-pdf-o"></i> Export Matrix (PDF)
+          ]))->out(false) ?>" class="btn btn-outline-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:8px 14px; border-radius:8px;">
+            <i class="fa fa-file-pdf-o"></i> Export (PDF)
           </a>
 
           <?php if (!$is_sponsor_user): ?>
-            <a href="<?= (new moodle_url('/local/attendancepdf/daily_attendance.php', ['courseid' => $courseid]))->out(false) ?>" target="_blank" class="btn btn-outline-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px;">
+            <a href="<?= (new moodle_url('/local/attendancepdf/daily_attendance.php', ['courseid' => $courseid]))->out(false) ?>" target="_blank" class="btn btn-outline-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:8px 14px; border-radius:8px;">
               <i class="fa fa-external-link"></i> Daily Biometric Tracker
             </a>
           <?php endif; ?>
         </div>
       </div>
 
-      <!-- Attendance Summary Bar -->
-      <div style="display:flex; gap:16px; margin-bottom:18px; flex-wrap:wrap;">
-        <div style="padding:10px 18px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; display:flex; align-items:center; gap:10px;">
-          <div>
-            <div style="font-size:11px; color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">AVERAGE ATTENDANCE</div>
-            <strong style="font-size:18px; color:#15803d;"><?= $attendance_matrix['average_attendance'] ?? 86 ?>%</strong>
-          </div>
-        </div>
-        <div style="padding:10px 18px; background:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#fef2f2; border:1px solid #fecaca;' : '#f8fafc; border:1px solid #e2e8f0;' ?>; border-radius:8px; display:flex; align-items:center; gap:10px;">
-          <div>
-            <div style="font-size:11px; color:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#991b1b' : '#475569' ?>; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">ATTENDANCE SHORTFALL (&lt;75%)</div>
-            <strong style="font-size:18px; color:<?= ($attendance_matrix['shortfall_count'] ?? 0) > 0 ? '#dc2626' : '#334155' ?>;"><?= (int)($attendance_matrix['shortfall_count'] ?? 0) ?> students</strong>
-          </div>
-        </div>
-        <?php if (!$is_sponsor_user && !empty($daily_attendance_register['stats'])): ?>
-          <?php $dst = $daily_attendance_register['stats']; ?>
-          <div style="padding:10px 18px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; display:flex; align-items:center; gap:10px;">
-            <div>
-              <div style="font-size:11px; color:#1e40af; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">TODAY'S ATTENDANCE RATE</div>
-              <strong style="font-size:18px; color:#1d4ed8;">
-                <?= ($dst['total_students'] > 0) ? round(($dst['students_present'] / $dst['total_students']) * 100) : 0 ?>%
-              </strong>
-              <span style="font-size:12px; color:#60a5fa; font-weight:600; margin-left:4px;">(<?= (int)$dst['students_present'] ?> / <?= (int)$dst['total_students'] ?> present)</span>
-            </div>
-          </div>
-        <?php endif; ?>
-      </div>
-
       <!-- Matrix Table Card -->
       <div class="tablecard ba-performance-tablecard" style="margin-bottom:28px;">
         <div class="ba-performance-table-scroll">
-          <table class="ba-attendance-matrix-table" style="font-size:12px; text-align:center; width:100%; border-collapse:collapse;">
+          <table class="ba-attendance-matrix-table" id="ba-attendance-matrix-table" style="font-size:12px; text-align:center; width:100%; border-collapse:collapse;">
             <thead>
               <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-                <th style="text-align:left; min-width:180px; padding:10px 14px; position:sticky; left:0; background:#f8fafc; z-index:2; border-right:1px solid #e2e8f0;">Student</th>
-                <th style="width:75px; padding:10px 8px; border-right:1px solid #e2e8f0;">Att %</th>
+                <th style="text-align:left; min-width:220px; padding:12px 16px; position:sticky; left:0; background:#f8fafc; z-index:2; border-right:1px solid #e2e8f0; font-weight:700; color:#1e293b; cursor:pointer; user-select:none;" id="ba-matrix-sort-student" class="sortable" title="Click to sort by Student Name">
+                  Student <span class="ba-sort-icon" style="font-size:11px; color:#94a3b8; margin-left:4px;">↕</span>
+                </th>
+                <th style="width:75px; padding:10px 8px; border-right:1px solid #e2e8f0; text-align:center; font-weight:700; color:#1e293b;">Att %</th>
                 <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
-                  <th class="ba-sess-col" style="min-width:44px; padding:6px 2px; border-right:1px solid #f1f5f9; cursor:pointer;" title="<?= s($sess['description'] ?? $sess['date']) ?> (Click to view Daily Register)" onclick="filterDailyRegister('<?= s($sess['raw_date'] ?? '') ?>');">
-                    <div style="font-weight:700; color:#1e293b;"><?= s($sess['code']) ?></div>
-                    <div style="font-size:9px; color:#64748b; font-weight:normal; margin-top:1px; text-transform:uppercase;"><?= s($sess['date']) ?></div>
+                  <th class="ba-sess-col" style="min-width:68px; padding:8px 4px; border-right:1px solid #f1f5f9; cursor:pointer; text-align:center;" title="<?= s($sess['description'] ?: "{$sess['code']} ({$sess['date']})") ?> (Click to view Daily Register)" onclick="filterDailyRegister('<?= s($sess['raw_date'] ?? '') ?>');">
+                    <div style="font-weight:700; color:#0f172a; font-size:12px; line-height:1.2;"><?= s($sess['code']) ?></div>
+                    <div style="font-size:10px; color:#475569; font-weight:600; margin-top:2px; white-space:nowrap; line-height:1.2;"><?= s($sess['date']) ?></div>
+                    <div style="font-size:9.5px; color:#64748b; font-weight:500; margin-top:1px; white-space:nowrap; line-height:1.2;">(<?= s($sess['type'] ?? 'Class') ?>)</div>
                   </th>
                 <?php endforeach; ?>
               </tr>
             </thead>
             <tbody>
-              <?php foreach (($attendance_matrix['students'] ?? []) as $st): ?>
-                <tr style="border-bottom:1px solid #f1f5f9;">
-                  <td style="text-align:left; font-weight:600; padding:8px 12px; position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #e2e8f0;">
-                    <a href="<?= (new moodle_url('/local/batchanalytics/student.php', ['id' => ($st['id'] ?? ($st['userid'] ?? 0)), 'batchid' => $batchid]))->out(false) ?>" style="color:var(--primary,#0072ce); text-decoration:none;">
-                      <?= s($st['name']) ?>
-                    </a>
+              <?php if (empty($attendance_matrix['students'])): ?>
+                <tr class="ba-matrix-empty-row">
+                  <td colspan="<?= 2 + count($attendance_matrix['sessions'] ?? []) ?>" style="padding:28px; text-align:center; color:#64748b;">
+                    <em>No student attendance records found for this module.</em>
                   </td>
-                  <td style="font-weight:700; padding:8px 6px; border-right:1px solid #e2e8f0; color:<?= $st['attendance_pct'] < 75 ? '#dc2626' : ($st['attendance_pct'] >= 85 ? '#16a34a' : '#d97706') ?>;">
-                    <?= (int)$st['attendance_pct'] ?>%
-                  </td>
-                  <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
-                    <?php
-                      $p_raw = $st['sessions'][$sess['code']] ?? 'P';
-                      $status = is_array($p_raw) ? ($p_raw['status'] ?? 'P') : (string)$p_raw;
-                      $check_in = is_array($p_raw) ? ($p_raw['check_in'] ?? '--') : '--';
-                      $check_out = is_array($p_raw) ? ($p_raw['check_out'] ?? '--') : '--';
-                      $total_hrs = is_array($p_raw) ? ($p_raw['total_hours'] ?? '--') : '--';
-                      $day_status = is_array($p_raw) ? ($p_raw['day_status'] ?? '') : '';
-                      $remarks = is_array($p_raw) ? ($p_raw['remarks'] ?? '') : '';
-
-                      // Badge styling
-                      $badge_bg = '#dcfce7';
-                      $badge_color = '#15803d';
-                      if ($status === 'A') {
-                          $badge_bg = '#fee2e2';
-                          $badge_color = '#b91c1c';
-                      } else if ($status === 'L') {
-                          $badge_bg = '#fef3c7';
-                          $badge_color = '#92400e';
-                      } else if ($status === '—') {
-                          $badge_bg = '#f1f5f9';
-                          $badge_color = '#64748b';
-                      }
-
-                      $tooltip = htmlspecialchars("{$st['name']} · {$sess['code']} ({$sess['date']})\nCheck In: {$check_in}\nCheck Out: {$check_out}\nHours: {$total_hrs}\nStatus: {$day_status}\n{$remarks}");
-                    ?>
-                    <td class="ba-sess-cell" style="padding:4px 2px; border-right:1px solid #f8fafc; vertical-align:middle;" title="<?= $tooltip ?>">
-                      
-                      <!-- Compact View Mode (Default: Compact 22x22 badge) -->
-                      <div class="ba-att-compact-block" style="display:inline-block;">
-                        <span style="display:inline-block; width:22px; height:22px; line-height:22px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
-                          <?= s($status) ?>
-                        </span>
-                      </div>
-
-                      <!-- Timings View Mode (Hidden by default, shown when toggled) -->
-                      <div class="ba-att-timing-block" style="display:none; flex-direction:column; align-items:center; gap:2px; padding:2px 0;">
-                        <!-- Status Pill -->
-                        <span style="display:inline-block; width:22px; height:20px; line-height:20px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
-                          <?= s($status) ?>
-                        </span>
-
-                        <?php if ($status === 'P' || $status === 'L'): ?>
-                          <div style="font-size:10px; font-weight:700; color:#166534; white-space:nowrap; line-height:1.2; margin-top:2px;">
-                            <span style="color:#22c55e;">↓</span> <?= s($check_in) ?>
-                          </div>
-                          <?php if ($check_out !== '--'): ?>
-                            <div style="font-size:10px; font-weight:700; color:#1e40af; white-space:nowrap; line-height:1.2;">
-                              <span style="color:#3b82f6;">↑</span> <?= s($check_out) ?>
-                            </div>
-                          <?php endif; ?>
-                          <?php if ($total_hrs !== '--'): ?>
-                            <span style="font-size:9px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:0 4px; color:#475569; font-weight:600; margin-top:1px;">
-                              <?= s($total_hrs) ?>
-                            </span>
-                          <?php endif; ?>
-                        <?php elseif ($status === 'A'): ?>
-                          <div style="font-size:10px; color:#dc2626; font-weight:700; line-height:1.2; margin-top:3px;">
-                            Absent
-                          </div>
-                        <?php else: ?>
-                          <div style="color:#94a3b8; font-size:12px; margin-top:2px;">—</div>
-                        <?php endif; ?>
-                      </div>
-
-                    </td>
-                  <?php endforeach; ?>
                 </tr>
-              <?php endforeach; ?>
+              <?php else: ?>
+                <?php foreach (($attendance_matrix['students'] ?? []) as $st): ?>
+                  <tr class="ba-matrix-row" style="border-bottom:1px solid #f1f5f9;">
+                    <td style="text-align:left; font-weight:600; padding:10px 16px; position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #e2e8f0;" data-student-name="<?= s(strtolower($st['name'])) ?>">
+                      <a href="<?= (new moodle_url('/local/batchanalytics/student.php', array_filter(['id' => ($st['id'] ?? ($st['userid'] ?? 0)), 'batchid' => $batchid, 'courseid' => $courseid, 'module' => $module_idx, 'viewmode' => $is_sponsor ? 'sponsor' : null])))->out(false) ?>" style="color:var(--primary,#0072ce); text-decoration:none; font-size:13px; font-weight:600;">
+                        <?= s($st['name']) ?>
+                      </a>
+                    </td>
+                    <td style="font-weight:700; padding:8px 6px; border-right:1px solid #e2e8f0; color:<?= $st['attendance_pct'] < 75 ? '#dc2626' : ($st['attendance_pct'] >= 85 ? '#16a34a' : '#d97706') ?>;">
+                      <?= (int)$st['attendance_pct'] ?>%
+                    </td>
+                    <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
+                      <?php
+                        $p_raw = $st['sessions'][$sess['code']] ?? 'P';
+                        $status = is_array($p_raw) ? ($p_raw['status'] ?? 'P') : (string)$p_raw;
+                        $check_in = is_array($p_raw) ? ($p_raw['check_in'] ?? '--') : '--';
+                        $check_out = is_array($p_raw) ? ($p_raw['check_out'] ?? '--') : '--';
+                        $total_hrs = is_array($p_raw) ? ($p_raw['total_hours'] ?? '--') : '--';
+                        $day_status = is_array($p_raw) ? ($p_raw['day_status'] ?? '') : '';
+                        $remarks = is_array($p_raw) ? ($p_raw['remarks'] ?? '') : '';
+
+                        // Badge styling
+                        $badge_bg = '#dcfce7';
+                        $badge_color = '#15803d';
+                        if ($status === 'A') {
+                            $badge_bg = '#fee2e2';
+                            $badge_color = '#b91c1c';
+                        } else if ($status === 'L') {
+                            $badge_bg = '#fef3c7';
+                            $badge_color = '#92400e';
+                        } else if ($status === '—') {
+                            $badge_bg = '#f1f5f9';
+                            $badge_color = '#64748b';
+                        }
+
+                        $tooltip = htmlspecialchars("{$st['name']} · {$sess['code']} ({$sess['date']})\nCheck In: {$check_in}\nCheck Out: {$check_out}\nHours: {$total_hrs}\nStatus: {$day_status}\n{$remarks}");
+                      ?>
+                      <td class="ba-sess-cell" style="padding:4px 2px; border-right:1px solid #f8fafc; vertical-align:middle;" title="<?= $tooltip ?>">
+                        
+                        <!-- Compact View Mode (Default: Compact 22x22 badge) -->
+                        <div class="ba-att-compact-block" style="display:inline-block;">
+                          <span style="display:inline-block; width:22px; height:22px; line-height:22px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
+                            <?= s($status) ?>
+                          </span>
+                        </div>
+
+                        <!-- Timings View Mode (Hidden by default, shown when toggled) -->
+                        <div class="ba-att-timing-block" style="display:none; flex-direction:column; align-items:center; gap:2px; padding:2px 0;">
+                          <!-- Status Pill -->
+                          <span style="display:inline-block; width:22px; height:20px; line-height:20px; border-radius:4px; font-weight:700; font-size:11px; background:<?= $badge_bg ?>; color:<?= $badge_color ?>;">
+                            <?= s($status) ?>
+                          </span>
+
+                          <?php if ($status === 'P' || $status === 'L'): ?>
+                            <div style="font-size:10px; font-weight:700; color:#166534; white-space:nowrap; line-height:1.2; margin-top:2px;">
+                              <span style="color:#22c55e;">↓</span> <?= s($check_in) ?>
+                            </div>
+                            <?php if ($check_out !== '--'): ?>
+                              <div style="font-size:10px; font-weight:700; color:#1e40af; white-space:nowrap; line-height:1.2;">
+                                <span style="color:#3b82f6;">↑</span> <?= s($check_out) ?>
+                              </div>
+                            <?php endif; ?>
+                            <?php if ($total_hrs !== '--'): ?>
+                              <span style="font-size:9px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:0 4px; color:#475569; font-weight:600; margin-top:1px;">
+                                <?= s($total_hrs) ?>
+                              </span>
+                            <?php endif; ?>
+                          <?php elseif ($status === 'A'): ?>
+                            <div style="font-size:10px; color:#dc2626; font-weight:700; line-height:1.2; margin-top:3px;">
+                              Absent
+                            </div>
+                          <?php else: ?>
+                            <div style="color:#94a3b8; font-size:12px; margin-top:2px;">—</div>
+                          <?php endif; ?>
+                        </div>
+
+                      </td>
+                    <?php endforeach; ?>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
             </tbody>
+            <tfoot>
+              <tr class="ba-matrix-total-row" style="background:#f8fafc; border-top:2px solid #cbd5e1; font-weight:700;">
+                <td style="text-align:left; font-weight:700; padding:10px 16px; position:sticky; left:0; background:#f8fafc; z-index:2; border-right:1px solid #e2e8f0; color:#0f172a; font-size:12px;">
+                  Total Present / Enrolled
+                </td>
+                <td style="font-weight:700; padding:10px 6px; border-right:1px solid #e2e8f0; text-align:center; color:#0f172a; font-size:12px;">
+                  <?= (int)($attendance_matrix['average_attendance'] ?? 100) ?>%
+                </td>
+                <?php foreach (($attendance_matrix['sessions'] ?? []) as $sess): ?>
+                  <?php
+                    $sess_code = $sess['code'];
+                    $tot_str = $attendance_matrix['session_totals'][$sess_code] ?? '--';
+                  ?>
+                  <td class="ba-sess-cell" style="padding:6px 2px; border-right:1px solid #f8fafc; text-align:center; vertical-align:middle;">
+                    <span style="display:inline-block; font-size:11px; font-weight:700; padding:3px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:4px; white-space:nowrap;" title="Students present / Total enrolled for <?= s($sess_code) ?> (<?= s($sess['date']) ?>)">
+                      <?= s($tot_str) ?>
+                    </span>
+                  </td>
+                <?php endforeach; ?>
+              </tr>
+            </tfoot>
           </table>
+        </div>
+
+        <!-- Attendance Matrix Pagination Controls -->
+        <div class="ba-pagination-bar" id="ba-att-matrix-pagination-bar">
+          <div class="ba-pagination-info" id="ba-att-matrix-pagination-info">
+            <!-- Populated via module.js -->
+          </div>
+          <div class="ba-pagination-actions">
+            <div class="ba-pagination-size-box">
+              <label for="ba-att-matrix-page-size">Rows per page:</label>
+              <select id="ba-att-matrix-page-size" class="ba-pagination-select">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="ba-pagination-btns" id="ba-att-matrix-pagination-btns">
+              <!-- Rendered dynamically via module.js -->
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2107,52 +2810,83 @@ echo $OUTPUT->header();
             </div>
           </div>
 
-          <!-- Date Selector Form -->
-          <form method="get" action="module.php" style="margin:0; display:flex; align-items:center; gap:8px;">
-            <input type="hidden" name="courseid" value="<?= (int)$courseid ?>">
-            <input type="hidden" name="batchid" value="<?= (int)$batchid ?>">
-            <input type="hidden" name="sectionid" value="<?= (int)$sec_id ?>">
-            <input type="hidden" name="module" value="<?= (int)$module_idx ?>">
-            <input type="hidden" name="mode" value="<?= s($deliverymode) ?>">
-            
-            <label style="font-size:12px; font-weight:700; color:#475569; margin:0;">Session Date:</label>
-            <input type="date" name="att_date" value="<?= s($att_target_date) ?>" class="form-control form-control-sm" style="width:145px; font-size:12px; font-weight:600; border-radius:6px; border:1px solid #cbd5e1;" onchange="this.form.submit();">
-            <button type="submit" class="btn btn-sm btn-primary" style="font-size:12px; font-weight:600; padding:4px 10px; border-radius:6px;">Go</button>
-          </form>
-        </div>
+          <!-- Date Selector with Interactive Session Calendar Picker -->
+          <?php
+            // Build a lookup map of available session dates for the calendar picker
+            $session_dates_map = [];
+            $curr_sess_code = '';
+            $curr_sess_type = '';
+            $target_day_sessions = [];
+            foreach (($attendance_matrix['sessions'] ?? []) as $s_item) {
+                if (!empty($s_item['raw_date'])) {
+                    $raw_d = $s_item['raw_date'];
+                    if (!isset($session_dates_map[$raw_d])) {
+                        $session_dates_map[$raw_d] = [];
+                    }
+                    $session_dates_map[$raw_d][] = [
+                        'id' => (int)$s_item['id'],
+                        'code' => $s_item['code'],
+                        'date' => $s_item['date'],
+                        'type' => $s_item['type'] ?? 'Class',
+                    ];
+                    if ($raw_d === $att_target_date) {
+                        $target_day_sessions[] = $s_item;
+                        if ($att_target_sess_id > 0 && (int)$s_item['id'] === $att_target_sess_id) {
+                            $curr_sess_code = $s_item['code'];
+                            $curr_sess_type = $s_item['type'] ?? 'Class';
+                        }
+                    }
+                }
+            }
+            if (empty($curr_sess_code) && !empty($target_day_sessions)) {
+                $first_ds = reset($target_day_sessions);
+                $curr_sess_code = $first_ds['code'];
+                $curr_sess_type = $first_ds['type'] ?? 'Class';
+            }
+          ?>
+          <div style="position:relative;" id="ba-session-calendar-wrapper" data-sessions='<?= json_encode($session_dates_map) ?>' data-current-date="<?= s($att_target_date) ?>">
+            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+              <label style="font-size:12px; font-weight:700; color:#475569; margin:0;">Session Date:</label>
+              <button type="button" id="ba-session-calendar-btn" class="btn btn-sm" style="background:#fff; border:1px solid #cbd5e1; border-radius:8px; font-size:12.5px; font-weight:600; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; color:#0f172a; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+                <i class="fa fa-calendar" style="color:#2563eb; font-size:13px;"></i>
+                <span id="ba-selected-date-text"><?= s($daily_attendance_register['date_formatted'] ?? date('d-M-Y')) ?></span>
+                <i class="fa fa-chevron-down" style="color:#94a3b8; font-size:10px; margin-left:2px;"></i>
+              </button>
+            </div>
 
-        <!-- Quick Session Date Buttons -->
-        <?php if (!empty($attendance_matrix['sessions'])): ?>
-          <div style="padding:10px 20px; background:#fff; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; overflow-x:auto; align-items:center;">
-            <span style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; flex-shrink:0;">Select Session:</span>
-            <?php foreach ($attendance_matrix['sessions'] as $s_pill): ?>
-              <?php
-                $is_curr_pill = ($s_pill['raw_date'] ?? '') === $att_target_date;
-                $pill_url = new moodle_url('/local/batchanalytics/module.php', [
-                    'courseid' => $courseid,
-                    'batchid' => $batchid,
-                    'sectionid' => $sec_id,
-                    'module' => $module_idx,
-                    'mode' => $deliverymode,
-                    'att_date' => $s_pill['raw_date'] ?? '',
-                ]);
-                $pill_url->set_anchor('panel-stdattendance');
-              ?>
-              <a href="<?= $pill_url->out(false) ?>" style="font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; text-decoration:none; white-space:nowrap; <?= $is_curr_pill ? 'background:#3b82f6; color:#fff;' : 'background:#f1f5f9; color:#475569; border:1px solid #e2e8f0;' ?>">
-                <?= s($s_pill['code']) ?> (<?= s($s_pill['date']) ?>)
-              </a>
-            <?php endforeach; ?>
+            <!-- Calendar Popover: Only available session dates are highlighted and selectable -->
+            <div id="ba-session-calendar-popover" style="display:none; position:absolute; right:0; top:calc(100% + 8px); background:#fff; border:1px solid #cbd5e1; border-radius:12px; box-shadow:0 10px 25px -5px rgba(15,23,42,0.15), 0 8px 10px -6px rgba(15,23,42,0.1); width:290px; padding:14px; z-index:1050;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #f1f5f9;">
+                <button type="button" id="ba-cal-prev-month" class="btn btn-sm btn-light" style="padding:2px 8px; border-radius:6px; font-weight:700; color:#475569; border:1px solid #e2e8f0; cursor:pointer;">&lsaquo;</button>
+                <div id="ba-cal-month-year" style="font-weight:700; font-size:13px; color:#0f172a;"></div>
+                <button type="button" id="ba-cal-next-month" class="btn btn-sm btn-light" style="padding:2px 8px; border-radius:6px; font-weight:700; color:#475569; border:1px solid #e2e8f0; cursor:pointer;">&rsaquo;</button>
+              </div>
+
+              <div style="display:grid; grid-template-columns:repeat(7, 1fr); text-align:center; font-size:11px; font-weight:700; color:#64748b; margin-bottom:6px;">
+                <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+              </div>
+
+              <div id="ba-cal-days-grid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:3px;"></div>
+
+              <div style="margin-top:10px; padding-top:8px; border-top:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; font-size:10px; color:#64748b;">
+                <span style="display:inline-flex; align-items:center; gap:4px;">
+                  <span style="width:8px; height:8px; border-radius:50%; background:#2563eb; display:inline-block;"></span> Available Session
+                </span>
+                <span style="color:#94a3b8;">Other dates disabled</span>
+              </div>
+            </div>
           </div>
-        <?php endif; ?>
+        </div>
 
         <!-- Daily Register Table -->
         <div class="table-responsive" style="margin:0;">
-          <table class="table table-hover" style="font-size:12px; margin-bottom:0; width:100%; border-collapse:collapse;">
+          <table class="table table-hover" id="ba-daily-punch-table" style="font-size:12px; margin-bottom:0; width:100%; border-collapse:collapse;">
             <thead style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
               <tr>
                 <th style="padding:10px 14px; width:45px; text-align:center;">#</th>
-                <th style="padding:10px 14px;">Student Name</th>
-                <th style="padding:10px 14px; width:130px;">Day &amp; Date</th>
+                <th style="padding:10px 14px; cursor:pointer; user-select:none;" id="ba-punch-sort-student" class="sortable" title="Click to sort by Student Name">
+                  Student Name <span class="ba-sort-icon" style="font-size:11px; color:#94a3b8; margin-left:4px;">↕</span>
+                </th>
                 <th style="padding:10px 14px; text-align:center; width:120px;">Check In</th>
                 <th style="padding:10px 14px; text-align:center; width:120px;">Check Out</th>
                 <th style="padding:10px 14px; text-align:center; width:110px;">Total Hours</th>
@@ -2162,8 +2896,8 @@ echo $OUTPUT->header();
             </thead>
             <tbody>
               <?php if (empty($daily_attendance_register['students'])): ?>
-                <tr>
-                  <td colspan="8" style="padding:28px; text-align:center; color:#64748b;">
+                <tr class="ba-punch-empty-row">
+                  <td colspan="7" style="padding:28px; text-align:center; color:#64748b;">
                     <em>No student punch records found for <?= s($daily_attendance_register['date_formatted'] ?? $att_target_date) ?>.</em>
                   </td>
                 </tr>
@@ -2184,17 +2918,13 @@ echo $OUTPUT->header();
                         $stat_color = '#9a3412';
                     }
                   ?>
-                  <tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:10px 14px; text-align:center; color:#64748b; font-weight:600;"><?= $reg_idx++ ?></td>
-                    <td style="padding:10px 14px;">
+                  <tr class="ba-punch-row" style="border-bottom:1px solid #f1f5f9;">
+                    <td class="ba-row-idx" style="padding:10px 14px; text-align:center; color:#64748b; font-weight:600;"><?= $reg_idx++ ?></td>
+                    <td style="padding:10px 14px;" data-student-name="<?= s(strtolower($rs['name'])) ?>">
                       <strong style="color:#0f172a; font-size:13px;"><?= s($rs['name']) ?></strong>
                       <div style="font-size:11px; color:#64748b; font-family:monospace; margin-top:2px;">
                         PIN: <strong><?= s($rs['pin']) ?></strong><?= !empty($rs['email']) ? ' &middot; ' . s($rs['email']) : '' ?>
                       </div>
-                    </td>
-                    <td style="padding:10px 14px; color:#334155; font-weight:600;">
-                      <?= s($daily_attendance_register['day_name'] ?? '') ?><br/>
-                      <span style="font-size:11px; color:#64748b; font-weight:normal;"><?= s($daily_attendance_register['date_formatted'] ?? '') ?></span>
                     </td>
                     <td style="padding:10px 14px; text-align:center;">
                       <?php if (!empty($rs['check_in']) && $rs['check_in'] !== '--'): ?>
@@ -2233,13 +2963,34 @@ echo $OUTPUT->header();
             </tbody>
           </table>
         </div>
+
+        <!-- Daily Biometric Punch Register Pagination Controls -->
+        <div class="ba-pagination-bar" id="ba-daily-punch-pagination-bar">
+          <div class="ba-pagination-info" id="ba-daily-punch-pagination-info">
+            <!-- Populated via module.js -->
+          </div>
+          <div class="ba-pagination-actions">
+            <div class="ba-pagination-size-box">
+              <label for="ba-daily-punch-page-size">Rows per page:</label>
+              <select id="ba-daily-punch-page-size" class="ba-pagination-select">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="ba-pagination-btns" id="ba-daily-punch-pagination-btns">
+              <!-- Rendered dynamically via module.js -->
+            </div>
+          </div>
+        </div>
       </div>
       <?php endif; ?>
     </div>
     <?php else: ?>
 
     <!-- 1. Mentor Activities Panel (Operational Mentor Activities) -->
-    <div id="panel-mentor" class="panel active">
+    <div id="panel-mentor" class="panel <?= $non_sponsor_active === 'mentor' ? 'active' : '' ?>">
       <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
       </div>
 
@@ -2310,7 +3061,7 @@ echo $OUTPUT->header();
     </div>
 
     <!-- 2. SS Activities Panel (Module Level) -->
-    <div id="panel-ssact" class="panel">
+    <div id="panel-ssact" class="panel <?= $non_sponsor_active === 'ssact' ? 'active' : '' ?>">
       <div class="panel-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
           Soft skills activities scheduled during this module's planned date range (<b><?= s($p_start) ?></b> – <b><?= s($p_end) ?></b>).
@@ -2346,22 +3097,16 @@ echo $OUTPUT->header();
     <?php endif; ?>
 
     <!-- Student Performance Panel -->
-    <div id="panel-mstudents" class="panel">
+    <div id="panel-mstudents" class="panel <?= ($is_sponsor ? $active_tab : $non_sponsor_active) === 'mstudents' ? 'active' : '' ?>">
       <div class="panel-note">
         Module-level student performance — same view as batch level, scoped to this module. Grade or Completion % banding.
       </div>
 
       <div class="filterbar">
-        <?php if (!$is_sponsor): ?>
         <div class="toggle">
           <span class="on" id="ba-mod-tg-grade">Grade</span>
           <span id="ba-mod-tg-pct">Completion %</span>
         </div>
-        <?php else: ?>
-        <div class="toggle">
-          <span class="on" id="ba-mod-tg-pct">Completion %</span>
-        </div>
-        <?php endif; ?>
         <button type="button" class="exp" id="ba-mod-export-btn">Export Filtered</button>
 
       </div>
@@ -2377,9 +3122,7 @@ echo $OUTPUT->header();
               <tr>
                 <th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>
                 <th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>
-                <?php if (!$is_sponsor): ?>
                 <th class="sortable ba-performance-overall-head" data-sort="grade" title="Sort by Grade">Grade</th>
-                <?php endif; ?>
                 <th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>
                 <?php foreach ($performance_columns as $column): ?>
                   <th class="sortable ba-performance-group-module" data-sort="category:<?= s($column['key']) ?>" title="Sort by <?= s($column['label']) ?>"><?= s($column['label']) ?></th>
@@ -2424,51 +3167,113 @@ echo $OUTPUT->header();
   </div> <!-- /.ba-module-panels -->
 
   </div> <!-- /.shell -->
+  </div> <!-- /.wrap -->
 
 </div> <!-- /.local-batchanalytics-wrap -->
 
 <?php if ($can_edit_mentor): ?>
-<!-- Modal: Add Lesson Plan Day -->
-<div id="ba-lesson-plan-modal" style="display:none; position:fixed; z-index:99999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
-  <div style="background:#fff; border-radius:10px; max-width:540px; width:92%; padding:24px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); position:relative;">
-    <h3 style="margin-top:0; font-size:17px; font-weight:700; color:#1e293b;">Log Day-Wise Lesson Plan</h3>
-    <form id="ba-form-lesson-plan">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div>
-          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Day Number</label>
-          <input type="number" id="lp-day-index" class="form-control" value="<?= count($lesson_plan_days ?? []) + 1 ?>" min="1" max="100" required style="width:100%;">
-        </div>
-        <div>
-          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Status</label>
-          <select id="lp-status" class="form-control" style="width:100%;">
-            <option value="Done">Done</option>
-            <option value="Pending" selected>Pending</option>
+<!-- ADD LESSON-PLAN DAY MODAL -->
+<div class="ov" id="dayOv">
+  <div class="ovbox" style="width:520px;">
+    <div class="ovhead">
+      <span class="t">&#10133; Add lesson-plan day</span>
+      <button type="button" class="x" id="ba-close-day-modal-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="ba-form-add-day">
+      <div class="mbody">
+        <div class="frow">
+          <label for="d_after">INSERT POSITION</label>
+          <select id="d_after" name="after">
+            <option value="end">— At the end —</option>
           </select>
         </div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div>
-          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Planned Date</label>
-          <input type="text" id="lp-planned-date" class="form-control" placeholder="e.g. 16 Nov 2026" required style="width:100%;">
+        <div class="frow two">
+          <div>
+            <label for="d_plan">PLANNED DATE</label>
+            <input id="d_plan" name="planned_date" type="date" required>
+          </div>
+          <div>
+            <label for="d_actual">ACTUAL DATE</label>
+            <input id="d_actual" name="actual_date" type="date">
+          </div>
         </div>
-        <div>
-          <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Actual Date</label>
-          <input type="text" id="lp-actual-date" class="form-control" placeholder="e.g. 16 Nov 2026" style="width:100%;">
+        <div class="frow">
+          <label for="d_topic">TOPIC / CONTENT</label>
+          <textarea id="d_topic" name="topic" placeholder="What the mentor plans to cover this day…" required></textarea>
+        </div>
+        <div class="frow">
+          <label for="d_status">STATUS</label>
+          <select id="d_status" name="status">
+            <option value="Pending" selected>Pending</option>
+            <option value="In progress">In progress</option>
+            <option value="Done">Done</option>
+          </select>
+          <div class="hint">Class &amp; Lab mentor attendance is auto-fetched via the biometric reader — not set here.</div>
         </div>
       </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Topic / Syllabus Coverage</label>
-        <textarea id="lp-topic" class="form-control" rows="2" placeholder="Details of syllabus delivered..." required style="width:100%;"></textarea>
-      </div>
-      <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 14px; margin-bottom:18px; font-size:12px; color:#166534; display:flex; align-items:center; gap:8px;">
-        <i class="fa fa-fingerprint" style="font-size:18px; color:#16a34a; flex-shrink:0;"></i>
-        <span>Class &amp; Lab Mentor attendance is automatically verified from the <b>ESSCI Biometric Attendance Report</b> for the session date.</span>
-      </div>
-      <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button type="button" class="btn btn-secondary" id="ba-close-lp-modal">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="ba-save-lp-btn">Save Session</button>
+      <div class="mfoot">
+        <button type="button" class="btn-light" id="ba-close-day-modal-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="ba-save-day-btn" style="padding:9px 18px; font-size:12.5px; font-weight:600; border-radius:8px;">Add day</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- DELETE LESSON-PLAN DAY CONFIRMATION MODAL -->
+<div class="ov" id="ba-delete-day-modal" role="dialog" aria-modal="true" aria-labelledby="ba-del-modal-title">
+  <div class="ovbox" style="width:480px; max-width:94vw;">
+    <div class="ovhead" style="background:#fff1f2; border-bottom:1px solid #fecdd3;">
+      <span class="t" id="ba-del-modal-title" style="color:#be123c; display:flex; align-items:center; gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+        Delete Lesson Plan Day
+      </span>
+      <button type="button" class="x" id="ba-close-del-modal-x" aria-label="Close" style="color:#9f1239;">&times;</button>
+    </div>
+    <div class="mbody" style="padding:20px 22px;">
+      <p style="margin:0 0 14px 0; font-size:13.5px; color:#475569; line-height:1.5;">
+        Are you sure you want to delete this lesson plan day? This action cannot be undone.
+      </p>
+
+      <!-- Details Summary Card -->
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:8px;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.45;">
+          <tbody>
+            <tr>
+              <td style="width:110px; padding:5px 0; color:#64748b; font-weight:600; vertical-align:top;">Day:</td>
+              <td id="ba-del-day-num" style="padding:5px 0; color:#0f172a; font-weight:700;">—</td>
+            </tr>
+            <tr>
+              <td style="padding:5px 0; color:#64748b; font-weight:600; vertical-align:top;">Planned Date:</td>
+              <td id="ba-del-planned-date" style="padding:5px 0; color:#1e293b; font-weight:500;">—</td>
+            </tr>
+            <tr>
+              <td style="padding:5px 0; color:#64748b; font-weight:600; vertical-align:top;">Actual Date:</td>
+              <td id="ba-del-actual-date" style="padding:5px 0; color:#1e293b; font-weight:500;">—</td>
+            </tr>
+            <tr>
+              <td style="padding:5px 0; color:#64748b; font-weight:600; vertical-align:top;">Topic / content:</td>
+              <td id="ba-del-topic" style="padding:5px 0; color:#1e293b; font-weight:500; word-break:break-word;">—</td>
+            </tr>
+            <tr>
+              <td style="padding:5px 0; color:#64748b; font-weight:600; vertical-align:middle;">Status:</td>
+              <td id="ba-del-status" style="padding:5px 0; vertical-align:middle;">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mfoot" style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px;">
+      <button type="button" class="btn-light" id="ba-cancel-del-day-btn" style="padding:8px 18px; font-size:13px; font-weight:600; border-radius:8px;">Cancel</button>
+      <button type="button" class="btn" id="ba-confirm-del-day-btn" style="background:#e11d48; color:#ffffff; border:none; padding:8px 20px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background 0.15s ease;">
+        <span id="ba-del-btn-spinner" style="display:none;">⏳</span>
+        <span id="ba-del-btn-text">Delete</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2479,14 +3284,41 @@ echo $OUTPUT->header();
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
       <div style="display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#1e293b;">
         <i class="fa fa-camera" style="font-size:16px; color:#475569;"></i>
-        <span>Upload class / lab photos</span>
+        <span>Upload class / lab photos &amp; videos</span>
       </div>
-      <button type="button" id="ba-close-ev-modal-x" style="background:none; border:none; font-size:22px; color:#94a3b8; cursor:pointer; line-height:1; padding:0 4px;" title="Close">&times;</button>
+      <button type="button" class="ba-modal-btn-close-circle" id="ba-close-ev-modal-x" aria-label="Close" title="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
     </div>
 
     <form id="ba-form-evidence" enctype="multipart/form-data">
-      <!-- Row 1: Session Type & Session Date -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+      <!-- Row 1: Week, Session Type & Session Date -->
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">WEEK</label>
+          <select id="ev-week-index" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+            <?php
+              $incomplete_weeks = [];
+              if (!empty($evidence_data['weekly_tracker'])) {
+                  foreach ($evidence_data['weekly_tracker'] as $wk) {
+                      if ((int)$wk['completed'] < (int)$wk['target']) {
+                          $incomplete_weeks[] = $wk;
+                      }
+                  }
+              }
+            ?>
+            <?php if (!empty($incomplete_weeks)): ?>
+              <?php foreach ($incomplete_weeks as $wk): ?>
+                <option value="<?= (int)$wk['week'] ?>" <?= !empty($wk['is_current']) ? 'selected' : '' ?>>Week <?= (int)$wk['week'] ?> (<?= (int)$wk['completed'] ?>/<?= (int)$wk['target'] ?>)</option>
+              <?php endforeach; ?>
+            <?php else: ?>
+              <option value="" disabled selected>All weeks completed (+ Add Week to upload)</option>
+            <?php endif; ?>
+          </select>
+        </div>
         <div>
           <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">SESSION TYPE</label>
           <select id="ev-session-type" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
@@ -2500,6 +3332,12 @@ echo $OUTPUT->header();
         </div>
       </div>
 
+      <!-- Real-time Date Conflict Warning Banner -->
+      <div id="ev-date-conflict-warning" style="display:none; padding:10px 14px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:12px; margin-bottom:14px; align-items:center; gap:8px;">
+        <i class="fa fa-exclamation-triangle" style="font-size:14px; flex-shrink:0;"></i>
+        <span id="ev-date-conflict-msg"></span>
+      </div>
+
       <!-- Drag & Drop Upload Zone -->
       <div id="ev-dropzone" style="border:1.5px dashed #cbd5e1; border-radius:10px; padding:28px 20px; text-align:center; background:#fbfcfe; margin-bottom:16px; cursor:pointer; transition:all 0.2s;">
         <div style="margin-bottom:8px;">
@@ -2509,9 +3347,9 @@ echo $OUTPUT->header();
             <path d="M24 24V9M24 9L17.5 15.5M24 9L30.5 15.5" stroke="#ef4444" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <div style="font-size:14px; font-weight:700; color:#1e293b;" id="ev-dropzone-prompt">Drag &amp; drop photos here</div>
-        <div style="font-size:12px; color:#64748b; margin-top:4px;">or click to choose files &middot; JPG, PNG, MP4, WEBM</div>
-        <input type="file" id="ev-file" name="evidence_files[]" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" style="display:none;">
+        <div style="font-size:14px; font-weight:700; color:#1e293b;" id="ev-dropzone-prompt">Drag &amp; drop photos or videos here</div>
+        <div style="font-size:12px; color:#64748b; margin-top:4px;">or click to choose files &middot; JPG, PNG, WEBP, MP4, WEBM, MOV</div>
+        <input type="file" id="ev-file" name="evidence_files[]" multiple accept="image/*,video/*" style="display:none;">
         <div id="ev-selected-files-list" style="margin-top:14px; display:none; max-height:120px; overflow-y:auto; text-align:left; flex-direction:column; gap:6px;"></div>
       </div>
 
@@ -2524,9 +3362,144 @@ echo $OUTPUT->header();
       <!-- Modal Footer -->
       <div style="display:flex; justify-content:flex-end; gap:10px;">
         <button type="button" class="btn" id="ba-close-ev-modal" style="border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:13px; font-weight:600; padding:8px 20px; border-radius:8px; cursor:pointer;">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="ba-upload-ev-btn" style="background:#4f87e8; border:none; color:#fff; font-size:13px; font-weight:600; padding:8px 24px; border-radius:8px; cursor:pointer;">Upload photos</button>
+        <button type="submit" class="btn btn-primary" id="ba-upload-ev-btn" style="background:#4f87e8; border:none; color:#fff; font-size:13px; font-weight:600; padding:8px 24px; border-radius:8px; cursor:pointer;">Upload files</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Modal: Edit Class / Lab Evidence Session -->
+<div id="ba-edit-evidence-modal" style="display:none; position:fixed; z-index:99999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+  <div style="background:#fff; border-radius:14px; max-width:520px; width:92%; padding:24px 28px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); position:relative;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+      <div style="display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#1e293b;">
+        <i class="fa fa-pencil" style="font-size:15px; color:#2563eb;"></i>
+        <span>Edit Class Evidence Session</span>
+      </div>
+      <button type="button" class="ba-modal-btn-close-circle" id="ba-close-edit-modal-x" aria-label="Close" title="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <form id="ba-form-edit-evidence">
+      <input type="hidden" id="edit-ev-id" value="">
+      
+      <!-- Date Conflict Warning in Edit Modal -->
+      <div id="edit-ev-conflict-warning" style="display:none; padding:10px 14px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:12px; margin-bottom:14px; align-items:center; gap:8px;">
+        <i class="fa fa-exclamation-triangle" style="font-size:14px; flex-shrink:0;"></i>
+        <span id="edit-ev-conflict-msg"></span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:16px;">
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">WEEK</label>
+          <select id="edit-ev-week" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+            <?php foreach (($evidence_data['weekly_tracker'] ?? []) as $wk): ?>
+              <option value="<?= (int)$wk['week'] ?>">Week <?= (int)$wk['week'] ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">SESSION TYPE</label>
+          <select id="edit-ev-type" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+            <option value="Class">Class</option>
+            <option value="Lab">Lab</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">SESSION DATE</label>
+          <input type="date" id="edit-ev-date" class="form-control" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="font-size:11px; font-weight:700; color:#475569; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:block;">CAPTION</label>
+        <input type="text" id="edit-ev-caption" class="form-control" placeholder="e.g. Pointers class &middot; lab batch A" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; height:40px; font-size:13px; color:#1e293b; background:#fff;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn" id="ba-close-edit-modal-btn" style="border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:13px; font-weight:600; padding:8px 20px; border-radius:8px; cursor:pointer;">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="ba-save-edit-ev-btn" style="background:#2563eb; border:none; color:#fff; font-size:13px; font-weight:600; padding:8px 24px; border-radius:8px; cursor:pointer;">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Custom Dialog Modal (Replaces native browser alert and confirm) -->
+<div id="ba-custom-dialog-modal" style="display:none; position:fixed; z-index:9999999; left:0; top:0; width:100%; height:100%; background:rgba(15,23,42,0.65); align-items:center; justify-content:center; backdrop-filter:blur(3px);">
+  <div style="background:#fff; border-radius:16px; max-width:420px; width:92%; padding:30px 24px 24px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3); text-align:center; position:relative; animation:ba-pop-scale 0.2s ease-out;">
+    <div id="ba-dlg-icon-wrap" style="width:56px; height:56px; border-radius:50%; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; font-size:24px;"></div>
+    <h4 id="ba-dlg-title" style="font-size:17px; font-weight:700; color:#1e293b; margin-bottom:8px;"></h4>
+    <p id="ba-dlg-message" style="font-size:13px; color:#64748b; line-height:1.5; margin-bottom:22px;"></p>
+    <div id="ba-dlg-actions" style="display:flex; justify-content:center; gap:12px;"></div>
+  </div>
+</div>
+
+<!-- Modal: Evidence Upload Progress & Success Confirmation with Animation -->
+<div id="ba-evidence-success-modal" style="display:none; position:fixed; z-index:99999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; backdrop-filter:blur(3px);">
+  <div style="background:#fff; border-radius:18px; max-width:440px; width:92%; padding:36px 30px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); text-align:center; position:relative; overflow:hidden;">
+    <button type="button" class="ba-modal-btn-close-circle" id="ba-close-ev-success-modal-x" aria-label="Close" title="Close" style="position:absolute; top:14px; right:14px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+    
+    <!-- Animated Ring / Tick Container -->
+    <div style="position:relative; width:96px; height:96px; margin:0 auto 20px; display:flex; align-items:center; justify-content:center;">
+      <svg width="96" height="96" viewBox="0 0 96 96" style="transform: rotate(-90deg);">
+        <!-- Background Track -->
+        <circle cx="48" cy="48" r="40" fill="none" stroke="#f1f5f9" stroke-width="7" />
+        <!-- Progress Stroke (Circumference = 2 * PI * 40 = 251.32) -->
+        <circle id="ba-upload-progress-circle" cx="48" cy="48" r="40" fill="none" stroke="#3b82f6" stroke-width="7"
+                stroke-linecap="round" stroke-dasharray="251.32" stroke-dashoffset="251.32"
+                style="transition: stroke-dashoffset 0.18s ease-out, stroke 0.35s ease;" />
+      </svg>
+
+      <!-- Center Elements: Dynamic Percentage vs Animated Tick -->
+      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+        <!-- Percentage Readout -->
+        <div id="ba-ev-percent-display" style="display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <span id="ba-ev-percent-val" style="font-size:20px; font-weight:800; color:#1e293b; line-height:1;">0%</span>
+          <span style="font-size:9px; font-weight:700; color:#3b82f6; text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;">uploading</span>
+        </div>
+        <!-- Animated Tick (Green checkmark drawn via SVG stroke-dashoffset) -->
+        <div id="ba-ev-tick-display" style="display:none; width:64px; height:64px; border-radius:50%; background:#dcfce7; align-items:center; justify-content:center;">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline id="ba-ev-tick-path" points="20 6 9 17 4 12" style="stroke-dasharray:48; stroke-dashoffset:48; transition: stroke-dashoffset 0.45s cubic-bezier(0.65, 0, 0.45, 1);"></polyline>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Heading & Subtitle -->
+    <h3 id="ba-ev-status-heading" style="font-size:18px; font-weight:700; color:#1e293b; margin-bottom:6px; transition:all 0.2s;">Uploading photos &amp; videos...</h3>
+    <p id="ba-ev-progress-detail" style="font-size:13px; color:#64748b; margin-bottom:20px;">0% uploaded &middot; preparing files</p>
+
+    <!-- Linear Progress Bar -->
+    <div id="ba-ev-linear-container" style="width:100%; margin-bottom:22px; padding:0 8px;">
+      <div style="width:100%; height:8px; border-radius:999px; background:#f1f5f9; overflow:hidden; border:1px solid #e2e8f0;">
+        <div id="ba-ev-linear-bar" style="width:0%; height:100%; border-radius:999px; background:linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6); background-size:200% 100%; animation:ba-shimmer-linear 1.8s infinite linear; transition:width 0.18s ease-out, background 0.3s ease;"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:11px; color:#64748b; font-weight:500;">
+        <span id="ba-ev-bytes-stats">0.0 MB / 0.0 MB</span>
+        <span id="ba-ev-percent-sub" style="font-weight:700; color:#3b82f6;">0%</span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div>
+      <button type="button" id="ba-ev-success-done-btn" style="display:none; background:#1d68d8; border:none; color:#fff; font-size:14px; font-weight:700; padding:11px 44px; border-radius:10px; cursor:pointer; min-width:140px; box-shadow:0 4px 12px rgba(29,104,216,0.25); transition:all 0.2s;">
+        Done
+      </button>
+      <button type="button" id="ba-ev-retry-btn" style="display:none; background:#ef4444; border:none; color:#fff; font-size:13px; font-weight:600; padding:9px 24px; border-radius:8px; cursor:pointer;">
+        Close &amp; Retry
+      </button>
+    </div>
+
   </div>
 </div>
 <?php endif; ?>
@@ -2566,6 +3539,11 @@ echo $OUTPUT->header();
       </button>
     </div>
 
+    <!-- Slim Linear Upload Progress Bar (Active when adding media in viewer) -->
+    <div id="ba-lightbox-upload-progress-container" style="display:none; width:100%; height:3px; background:#334155; position:relative; overflow:hidden;">
+      <div id="ba-lightbox-upload-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6); background-size:200% 100%; transition:width 0.15s ease-out;"></div>
+    </div>
+
     <!-- Info & Controls Strip below Main Media -->
     <div style="padding:10px 20px; background:#0f172a; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #1e293b;">
       <div id="ba-lightbox-current-filename" style="font-size:12px; color:#cbd5e1; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:400px;"></div>
@@ -2583,37 +3561,97 @@ echo $OUTPUT->header();
 
     <!-- Bottom Thumbnail Filmstrip (All files in this session) -->
     <div id="ba-lightbox-filmstrip" style="padding:12px 20px; background:#1e293b; display:flex; gap:10px; overflow-x:auto; border-top:1px solid #334155;"></div>
+    <input type="file" id="ba-lightbox-add-file-input" multiple accept="image/*,video/*" style="display:none;">
 
   </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const lpModal = document.getElementById('ba-lesson-plan-modal');
+  const dayOvModal = document.getElementById('dayOv');
   const evModal = document.getElementById('ba-evidence-modal');
   const openLpBtn = document.getElementById('ba-open-lesson-plan-modal');
-  const closeLpBtn = document.getElementById('ba-close-lp-modal');
+  const closeLpBtn = document.getElementById('ba-close-day-modal-btn');
+  const closeLpBtnX = document.getElementById('ba-close-day-modal-x');
   const openEvCard = document.getElementById('ba-upload-evidence-card');
   const openEvBtn = document.getElementById('ba-open-evidence-modal');
   const closeEvBtn = document.getElementById('ba-close-ev-modal');
   const closeEvBtnX = document.getElementById('ba-close-ev-modal-x');
   const sesskey = '<?= sesskey() ?>';
   const batchId = <?= (int)$batchid ?>;
+  const sectionId = <?= (int)($section ? $section->id : ($sectionid > 0 ? $sectionid : $batchid)) ?>;
   const courseId = <?= (int)$courseid ?>;
 
-  if (openLpBtn && lpModal) {
-    openLpBtn.addEventListener('click', () => { lpModal.style.display = 'flex'; });
+  function refreshAfterDropdown() {
+    const afterSel = document.getElementById('d_after');
+    if (!afterSel) return;
+    let opts = '<option value="end">— At the end —</option>';
+    const rows = document.querySelectorAll('#lpBody tr[data-dayid]');
+    rows.forEach(r => {
+      const did = r.getAttribute('data-dayid');
+      const dnum = r.getAttribute('data-dayindex');
+      const topic = r.getAttribute('data-topic') || (r.querySelector('.lp-topic') ? r.querySelector('.lp-topic').textContent.trim() : '');
+      const topicSnippet = topic ? ` (${topic.substring(0, 24)}${topic.length > 24 ? '…' : ''})` : '';
+      if (did && dnum) {
+        opts += `<option value="${did}">After day ${dnum}${topicSnippet}</option>`;
+      }
+    });
+    afterSel.innerHTML = opts;
   }
-  if (closeLpBtn && lpModal) {
-    closeLpBtn.addEventListener('click', () => { lpModal.style.display = 'none'; });
+
+  function openDayModal() {
+    if (!dayOvModal) return;
+    refreshAfterDropdown();
+    const dPlan = document.getElementById('d_plan');
+    const dActual = document.getElementById('d_actual');
+    const dTopic = document.getElementById('d_topic');
+    const dStatus = document.getElementById('d_status');
+    if (dPlan) dPlan.value = '';
+    if (dActual) dActual.value = '';
+    if (dTopic) dTopic.value = '';
+    if (dStatus) dStatus.value = 'Pending';
+    dayOvModal.classList.add('show');
+  }
+
+  function closeDayModal() {
+    if (dayOvModal) {
+      dayOvModal.classList.remove('show');
+    }
+  }
+
+  if (openLpBtn) {
+    openLpBtn.addEventListener('click', openDayModal);
+  }
+  if (closeLpBtn) {
+    closeLpBtn.addEventListener('click', closeDayModal);
+  }
+  if (closeLpBtnX) {
+    closeLpBtnX.addEventListener('click', closeDayModal);
+  }
+  if (dayOvModal) {
+    dayOvModal.addEventListener('click', function(e) {
+      if (e.target === dayOvModal) {
+        closeDayModal();
+      }
+    });
   }
 
   // Open Evidence Upload Modal from Card or Header button
   function openEvidenceModal() {
+    const weekSel = document.getElementById('ev-week-index');
+    if (weekSel && (!weekSel.value || weekSel.value === '')) {
+      showCustomAlert({
+        title: 'All Weeks Completed',
+        message: 'All configured weeks for this module have already met their required compliance target (2/2). Click "+ Add Week" to add a new week before uploading.',
+        type: 'info'
+      });
+      return;
+    }
     if (evModal) {
       evModal.style.display = 'flex';
       selectedEvidenceFiles = [];
       renderSelectedFiles();
+      validateUploadFormConflict();
     }
   }
   if (openEvCard) {
@@ -2623,11 +3661,13 @@ document.addEventListener('DOMContentLoaded', function() {
     openEvBtn.addEventListener('click', openEvidenceModal);
   }
 
-  function closeEvidenceModal() {
+  function closeEvidenceModal(clear = true) {
     if (evModal) {
       evModal.style.display = 'none';
-      selectedEvidenceFiles = [];
-      renderSelectedFiles();
+      if (clear) {
+        selectedEvidenceFiles = [];
+        renderSelectedFiles();
+      }
     }
   }
   if (closeEvBtn) closeEvBtn.addEventListener('click', closeEvidenceModal);
@@ -2676,6 +3716,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (dropzone && fileInput) {
     dropzone.addEventListener('click', function(e) {
       if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+        fileInput.value = '';
         fileInput.click();
       }
     });
@@ -2706,149 +3747,1244 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     fileInput.addEventListener('change', function() {
-      for (let i = 0; i < this.files.length; i++) {
-        selectedEvidenceFiles.push(this.files[i]);
+      if (this.files && this.files.length > 0) {
+        for (let i = 0; i < this.files.length; i++) {
+          selectedEvidenceFiles.push(this.files[i]);
+        }
+        renderSelectedFiles();
       }
-      this.value = '';
-      renderSelectedFiles();
     });
   }
 
-  // Handle lesson plan submission
-  const lpForm = document.getElementById('ba-form-lesson-plan');
-  if (lpForm) {
-    lpForm.addEventListener('submit', function(e) {
+  // Handle lesson plan submission matching #dayOv
+  const addDayForm = document.getElementById('ba-form-add-day');
+  if (addDayForm) {
+    addDayForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      const saveBtn = document.getElementById('ba-save-lp-btn');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
+      const saveBtn = document.getElementById('ba-save-day-btn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Adding...';
+      }
+      const after = document.getElementById('d_after') ? document.getElementById('d_after').value : 'end';
+      const plan = document.getElementById('d_plan') ? document.getElementById('d_plan').value : '';
+      const actual = document.getElementById('d_actual') ? document.getElementById('d_actual').value : '';
+      const topic = document.getElementById('d_topic') ? document.getElementById('d_topic').value : '';
+      const status = document.getElementById('d_status') ? document.getElementById('d_status').value : 'Pending';
+
       const fd = new FormData();
       fd.append('sesskey', sesskey);
       fd.append('action', 'add_lesson_plan_day');
       fd.append('batchid', batchId);
-      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
+      fd.append('sectionid', sectionId);
       fd.append('courseid', courseId);
-      fd.append('day_index', document.getElementById('lp-day-index').value);
-      fd.append('status', document.getElementById('lp-status').value);
-      fd.append('planned_date', document.getElementById('lp-planned-date').value);
-      fd.append('actual_date', document.getElementById('lp-actual-date').value);
-      fd.append('topic', document.getElementById('lp-topic').value);
+      fd.append('after', after);
+      fd.append('planned_date', plan);
+      fd.append('actual_date', actual);
+      fd.append('topic', topic);
+      fd.append('status', status);
 
       fetch('module.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
           if (data.success) {
+            window.location.hash = 'panel-lessonplan';
             window.location.reload();
           } else {
-            alert('Error: ' + (data.error || 'Failed to save lesson plan day'));
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Save Session';
+            alert('Error: ' + (data.error || 'Failed to add lesson plan day'));
+            if (saveBtn) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Add day';
+            }
           }
         })
         .catch(err => {
-          alert('Network error saving session');
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Session';
+          alert('Network error adding lesson plan day');
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Add day';
+          }
         });
     });
   }
 
-  // Handle lesson plan deletion
-  document.querySelectorAll('.ba-delete-lesson-plan-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      if (!confirm('Are you sure you want to delete this lesson plan day?')) return;
-      const dayId = this.getAttribute('data-dayid');
+  // Helper to re-index Day numbers and data-dayindex in the DOM sequentially (1, 2, 3...)
+  function renumberLessonPlanRows() {
+    const tbody = document.getElementById('lpBody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr[data-dayid]');
+    rows.forEach((row, idx) => {
+      const dayNum = idx + 1;
+      row.setAttribute('data-dayindex', dayNum);
+      const dayCell = row.querySelector('.lp-day');
+      if (dayCell) {
+        dayCell.textContent = dayNum;
+      }
+    });
+  }
+
+  // Helper to maintain enabled/disabled states of ▲ / ▼ buttons
+  function updateMoveButtonsState() {
+    const tbody = document.getElementById('lpBody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr[data-dayid]');
+    const total = rows.length;
+    rows.forEach((row, idx) => {
+      const upBtn = row.querySelector('.ba-lp-move-btn[data-dir="-1"]');
+      const downBtn = row.querySelector('.ba-lp-move-btn[data-dir="1"]');
+      if (upBtn) {
+        upBtn.disabled = (idx === 0);
+      }
+      if (downBtn) {
+        downBtn.disabled = (idx === total - 1);
+      }
+    });
+  }
+
+  // Initialize move button states & sequential day numbers on load
+  renumberLessonPlanRows();
+  updateMoveButtonsState();
+
+  // Flag to guard against race conditions on rapid reordering clicks
+  let isReordering = false;
+
+  // Handle lesson plan day reordering (Move Up / Down) smoothly via AJAX without full page reload
+  const lpTbody = document.getElementById('lpBody');
+  if (lpTbody) {
+    lpTbody.addEventListener('click', function(e) {
+      const moveBtn = e.target.closest('.ba-lp-move-btn');
+      if (moveBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (moveBtn.disabled || isReordering) return;
+
+        const row = moveBtn.closest('tr[data-dayid]');
+        if (!row) return;
+
+        const dayId = moveBtn.getAttribute('data-dayid');
+        const dir = parseInt(moveBtn.getAttribute('data-dir'), 10);
+        if (!dayId || isNaN(dir)) return;
+
+        const targetRow = (dir < 0) ? row.previousElementSibling : row.nextElementSibling;
+        if (!targetRow || !targetRow.hasAttribute('data-dayid')) return;
+
+        isReordering = true;
+
+        // Smooth in-place DOM swap immediately for instant UI feedback
+        if (dir < 0) {
+          row.parentNode.insertBefore(row, targetRow);
+        } else {
+          row.parentNode.insertBefore(targetRow, row);
+        }
+
+        // Renumber Day column immediately so Day 1, Day 2... remain sequential
+        renumberLessonPlanRows();
+
+        // Trigger subtle highlight animation on swapped row
+        row.classList.remove('ba-row-highlight');
+        void row.offsetWidth; // Force reflow
+        row.classList.add('ba-row-highlight');
+
+        // Update button states & Add Day modal dropdown
+        updateMoveButtonsState();
+        refreshAfterDropdown();
+
+        // Persist new order asynchronously via AJAX
+        const fd = new FormData();
+        fd.append('sesskey', sesskey);
+        fd.append('action', 'reorder_lesson_plan_day');
+        fd.append('dayid', dayId);
+        fd.append('direction', dir);
+
+        fetch('module.php', { method: 'POST', body: fd })
+          .then(r => r.json())
+          .then(data => {
+            isReordering = false;
+            if (!data.success) {
+              // Revert DOM swap on failure
+              if (dir < 0) {
+                targetRow.parentNode.insertBefore(targetRow, row);
+              } else {
+                row.parentNode.insertBefore(row, targetRow);
+              }
+              renumberLessonPlanRows();
+              updateMoveButtonsState();
+              refreshAfterDropdown();
+              alert('Unable to move day: ' + (data.error || 'Operation failed'));
+            }
+          })
+          .catch(() => {
+            isReordering = false;
+            // Revert DOM swap on network failure
+            if (dir < 0) {
+              targetRow.parentNode.insertBefore(targetRow, row);
+            } else {
+              row.parentNode.insertBefore(row, targetRow);
+            }
+            renumberLessonPlanRows();
+            updateMoveButtonsState();
+            refreshAfterDropdown();
+            alert('Network error moving day');
+          });
+        return;
+      }
+
+      // Handle lesson plan deletion button click -> opens custom modal with day details
+      const delBtn = e.target.closest('.ba-delete-lesson-plan-btn');
+      if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = delBtn.closest('tr[data-dayid]');
+        if (!row) return;
+        openDeleteDayModal(row);
+        return;
+      }
+    });
+  }
+
+  // Delete Lesson Plan Day Modal logic
+  let pendingDeleteRow = null;
+  let pendingDeleteDayId = null;
+  const delDayModal = document.getElementById('ba-delete-day-modal');
+  const cancelDelBtn = document.getElementById('ba-cancel-del-day-btn');
+  const closeDelBtnX = document.getElementById('ba-close-del-modal-x');
+  const confirmDelBtn = document.getElementById('ba-confirm-del-day-btn');
+
+  function openDeleteDayModal(row) {
+    if (!delDayModal || !row) return;
+    pendingDeleteRow = row;
+    pendingDeleteDayId = row.getAttribute('data-dayid');
+
+    const dayNum = row.getAttribute('data-dayindex') || (row.querySelector('.lp-day') ? row.querySelector('.lp-day').textContent.trim() : '—');
+    const plannedDate = row.getAttribute('data-planned') || (row.querySelector('.lp-planned-date') ? row.querySelector('.lp-planned-date').textContent.trim() : '—');
+    const actualDate = row.getAttribute('data-actual') || (row.querySelector('.lp-actual-date') ? row.querySelector('.lp-actual-date').textContent.trim() : '—');
+    const topic = row.getAttribute('data-topic') || (row.querySelector('.lp-topic') ? row.querySelector('.lp-topic').textContent.trim() : '—');
+    const statusPill = row.querySelector('.stp');
+
+    const elDayNum = document.getElementById('ba-del-day-num');
+    const elPlanned = document.getElementById('ba-del-planned-date');
+    const elActual = document.getElementById('ba-del-actual-date');
+    const elTopic = document.getElementById('ba-del-topic');
+    const elStatus = document.getElementById('ba-del-status');
+
+    if (elDayNum) elDayNum.textContent = 'Day ' + dayNum;
+    if (elPlanned) elPlanned.textContent = plannedDate || '—';
+    if (elActual) elActual.textContent = actualDate || '—';
+    if (elTopic) elTopic.textContent = topic || '—';
+    if (elStatus) {
+      if (statusPill) {
+        elStatus.innerHTML = statusPill.outerHTML;
+      } else {
+        elStatus.textContent = '—';
+      }
+    }
+
+    delDayModal.classList.add('show');
+  }
+
+  function closeDeleteDayModal() {
+    if (delDayModal) {
+      delDayModal.classList.remove('show');
+    }
+    pendingDeleteRow = null;
+    pendingDeleteDayId = null;
+    if (confirmDelBtn) {
+      confirmDelBtn.disabled = false;
+    }
+    const spinner = document.getElementById('ba-del-btn-spinner');
+    if (spinner) spinner.style.display = 'none';
+  }
+
+  if (cancelDelBtn) cancelDelBtn.addEventListener('click', closeDeleteDayModal);
+  if (closeDelBtnX) closeDelBtnX.addEventListener('click', closeDeleteDayModal);
+  if (delDayModal) {
+    delDayModal.addEventListener('click', function(e) {
+      if (e.target === delDayModal) {
+        closeDeleteDayModal();
+      }
+    });
+  }
+
+  // Close modals on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      closeDeleteDayModal();
+      closeDayModal();
+    }
+  });
+
+  if (confirmDelBtn) {
+    confirmDelBtn.addEventListener('click', function() {
+      if (!pendingDeleteDayId || !pendingDeleteRow) {
+        closeDeleteDayModal();
+        return;
+      }
+
+      const dayId = pendingDeleteDayId;
+      const rowToDelete = pendingDeleteRow;
+      const spinner = document.getElementById('ba-del-btn-spinner');
+
+      confirmDelBtn.disabled = true;
+      if (spinner) spinner.style.display = 'inline';
+
       const fd = new FormData();
       fd.append('sesskey', sesskey);
       fd.append('action', 'delete_lesson_plan_day');
       fd.append('dayid', dayId);
+
       fetch('module.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
+          confirmDelBtn.disabled = false;
+          if (spinner) spinner.style.display = 'none';
+
           if (data.success) {
-            window.location.reload();
+            closeDeleteDayModal();
+
+            // Smooth fade-out and slide transition without reloading page
+            rowToDelete.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+            rowToDelete.style.opacity = '0';
+            rowToDelete.style.transform = 'translateX(12px)';
+
+            setTimeout(() => {
+              rowToDelete.remove();
+
+              // Check if any rows remain
+              const remainingRows = document.querySelectorAll('#lpBody tr[data-dayid]');
+              if (remainingRows.length === 0) {
+                const tbody = document.getElementById('lpBody');
+                if (tbody) {
+                  tbody.innerHTML = '<tr><td colspan="8" class="ba-empty-cell" style="text-align:center; padding:32px 16px; color:#64748b; font-size:13.5px;">No lesson plan entries found.</td></tr>';
+                }
+                refreshAfterDropdown();
+              } else {
+                renumberLessonPlanRows();
+                updateMoveButtonsState();
+                refreshAfterDropdown();
+              }
+            }, 220);
           } else {
-            alert('Error deleting day');
+            alert('Error deleting day: ' + (data.error || 'Operation failed'));
           }
+        })
+        .catch(() => {
+          confirmDelBtn.disabled = false;
+          if (spinner) spinner.style.display = 'none';
+          alert('Network error deleting day');
         });
     });
-  });
+  }
 
-  // Handle photo/video evidence submission
+  // -------------------------------------------------------------------------
+  // Custom Modal Dialog Helpers (replaces native window.alert and confirm)
+  // -------------------------------------------------------------------------
+  const customDlgModal = document.getElementById('ba-custom-dialog-modal');
+  const customDlgTitle = document.getElementById('ba-dlg-title');
+  const customDlgMsg = document.getElementById('ba-dlg-message');
+  const customDlgIcon = document.getElementById('ba-dlg-icon-wrap');
+  const customDlgActions = document.getElementById('ba-dlg-actions');
+
+  function showCustomConfirm(opts) {
+    if (!customDlgModal) {
+      if (confirm(opts.message || opts.title)) opts.onConfirm && opts.onConfirm();
+      return;
+    }
+    customDlgTitle.textContent = opts.title || 'Confirm Action';
+    customDlgMsg.textContent = opts.message || '';
+    customDlgIcon.innerHTML = opts.iconHtml || '<i class="fa fa-exclamation-triangle" style="color:#e11d48;"></i>';
+    customDlgIcon.style.background = opts.iconBg || '#ffe4e6';
+
+    customDlgActions.innerHTML = `
+      <button type="button" id="ba-dlg-cancel-btn" style="padding:9px 20px; font-size:13px; font-weight:600; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; cursor:pointer;">Cancel</button>
+      <button type="button" id="ba-dlg-confirm-btn" style="padding:9px 24px; font-size:13px; font-weight:600; border-radius:8px; border:none; background:${opts.confirmColor || '#e11d48'}; color:#fff; cursor:pointer;">${opts.confirmText || 'Confirm'}</button>
+    `;
+    customDlgModal.style.display = 'flex';
+    document.getElementById('ba-dlg-cancel-btn').onclick = function() {
+      customDlgModal.style.display = 'none';
+    };
+    document.getElementById('ba-dlg-confirm-btn').onclick = function() {
+      customDlgModal.style.display = 'none';
+      if (typeof opts.onConfirm === 'function') opts.onConfirm();
+    };
+  }
+
+  function showCustomAlert(opts) {
+    if (!customDlgModal) {
+      alert(opts.message || opts.title);
+      return;
+    }
+    const isError = opts.type === 'error';
+    customDlgTitle.textContent = opts.title || (isError ? 'Error' : 'Notice');
+    customDlgMsg.textContent = opts.message || '';
+    customDlgIcon.innerHTML = isError
+      ? '<i class="fa fa-times-circle" style="color:#dc2626;"></i>'
+      : (opts.type === 'info' ? '<i class="fa fa-info-circle" style="color:#2563eb;"></i>' : '<i class="fa fa-exclamation-triangle" style="color:#d97706;"></i>');
+    customDlgIcon.style.background = isError ? '#fee2e2' : (opts.type === 'info' ? '#dbeafe' : '#fef3c7');
+
+    customDlgActions.innerHTML = `
+      <button type="button" id="ba-dlg-ok-btn" style="padding:9px 32px; font-size:13px; font-weight:600; border-radius:8px; border:none; background:#2563eb; color:#fff; cursor:pointer;">OK</button>
+    `;
+    customDlgModal.style.display = 'flex';
+    document.getElementById('ba-dlg-ok-btn').onclick = function() {
+      customDlgModal.style.display = 'none';
+    };
+  }
+
+  // Close custom dialog on backdrop click
+  if (customDlgModal) {
+    customDlgModal.addEventListener('click', function(e) {
+      if (e.target === customDlgModal) customDlgModal.style.display = 'none';
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Existing Evidence Sessions & Date Conflict Validation
+  // -------------------------------------------------------------------------
+  const existingSessions = <?= json_encode(array_map(function($p) {
+      return [
+          'id' => (int)$p['id'],
+          'week' => (int)($p['week_index'] ?? 0),
+          'date' => $p['session_date'],
+          'raw_date' => $p['raw_date'] ?? $p['session_date'],
+          'iso_date' => $p['iso_date'] ?? '',
+          'type' => $p['session_type'],
+      ];
+  }, $evidence_data['photos'] ?? [])) ?>;
+
+  function formatDateToNorm(isoDateStr) {
+    if (!isoDateStr) return '';
+    const parts = isoDateStr.split('-');
+    if (parts.length === 3) {
+      const d = parseInt(parts[2], 10);
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      return `${String(d).padStart(2, '0')} ${months[mIdx] || ''}`.trim();
+    }
+    return isoDateStr;
+  }
+
+  function checkDateConflict(dateStr, targetWeek, ignoreId = 0) {
+    if (!dateStr || !targetWeek) return null;
+    const norm = formatDateToNorm(dateStr);
+    for (let s of existingSessions) {
+      if (ignoreId > 0 && s.id === ignoreId) continue;
+      const sNorm = s.date.trim().toLowerCase();
+      const nNorm = norm.trim().toLowerCase();
+      if (sNorm === nNorm || s.raw_date === dateStr || s.iso_date === dateStr) {
+        if (parseInt(s.week, 10) !== parseInt(targetWeek, 10)) {
+          return s; // conflict with different week!
+        }
+      }
+    }
+    return null;
+  }
+
+  const evDateInput = document.getElementById('ev-session-date');
+  const evWeekInput = document.getElementById('ev-week-index');
+  const evConflictWarn = document.getElementById('ev-date-conflict-warning');
+  const evConflictMsg = document.getElementById('ev-date-conflict-msg');
+
+  function validateUploadFormConflict() {
+    if (!evDateInput || !evWeekInput) return true;
+    const dt = evDateInput.value;
+    const wk = evWeekInput.value;
+    if (!dt || !wk) return true;
+    const conflict = checkDateConflict(dt, wk);
+    if (conflict) {
+      if (evConflictWarn && evConflictMsg) {
+        evConflictMsg.textContent = `Date conflict: ${formatDateToNorm(dt)} is already assigned to Week ${conflict.week}. A date cannot belong to multiple weeks.`;
+        evConflictWarn.style.display = 'flex';
+      }
+      return false;
+    } else {
+      if (evConflictWarn) evConflictWarn.style.display = 'none';
+      return true;
+    }
+  }
+
+  if (evDateInput) evDateInput.addEventListener('change', validateUploadFormConflict);
+  if (evWeekInput) evWeekInput.addEventListener('change', validateUploadFormConflict);
+
+  // -------------------------------------------------------------------------
+  // Handle photo/video evidence submission with live percentage progress bar
+  // -------------------------------------------------------------------------
+  let activeMainXhr = null;
+  let isMainUploading = false;
+  let mainUploadPercent = 0;
   const evForm = document.getElementById('ba-form-evidence');
   if (evForm) {
     evForm.addEventListener('submit', function(e) {
       e.preventDefault();
       if (selectedEvidenceFiles.length === 0) {
-        alert('Please select or drag & drop at least one photo or video to upload.');
+        showCustomAlert({
+          title: 'No Files Selected',
+          message: 'Please choose or drag & drop at least one photo or video to upload.',
+          type: 'warning'
+        });
         return;
       }
-      const uploadBtn = document.getElementById('ba-upload-ev-btn');
-      uploadBtn.disabled = true;
-      uploadBtn.textContent = `Uploading (${selectedEvidenceFiles.length} files)...`;
+
+      if (!validateUploadFormConflict()) {
+        const dt = evDateInput ? evDateInput.value : '';
+        const conflict = checkDateConflict(dt, evWeekInput ? evWeekInput.value : 0);
+        showCustomAlert({
+          title: 'Date Conflict',
+          message: `The date ${formatDateToNorm(dt)} is already assigned to Week ${conflict ? conflict.week : ''}. A date cannot belong to multiple weeks. Please choose a different date or select that week.`,
+          type: 'error'
+        });
+        return;
+      }
+
+      // Capture copy of files before closing dialog
+      const filesToUpload = [...selectedEvidenceFiles];
+      closeEvidenceModal(false);
+
+      const successModal = document.getElementById('ba-evidence-success-modal');
+      const progressRing = document.getElementById('ba-upload-progress-circle');
+      const percentDisplay = document.getElementById('ba-ev-percent-display');
+      const percentVal = document.getElementById('ba-ev-percent-val');
+      const percentSub = document.getElementById('ba-ev-percent-sub');
+      const tickDisplay = document.getElementById('ba-ev-tick-display');
+      const tickPath = document.getElementById('ba-ev-tick-path');
+      const heading = document.getElementById('ba-ev-status-heading');
+      const subDetail = document.getElementById('ba-ev-progress-detail');
+      const linearBar = document.getElementById('ba-ev-linear-bar');
+      const bytesStats = document.getElementById('ba-ev-bytes-stats');
+      const linearContainer = document.getElementById('ba-ev-linear-container');
+      const doneBtn = document.getElementById('ba-ev-success-done-btn');
+      const retryBtn = document.getElementById('ba-ev-retry-btn');
+
+      const circumference = 251.32; // 2 * PI * 40
+
+      // Reset modal to initial uploading progress state
+      if (progressRing) {
+        progressRing.setAttribute('stroke', '#3b82f6');
+        progressRing.style.strokeDashoffset = circumference;
+      }
+      if (percentDisplay) percentDisplay.style.display = 'flex';
+      if (percentVal) percentVal.textContent = '0%';
+      if (percentSub) percentSub.textContent = '0%';
+      if (tickDisplay) tickDisplay.style.display = 'none';
+      if (tickPath) tickPath.style.strokeDashoffset = '48';
+      if (heading) heading.textContent = 'Uploading photos & videos...';
+      if (linearContainer) linearContainer.style.display = 'block';
+      if (linearBar) {
+        linearBar.style.width = '0%';
+        linearBar.style.background = 'linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6)';
+        linearBar.style.animation = 'ba-shimmer-linear 1.8s infinite linear';
+      }
+      if (doneBtn) doneBtn.style.display = 'none';
+      if (retryBtn) retryBtn.style.display = 'none';
+
+      let totalBytes = 0;
+      filesToUpload.forEach(f => { totalBytes += f.size || 0; });
+      const totalMbStr = (totalBytes / (1024 * 1024)).toFixed(1);
+      if (subDetail) {
+        subDetail.textContent = `Uploading ${filesToUpload.length} file${filesToUpload.length > 1 ? 's' : ''} (${totalMbStr} MB)...`;
+      }
+      if (bytesStats) {
+        bytesStats.textContent = `0.0 MB / ${totalMbStr} MB`;
+      }
+
+      if (successModal) {
+        successModal.style.display = 'flex';
+      }
+
       const fd = new FormData();
       fd.append('sesskey', sesskey);
       fd.append('action', 'upload_evidence');
       fd.append('batchid', batchId);
-      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
+      fd.append('sectionid', sectionId);
       fd.append('courseid', courseId);
+      fd.append('week_index', document.getElementById('ev-week-index')?.value || '1');
       fd.append('session_type', document.getElementById('ev-session-type').value);
       fd.append('session_date', document.getElementById('ev-session-date').value);
       fd.append('caption', document.getElementById('ev-caption').value);
 
-      selectedEvidenceFiles.forEach(file => {
+      filesToUpload.forEach(file => {
         fd.append('evidence_files[]', file);
       });
+
+      const xhr = new XMLHttpRequest();
+      activeMainXhr = xhr;
+      isMainUploading = true;
+      mainUploadPercent = 0;
+      xhr.open('POST', 'module.php', true);
+
+      let targetPercent = 0;
+
+      // Track live upload progress
+      xhr.upload.addEventListener('progress', function(ev) {
+        if (ev.lengthComputable) {
+          targetPercent = Math.min(95, Math.round((ev.loaded / ev.total) * 100));
+          mainUploadPercent = targetPercent;
+          const offset = circumference - (targetPercent / 100) * circumference;
+          if (progressRing) progressRing.style.strokeDashoffset = offset;
+          if (percentVal) percentVal.textContent = targetPercent + '%';
+          if (percentSub) percentSub.textContent = targetPercent + '%';
+          if (linearBar) linearBar.style.width = targetPercent + '%';
+
+          const uploadedMb = (ev.loaded / (1024 * 1024)).toFixed(1);
+          const totalMb = (ev.total / (1024 * 1024)).toFixed(1);
+          if (bytesStats) bytesStats.textContent = `${uploadedMb} MB / ${totalMb} MB`;
+          if (subDetail) {
+            subDetail.textContent = `Uploading ${filesToUpload.length} file${filesToUpload.length > 1 ? 's' : ''} &middot; ${targetPercent}%`;
+          }
+        }
+      });
+
+      xhr.onload = function() {
+        let data = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (err) {
+          data = null;
+        }
+
+        if (xhr.status === 200 && data && data.success) {
+          // Smooth stepping from current percentage to 100%
+          let p = targetPercent;
+          const animTimer = setInterval(function() {
+            p += 4;
+            if (p >= 100) {
+              p = 100;
+              clearInterval(animTimer);
+              isMainUploading = false;
+              activeMainXhr = null;
+
+              // 100% Reached - Set emerald green
+              if (progressRing) {
+                progressRing.style.strokeDashoffset = '0';
+                progressRing.setAttribute('stroke', '#16a34a');
+              }
+              if (percentVal) percentVal.textContent = '100%';
+              if (percentSub) percentSub.textContent = '100%';
+              if (linearBar) {
+                linearBar.style.width = '100%';
+                linearBar.style.background = '#16a34a';
+                linearBar.style.animation = 'none';
+              }
+              if (bytesStats) bytesStats.textContent = `${totalMbStr} MB / ${totalMbStr} MB`;
+
+              // Morph percentage to animated green tick
+              setTimeout(function() {
+                if (percentDisplay) percentDisplay.style.display = 'none';
+                if (tickDisplay) {
+                  tickDisplay.style.display = 'flex';
+                  tickDisplay.style.animation = 'ba-pop-scale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+                }
+                if (tickPath) {
+                  setTimeout(function() {
+                    tickPath.style.strokeDashoffset = '0';
+                  }, 40);
+                }
+                if (heading) heading.textContent = 'Photos & videos uploaded successfully';
+                const count = data.count || filesToUpload.length || 1;
+                const typeStr = (data.session_type || 'class').toLowerCase();
+                if (subDetail) {
+                  subDetail.textContent = `${count} ${typeStr} file${count > 1 ? 's' : ''} (${totalMbStr} MB) added to the class-evidence gallery.`;
+                }
+                if (doneBtn) {
+                  doneBtn.style.display = 'inline-block';
+                  doneBtn.style.animation = 'ba-pop-scale 0.3s ease forwards';
+                }
+                // Clear selection
+                selectedEvidenceFiles = [];
+                renderSelectedFiles();
+              }, 250);
+
+            } else {
+              const off = circumference - (p / 100) * circumference;
+              if (progressRing) progressRing.style.strokeDashoffset = off;
+              if (percentVal) percentVal.textContent = p + '%';
+              if (percentSub) percentSub.textContent = p + '%';
+              if (linearBar) linearBar.style.width = p + '%';
+            }
+          }, 25);
+
+        } else {
+          // Upload failed
+          isMainUploading = false;
+          activeMainXhr = null;
+          if (progressRing) progressRing.setAttribute('stroke', '#ef4444');
+          if (heading) heading.textContent = 'Upload failed';
+          const errMsg = (data && data.error) ? data.error : 'An error occurred during upload.';
+          if (subDetail) subDetail.textContent = errMsg;
+          if (retryBtn) retryBtn.style.display = 'inline-block';
+        }
+      };
+
+      xhr.onerror = function() {
+        isMainUploading = false;
+        activeMainXhr = null;
+        if (progressRing) progressRing.setAttribute('stroke', '#ef4444');
+        if (heading) heading.textContent = 'Network error';
+        if (subDetail) subDetail.textContent = 'Please check your connection and try again.';
+        if (retryBtn) retryBtn.style.display = 'inline-block';
+      };
+
+      xhr.onabort = function() {
+        isMainUploading = false;
+        activeMainXhr = null;
+      };
+
+      xhr.send(fd);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Smooth Evidence Refresh (No full-page reloads, seamless UX)
+  // -------------------------------------------------------------------------
+  let isRefreshingEvidence = false;
+  function smoothRefreshEvidence(callback) {
+    if (isRefreshingEvidence) return;
+    isRefreshingEvidence = true;
+
+    const panel = document.getElementById('panel-evidence');
+    if (panel) {
+      panel.style.transition = 'opacity 0.15s ease';
+      panel.style.opacity = '0.5';
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('tab', 'evidence');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+      .then(r => r.text())
+      .then(html => {
+        isRefreshingEvidence = false;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newPanel = doc.getElementById('panel-evidence');
+
+        if (newPanel && panel) {
+          panel.innerHTML = newPanel.innerHTML;
+          panel.style.opacity = '1';
+        } else if (panel) {
+          panel.style.opacity = '1';
+        }
+
+        // Update modal week dropdowns
+        const newEvWeek = doc.getElementById('ev-week-index');
+        const curEvWeek = document.getElementById('ev-week-index');
+        if (newEvWeek && curEvWeek) curEvWeek.innerHTML = newEvWeek.innerHTML;
+
+        const newEditWeek = doc.getElementById('edit-ev-week');
+        const curEditWeek = document.getElementById('edit-ev-week');
+        if (newEditWeek && curEditWeek) curEditWeek.innerHTML = newEditWeek.innerHTML;
+
+        // Rebind all dynamic listeners & conflict data
+        bindEvidenceListeners();
+        updateExistingSessionsFromDOM();
+
+        if (typeof callback === 'function') callback();
+      })
+      .catch(err => {
+        isRefreshingEvidence = false;
+        if (panel) panel.style.opacity = '1';
+        if (typeof callback === 'function') callback();
+      });
+  }
+
+  function updateExistingSessionsFromDOM() {
+    existingSessions.length = 0;
+    document.querySelectorAll('.ba-evidence-card').forEach(card => {
+      existingSessions.push({
+        id: parseInt(card.getAttribute('data-evidenceid') || '0', 10),
+        week: parseInt(card.getAttribute('data-week') || '0', 10),
+        type: card.getAttribute('data-type') || 'Class',
+        date: card.getAttribute('data-date') || '',
+        raw_date: card.getAttribute('data-rawdate') || '',
+        iso_date: card.getAttribute('data-isodate') || ''
+      });
+    });
+  }
+
+  function updateWeekTrackersDOM() {
+    document.querySelectorAll('.ba-week-tracker-pill').forEach(pill => {
+      const wk = pill.getAttribute('data-week');
+      const target = parseInt(pill.getAttribute('data-target') || '2', 10);
+      const cardsForWeek = document.querySelectorAll(`.ba-evidence-card[data-week="${wk}"]`);
+      const completed = cardsForWeek.length;
+
+      const statEl = pill.querySelector('.ba-week-pill-stat');
+      if (statEl) {
+        if (completed >= target) {
+          statEl.style.color = '#16a34a';
+          statEl.innerHTML = `<span style="font-size:13px;">✔</span> ${completed} / ${target}`;
+        } else if (completed > 0) {
+          statEl.style.color = '#d97706';
+          statEl.innerHTML = `${completed} / ${target}`;
+        } else {
+          statEl.style.color = '#b91c1c';
+          statEl.innerHTML = `${completed} / ${target} due`;
+        }
+      }
+
+      const topBar = pill.querySelector('.ba-week-pill-top');
+      if (topBar && canEditMentor) {
+        let delBtn = topBar.querySelector('.ba-delete-week-btn');
+        if (completed === 0 && !delBtn) {
+          delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'ba-delete-week-btn';
+          delBtn.setAttribute('data-week', wk);
+          delBtn.title = 'Remove empty week';
+          delBtn.style.cssText = 'background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; line-height:1; padding:0 2px;';
+          delBtn.innerHTML = '&times;';
+          delBtn.onmouseover = function() { this.style.color = '#ef4444'; };
+          delBtn.onmouseout = function() { this.style.color = '#94a3b8'; };
+          topBar.appendChild(delBtn);
+          bindEvidenceListeners();
+        } else if (completed > 0 && delBtn) {
+          delBtn.remove();
+        }
+      }
+    });
+  }
+
+  function syncEvidenceModalDropdowns() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('tab', 'evidence');
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+      .then(r => r.text())
+      .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const newEvWeek = doc.getElementById('ev-week-index');
+        const curEvWeek = document.getElementById('ev-week-index');
+        if (newEvWeek && curEvWeek) curEvWeek.innerHTML = newEvWeek.innerHTML;
+
+        const newEditWeek = doc.getElementById('edit-ev-week');
+        const curEditWeek = document.getElementById('edit-ev-week');
+        if (newEditWeek && curEditWeek) curEditWeek.innerHTML = newEditWeek.innerHTML;
+      })
+      .catch(() => {});
+  }
+
+  function animateCardDeletion(cardEl, onComplete) {
+    if (!cardEl) {
+      if (typeof onComplete === 'function') onComplete();
+      return;
+    }
+    const grid = document.getElementById('ba-evidence-cards-grid');
+    const allCards = Array.from(document.querySelectorAll('.ba-evidence-card'));
+    const cardIndex = allCards.indexOf(cardEl);
+    const subsequentCards = cardIndex >= 0 ? allCards.slice(cardIndex + 1) : [];
+
+    // 1. Record First positions (F in FLIP)
+    const firstPositions = subsequentCards.map(c => c.getBoundingClientRect());
+
+    // 2. Animate the deleting card fading out and scaling down
+    cardEl.style.transition = 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+    cardEl.style.opacity = '0';
+    cardEl.style.transform = 'scale(0.85)';
+
+    setTimeout(() => {
+      // 3. Remove card element from DOM flow
+      cardEl.remove();
+
+      // Update week tracker count badges in header immediately
+      updateWeekTrackersDOM();
+
+      // Update existingSessions in memory
+      updateExistingSessionsFromDOM();
+
+      // 4. Record Last positions (L in FLIP) and Invert (I in FLIP)
+      subsequentCards.forEach((c, i) => {
+        const first = firstPositions[i];
+        const last = c.getBoundingClientRect();
+        const deltaX = first.left - last.left;
+        const deltaY = first.top - last.top;
+
+        c.style.transition = 'none';
+        c.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+      });
+
+      // Force layout reflow
+      if (grid) grid.offsetHeight;
+
+      // 5. Play (P in FLIP): smoothly glide remaining cards into new grid positions
+      subsequentCards.forEach(c => {
+        c.style.transition = 'transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        c.style.transform = 'translate(0, 0)';
+      });
+
+      setTimeout(() => {
+        subsequentCards.forEach(c => {
+          c.style.transition = '';
+          c.style.transform = '';
+        });
+        if (typeof onComplete === 'function') onComplete();
+      }, 340);
+    }, 180);
+  }
+
+  // Handle Success Modal Done button (Smooth update)
+  const successDoneBtn = document.getElementById('ba-ev-success-done-btn');
+  if (successDoneBtn) {
+    successDoneBtn.addEventListener('click', function() {
+      const successModal = document.getElementById('ba-evidence-success-modal');
+      if (successModal) successModal.style.display = 'none';
+      smoothRefreshEvidence();
+    });
+  }
+
+  // Handle Success Modal Close X button with validation during upload
+  const closeSuccessX = document.getElementById('ba-close-ev-success-modal-x');
+  const evSuccessModalEl = document.getElementById('ba-evidence-success-modal');
+
+  function requestCloseSuccessModal() {
+    if (isMainUploading) {
+      showCustomConfirm({
+        title: 'Upload in Progress',
+        message: `Photos and videos are currently uploading (${mainUploadPercent}% completed). Are you sure you want to cancel the upload?`,
+        confirmText: 'Cancel Upload',
+        confirmColor: '#dc2626',
+        onConfirm: function() {
+          if (activeMainXhr) {
+            try { activeMainXhr.abort(); } catch (err) {}
+            activeMainXhr = null;
+          }
+          isMainUploading = false;
+          if (evSuccessModalEl) evSuccessModalEl.style.display = 'none';
+          smoothRefreshEvidence();
+        }
+      });
+      return;
+    }
+    if (evSuccessModalEl) evSuccessModalEl.style.display = 'none';
+    smoothRefreshEvidence();
+  }
+
+  if (closeSuccessX) {
+    closeSuccessX.addEventListener('click', requestCloseSuccessModal);
+  }
+  if (evSuccessModalEl) {
+    evSuccessModalEl.addEventListener('click', function(e) {
+      if (e.target === evSuccessModalEl) {
+        requestCloseSuccessModal();
+      }
+    });
+  }
+
+  // Handle Retry button
+  const retryBtn = document.getElementById('ba-ev-retry-btn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', function() {
+      const successModal = document.getElementById('ba-evidence-success-modal');
+      if (successModal) successModal.style.display = 'none';
+      if (evModal) evModal.style.display = 'flex';
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Handle Edit Evidence Session Modal
+  // -------------------------------------------------------------------------
+  const editModal = document.getElementById('ba-edit-evidence-modal');
+  const editForm = document.getElementById('ba-form-edit-evidence');
+  const editEvId = document.getElementById('edit-ev-id');
+  const editEvWeek = document.getElementById('edit-ev-week');
+  const editEvType = document.getElementById('edit-ev-type');
+  const editEvDate = document.getElementById('edit-ev-date');
+  const editEvCaption = document.getElementById('edit-ev-caption');
+  const editConflictWarn = document.getElementById('edit-ev-conflict-warning');
+  const editConflictMsg = document.getElementById('edit-ev-conflict-msg');
+  const closeEditModalBtn = document.getElementById('ba-close-edit-modal-btn');
+  const closeEditModalX = document.getElementById('ba-close-edit-modal-x');
+
+  function closeEditEvidenceModal() {
+    if (editModal) editModal.style.display = 'none';
+    if (editConflictWarn) editConflictWarn.style.display = 'none';
+  }
+  if (closeEditModalBtn) closeEditModalBtn.addEventListener('click', closeEditEvidenceModal);
+  if (closeEditModalX) closeEditModalX.addEventListener('click', closeEditEvidenceModal);
+  if (editModal) {
+    editModal.addEventListener('click', function(e) {
+      if (e.target === editModal) closeEditEvidenceModal();
+    });
+  }
+
+  if (editForm) {
+    editForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const evid = parseInt(editEvId.value, 10);
+      const wk = editEvWeek.value;
+      const dt = editEvDate.value;
+      const conflict = checkDateConflict(dt, wk, evid);
+      if (conflict) {
+        if (editConflictWarn && editConflictMsg) {
+          editConflictMsg.textContent = `Date conflict: ${formatDateToNorm(dt)} is already assigned to Week ${conflict.week}.`;
+          editConflictWarn.style.display = 'flex';
+        }
+        showCustomAlert({
+          title: 'Date Conflict',
+          message: `The date ${formatDateToNorm(dt)} is already assigned to Week ${conflict.week}. A date cannot belong to multiple weeks.`,
+          type: 'error'
+        });
+        return;
+      }
+
+      const saveBtn = document.getElementById('ba-save-edit-ev-btn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+      }
+
+      const fd = new FormData();
+      fd.append('sesskey', sesskey);
+      fd.append('action', 'edit_evidence_session');
+      fd.append('batchid', batchId);
+      fd.append('sectionid', sectionId);
+      fd.append('courseid', courseId);
+      fd.append('evidenceid', evid);
+      fd.append('week_index', wk);
+      fd.append('session_type', editEvType.value);
+      fd.append('session_date', dt);
+      fd.append('caption', editEvCaption.value);
 
       fetch('module.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
-          if (data.success) {
-            window.location.hash = 'panel-evidence';
-            window.location.reload();
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+          }
+          if (data && data.success) {
+            closeEditEvidenceModal();
+            smoothRefreshEvidence();
           } else {
-            alert('Error: ' + (data.error || 'Failed to upload photo evidence'));
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Upload photos';
+            showCustomAlert({
+              title: 'Error Saving',
+              message: data && data.error ? data.error : 'Failed to update session.',
+              type: 'error'
+            });
           }
         })
         .catch(err => {
-          alert('Network error uploading photo');
-          uploadBtn.disabled = false;
-          uploadBtn.textContent = 'Upload photos';
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+          }
+          showCustomAlert({
+            title: 'Network Error',
+            message: 'Failed to update session. Please try again.',
+            type: 'error'
+          });
         });
     });
   }
 
-  // Handle entire session evidence deletion
-  document.querySelectorAll('.ba-delete-session-btn').forEach(btn => {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      const sessKey = this.getAttribute('data-session-key');
-      if (!confirm('Are you sure you want to delete all photos and videos for this date?')) return;
-      const fd = new FormData();
-      fd.append('sesskey', sesskey);
-      fd.append('action', 'delete_evidence');
-      fd.append('session_key', sessKey);
-      fd.append('batchid', batchId);
-      fd.append('sectionid', <?= (int)($section ? $section->id : $batchid) ?>);
-      fd.append('courseid', courseId);
-      fetch('module.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            window.location.hash = 'panel-evidence';
-            window.location.reload();
-          } else {
-            alert('Error deleting session evidence');
+  // -------------------------------------------------------------------------
+  // Dynamic Evidence Elements Binding (Rebound on every smooth update)
+  // -------------------------------------------------------------------------
+  function bindEvidenceListeners() {
+    // 1. Edit buttons on cards
+    document.querySelectorAll('.ba-edit-session-btn').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        const evid = this.getAttribute('data-evidenceid');
+        const week = this.getAttribute('data-week');
+        const type = this.getAttribute('data-type');
+        const isodate = this.getAttribute('data-isodate');
+        const caption = this.getAttribute('data-caption');
+
+        if (editEvId) editEvId.value = evid || '';
+        if (editEvWeek) editEvWeek.value = week || '1';
+        if (editEvType) editEvType.value = type || 'Class';
+        if (editEvDate) {
+          editEvDate.value = isodate || (new Date().toISOString().split('T')[0]);
+        }
+        if (editEvCaption) editEvCaption.value = caption || '';
+        if (editConflictWarn) editConflictWarn.style.display = 'none';
+        if (editModal) editModal.style.display = 'flex';
+      };
+    });
+
+    // 2. Delete session buttons on cards
+    document.querySelectorAll('.ba-delete-session-btn').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        const cardEl = this.closest('.ba-evidence-card');
+        const sessKey = this.getAttribute('data-session-key');
+        const evid = this.getAttribute('data-evidenceid');
+        const sDate = this.getAttribute('data-date') || 'this date';
+
+        showCustomConfirm({
+          title: 'Delete Evidence Session?',
+          message: `Are you sure you want to delete all photos and videos for ${sDate}? This action cannot be undone.`,
+          confirmText: 'Delete Evidence',
+          confirmColor: '#dc2626',
+          onConfirm: function() {
+            // Smoothly remove card from DOM and glide remaining cards into place immediately
+            animateCardDeletion(cardEl, () => {
+              const delId = parseInt(evid || '0', 10);
+              const idx = existingSessions.findIndex(s => (delId > 0 && s.id === delId) || s.session_key === sessKey);
+              if (idx >= 0) existingSessions.splice(idx, 1);
+            });
+
+            const fd = new FormData();
+            fd.append('sesskey', sesskey);
+            fd.append('action', 'delete_evidence');
+            if (evid && parseInt(evid, 10) > 0) {
+              fd.append('evidenceid', evid);
+            }
+            fd.append('session_key', sessKey);
+            fd.append('batchid', batchId);
+            fd.append('sectionid', sectionId);
+            fd.append('courseid', courseId);
+
+            fetch('module.php', { method: 'POST', body: fd })
+              .then(r => r.json())
+              .then(data => {
+                if (data && data.success) {
+                  syncEvidenceModalDropdowns();
+                } else {
+                  showCustomAlert({
+                    title: 'Delete Failed',
+                    message: data && data.error ? data.error : 'Unknown error',
+                    type: 'error'
+                  });
+                  smoothRefreshEvidence();
+                }
+              })
+              .catch(() => {
+                showCustomAlert({
+                  title: 'Network Error',
+                  message: 'Failed to delete session evidence.',
+                  type: 'error'
+                });
+                smoothRefreshEvidence();
+              });
           }
         });
+      };
     });
-  });
 
-  // Lightbox & Session Album handling
+    // 3. Card click -> open session album
+    document.querySelectorAll('.ba-evidence-card').forEach(card => {
+      card.onclick = function(e) {
+        if (e.target.closest('.ba-edit-session-btn') || e.target.closest('.ba-delete-session-btn')) return;
+        const rawItems = this.getAttribute('data-items');
+        let items = [];
+        try {
+          items = JSON.parse(rawItems || '[]');
+        } catch (err) {
+          items = [];
+        }
+        if (items.length === 0) return;
+
+        openSessionAlbum({
+          evidenceId: parseInt(this.getAttribute('data-evidenceid') || '0', 10),
+          sessionKey: this.getAttribute('data-session-key') || '',
+          sessionType: this.getAttribute('data-type') || '',
+          sessionDate: this.getAttribute('data-date') || '',
+          rawDate: this.getAttribute('data-rawdate') || '',
+          isoDate: this.getAttribute('data-isodate') || '',
+          weekIndex: parseInt(this.getAttribute('data-week') || '1', 10),
+          caption: this.getAttribute('data-caption') || '',
+          items: items
+        });
+      };
+    });
+
+    // 4. Add Week button
+    const addWkBtn = document.getElementById('ba-add-week-btn');
+    if (addWkBtn) {
+      addWkBtn.onclick = function(e) {
+        e.preventDefault();
+        addWkBtn.disabled = true;
+        addWkBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+        const fd = new FormData();
+        fd.append('sesskey', sesskey);
+        fd.append('action', 'add_evidence_week');
+        fd.append('batchid', batchId);
+        fd.append('sectionid', sectionId);
+        fd.append('courseid', courseId);
+        fetch('module.php', { method: 'POST', body: fd })
+          .then(r => r.json())
+          .then(data => {
+            if (data && data.success) {
+              smoothRefreshEvidence();
+            } else {
+              addWkBtn.disabled = false;
+              addWkBtn.innerHTML = '<i class="fa fa-plus-circle"></i> Add Week';
+              showCustomAlert({
+                title: 'Error Adding Week',
+                message: data && data.error ? data.error : 'Failed to create new week.',
+                type: 'error'
+              });
+            }
+          })
+          .catch(() => {
+            addWkBtn.disabled = false;
+            addWkBtn.innerHTML = '<i class="fa fa-plus-circle"></i> Add Week';
+            showCustomAlert({ title: 'Network Error', message: 'Server error while adding week.', type: 'error' });
+          });
+      };
+    }
+
+    // 5. Delete empty week buttons
+    document.querySelectorAll('.ba-delete-week-btn').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        const wk = this.getAttribute('data-week');
+        showCustomConfirm({
+          title: `Remove Week ${wk}?`,
+          message: `Are you sure you want to remove Week ${wk}? This week will be deleted from this module's compliance tracking.`,
+          confirmText: 'Delete Week',
+          confirmColor: '#dc2626',
+          onConfirm: function() {
+            const fd = new FormData();
+            fd.append('sesskey', sesskey);
+            fd.append('action', 'delete_evidence_week');
+            fd.append('week_index', wk);
+            fd.append('batchid', batchId);
+            fd.append('sectionid', sectionId);
+            fd.append('courseid', courseId);
+            fetch('module.php', { method: 'POST', body: fd })
+              .then(r => r.json())
+              .then(data => {
+                if (data && data.success) {
+                  smoothRefreshEvidence();
+                } else {
+                  showCustomAlert({
+                    title: 'Cannot Delete Week',
+                    message: data && data.error ? data.error : 'This week cannot be deleted because evidence is uploaded under it.',
+                    type: 'error'
+                  });
+                }
+              })
+              .catch(() => {
+                showCustomAlert({ title: 'Network Error', message: 'Server error while removing week. Please try again.', type: 'error' });
+              });
+          }
+        });
+      };
+    });
+
+    // 6. Upload card
+    const upCard = document.getElementById('ba-upload-evidence-card');
+    if (upCard) {
+      upCard.onclick = openEvidenceModal;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Lightbox & Session Album handling (with Instant In-Viewer + Add Media)
+  // -------------------------------------------------------------------------
   let currentSessionItems = [];
+  let currentSessionData = null;
   let currentItemIndex = 0;
+  const canEditMentor = <?= $can_edit_mentor ? 'true' : 'false' ?>;
+
+  let activeAddMediaXhr = null;
+  let isAddMediaUploading = false;
+  let addMediaPercent = 0;
 
   const lightboxModal = document.getElementById('ba-lightbox-modal');
   const lightboxMedia = document.getElementById('ba-lightbox-media-container');
@@ -2863,6 +4999,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const closeLightboxBtn = document.getElementById('ba-close-lightbox');
   const prevBtn = document.getElementById('ba-lightbox-prev-btn');
   const nextBtn = document.getElementById('ba-lightbox-next-btn');
+  const lbAddInput = document.getElementById('ba-lightbox-add-file-input');
+  if (lbAddInput) {
+    lbAddInput.addEventListener('change', function() {
+      if (isAddMediaUploading) return;
+      const selectedFiles = Array.from(this.files || []);
+      this.value = '';
+      if (!selectedFiles || selectedFiles.length === 0) return;
+      handleLightboxAddFiles(selectedFiles);
+    });
+  }
 
   function renderShowcaseItem(idx) {
     if (!currentSessionItems || currentSessionItems.length === 0) return;
@@ -2871,14 +5017,16 @@ document.addEventListener('DOMContentLoaded', function() {
     currentItemIndex = idx;
 
     const item = currentSessionItems[currentItemIndex];
-    lightboxCounter.textContent = `${currentItemIndex + 1} / ${currentSessionItems.length}`;
-    lightboxFilename.textContent = item.caption || item.filename || '';
-    lightboxDownload.href = item.fileurl;
+    if (lightboxCounter) lightboxCounter.textContent = `${currentItemIndex + 1} / ${currentSessionItems.length}`;
+    if (!isAddMediaUploading && lightboxFilename) lightboxFilename.textContent = item.caption || item.filename || '';
+    if (lightboxDownload) lightboxDownload.href = item.fileurl;
 
-    if (item.is_video) {
-      lightboxMedia.innerHTML = `<video src="${item.fileurl}" controls autoplay style="max-height:55vh; max-width:100%; border-radius:8px;"></video>`;
-    } else {
-      lightboxMedia.innerHTML = `<img src="${item.fileurl}" alt="${item.caption || item.filename}" style="max-height:55vh; max-width:100%; object-fit:contain; border-radius:8px;">`;
+    if (lightboxMedia) {
+      if (item.is_video) {
+        lightboxMedia.innerHTML = `<video src="${item.fileurl}" controls autoplay style="max-height:55vh; max-width:100%; border-radius:8px;"></video>`;
+      } else {
+        lightboxMedia.innerHTML = `<img src="${item.fileurl}" alt="${item.caption || item.filename}" style="max-height:55vh; max-width:100%; object-fit:contain; border-radius:8px;">`;
+      }
     }
 
     // Update filmstrip highlight
@@ -2897,6 +5045,340 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (prevBtn) prevBtn.style.display = currentSessionItems.length > 1 ? 'flex' : 'none';
     if (nextBtn) nextBtn.style.display = currentSessionItems.length > 1 ? 'flex' : 'none';
+
+    // Show delete button only for real media
+    if (lightboxDeleteBtn) {
+      const isProto = !item.id || isNaN(item.id) || (typeof item.id === 'string' && item.id.startsWith('p_'));
+      lightboxDeleteBtn.style.display = isProto ? 'none' : 'inline-flex';
+    }
+  }
+
+  function renderFilmstrip() {
+    if (!lightboxFilmstrip) return;
+    lightboxFilmstrip.innerHTML = '';
+    lightboxFilmstrip.style.display = 'flex';
+
+    currentSessionItems.forEach((it, idx) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'ba-filmstrip-thumb';
+      thumb.style.cssText = 'width:64px; height:64px; border-radius:8px; overflow:hidden; border:2px solid ' + (idx === currentItemIndex ? '#3b82f6' : 'transparent') + '; opacity:' + (idx === currentItemIndex ? '1' : '0.65') + '; flex-shrink:0; cursor:pointer; position:relative; background:#000; transition:all 0.15s;';
+      if (it.is_video) {
+        thumb.innerHTML = `
+          <video src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:#fff; font-size:12px;">
+            <i class="fa fa-play"></i>
+          </div>
+        `;
+      } else {
+        thumb.innerHTML = `<img src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;">`;
+      }
+      thumb.onclick = function() {
+        renderShowcaseItem(idx);
+      };
+      lightboxFilmstrip.appendChild(thumb);
+    });
+
+    // Append + Add Media tile for mentors
+    if (canEditMentor) {
+      const addTile = document.createElement('div');
+      addTile.id = 'ba-filmstrip-add-media-tile';
+      addTile.title = isAddMediaUploading ? 'Uploading media... Hover to cancel' : 'Add more photos or videos to this session';
+      addTile.style.cssText = 'width:64px; height:64px; border-radius:8px; flex-shrink:0; cursor:pointer; position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.2s; ' +
+        (isAddMediaUploading ? 'border:2px solid #3b82f6; background:#0f172a; color:#fff;' : 'border:2px dashed #64748b; background:rgba(255,255,255,0.06); color:#94a3b8;');
+
+      if (isAddMediaUploading) {
+        addTile.innerHTML = getAddMediaTileUploadingHtml(addMediaPercent);
+        setupAddTileHoverEvents(addTile);
+      } else {
+        addTile.innerHTML = '<i class="fa fa-plus" style="font-size:18px;"></i><span style="font-size:9px; font-weight:700; margin-top:3px; text-transform:uppercase; letter-spacing:0.3px;">Add</span>';
+        addTile.onmouseover = function() { if (!isAddMediaUploading) { this.style.borderColor = '#3b82f6'; this.style.color = '#fff'; this.style.background = 'rgba(59,130,246,0.18)'; } };
+        addTile.onmouseout = function() { if (!isAddMediaUploading) { this.style.borderColor = '#64748b'; this.style.color = '#94a3b8'; this.style.background = 'rgba(255,255,255,0.06)'; } };
+        addTile.onclick = function(e) {
+          e.stopPropagation();
+          triggerLightboxAddMedia();
+        };
+      }
+      lightboxFilmstrip.appendChild(addTile);
+    }
+  }
+
+  function getAddMediaTileUploadingHtml(pct) {
+    const radius = 18;
+    const circ = 113.1;
+    const offset = circ - (pct / 100) * circ;
+    return `
+      <div class="ba-tile-progress-view" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
+        <svg width="40" height="40" viewBox="0 0 44 44" style="transform:rotate(-90deg);">
+          <circle cx="22" cy="22" r="${radius}" fill="none" stroke="#334155" stroke-width="3"></circle>
+          <circle id="ba-tile-progress-ring" cx="22" cy="22" r="${radius}" fill="none" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${offset}" style="transition:stroke-dashoffset 0.15s ease-out;"></circle>
+        </svg>
+        <div id="ba-tile-progress-text" style="position:absolute; font-size:10px; font-weight:800; color:#fff; letter-spacing:-0.2px;">${pct}%</div>
+      </div>
+      <div class="ba-tile-cancel-view" style="display:none; position:absolute; inset:0; background:rgba(220,38,38,0.94); flex-direction:column; align-items:center; justify-content:center; border-radius:6px; cursor:pointer;" title="Click to cancel upload">
+        <i class="fa fa-times" style="font-size:16px; color:#fff;"></i>
+        <span style="font-size:9px; font-weight:700; color:#fff; margin-top:2px; text-transform:uppercase; letter-spacing:0.3px;">Cancel</span>
+      </div>
+    `;
+  }
+
+  function setupAddTileHoverEvents(tile) {
+    if (!tile) return;
+    tile.onmouseenter = function() {
+      if (!isAddMediaUploading) return;
+      const progView = tile.querySelector('.ba-tile-progress-view');
+      const cancelView = tile.querySelector('.ba-tile-cancel-view');
+      if (progView) progView.style.display = 'none';
+      if (cancelView) cancelView.style.display = 'flex';
+      tile.style.borderColor = '#ef4444';
+      tile.style.boxShadow = '0 0 8px rgba(239,68,68,0.4)';
+    };
+    tile.onmouseleave = function() {
+      if (!isAddMediaUploading) return;
+      const progView = tile.querySelector('.ba-tile-progress-view');
+      const cancelView = tile.querySelector('.ba-tile-cancel-view');
+      if (progView) progView.style.display = 'flex';
+      if (cancelView) cancelView.style.display = 'none';
+      tile.style.borderColor = '#3b82f6';
+      tile.style.boxShadow = 'none';
+    };
+    tile.onclick = function(e) {
+      e.stopPropagation();
+      if (isAddMediaUploading) {
+        cancelAddMediaUpload();
+      } else {
+        triggerLightboxAddMedia();
+      }
+    };
+  }
+
+  function cancelAddMediaUpload() {
+    if (activeAddMediaXhr) {
+      try { activeAddMediaXhr.abort(); } catch (err) {}
+      activeAddMediaXhr = null;
+    }
+    isAddMediaUploading = false;
+    addMediaPercent = 0;
+    hideLightboxUploadProgress();
+    resetAddMediaTile();
+  }
+
+  function resetAddMediaTile() {
+    const addTile = document.getElementById('ba-filmstrip-add-media-tile');
+    if (!addTile) return;
+    addTile.title = 'Add more photos or videos to this session';
+    addTile.style.border = '2px dashed #64748b';
+    addTile.style.background = 'rgba(255,255,255,0.06)';
+    addTile.style.color = '#94a3b8';
+    addTile.style.boxShadow = 'none';
+    addTile.innerHTML = '<i class="fa fa-plus" style="font-size:18px;"></i><span style="font-size:9px; font-weight:700; margin-top:3px; text-transform:uppercase; letter-spacing:0.3px;">Add</span>';
+    addTile.onmouseover = function() { if (!isAddMediaUploading) { this.style.borderColor = '#3b82f6'; this.style.color = '#fff'; this.style.background = 'rgba(59,130,246,0.18)'; } };
+    addTile.onmouseout = function() { if (!isAddMediaUploading) { this.style.borderColor = '#64748b'; this.style.color = '#94a3b8'; this.style.background = 'rgba(255,255,255,0.06)'; } };
+    addTile.onclick = function(e) {
+      e.stopPropagation();
+      triggerLightboxAddMedia();
+    };
+  }
+
+  function showLightboxUploadProgress(fileCount) {
+    const lProgContainer = document.getElementById('ba-lightbox-upload-progress-container');
+    const lProgBar = document.getElementById('ba-lightbox-upload-progress-bar');
+    if (lProgContainer) lProgContainer.style.display = 'block';
+    if (lProgBar) {
+      lProgBar.style.width = '0%';
+      lProgBar.style.background = 'linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6)';
+    }
+    if (lightboxFilename) {
+      lightboxFilename.innerHTML = `<span style="color:#60a5fa; font-weight:600;"><i class="fa fa-spinner fa-spin" style="margin-right:6px;"></i>Uploading ${fileCount} file${fileCount > 1 ? 's' : ''} &middot; <span id="ba-lb-status-pct">0%</span></span>`;
+    }
+  }
+
+  function hideLightboxUploadProgress() {
+    const lProgContainer = document.getElementById('ba-lightbox-upload-progress-container');
+    if (lProgContainer) lProgContainer.style.display = 'none';
+    if (currentSessionItems && currentSessionItems[currentItemIndex]) {
+      const item = currentSessionItems[currentItemIndex];
+      if (lightboxFilename) lightboxFilename.textContent = item.caption || item.filename || '';
+    } else {
+      if (lightboxFilename) lightboxFilename.textContent = '';
+    }
+  }
+
+  function triggerLightboxAddMedia() {
+    if (isAddMediaUploading) return;
+    let input = document.getElementById('ba-lightbox-add-file-input');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'ba-lightbox-add-file-input';
+      input.multiple = true;
+      input.accept = 'image/*,video/*';
+      input.style.display = 'none';
+      input.addEventListener('change', function() {
+        if (isAddMediaUploading) return;
+        const selectedFiles = Array.from(this.files || []);
+        this.value = '';
+        if (!selectedFiles || selectedFiles.length === 0) return;
+        handleLightboxAddFiles(selectedFiles);
+      });
+      document.body.appendChild(input);
+    }
+    input.value = '';
+    input.click();
+  }
+
+  function handleLightboxAddFiles(files) {
+    if (isAddMediaUploading) return;
+    if (!files || files.length === 0) return;
+    if (!currentSessionData || !currentSessionData.evidenceId) {
+      showCustomAlert({ title: 'Error', message: 'Session ID not found.', type: 'error' });
+      return;
+    }
+
+    isAddMediaUploading = true;
+    addMediaPercent = 0;
+
+    const addTile = document.getElementById('ba-filmstrip-add-media-tile');
+    if (addTile) {
+      addTile.title = 'Uploading media... Hover to cancel';
+      addTile.style.border = '2px solid #3b82f6';
+      addTile.style.background = '#0f172a';
+      addTile.style.color = '#fff';
+      addTile.innerHTML = getAddMediaTileUploadingHtml(0);
+      setupAddTileHoverEvents(addTile);
+    }
+    showLightboxUploadProgress(files.length);
+
+    const fd = new FormData();
+    fd.append('sesskey', sesskey);
+    fd.append('action', 'upload_evidence');
+    fd.append('batchid', batchId);
+    fd.append('sectionid', sectionId);
+    fd.append('courseid', courseId);
+    fd.append('evidenceid', currentSessionData.evidenceId);
+    fd.append('week_index', currentSessionData.weekIndex || 1);
+    fd.append('session_type', currentSessionData.sessionType || 'Class');
+    fd.append('session_date', currentSessionData.isoDate || currentSessionData.rawDate || currentSessionData.sessionDate || '');
+    fd.append('caption', currentSessionData.caption || '');
+
+    for (let i = 0; i < files.length; i++) {
+      fd.append('evidence_files[]', files[i]);
+    }
+
+    const xhr = new XMLHttpRequest();
+    activeAddMediaXhr = xhr;
+    const circumference = 113.1; // 2 * Math.PI * 18
+
+    xhr.upload.addEventListener('progress', function(ev) {
+      if (ev.lengthComputable) {
+        const pct = Math.min(99, Math.round((ev.loaded / ev.total) * 100));
+        addMediaPercent = pct;
+        const offset = circumference - (pct / 100) * circumference;
+
+        const ring = document.getElementById('ba-tile-progress-ring');
+        const txt = document.getElementById('ba-tile-progress-text');
+        if (ring) ring.style.strokeDashoffset = offset;
+        if (txt) txt.textContent = pct + '%';
+
+        const lBar = document.getElementById('ba-lightbox-upload-progress-bar');
+        if (lBar) lBar.style.width = pct + '%';
+
+        const uploadedMb = (ev.loaded / (1024 * 1024)).toFixed(1);
+        const totalMb = (ev.total / (1024 * 1024)).toFixed(1);
+        const statusPct = document.getElementById('ba-lb-status-pct');
+        if (statusPct) {
+          statusPct.textContent = `${pct}% (${uploadedMb} MB / ${totalMb} MB)`;
+        }
+      }
+    });
+
+    xhr.onload = function() {
+      let data = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch (err) {
+        data = null;
+      }
+
+      if (xhr.status === 200 && data && data.success && data.items && data.items.length > 0) {
+        // 100% Transition
+        addMediaPercent = 100;
+        const ring = document.getElementById('ba-tile-progress-ring');
+        const txt = document.getElementById('ba-tile-progress-text');
+        const lBar = document.getElementById('ba-lightbox-upload-progress-bar');
+        if (ring) {
+          ring.style.strokeDashoffset = '0';
+          ring.setAttribute('stroke', '#16a34a');
+        }
+        if (txt) {
+          txt.textContent = '100%';
+          txt.style.color = '#16a34a';
+        }
+        if (lBar) {
+          lBar.style.width = '100%';
+          lBar.style.background = '#16a34a';
+        }
+
+        const tileProgView = addTile ? addTile.querySelector('.ba-tile-progress-view') : null;
+        if (tileProgView) {
+          setTimeout(function() {
+            tileProgView.innerHTML = '<i class="fa fa-check" style="font-size:18px; color:#16a34a;"></i><span style="font-size:9px; font-weight:700; color:#16a34a; margin-top:2px;">Added!</span>';
+          }, 120);
+        }
+
+        setTimeout(function() {
+          isAddMediaUploading = false;
+          activeAddMediaXhr = null;
+          currentSessionItems = data.items;
+          currentSessionData.items = data.items;
+          currentItemIndex = currentSessionItems.length - 1; // view newly added item
+          renderFilmstrip();
+          renderShowcaseItem(currentItemIndex);
+          hideLightboxUploadProgress();
+          // Background update of gallery grid
+          smoothRefreshEvidence();
+        }, 450);
+
+      } else if (xhr.status === 200 && data && data.success) {
+        isAddMediaUploading = false;
+        activeAddMediaXhr = null;
+        hideLightboxUploadProgress();
+        resetAddMediaTile();
+        smoothRefreshEvidence();
+        closeLightbox();
+      } else {
+        isAddMediaUploading = false;
+        activeAddMediaXhr = null;
+        hideLightboxUploadProgress();
+        resetAddMediaTile();
+        showCustomAlert({
+          title: 'Upload Failed',
+          message: data && data.error ? data.error : 'Failed to add media to session.',
+          type: 'error'
+        });
+      }
+    };
+
+    xhr.onerror = function() {
+      isAddMediaUploading = false;
+      activeAddMediaXhr = null;
+      hideLightboxUploadProgress();
+      resetAddMediaTile();
+      showCustomAlert({
+        title: 'Network Error',
+        message: 'Failed to upload files. Please check connection and try again.',
+        type: 'error'
+      });
+    };
+
+    xhr.onabort = function() {
+      isAddMediaUploading = false;
+      activeAddMediaXhr = null;
+      hideLightboxUploadProgress();
+      resetAddMediaTile();
+    };
+
+    xhr.open('POST', 'module.php', true);
+    xhr.send(fd);
   }
 
   function openSessionAlbum(sessionData) {
@@ -2904,66 +5386,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (items.length === 0) return;
 
     currentSessionItems = items;
+    currentSessionData = sessionData;
     currentItemIndex = 0;
 
-    lightboxTitle.textContent = `${sessionData.sessionDate}`;
-    lightboxCaption.textContent = sessionData.caption || '';
-    lightboxTypePill.textContent = sessionData.sessionType;
+    if (lightboxTitle) lightboxTitle.textContent = `${sessionData.sessionDate}`;
+    if (lightboxCaption) lightboxCaption.textContent = sessionData.caption || '';
+    if (lightboxTypePill) lightboxTypePill.textContent = sessionData.sessionType;
 
-    // Render filmstrip
-    if (lightboxFilmstrip) {
-      lightboxFilmstrip.innerHTML = '';
-      if (items.length > 1) {
-        lightboxFilmstrip.style.display = 'flex';
-        items.forEach((it, idx) => {
-          const thumb = document.createElement('div');
-          thumb.className = 'ba-filmstrip-thumb';
-          thumb.style.cssText = 'width:64px; height:64px; border-radius:8px; overflow:hidden; border:2px solid transparent; flex-shrink:0; cursor:pointer; position:relative; background:#000; transition:all 0.15s;';
-          if (it.is_video) {
-            thumb.innerHTML = `
-              <video src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
-              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); color:#fff; font-size:12px;">
-                <i class="fa fa-play"></i>
-              </div>
-            `;
-          } else {
-            thumb.innerHTML = `<img src="${it.fileurl}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;">`;
-          }
-          thumb.addEventListener('click', () => {
-            renderShowcaseItem(idx);
-          });
-          lightboxFilmstrip.appendChild(thumb);
-        });
-      } else {
-        lightboxFilmstrip.style.display = 'none';
-      }
-    }
-
+    renderFilmstrip();
     renderShowcaseItem(0);
-    lightboxModal.style.display = 'flex';
+    if (lightboxModal) lightboxModal.style.display = 'flex';
   }
-
-  // Click on date card -> open session album
-  document.querySelectorAll('.ba-evidence-card').forEach(card => {
-    card.addEventListener('click', function() {
-      const rawItems = this.getAttribute('data-items');
-      let items = [];
-      try {
-        items = JSON.parse(rawItems || '[]');
-      } catch (e) {
-        items = [];
-      }
-      if (items.length === 0) return;
-
-      openSessionAlbum({
-        sessionKey: this.getAttribute('data-session-key') || '',
-        sessionType: this.getAttribute('data-type') || '',
-        sessionDate: this.getAttribute('data-date') || '',
-        caption: this.getAttribute('data-caption') || '',
-        items: items
-      });
-    });
-  });
 
   // Prev / Next button handlers
   if (prevBtn) {
@@ -2987,31 +5420,85 @@ document.addEventListener('DOMContentLoaded', function() {
     } else if (e.key === 'ArrowRight') {
       renderShowcaseItem(currentItemIndex + 1);
     } else if (e.key === 'Escape') {
-      closeLightbox();
+      requestCloseLightbox();
     }
   });
 
-  // Delete current file inside lightbox
+  // Delete current file inside lightbox (In-place viewer update + background grid sync)
   if (lightboxDeleteBtn) {
-    lightboxDeleteBtn.addEventListener('click', function() {
+    lightboxDeleteBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      e.preventDefault();
       if (!currentSessionItems || currentSessionItems.length === 0) return;
       const currentItem = currentSessionItems[currentItemIndex];
-      if (!confirm(`Are you sure you want to delete this ${currentItem.is_video ? 'video' : 'photo'}?`)) return;
+      const isProto = !currentItem.id || isNaN(currentItem.id) || (typeof currentItem.id === 'string' && currentItem.id.startsWith('p_'));
+      if (isProto) return;
 
-      const fd = new FormData();
-      fd.append('sesskey', sesskey);
-      fd.append('action', 'delete_evidence');
-      fd.append('evidenceid', currentItem.id);
-      fetch('module.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            window.location.hash = 'panel-evidence';
-            window.location.reload();
-          } else {
-            alert('Error deleting item');
+      showCustomConfirm({
+        title: `Delete this ${currentItem.is_video ? 'video' : 'photo'}?`,
+        message: `Are you sure you want to delete this ${currentItem.is_video ? 'video' : 'photo'}? This action cannot be undone.`,
+        confirmText: 'Delete File',
+        confirmColor: '#dc2626',
+        onConfirm: function() {
+          const fd = new FormData();
+          fd.append('sesskey', sesskey);
+          fd.append('action', 'delete_evidence');
+          fd.append('mediaid', currentItem.id);
+          if (currentItem.evidenceid) {
+            fd.append('evidenceid', currentItem.evidenceid);
           }
-        });
+          fd.append('batchid', batchId);
+          fd.append('sectionid', sectionId);
+          fd.append('courseid', courseId);
+
+          fetch('module.php', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+              if (data && data.success) {
+                // Remove item from in-memory session items
+                currentSessionItems.splice(currentItemIndex, 1);
+                if (currentSessionItems.length > 0) {
+                  currentItemIndex = Math.min(currentItemIndex, currentSessionItems.length - 1);
+                  renderFilmstrip();
+                  renderShowcaseItem(currentItemIndex);
+
+                  // Update card in background grid in-place
+                  const card = document.querySelector(`.ba-evidence-card[data-evidenceid="${currentItem.evidenceid}"]`) ||
+                               (currentSessionData ? document.querySelector(`.ba-evidence-card[data-session-key="${currentSessionData.sessionKey}"]`) : null);
+                  if (card) {
+                    card.setAttribute('data-items', JSON.stringify(currentSessionItems));
+                    const img = card.querySelector('img');
+                    if (img && currentSessionItems[0] && !currentSessionItems[0].is_video) {
+                      img.src = currentSessionItems[0].fileurl;
+                    }
+                  }
+                  syncEvidenceModalDropdowns();
+                } else {
+                  const card = document.querySelector(`.ba-evidence-card[data-evidenceid="${currentItem.evidenceid}"]`) ||
+                               (currentSessionData ? document.querySelector(`.ba-evidence-card[data-session-key="${currentSessionData.sessionKey}"]`) : null);
+                  closeLightbox();
+                  if (card) {
+                    animateCardDeletion(card);
+                  }
+                  syncEvidenceModalDropdowns();
+                }
+              } else {
+                showCustomAlert({
+                  title: 'Delete Failed',
+                  message: data && data.error ? data.error : 'Unknown error',
+                  type: 'error'
+                });
+              }
+            })
+            .catch(err => {
+              showCustomAlert({
+                title: 'Network Error',
+                message: 'Failed to delete file. Please try again.',
+                type: 'error'
+              });
+            });
+        }
+      });
     });
   }
 
@@ -3020,45 +5507,60 @@ document.addEventListener('DOMContentLoaded', function() {
       lightboxModal.style.display = 'none';
       if (lightboxMedia) lightboxMedia.innerHTML = '';
       currentSessionItems = [];
+      currentSessionData = null;
+      hideLightboxUploadProgress();
+      if (activeAddMediaXhr) {
+        try { activeAddMediaXhr.abort(); } catch (err) {}
+        activeAddMediaXhr = null;
+      }
+      isAddMediaUploading = false;
+      addMediaPercent = 0;
     }
   }
 
+  function requestCloseLightbox() {
+    if (isAddMediaUploading) {
+      showCustomConfirm({
+        title: 'Upload in Progress',
+        message: `Media files are currently uploading (${addMediaPercent}% completed). Are you sure you want to cancel the upload and close the viewer?`,
+        confirmText: 'Cancel Upload & Close',
+        confirmColor: '#dc2626',
+        onConfirm: function() {
+          if (activeAddMediaXhr) {
+            try { activeAddMediaXhr.abort(); } catch (err) {}
+            activeAddMediaXhr = null;
+          }
+          isAddMediaUploading = false;
+          addMediaPercent = 0;
+          hideLightboxUploadProgress();
+          closeLightbox();
+        }
+      });
+      return;
+    }
+    closeLightbox();
+  }
+
   if (closeLightboxBtn && lightboxModal) {
-    closeLightboxBtn.addEventListener('click', closeLightbox);
+    closeLightboxBtn.addEventListener('click', requestCloseLightbox);
     lightboxModal.addEventListener('click', function(e) {
       if (e.target === lightboxModal) {
-        closeLightbox();
+        requestCloseLightbox();
       }
     });
   }
 
-  // Attendance Matrix View Mode Toggle (Timings vs Compact)
-  const attTimingsBtn = document.getElementById('ba-att-view-timings');
-  const attCompactBtn = document.getElementById('ba-att-view-compact');
-  if (attTimingsBtn && attCompactBtn) {
-    attTimingsBtn.addEventListener('click', function() {
-      document.querySelectorAll('.ba-att-timing-block').forEach(el => el.style.display = 'flex');
-      document.querySelectorAll('.ba-att-compact-block').forEach(el => el.style.display = 'none');
-      document.querySelectorAll('.ba-sess-col').forEach(el => el.style.minWidth = '96px');
-      attTimingsBtn.style.background = '#3b82f6';
-      attTimingsBtn.style.color = '#fff';
-      attTimingsBtn.style.fontWeight = '700';
-      attCompactBtn.style.background = '#fff';
-      attCompactBtn.style.color = '#475569';
-      attCompactBtn.style.fontWeight = '600';
-    });
-    attCompactBtn.addEventListener('click', function() {
-      document.querySelectorAll('.ba-att-timing-block').forEach(el => el.style.display = 'none');
-      document.querySelectorAll('.ba-att-compact-block').forEach(el => el.style.display = 'inline-block');
-      document.querySelectorAll('.ba-sess-col').forEach(el => el.style.minWidth = '44px');
-      attCompactBtn.style.background = '#3b82f6';
-      attCompactBtn.style.color = '#fff';
-      attCompactBtn.style.fontWeight = '700';
-      attTimingsBtn.style.background = '#fff';
-      attTimingsBtn.style.color = '#475569';
-      attTimingsBtn.style.fontWeight = '600';
-    });
-  }
+  // Prevent accidental page close during active upload
+  window.addEventListener('beforeunload', function(e) {
+    if (isAddMediaUploading || isMainUploading) {
+      e.preventDefault();
+      e.returnValue = 'Upload in progress. Are you sure you want to leave?';
+      return e.returnValue;
+    }
+  });
+
+  // Initial binding of evidence elements
+  bindEvidenceListeners();
 });
 
 // Quick jump to date in Daily Register
@@ -3066,6 +5568,8 @@ function filterDailyRegister(dateStr) {
   if (!dateStr) return;
   const url = new URL(window.location.href);
   url.searchParams.set('att_date', dateStr);
+  url.searchParams.delete('att_sess_id');
+  url.searchParams.set('tab', 'stdattendance');
   url.hash = 'panel-stdattendance';
   window.location.href = url.toString();
 }

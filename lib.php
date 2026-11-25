@@ -55,7 +55,7 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
 
     $misnode = navigation_node::create(
         'Program MIS (Marvell & ESSCI)',
-        new moodle_url('/local/batchanalytics/marvel_essci_mis.php'),
+        new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'sponsor']),
         navigation_node::TYPE_CUSTOM,
         null,
         'local_batchanalytics_mis',
@@ -64,16 +64,18 @@ function local_batchanalytics_extend_navigation(global_navigation $navigation) {
     $misnode->showinflatnavigation = true;
     $node->add_node($misnode);
 
-    $datanode = navigation_node::create(
-        'ESSCI Data Page',
-        new moodle_url('/local/batchanalytics/marvel_essci_data.php'),
-        navigation_node::TYPE_CUSTOM,
-        null,
-        'local_batchanalytics_essci_data',
-        new pix_icon('i/settings', '')
-    );
-    $datanode->showinflatnavigation = true;
-    $node->add_node($datanode);
+    if (\local_batchanalytics\program_service::has_write_permission($context)) {
+        $datanode = navigation_node::create(
+            'ESSCI Data Page',
+            new moodle_url('/local/batchanalytics/marvel_essci_data.php'),
+            navigation_node::TYPE_CUSTOM,
+            null,
+            'local_batchanalytics_essci_data',
+            new pix_icon('i/settings', '')
+        );
+        $datanode->showinflatnavigation = true;
+        $node->add_node($datanode);
+    }
 
     $navigation->add_node($node);
 }

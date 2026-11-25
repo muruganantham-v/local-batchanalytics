@@ -69,6 +69,12 @@ if ($hassiteconfig) {
         new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_sponsor'])
     ));
 
+    $ADMIN->add('local_batchanalytics', new admin_externalpage(
+        'local_batchanalytics_pet_link',
+        get_string('settings_pet_config', 'local_batchanalytics'),
+        new moodle_url('/admin/settings.php', ['section' => 'local_batchanalytics_pet'])
+    ));
+
     // =========================================================================
     // Page 1: Zoho Credential Config (Dedicated Form Page)
     // Includes: Zoho Configuration, Zoho Cliq Notifications configuration
@@ -345,25 +351,54 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
-    $quiz_choices = [0 => get_string('none')];
-    if ($DB->get_manager()->table_exists('quiz')) {
-        $quizzes = $DB->get_records_sql(
-            "SELECT q.id, q.name, c.fullname as coursename 
-             FROM {quiz} q 
-             JOIN {course} c ON c.id = q.course 
-             ORDER BY c.fullname ASC, q.name ASC"
-        );
-        foreach ($quizzes as $q) {
-            $quiz_choices[(int)$q->id] = $q->coursename . ' → ' . $q->name;
-        }
+    $ADMIN->add('local_batchanalytics', $page_sponsor);
+
+    // =========================================================================
+    // Page 8: Placement Eligibility Test (PET) Configuration (Dedicated Form Page)
+    // =========================================================================
+    $page_pet = new admin_settingpage(
+        'local_batchanalytics_pet',
+        get_string('settings_pet_config', 'local_batchanalytics'),
+        'moodle/site:config',
+        true
+    );
+
+    $page_pet->add(new admin_setting_heading(
+        'local_batchanalytics/pet_configuration_heading',
+        get_string('pet_configuration_heading', 'local_batchanalytics'),
+        get_string('pet_configuration_heading_desc', 'local_batchanalytics')
+    ));
+
+    $course_choices = [0 => get_string('none')];
+    $all_courses = $DB->get_records_sql("SELECT id, fullname, shortname FROM {course} WHERE id > 1 ORDER BY fullname ASC");
+    foreach ($all_courses as $c) {
+        $cfullname = !empty($c->fullname) ? format_string($c->fullname) : ('Course ' . $c->id);
+        $course_choices[(int)$c->id] = $cfullname . ' (' . $c->shortname . ')';
     }
 
-    $page_sponsor->add(new admin_setting_configselect(
-        'local_batchanalytics/pet_quiz_id',
-        get_string('pet_quiz_activity', 'local_batchanalytics'),
-        get_string('pet_quiz_activity_desc', 'local_batchanalytics'),
+    $page_pet->add(new admin_setting_configselect(
+        'local_batchanalytics/pet_course_id',
+        get_string('pet_course_mapping', 'local_batchanalytics'),
+        get_string('pet_course_mapping_desc', 'local_batchanalytics'),
         0,
-        $quiz_choices
+        $course_choices
     ));
-    $ADMIN->add('local_batchanalytics', $page_sponsor);
+
+    $page_pet->add(new admin_setting_configtext(
+        'local_batchanalytics/pet_objective_pass_mark',
+        get_string('pet_objective_pass_mark', 'local_batchanalytics'),
+        get_string('pet_objective_pass_mark_desc', 'local_batchanalytics'),
+        '40',
+        PARAM_FLOAT
+    ));
+
+    $page_pet->add(new admin_setting_configtext(
+        'local_batchanalytics/pet_programming_pass_mark',
+        get_string('pet_programming_pass_mark', 'local_batchanalytics'),
+        get_string('pet_programming_pass_mark_desc', 'local_batchanalytics'),
+        '30',
+        PARAM_FLOAT
+    ));
+
+    $ADMIN->add('local_batchanalytics', $page_pet);
 }

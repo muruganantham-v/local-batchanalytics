@@ -39,7 +39,7 @@ class lesson_plan_service {
                 $params['courseid'] = $courseid;
                 $sql .= " AND courseid = :courseid";
             }
-            $records = $DB->get_records_select(self::TABLE, $sql, $params, 'sortorder ASC, day_index ASC');
+            $records = $DB->get_records_select(self::TABLE, $sql, $params, 'sortorder ASC, id ASC');
             if (!empty($records)) {
                 return array_values($records);
             }
@@ -49,131 +49,255 @@ class lesson_plan_service {
     }
 
     /**
-     * Prototype syllabus days matching the inventory document.
+     * Format date input (e.g. YYYY-MM-DD from HTML5 input) into readable UI format (e.g. 17 Aug 2026).
      *
-     * @param int $sectionid
-     * @param int $courseid
-     * @return array
+     * @param string $val
+     * @return string
      */
-    protected static function get_default_prototype_days(int $sectionid, int $courseid): array {
-        $topics = [
-            ['day' => 1, 'planned' => '17 Aug 2026', 'actual' => '17 Aug 2026', 'topic' => 'C intro, LMS orientation · language types (high/low) · features, keywords, datatypes · number systems & conversions · signed/unsigned char range', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 2, 'planned' => '18 Aug 2026', 'actual' => '18 Aug 2026', 'topic' => 'printf / scanf, format specifiers · compilation & execution, compiler vs interpreter · operators · if family · practice programs', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 3, 'planned' => '19 Aug 2026', 'actual' => '19 Aug 2026', 'topic' => 'switch-case (all properties) · loops: while / do-while / for · pre & post ++ / -- · 7-8 programs', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 4, 'planned' => '20 Aug 2026', 'actual' => '20 Aug 2026', 'topic' => 'factorial, 2^n series · break / continue · prime with optimization · nested loops · 2-3 assignments', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 5, 'planned' => '21 Aug 2026', 'actual' => '21 Aug 2026', 'topic' => 'VS Code setup · nested-loop 2D patterns (11-12) · assignment: perfect number', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 6, 'planned' => '22 Aug 2026', 'actual' => '22 Aug 2026', 'topic' => 'pattern problems · operator precedence & associativity · ternary (4 problems) · goto-label · assignments', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 7, 'planned' => '24 Aug 2026', 'actual' => '24 Aug 2026', 'topic' => 'swap integers · arrays: declare/init, print/scan · sum/avg, search, largest/smallest, reverse · armstrong, n primes', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 8, 'planned' => '25 Aug 2026', 'actual' => '25 Aug 2026', 'topic' => 'n primes solution · bubble sort · more array problems · surprise test 1 + evaluation & discussion', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Sub'],
-            ['day' => 9, 'planned' => '26 Aug 2026', 'actual' => '26 Aug 2026', 'topic' => 'type modifiers (signed/unsigned/short/long) · typecasting, promotion/demotion · rank order · SDLC', 'status' => 'Done', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 10, 'planned' => '27 Aug 2026', 'actual' => '', 'topic' => 'Functions in C · parameter passing (call by value) · return values · function prototypes', 'status' => 'Pending', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 11, 'planned' => '28 Aug 2026', 'actual' => '', 'topic' => 'Storage classes (auto, static, extern, register) · scope, visibility and lifetime', 'status' => 'Pending', 'class_att' => 'Present', 'lab_att' => 'Present'],
-            ['day' => 12, 'planned' => '29 Aug 2026', 'actual' => '', 'topic' => 'Pointers fundamentals · memory addresses · pointer declaration and dereferencing', 'status' => 'Pending', 'class_att' => 'Present', 'lab_att' => 'Present'],
-        ];
-
-        $result = [];
-        foreach ($topics as $idx => $t) {
-            $result[] = (object)[
-                'id' => ($idx + 1),
-                'sectionid' => $sectionid,
-                'courseid' => $courseid,
-                'day_index' => $t['day'],
-                'planned_date' => $t['planned'],
-                'actual_date' => $t['actual'],
-                'topic' => $t['topic'],
-                'status' => $t['status'],
-                'class_mentor_att' => $t['class_att'],
-                'lab_mentor_att' => $t['lab_att'],
-                'sortorder' => $idx,
-                'timemodified' => time(),
-            ];
+    public static function format_display_date(string $val): string {
+        $val = trim($val);
+        if (empty($val)) {
+            return '';
         }
-        return $result;
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $val)) {
+            $ts = strtotime($val);
+            if ($ts !== false) {
+                return date('j M Y', $ts);
+            }
+        }
+        return $val;
     }
 
     /**
      * Add a lesson plan day.
-     * Mentor attendance is automatically resolved from the ESSCI biometric attendance service
-     * if not provided.
      *
      * @param int $sectionid
      * @param int $courseid
      * @param array $data
+     * @param string $after Insert position ('end' or target day ID)
      * @return int
      */
-    public static function add_day(int $sectionid, int $courseid, array $data): int {
+    public static function add_day(int $sectionid, int $courseid, array $data, string $after = 'end'): int {
         global $DB;
 
-        $class_att = $data['class_mentor_att'] ?? '';
-        $lab_att   = $data['lab_mentor_att'] ?? '';
+        if (!$DB->get_manager()->table_exists(self::TABLE)) {
+            return 0;
+        }
 
-        // Auto-resolve mentor attendance from ESSCI biometric database when omitted
-        if (empty($class_att) || empty($lab_att)) {
-            $cm_uid = 0;
-            $lm_uid = 0;
-            if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
-                $sec = $DB->get_record('local_bm_classsection', ['id' => $sectionid]);
-                if ($sec && !empty($sec->moduledata)) {
-                    $mods = \local_batchanalytics\util::decode_module_data($sec->moduledata, true);
-                    $target_mod = null;
-                    foreach ($mods as $m) {
-                        $mcid = !empty($m['moodlecourseid']) ? (int)$m['moodlecourseid'] : (!empty($m['courseid']) ? (int)$m['courseid'] : 0);
-                        if ($mcid > 0 && $mcid === $courseid) {
-                            $target_mod = $m;
-                            break;
-                        }
-                    }
-                    if (!$target_mod && !empty($mods)) {
-                        $target_mod = reset($mods);
-                    }
-                    if ($target_mod) {
-                        if (!empty($target_mod['primarymentor'])) {
-                            $p = \local_batchanalytics\util::get_user_profile_data($target_mod['primarymentor']);
-                            $cm_uid = !empty($p['user']->id) ? (int)$p['user']->id : 0;
-                        }
-                        if (!empty($target_mod['labmentor1'])) {
-                            $p = \local_batchanalytics\util::get_user_profile_data($target_mod['labmentor1']);
-                            $lm_uid = !empty($p['user']->id) ? (int)$p['user']->id : 0;
-                        }
-                    }
+        // 1. Determine sortorder based on insert position
+        $sortorder = 0;
+        if ($after === 'end' || empty($after)) {
+            $max_so = $DB->get_field_sql(
+                "SELECT MAX(sortorder) FROM {" . self::TABLE . "} WHERE sectionid = :sectionid AND courseid = :courseid",
+                ['sectionid' => $sectionid, 'courseid' => $courseid]
+            );
+            $sortorder = ($max_so !== false && $max_so !== null) ? ((int)$max_so + 1) : 0;
+        } else {
+            // Find target record by ID or day_index
+            $target = null;
+            if (is_numeric($after)) {
+                $target = $DB->get_record(self::TABLE, ['id' => (int)$after, 'sectionid' => $sectionid, 'courseid' => $courseid]);
+                if (!$target) {
+                    $target = $DB->get_record(self::TABLE, ['day_index' => (int)$after, 'sectionid' => $sectionid, 'courseid' => $courseid]);
                 }
             }
-
-            $eff_date = !empty($data['actual_date']) ? $data['actual_date'] : ($data['planned_date'] ?? '');
-            if (empty($class_att)) {
-                $bio_cm = \local_batchanalytics\biometric_service::get_mentor_biometric_status($cm_uid, $eff_date, $courseid, $sectionid, 'Class');
-                $class_att = $bio_cm['status'] ?? 'Pending';
-            }
-            if (empty($lab_att)) {
-                $bio_lm = \local_batchanalytics\biometric_service::get_mentor_biometric_status($lm_uid, $eff_date, $courseid, $sectionid, 'Lab');
-                $lab_att = $bio_lm['status'] ?? 'Pending';
+            if ($target) {
+                $target_so = (int)$target->sortorder;
+                // Shift subsequent records
+                $DB->execute(
+                    "UPDATE {" . self::TABLE . "} SET sortorder = sortorder + 1 WHERE sectionid = :sectionid AND courseid = :courseid AND sortorder > :target_so",
+                    ['sectionid' => $sectionid, 'courseid' => $courseid, 'target_so' => $target_so]
+                );
+                $sortorder = $target_so + 1;
+            } else {
+                $max_so = $DB->get_field_sql(
+                    "SELECT MAX(sortorder) FROM {" . self::TABLE . "} WHERE sectionid = :sectionid AND courseid = :courseid",
+                    ['sectionid' => $sectionid, 'courseid' => $courseid]
+                );
+                $sortorder = ($max_so !== false && $max_so !== null) ? ((int)$max_so + 1) : 0;
             }
         }
+
+        // 2. Day index (Day number)
+        $day_index = !empty($data['day_index']) ? (int)$data['day_index'] : 0;
+        if ($day_index <= 0) {
+            $max_day = $DB->get_field_sql(
+                "SELECT MAX(day_index) FROM {" . self::TABLE . "} WHERE sectionid = :sectionid AND courseid = :courseid",
+                ['sectionid' => $sectionid, 'courseid' => $courseid]
+            );
+            $day_index = ($max_day !== false && $max_day !== null) ? ((int)$max_day + 1) : 1;
+        }
+
+        $plan_date = self::format_display_date($data['planned_date'] ?? '');
+        $act_date = self::format_display_date($data['actual_date'] ?? '');
+
+        // 3. Mentor Biometric Attendance - decoupled modular resolution
+        $cm_res = self::resolve_mentor_biometric_attendance(0, $act_date ?: $plan_date, $courseid, $sectionid, 'Class');
+        $lm_res = self::resolve_mentor_biometric_attendance(0, $act_date ?: $plan_date, $courseid, $sectionid, 'Lab');
+        $class_att = !empty($data['class_mentor_att']) ? $data['class_mentor_att'] : ($cm_res['status'] ?? '-');
+        $lab_att = !empty($data['lab_mentor_att']) ? $data['lab_mentor_att'] : ($lm_res['status'] ?? '-');
 
         $record = (object)[
             'sectionid' => $sectionid,
             'courseid' => $courseid,
-            'day_index' => (int)($data['day_index'] ?? 1),
-            'planned_date' => clean_param($data['planned_date'] ?? '', PARAM_TEXT),
-            'actual_date' => clean_param($data['actual_date'] ?? '', PARAM_TEXT),
+            'day_index' => $day_index,
+            'planned_date' => clean_param($plan_date, PARAM_TEXT),
+            'actual_date' => clean_param($act_date, PARAM_TEXT),
             'topic' => clean_param($data['topic'] ?? '', PARAM_RAW),
-            'status' => clean_param($data['status'] ?? 'Pending', PARAM_ALPHANUMEXT),
-            'class_mentor_att' => clean_param($class_att, PARAM_ALPHANUMEXT),
-            'lab_mentor_att' => clean_param($lab_att, PARAM_ALPHANUMEXT),
-            'sortorder' => (int)($data['sortorder'] ?? 0),
+            'status' => clean_param($data['status'] ?? 'Pending', PARAM_TEXT),
+            'class_mentor_att' => clean_param($class_att, PARAM_TEXT),
+            'lab_mentor_att' => clean_param($lab_att, PARAM_TEXT),
+            'sortorder' => $sortorder,
             'timemodified' => time(),
         ];
 
-        if ($DB->get_manager()->table_exists(self::TABLE)) {
-            return (int)$DB->insert_record(self::TABLE, $record);
+        $newid = (int)$DB->insert_record(self::TABLE, $record);
+
+        // Normalize sortorder (0, 1, ...) and day_index (1, 2, ...) sequentially for all records in this section & course
+        $scope_params = ['sectionid' => $sectionid];
+        $scope_sql = "sectionid = :sectionid";
+        if ($courseid > 0) {
+            $scope_params['courseid'] = $courseid;
+            $scope_sql .= " AND courseid = :courseid";
         }
-        return 0;
+        $all_recs = array_values($DB->get_records_select(self::TABLE, $scope_sql, $scope_params, 'sortorder ASC, id ASC'));
+        foreach ($all_recs as $pos => $r) {
+            $DB->set_field(self::TABLE, 'sortorder', $pos, ['id' => $r->id]);
+            $DB->set_field(self::TABLE, 'day_index', $pos + 1, ['id' => $r->id]);
+        }
+
+        return $newid;
+    }
+
+    /**
+     * Move a lesson plan day up (-1) or down (+1) in sort order.
+     *
+     * @param int $dayid
+     * @param int $direction -1 for up, 1 for down
+     * @return bool
+     */
+    public static function reorder_day(int $dayid, int $direction): bool {
+        global $DB;
+
+        if (!$DB->get_manager()->table_exists(self::TABLE)) {
+            return false;
+        }
+
+        $curr = $DB->get_record(self::TABLE, ['id' => $dayid]);
+        if (!$curr) {
+            return false;
+        }
+
+        $sec_id = (int)$curr->sectionid;
+        $cid = (int)$curr->courseid;
+
+        $params = ['sectionid' => $sec_id];
+        $sql = "sectionid = :sectionid";
+        if ($cid > 0) {
+            $params['courseid'] = $cid;
+            $sql .= " AND courseid = :courseid";
+        }
+
+        // Fetch all records for this section/course in current order.
+        $records = array_values($DB->get_records_select(
+            self::TABLE,
+            $sql,
+            $params,
+            'sortorder ASC, id ASC'
+        ));
+
+        $idx = -1;
+        foreach ($records as $i => $r) {
+            if ((int)$r->id === $dayid) {
+                $idx = $i;
+                break;
+            }
+        }
+
+        if ($idx === -1) {
+            return false;
+        }
+
+        $target_idx = ($direction < 0) ? ($idx - 1) : ($idx + 1);
+        if ($target_idx < 0 || $target_idx >= count($records)) {
+            return false; // Already at boundary.
+        }
+
+        // Swap positions.
+        $target = $records[$target_idx];
+        $records[$target_idx] = $curr;
+        $records[$idx] = $target;
+
+        // Persist clean normalized sortorder (0, 1, 2, ...) and day_index (1, 2, 3, ...)
+        foreach ($records as $pos => $rec) {
+            $DB->set_field(self::TABLE, 'sortorder', $pos, ['id' => $rec->id]);
+            $DB->set_field(self::TABLE, 'day_index', $pos + 1, ['id' => $rec->id]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Delete a lesson plan day.
+     *
+     * @param int $dayid
+     * @return bool
+     */
+    public static function delete_day(int $dayid): bool {
+        global $DB;
+        if ($DB->get_manager()->table_exists(self::TABLE)) {
+            $rec = $DB->get_record(self::TABLE, ['id' => $dayid]);
+            $res = $DB->delete_records(self::TABLE, ['id' => $dayid]);
+            if ($res && $rec) {
+                // Re-normalize sortorder and day_index for remaining records in this section/course.
+                $sec_id = (int)$rec->sectionid;
+                $cid = (int)$rec->courseid;
+                $params = ['sectionid' => $sec_id];
+                $sql = "sectionid = :sectionid";
+                if ($cid > 0) {
+                    $params['courseid'] = $cid;
+                    $sql .= " AND courseid = :courseid";
+                }
+                $remaining = array_values($DB->get_records_select(
+                    self::TABLE,
+                    $sql,
+                    $params,
+                    'sortorder ASC, id ASC'
+                ));
+                foreach ($remaining as $pos => $r) {
+                    $DB->set_field(self::TABLE, 'sortorder', $pos, ['id' => $r->id]);
+                    $DB->set_field(self::TABLE, 'day_index', $pos + 1, ['id' => $r->id]);
+                }
+            }
+            return (bool)$res;
+        }
+        return false;
+    }
+
+    /**
+     * Modular resolver for mentor attendance from custom biometric plugin.
+     * Ready for plug-and-play connection when the user supplies custom attendance plugin details.
+     *
+     * @param int $userid
+     * @param string $date
+     * @param int $courseid
+     * @param int $sectionid
+     * @param string $role
+     * @return array
+     */
+    public static function resolve_mentor_biometric_attendance(int $userid = 0, string $date = '', int $courseid = 0, int $sectionid = 0, string $role = 'Class'): array {
+        // Pending biometric plugin integration - default placeholder is "-"
+        return [
+            'status' => '-',
+            'time' => '',
+            'tooltip' => 'Pending biometric reader integration',
+        ];
     }
 
     /**
      * Compute aggregate delivered hours & coverage for the batch/module.
      * Delivered, Class, and Lab hours are calculated dynamically from mod_attendance session descriptions.
-     * Target hours is pulled from settings (local_batchanalytics/target_hours).
+     * Target hours is calculated dynamically from planned days (planneddays * 6 hrs) with fallback to admin settings.
      * Modules covered is calculated from Batch Management moduledata.
      *
      * @param int $sectionid
@@ -183,13 +307,11 @@ class lesson_plan_service {
     public static function get_hours_and_coverage(int $sectionid, int $courseid = 0): array {
         global $DB;
 
-        // 1. Configured target hours from admin settings (default 570)
-        $target_hrs = (int)(get_config('local_batchanalytics', 'target_hours') ?: 570);
-
-        // 2. Resolve module progression and course IDs from Batch Management
+        // 1. Resolve module progression, target hours, and course IDs from Batch Management
         $total_modules = 1;
         $modules_covered = 0;
         $course_ids = [];
+        $dynamic_target_hrs = 0.0;
 
         if ($sectionid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
             $sec = $DB->get_record('local_bm_classsection', ['id' => $sectionid]);
@@ -212,9 +334,27 @@ class lesson_plan_service {
                         if (!empty($m['actualend']) && (int)$m['actualend'] > 0) {
                             $modules_covered++;
                         }
+                        // Option A: Accumulate dynamic target hours from planned days (6 hrs/day: 3h class + 3h lab)
+                        $pdays = !empty($m['planneddays']) ? (float)$m['planneddays'] : 0.0;
+                        if ($courseid > 0) {
+                            if ($cid === $courseid && $pdays > 0) {
+                                $dynamic_target_hrs = $pdays * 6.0;
+                            }
+                        } else {
+                            if ($pdays > 0) {
+                                $dynamic_target_hrs += $pdays * 6.0;
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        // Target hours: dynamic calculation from planned duration (Option A) with fallback to admin setting / 570
+        if ($dynamic_target_hrs > 0) {
+            $target_hrs = (int)round($dynamic_target_hrs);
+        } else {
+            $target_hrs = (int)(get_config('local_batchanalytics', 'target_hours') ?: 570);
         }
 
         if ($courseid > 0) {
@@ -299,8 +439,10 @@ class lesson_plan_service {
         $class_hrs = round($class_hrs, 1);
         $lab_hrs = round($lab_hrs, 1);
 
-        $mentor_att_class = $total_class_sess > 0 ? round(($mentor_taken_class / $total_class_sess) * 100) . '%' : '100%';
-        $mentor_att_lab = $total_lab_sess > 0 ? round(($mentor_taken_lab / $total_lab_sess) * 100) . '%' : '100%';
+        // Mentor biometric attendance to be calculated from external biometric plugin.
+        // Kept as placeholder '—' until the specific source plugin is provided.
+        $mentor_att_class = '—';
+        $mentor_att_lab = '—';
 
         return [
             'target_hrs' => $target_hrs,

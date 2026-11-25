@@ -10,6 +10,8 @@ define([], function() {
     'use strict';
 
     function init() {
+        var p = document.getElementById('page');
+        if (p) p.classList.remove('drawers', 'drag-container');
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initModuleDetail);
         } else {
@@ -25,6 +27,7 @@ define([], function() {
 
         var courseId = container.getAttribute('data-courseid') || '0';
         var batchId = container.getAttribute('data-batchid') || '0';
+        var moduleIdx = container.getAttribute('data-module') || '0';
         var sesskey = container.getAttribute('data-sesskey') || '';
         var isSponsor = container.getAttribute('data-is-sponsor') === '1';
 
@@ -276,7 +279,7 @@ define([], function() {
             return num.toFixed(2) + (column.ismaac ? '' : '%');
         }
 
-        var perfMode = isSponsor ? 'percentile' : 'grade'; // 'grade' or 'percentile'
+        var perfMode = 'grade'; // 'grade' or 'percentile'
         var currentPage = 1;
         var pageSize = 10;
         var sortColumn = '';
@@ -857,7 +860,7 @@ define([], function() {
         }
 
         function getVisiblePerformanceColumnCount() {
-            var count = (isSponsor ? 4 : 5) + performanceColumns.length;
+            var count = 5 + performanceColumns.length;
             performanceCustomGroups.forEach(function(group) {
                 count += performanceCollapsedGroups[group.key] ? 1 : (group.columns || []).length;
             });
@@ -872,11 +875,9 @@ define([], function() {
             var overallTitle = perfMode === 'grade' ? 'Sort by Grade' : 'Sort by Completion %';
             var html = '<tr>' +
                 '<th class="sortable" data-sort="band" title="Sort by Band" style="width:50px;">Band</th>' +
-                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>';
-            if (!isSponsor) {
-                html += '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>';
-            }
-            html += '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
+                '<th class="sortable ba-performance-student-head" data-sort="student" title="Sort by Student Name">Student</th>' +
+                '<th class="sortable ba-performance-overall-head" data-sort="grade" title="' + overallTitle + '">' + overallLabel + '</th>' +
+                '<th class="sortable" data-sort="attendance" title="Sort by Attendance">Attendance</th>';
             performanceColumns.forEach(function(column) {
                 html += '<th class="sortable ba-performance-group-module" data-sort="category:' + escapeHtml(column.key) + '" title="Sort by ' + escapeHtml(column.label) + '">' + escapeHtml(column.label) + '</th>';
             });
@@ -1488,10 +1489,8 @@ define([], function() {
                     for (var k = 0; k < spotCount; k++) stars += '★';
                     meritHtml += '<span class="m m-spot">' + stars + ' Spot</span> ';
                 }
-                if (!isSponsor) {
-                    if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
-                    else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
-                }
+                if (s.pt === 'nom') meritHtml += '<span class="m m-ptnom">PT-Nom</span> ';
+                else if (s.pt === 'sel') meritHtml += '<span class="m m-ptsel">PT-Sel</span>';
                 if (!meritHtml) meritHtml = '<span class="muted">—</span>';
 
                 var avatarHtml = '';
@@ -1505,10 +1504,10 @@ define([], function() {
                 }
 
                 var studentNameDisplay = escapeHtml(s.name);
-                if (isSponsor && s.userid) {
-                    studentNameDisplay = '<a href="student.php?id=' + encodeURIComponent(s.userid) + (batchId ? '&batchid=' + encodeURIComponent(batchId) : '') + '" class="ba-student-profile-link" style="color:var(--primary,#0072ce);font-weight:600;text-decoration:none;">' + escapeHtml(s.name) + '</a>';
+                if (s.userid) {
+                    studentNameDisplay = '<a href="student.php?id=' + encodeURIComponent(s.userid) + (batchId ? '&batchid=' + encodeURIComponent(batchId) : '') + (courseId && courseId !== '0' ? '&courseid=' + encodeURIComponent(courseId) : '') + (moduleIdx && moduleIdx !== '0' ? '&module=' + encodeURIComponent(moduleIdx) : '') + '" class="ba-student-profile-link" style="color:var(--primary,#0072ce);font-weight:600;text-decoration:none;">' + escapeHtml(s.name) + '</a>';
                 }
-                var studentIdDisplay = isSponsor ? '' : '<span class="sid">' + escapeHtml(s.id) + '</span>';
+                var studentIdDisplay = '<span class="sid">' + escapeHtml(s.id) + '</span>';
 
                 html += '<tr>' +
                     '<td><span class="bdot" style="background:' + dotColors[b] + '" title="' + b.toUpperCase() + ' Band"></span></td>' +
@@ -1520,11 +1519,9 @@ define([], function() {
                                 studentIdDisplay +
                             '</div>' +
                         '</div>' +
-                    '</td>';
-                if (!isSponsor) {
-                    html += '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>';
-                }
-                html += '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
+                    '</td>' +
+                    '<td><b>' + getOverallDisplayValue(s, percentileValues) + '</b></td>' +
+                    '<td>' + ((s.attendance !== null && s.attendance !== undefined && s.attendance !== '—') ? (parseFloat(s.attendance) + '%') : '<span class="muted">—</span>') + '</td>' +
                     performanceColumns.map(function(column) {
                         return '<td class="ba-performance-group-module">' + formatPerformanceCell(s, column) + '</td>';
                     }).join('') +
@@ -1705,9 +1702,7 @@ define([], function() {
         // CSV Export
         if (expBtn) {
             expBtn.addEventListener('click', function() {
-                var csvHeaders = isSponsor
-                    ? ['Band', 'Student Name', 'Attendance']
-                    : ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
+                var csvHeaders = ['Band', 'Student Name', 'Student ID', perfMode === 'grade' ? 'Grade' : 'Completion %', 'Attendance'];
                 if (!performanceCollapsedGroups.module) {
                     performanceColumns.forEach(function(column) {
                         var suffix = usesFixedGrade(column) || perfMode === 'grade' ? ' Grade' : ' Completion';
@@ -1734,12 +1729,10 @@ define([], function() {
                     var merits = [];
                     var spot = Number(s.spot_count || (s.spot ? 1 : 0));
                     if (spot > 0) merits.push(spot + ' Spot');
-                    if (!isSponsor) {
-                        if (s.pt === 'nom') merits.push('PT-Nom');
-                        else if (s.pt === 'sel') merits.push('PT-Sel');
-                    }
+                    if (s.pt === 'nom') merits.push('PT-Nom');
+                    else if (s.pt === 'sel') merits.push('PT-Sel');
                     var merit = merits.join('; ');
-                    var row = isSponsor ? [band, name, attVal] : [band, name, id, grade, attVal];
+                    var row = [band, name, id, grade, attVal];
                     if (!performanceCollapsedGroups.module) {
                         performanceColumns.forEach(function(column) { row.push(csvPerformanceValue(s, column)); });
                     }
@@ -2279,6 +2272,469 @@ define([], function() {
         // Initialize table
         renderPerformanceHeaders();
         renderPerformance();
+
+        // 5. Attendance Matrix & Daily Biometric Punch Register Pagination
+        function setupTablePagination(config) {
+            var tableEl = document.getElementById(config.tableId);
+            var paginationBar = document.getElementById(config.paginationBarId);
+            if (!tableEl || !paginationBar) return null;
+
+            var tbody = tableEl.querySelector('tbody');
+            if (!tbody) return null;
+
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll(config.rowSelector));
+            var totalItems = rows.length;
+
+            var pageSizeSelect = document.getElementById(config.pageSizeSelectId);
+            var infoEl = document.getElementById(config.infoId);
+            var btnsEl = document.getElementById(config.btnsId);
+
+            var pageSize = (pageSizeSelect && pageSizeSelect.value) ? pageSizeSelect.value : (config.defaultPageSize || '10');
+            var currentPage = 1;
+
+            function render() {
+                var isAll = (pageSize === 'all');
+                var sizeNum = isAll ? Math.max(1, totalItems) : (parseInt(pageSize, 10) || 10);
+                var totalPages = Math.max(1, Math.ceil(totalItems / sizeNum));
+
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+                if (currentPage < 1) {
+                    currentPage = 1;
+                }
+
+                var startIdx = totalItems === 0 ? 0 : (currentPage - 1) * sizeNum + 1;
+                var endIdx = isAll ? totalItems : Math.min(currentPage * sizeNum, totalItems);
+
+                if (infoEl) {
+                    infoEl.textContent = totalItems === 0
+                        ? (config.emptyText || 'No records to display')
+                        : ('Showing ' + startIdx + '–' + endIdx + ' of ' + totalItems + ' ' + (config.itemLabel || 'students'));
+                }
+
+                // Slice rows: hide / show
+                var startSlice = (currentPage - 1) * sizeNum;
+                var endSlice = isAll ? totalItems : currentPage * sizeNum;
+
+                rows.forEach(function(row, idx) {
+                    if (isAll || (idx >= startSlice && idx < endSlice)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+
+                renderButtons(totalPages);
+            }
+
+            function renderButtons(totalPages) {
+                if (!btnsEl) return;
+                if (totalPages <= 1 || pageSize === 'all') {
+                    btnsEl.innerHTML = '';
+                    return;
+                }
+
+                var btnsHtml = '';
+
+                // Previous Button
+                btnsHtml += '<button type="button" class="ba-pg-btn" data-action="prev" ' +
+                    (currentPage <= 1 ? 'disabled' : '') + ' aria-label="Previous page">‹ Prev</button>';
+
+                // Page numbers with smart ellipsis
+                var pages = [];
+                if (totalPages <= 7) {
+                    for (var i = 1; i <= totalPages; i++) {
+                        pages.push(i);
+                    }
+                } else {
+                    pages.push(1);
+                    if (currentPage > 3) {
+                        pages.push('...');
+                    }
+                    var startP = Math.max(2, currentPage - 1);
+                    var endP = Math.min(totalPages - 1, currentPage + 1);
+                    for (var j = startP; j <= endP; j++) {
+                        pages.push(j);
+                    }
+                    if (currentPage < totalPages - 2) {
+                        pages.push('...');
+                    }
+                    pages.push(totalPages);
+                }
+
+                pages.forEach(function(p) {
+                    if (p === '...') {
+                        btnsHtml += '<span class="ba-pg-ellipsis">…</span>';
+                    } else {
+                        var isActive = (p === currentPage);
+                        btnsHtml += '<button type="button" class="ba-pg-btn ' + (isActive ? 'active' : '') + '" data-page="' + p + '">' + p + '</button>';
+                    }
+                });
+
+                // Next Button
+                btnsHtml += '<button type="button" class="ba-pg-btn" data-action="next" ' +
+                    (currentPage >= totalPages ? 'disabled' : '') + ' aria-label="Next page">Next ›</button>';
+
+                btnsEl.innerHTML = btnsHtml;
+
+                // Wire event listeners
+                var prevBtn = btnsEl.querySelector('button[data-action="prev"]');
+                if (prevBtn && !prevBtn.disabled) {
+                    prevBtn.addEventListener('click', function() {
+                        if (currentPage > 1) {
+                            currentPage--;
+                            render();
+                        }
+                    });
+                }
+
+                var nextBtn = btnsEl.querySelector('button[data-action="next"]');
+                if (nextBtn && !nextBtn.disabled) {
+                    nextBtn.addEventListener('click', function() {
+                        if (currentPage < totalPages) {
+                            currentPage++;
+                            render();
+                        }
+                    });
+                }
+
+                btnsEl.querySelectorAll('button[data-page]').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var targetP = parseInt(this.getAttribute('data-page'), 10);
+                        if (targetP && targetP !== currentPage) {
+                            currentPage = targetP;
+                            render();
+                        }
+                    });
+                });
+            }
+
+            if (pageSizeSelect) {
+                pageSizeSelect.addEventListener('change', function() {
+                    pageSize = this.value;
+                    currentPage = 1;
+                    render();
+                });
+            }
+
+            render();
+
+            return {
+                render: render,
+                getCurrentPage: function() { return currentPage; },
+                setPage: function(p) { currentPage = p; render(); }
+            };
+        }
+
+        // Attendance View Mode Toggle (Timings vs Compact)
+        var attTimingsBtn = document.getElementById('ba-att-view-timings');
+        var attCompactBtn = document.getElementById('ba-att-view-compact');
+        if (attTimingsBtn && attCompactBtn) {
+            attTimingsBtn.addEventListener('click', function() {
+                document.querySelectorAll('.ba-att-timing-block').forEach(function(el) { el.style.display = 'flex'; });
+                document.querySelectorAll('.ba-att-compact-block').forEach(function(el) { el.style.display = 'none'; });
+                document.querySelectorAll('.ba-sess-col').forEach(function(el) { el.style.minWidth = '96px'; });
+                attTimingsBtn.style.background = '#3b82f6';
+                attTimingsBtn.style.color = '#fff';
+                attTimingsBtn.style.fontWeight = '700';
+                attCompactBtn.style.background = '#fff';
+                attCompactBtn.style.color = '#475569';
+                attCompactBtn.style.fontWeight = '600';
+            });
+            attCompactBtn.addEventListener('click', function() {
+                document.querySelectorAll('.ba-att-timing-block').forEach(function(el) { el.style.display = 'none'; });
+                document.querySelectorAll('.ba-att-compact-block').forEach(function(el) { el.style.display = 'inline-block'; });
+                document.querySelectorAll('.ba-sess-col').forEach(function(el) { el.style.minWidth = '68px'; });
+                attCompactBtn.style.background = '#3b82f6';
+                attCompactBtn.style.color = '#fff';
+                attCompactBtn.style.fontWeight = '700';
+                attTimingsBtn.style.background = '#fff';
+                attTimingsBtn.style.color = '#475569';
+                attTimingsBtn.style.fontWeight = '600';
+            });
+        }
+
+        // Initialize Attendance Matrix Pagination
+        var attMatrixPager = setupTablePagination({
+            tableId: 'ba-attendance-matrix-table',
+            paginationBarId: 'ba-att-matrix-pagination-bar',
+            pageSizeSelectId: 'ba-att-matrix-page-size',
+            infoId: 'ba-att-matrix-pagination-info',
+            btnsId: 'ba-att-matrix-pagination-btns',
+            rowSelector: 'tr.ba-matrix-row',
+            itemLabel: 'students',
+            emptyText: 'No students to display',
+            defaultPageSize: '10'
+        });
+
+        // Initialize Daily Biometric Punch Register Pagination
+        var punchPager = setupTablePagination({
+            tableId: 'ba-daily-punch-table',
+            paginationBarId: 'ba-daily-punch-pagination-bar',
+            pageSizeSelectId: 'ba-daily-punch-page-size',
+            infoId: 'ba-daily-punch-pagination-info',
+            btnsId: 'ba-daily-punch-pagination-btns',
+            rowSelector: 'tr.ba-punch-row',
+            itemLabel: 'records',
+            emptyText: 'No punch records to display',
+            defaultPageSize: '10'
+        });
+
+        // Student Name Sorting for Daily Biometric Punch Register
+        var punchSortHeader = document.getElementById('ba-punch-sort-student');
+        if (punchSortHeader) {
+            var punchSortDir = 'asc';
+            punchSortHeader.addEventListener('click', function() {
+                var table = document.getElementById('ba-daily-punch-table');
+                if (!table) return;
+                var tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                var rows = Array.from(tbody.querySelectorAll('tr.ba-punch-row'));
+                if (rows.length <= 1) return;
+
+                punchSortDir = (punchSortDir === 'asc') ? 'desc' : 'asc';
+                var icon = punchSortHeader.querySelector('.ba-sort-icon');
+                if (icon) {
+                    icon.textContent = (punchSortDir === 'asc') ? '▲' : '▼';
+                    icon.style.color = '#2563eb';
+                }
+
+                rows.sort(function(a, b) {
+                    var cellA = a.querySelector('td[data-student-name]');
+                    var cellB = b.querySelector('td[data-student-name]');
+                    var nameA = cellA ? (cellA.getAttribute('data-student-name') || '').trim() : '';
+                    var nameB = cellB ? (cellB.getAttribute('data-student-name') || '').trim() : '';
+                    return (punchSortDir === 'asc') ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+                });
+
+                rows.forEach(function(row, idx) {
+                    var idxEl = row.querySelector('.ba-row-idx');
+                    if (idxEl) {
+                        idxEl.textContent = (idx + 1);
+                    }
+                    tbody.appendChild(row);
+                });
+
+                if (punchPager && typeof punchPager.setPage === 'function') {
+                    punchPager.setPage(1);
+                }
+            });
+        }
+
+        // Student Name Sorting for Student Attendance Matrix
+        var matrixSortHeader = document.getElementById('ba-matrix-sort-student');
+        if (matrixSortHeader) {
+            var matrixSortDir = 'asc';
+            matrixSortHeader.addEventListener('click', function() {
+                var table = document.getElementById('ba-attendance-matrix-table');
+                if (!table) return;
+                var tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                var rows = Array.from(tbody.querySelectorAll('tr.ba-matrix-row'));
+                if (rows.length <= 1) return;
+
+                matrixSortDir = (matrixSortDir === 'asc') ? 'desc' : 'asc';
+                var icon = matrixSortHeader.querySelector('.ba-sort-icon');
+                if (icon) {
+                    icon.textContent = (matrixSortDir === 'asc') ? '▲' : '▼';
+                    icon.style.color = '#2563eb';
+                }
+
+                rows.sort(function(a, b) {
+                    var cellA = a.querySelector('td[data-student-name]');
+                    var cellB = b.querySelector('td[data-student-name]');
+                    var nameA = cellA ? (cellA.getAttribute('data-student-name') || '').trim() : '';
+                    var nameB = cellB ? (cellB.getAttribute('data-student-name') || '').trim() : '';
+                    return (matrixSortDir === 'asc') ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+                });
+
+                rows.forEach(function(row) {
+                    tbody.appendChild(row);
+                });
+
+                if (attMatrixPager && typeof attMatrixPager.setPage === 'function') {
+                    attMatrixPager.setPage(1);
+                }
+            });
+        }
+
+        // Interactive Session Calendar Picker for Daily Biometric Register
+        var calWrapper = document.getElementById('ba-session-calendar-wrapper');
+        if (calWrapper) {
+            var rawSessions = calWrapper.getAttribute('data-sessions');
+            var sessionMap = {};
+            try {
+                sessionMap = JSON.parse(rawSessions) || {};
+            } catch (e) {
+                sessionMap = {};
+            }
+            var currentDateStr = calWrapper.getAttribute('data-current-date') || '';
+            var initialDate = currentDateStr ? new Date(currentDateStr + 'T00:00:00') : new Date();
+            if (isNaN(initialDate.getTime())) {
+                initialDate = new Date();
+            }
+
+            var viewYear = initialDate.getFullYear();
+            var viewMonth = initialDate.getMonth(); // 0-indexed
+
+            var calBtn = document.getElementById('ba-session-calendar-btn');
+            var calPopover = document.getElementById('ba-session-calendar-popover');
+            var monthYearEl = document.getElementById('ba-cal-month-year');
+            var daysGridEl = document.getElementById('ba-cal-days-grid');
+            var prevBtn = document.getElementById('ba-cal-prev-month');
+            var nextBtn = document.getElementById('ba-cal-next-month');
+
+            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+            function renderCalendar() {
+                if (!monthYearEl || !daysGridEl) return;
+                monthYearEl.textContent = monthNames[viewMonth] + ' ' + viewYear;
+                daysGridEl.innerHTML = '';
+
+                var firstDayIndex = new Date(viewYear, viewMonth, 1).getDay(); // 0 is Sunday
+                var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+                // Previous month padding
+                for (var i = 0; i < firstDayIndex; i++) {
+                    var emptyCell = document.createElement('div');
+                    emptyCell.style.height = '34px';
+                    daysGridEl.appendChild(emptyCell);
+                }
+
+                // Days of current month
+                for (var day = 1; day <= daysInMonth; day++) {
+                    var mStr = (viewMonth + 1) < 10 ? '0' + (viewMonth + 1) : '' + (viewMonth + 1);
+                    var dStr = day < 10 ? '0' + day : '' + day;
+                    var isoDate = viewYear + '-' + mStr + '-' + dStr;
+
+                    var cell = document.createElement('div');
+                    cell.style.height = '34px';
+                    cell.style.display = 'flex';
+                    cell.style.flexDirection = 'column';
+                    cell.style.alignItems = 'center';
+                    cell.style.justifyContent = 'center';
+                    cell.style.borderRadius = '6px';
+                    cell.style.fontSize = '11.5px';
+                    cell.style.userSelect = 'none';
+
+                    var dayNum = document.createElement('span');
+                    dayNum.textContent = day;
+                    dayNum.style.lineHeight = '1';
+                    cell.appendChild(dayNum);
+
+                    if (sessionMap[isoDate]) {
+                        // Available Session Date: HIGHLIGHTED & SELECTABLE
+                        var sessList = Array.isArray(sessionMap[isoDate]) ? sessionMap[isoDate] : [sessionMap[isoDate]];
+                        var sessInfo = sessList[0];
+                        var isSelected = (isoDate === currentDateStr);
+                        var titleStr = sessList.map(function(s) { return s.code + ' (' + (s.type || 'Class') + ')'; }).join(', ');
+                        var badgeStr = sessList.map(function(s) { return s.code; }).join('/');
+
+                        cell.setAttribute('title', titleStr + ' [Click to view]');
+                        cell.style.cursor = 'pointer';
+                        cell.style.fontWeight = '700';
+
+                        if (isSelected) {
+                            cell.style.background = '#2563eb';
+                            cell.style.color = '#ffffff';
+                            cell.style.boxShadow = '0 1px 3px rgba(37, 99, 235, 0.4)';
+                        } else {
+                            cell.style.background = '#eff6ff';
+                            cell.style.color = '#1d4ed8';
+                            cell.style.border = '1px solid #bfdbfe';
+                        }
+
+                        // Small badge showing session code (e.g. S1 or S9/S10)
+                        var codeBadge = document.createElement('span');
+                        codeBadge.textContent = badgeStr;
+                        codeBadge.style.fontSize = '8px';
+                        codeBadge.style.lineHeight = '1';
+                        codeBadge.style.marginTop = '2px';
+                        codeBadge.style.color = isSelected ? '#bfdbfe' : '#3b82f6';
+                        cell.appendChild(codeBadge);
+
+                        (function(d) {
+                            cell.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                if (typeof window.filterDailyRegister === 'function') {
+                                    window.filterDailyRegister(d);
+                                } else {
+                                    var url = new URL(window.location.href);
+                                    url.searchParams.set('att_date', d);
+                                    url.searchParams.delete('att_sess_id');
+                                    url.searchParams.set('tab', 'stdattendance');
+                                    url.hash = 'panel-stdattendance';
+                                    window.location.href = url.toString();
+                                }
+                            });
+                        })(isoDate);
+
+                        if (!isSelected) {
+                            cell.addEventListener('mouseenter', function() {
+                                this.style.background = '#dbeafe';
+                                this.style.borderColor = '#93c5fd';
+                            });
+                            cell.addEventListener('mouseleave', function() {
+                                this.style.background = '#eff6ff';
+                                this.style.borderColor = '#bfdbfe';
+                            });
+                        }
+                    } else {
+                        // Non-session date: DISABLED
+                        cell.style.color = '#cbd5e1';
+                        cell.style.cursor = 'not-allowed';
+                        cell.style.opacity = '0.35';
+                        cell.style.pointerEvents = 'none';
+                    }
+
+                    daysGridEl.appendChild(cell);
+                }
+            }
+
+            if (calBtn && calPopover) {
+                calBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var isOpen = calPopover.style.display !== 'none';
+                    if (isOpen) {
+                        calPopover.style.display = 'none';
+                    } else {
+                        calPopover.style.display = 'block';
+                        renderCalendar();
+                    }
+                });
+
+                document.addEventListener('click', function(e) {
+                    if (!calWrapper.contains(e.target)) {
+                        calPopover.style.display = 'none';
+                    }
+                });
+            }
+
+            if (prevBtn) {
+                prevBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    viewMonth--;
+                    if (viewMonth < 0) {
+                        viewMonth = 11;
+                        viewYear--;
+                    }
+                    renderCalendar();
+                });
+            }
+
+            if (nextBtn) {
+                nextBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    viewMonth++;
+                    if (viewMonth > 11) {
+                        viewMonth = 0;
+                        viewYear++;
+                    }
+                    renderCalendar();
+                });
+            }
+        }
     }
 
     return {

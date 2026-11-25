@@ -20,7 +20,6 @@ defined('MOODLE_INTERNAL') || die();
 class program_service {
 
     const TABLE_PROGRAM = 'local_batchanalytics_program';
-    const TABLE_BATCHES = 'local_batchanalytics_prog_batch';
 
     /**
      * Check if a user is a sponsor user with view-only permissions.
@@ -55,25 +54,18 @@ class program_service {
     }
 
     /**
-     * Check if user has permission to perform write operations (upload evidence, edit lesson plans, edit data, add notes).
+     * Check if user has true permission to perform write operations (upload evidence, edit lesson plans, edit data, add notes).
      * Strictly restricted to: programmanager, ssteam, manager, teacher, editingteacher (and site admin).
-     * Users with only sponsor roles (programsponsor / programmisviewer) are strictly read-only.
+     * Unlike can_write_operations(), this does NOT factor in temporary UI preview modes ($SESSION->ba_viewmode).
      *
      * @param \context|null $context
      * @param int|null $userid
      * @return bool
      */
-    public static function can_write_operations(?\context $context = null, ?int $userid = null): bool {
-        global $USER, $DB, $SESSION;
+    public static function has_write_permission(?\context $context = null, ?int $userid = null): bool {
+        global $USER, $DB;
         $uid = $userid ?: (int)$USER->id;
         if ($uid <= 0) {
-            return false;
-        }
-        // In preview sponsor mode, write operations are disabled
-        if (!empty($SESSION->ba_viewmode) && $SESSION->ba_viewmode === 'sponsor') {
-            return false;
-        }
-        if (optional_param('viewmode', '', PARAM_ALPHANUMEXT) === 'sponsor') {
             return false;
         }
         if (is_siteadmin($uid)) {
@@ -123,6 +115,36 @@ class program_service {
             || has_capability('local/batchanalytics:manageevidence', $ctx, $uid)
             || has_capability('local/batchanalytics:managelessonplan', $ctx, $uid)
             || has_capability('local/batchanalytics:editreviewnotes', $ctx, $uid);
+    }
+
+    /**
+     * Determine if current user can perform write operations in the active UI view.
+     * Mentors, teachers, and administrators can perform write operations.
+     * True sponsors (external sponsor users) are strictly read-only.
+     *
+     * @param \context|null $context
+     * @param int|null $userid
+     * @return bool
+     */
+    public static function can_write_operations(?\context $context = null, ?int $userid = null): bool {
+        global $USER;
+        $uid = $userid ?: (int)$USER->id;
+        if ($uid <= 0) {
+            return false;
+        }
+
+        // 1. Site administrators always have full write access
+        if (is_siteadmin($uid)) {
+            return true;
+        }
+
+        // 2. True sponsors are strictly read-only
+        if (self::is_sponsor_user($uid)) {
+            return false;
+        }
+
+        // 3. User must have write permission (program manager, ssteam, mentor, teacher)
+        return self::has_write_permission($context, $uid);
     }
 
     /**
@@ -208,7 +230,7 @@ class program_service {
         }
 
         // If user is site administrator or has write role, default to internal view unless viewmode=sponsor
-        if (is_siteadmin($uid) || self::can_write_operations($context, $uid)) {
+        if (is_siteadmin($uid) || self::has_write_permission($context, $uid)) {
             return false;
         }
 
@@ -242,6 +264,30 @@ class program_service {
         }
 
         if (!$record) {
+            $sites = '-';
+            try {
+                if ($DB->get_manager()->table_exists('local_bm_batch') && $DB->get_manager()->field_exists('local_bm_batch', 'location')) {
+                    $loc_records = $DB->get_records_sql(
+                        "SELECT DISTINCT location FROM {local_bm_batch} 
+                         WHERE (LOWER(coursename) = 'essci' OR LOWER(coursename) LIKE '%essci%') 
+                           AND location IS NOT NULL AND TRIM(location) != ''"
+                    );
+                    if (!empty($loc_records)) {
+                        $loc_names = [];
+                        foreach ($loc_records as $lr) {
+                            if (!empty($lr->location) && trim($lr->location) !== '') {
+                                $loc_names[] = trim($lr->location);
+                            }
+                        }
+                        if (!empty($loc_names)) {
+                            $sites = implode(' · ', array_unique($loc_names));
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                $sites = '-';
+            }
+
             // Default Marvell Semiconductor / ESSCI program prototype entity
             $record = (object)[
                 'id' => 1,
@@ -251,7 +297,7 @@ class program_service {
                 'sponsor_name' => 'Marvell Semiconductor',
                 'pmo_name' => 'ESSCI (PMO / Skill Body)',
                 'partner_name' => 'Emertxe Information Technologies',
-                'sites' => 'Bangalore, Hyderabad',
+                'sites' => $sites,
                 'program_window' => 'Aug 2026 – Mar 2027',
                 'startdate' => 1785542400, // Aug 2026
                 'enddate' => 1806451200,   // Mar 2027
@@ -276,110 +322,9 @@ class program_service {
     public static function get_program_batches(int $programid = 1): array {
         global $DB;
 
-        // 1. If explicit mappings exist in local_batchanalytics_prog_batch, use them
-        if ($DB->get_manager()->table_exists(self::TABLE_BATCHES)) {
-            $mappings = $DB->get_records(self::TABLE_BATCHES, ['programid' => $programid], 'id ASC');
-            if (!empty($mappings)) {
-                $has_sections = $DB->get_manager()->table_exists('local_bm_classsection');
-                $has_batches = $DB->get_manager()->table_exists('local_bm_batch');
-
-                foreach ($mappings as $m) {
-                    $sec = null;
-                    if ($has_sections && !empty($m->sectionid)) {
-                        $sec = $DB->get_record('local_bm_classsection', ['id' => (int)$m->sectionid]);
-                    }
-                    $parent_b = null;
-                    if ($has_batches && !empty($m->batchid)) {
-                        $parent_b = $DB->get_record('local_bm_batch', ['id' => (int)$m->batchid]);
-                    }
-
-                    // Section display name: show ONLY class section name (strip any MVL prefix)
-                    $clean_sec_name = '';
-                    if ($sec && !empty($sec->name)) {
-                        $clean_sec_name = trim($sec->name);
-                    } else if (!empty($m->sponsor_batch_code)) {
-                        $clean_sec_name = trim($m->sponsor_batch_code);
-                    } else if ($parent_b && !empty($parent_b->name)) {
-                        $clean_sec_name = trim($parent_b->name);
-                    }
-                    $clean_sec_name = preg_replace('/^MVL/i', '', $clean_sec_name);
-                    $m->section_name = $clean_sec_name;
-                    $m->sponsor_batch_code = $clean_sec_name;
-
-                    // Course name & module
-                    $course_name = '';
-                    $current_module = 'Advanced C';
-                    $active_cids = [];
-                    if ($sec && !empty($sec->moduledata)) {
-                        $mods = \local_batchanalytics\util::decode_module_data($sec->moduledata, true);
-                        foreach ($mods as $mod) {
-                            if (empty($course_name) && !empty($mod['coursename'])) {
-                                $course_name = $mod['coursename'];
-                            }
-                            if (!empty($mod['name'])) {
-                                $current_module = $mod['name'];
-                            }
-                            if (!empty($mod['moodlecourseid'])) {
-                                $active_cids[] = (int)$mod['moodlecourseid'];
-                            }
-                        }
-                    }
-                    if (empty($course_name) && $parent_b && !empty($parent_b->coursename)) {
-                        $course_name = $parent_b->coursename;
-                    }
-                    if (empty($course_name)) {
-                        $course_name = 'Embedded Systems (ESSCI)';
-                    }
-                    $m->course = $course_name;
-                    $m->courseName = $course_name;
-                    $m->current_module = $current_module;
-                    $m->currentModule = $current_module;
-
-                    // Start date
-                    $ts = 0;
-                    if ($sec && !empty($sec->startdate)) {
-                        $ts = is_numeric($sec->startdate) ? (int)$sec->startdate : strtotime((string)$sec->startdate);
-                    } else if ($parent_b && !empty($parent_b->startdate)) {
-                        $ts = (int)$parent_b->startdate;
-                    }
-                    $m->startdate = ($ts > 0) ? userdate($ts, '%d %b %Y') : '18 Jul 2026';
-                    $m->startDate = $m->startdate;
-                    $m->start_timestamp = $ts;
-
-                    // Enrolled count
-                    $student_count = 0;
-                    if (!empty($active_cids)) {
-                        list($insql, $inparams) = $DB->get_in_or_equal($active_cids);
-                        $student_count = (int)$DB->count_records_sql(
-                            "SELECT COUNT(DISTINCT ue.userid) 
-                             FROM {user_enrolments} ue 
-                             JOIN {enrol} e ON e.id = ue.enrolid 
-                             WHERE e.courseid $insql AND ue.status = 0",
-                            $inparams
-                        );
-                    }
-                    if ($student_count <= 0 && $sec && class_exists('\local_batchmanagement\classsection')) {
-                        try {
-                            $bm_students = \local_batchmanagement\classsection::get_enrolled_course_students((int)$sec->id, 0, 1000);
-                            $student_count = count($bm_students);
-                        } catch (\Throwable $e) {}
-                    }
-                    if ($student_count <= 0) {
-                        $student_count = 12;
-                    }
-                    $m->enrolled = $student_count;
-                    $m->studentCount = $student_count;
-
-                    // Status
-                    $m->status = 'on_schedule';
-                    $m->status_label = 'On schedule';
-                }
-                return array_values($mappings);
-            }
-        }
-
-        // 2. Query Batch Management (local_bm_batch) for batches where coursename is 'essci'
+        // Query Batch Management (local_bm_batch) for batches where coursename is 'essci'
         if ($DB->get_manager()->table_exists('local_bm_batch')) {
+            $has_batch_loc = $DB->get_manager()->field_exists('local_bm_batch', 'location');
             $bm_batches = $DB->get_records_sql(
                 "SELECT * FROM {local_bm_batch} 
                  WHERE LOWER(coursename) = 'essci' OR LOWER(coursename) LIKE '%essci%' 
@@ -396,13 +341,12 @@ class program_service {
                         $sections = $DB->get_records('local_bm_classsection', ['batchid' => $b->id], 'id ASC');
                     }
                     if (empty($sections)) {
-                        $sections = [(object)[
-                            'id' => $b->id,
-                            'name' => $b->name,
-                            'batchid' => $b->id,
-                            'classlocation' => 'Bangalore',
-                            'moduledata' => ''
-                        ]];
+                        continue; // Exclude batches that have no class sections (parity with regular mode).
+                    }
+
+                    $b_site = '-';
+                    if ($has_batch_loc && !empty($b->location) && trim($b->location) !== '') {
+                        $b_site = trim($b->location);
                     }
 
                     foreach ($sections as $sec) {
@@ -429,8 +373,6 @@ class program_service {
                             $coursename = 'Embedded Systems (ESSCI)';
                         }
 
-                        $site = !empty($sec->classlocation) ? $sec->classlocation : 'Bangalore';
-
                         $student_count = 0;
                         if (!empty($active_cids)) {
                             list($insql, $inparams) = $DB->get_in_or_equal($active_cids);
@@ -451,7 +393,7 @@ class program_service {
                             'programid' => $programid,
                             'batchid' => (int)$b->id,
                             'sectionid' => (int)$sec->id,
-                            'site' => $site,
+                            'site' => $b_site,
                             'sponsor_batch_code' => $sec_name,
                             'course' => $coursename,
                             'startdate' => $b->startdate > 0 ? userdate($b->startdate, '%d %b %Y') : (!empty($sec->timecreated) ? userdate($sec->timecreated, '%d %b %Y') : '—'),
@@ -462,7 +404,6 @@ class program_service {
                         ];
                     }
                 }
-
                 return $results;
             }
         }

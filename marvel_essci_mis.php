@@ -34,7 +34,7 @@ if (empty($PAGE->url)) {
     $PAGE->set_url(new moodle_url('/local/batchanalytics/marvel_essci_mis.php'));
 }
 $PAGE->set_title('Advanced Skilling of Women in Semiconductors — Program MIS');
-$PAGE->set_heading('Advanced Skilling of Women in Semiconductors — Program MIS');
+$PAGE->set_heading('');
 
 $layout = optional_param('layout', 'standard', PARAM_ALPHA);
 if ($layout === 'embedded' || $layout === 'bare') {
@@ -43,7 +43,12 @@ if ($layout === 'embedded' || $layout === 'bare') {
     $PAGE->set_pagelayout($layout);
 }
 
-$PAGE->requires->css(new moodle_url('/local/batchanalytics/marvel_essci_mis.css', ['v' => '3.3.0']));
+$mis_css_v = file_exists(__DIR__ . '/marvel_essci_mis.css') ? filemtime(__DIR__ . '/marvel_essci_mis.css') : '3.5.0';
+$PAGE->requires->css(new moodle_url('/local/batchanalytics/marvel_essci_mis.css', ['v' => (string)$mis_css_v]));
+$dash_v = file_exists(__DIR__ . '/dashboard.css') ? filemtime(__DIR__ . '/dashboard.css') : '3.5.0';
+$PAGE->requires->css(new moodle_url('/local/batchanalytics/dashboard.css', ['v' => (string)$dash_v]));
+$style_v = file_exists(__DIR__ . '/styles.css') ? filemtime(__DIR__ . '/styles.css') : '3.5.0';
+$PAGE->requires->css(new moodle_url('/local/batchanalytics/styles.css', ['v' => (string)$style_v]));
 
 $emertxe_logo_url = (new moodle_url('/local/batchanalytics/pix/emertxe_logo.png'))->out(false);
 $essci_logo_url   = (new moodle_url('/local/batchanalytics/pix/essci_logo.png'))->out(false);
@@ -354,7 +359,27 @@ if ($interview_selects === false || $interview_selects === '') {
 
 echo $OUTPUT->header();
 ?>
+<script>
+(function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+})();
+document.addEventListener('DOMContentLoaded', function() {
+  var p = document.getElementById('page');
+  if (p) p.classList.remove('drawers', 'drag-container');
+});
+</script>
 <style>
+/* Reset drawers & container to clean full-width */
+#page,
+#page.drawers,
+.drawers.drag-container,
+#page-wrapper {
+  overflow: visible !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
 /* Full width and transparent container override across themes */
 @media (min-width: 768px) {
   .pagelayout-standard #page.drawers .main-inner,
@@ -395,58 +420,76 @@ echo $OUTPUT->header();
   padding: 0 !important;
   margin: 0 !important;
 }
-.crumbbar, .wrap {
+.wrap {
   max-width: 100% !important;
   width: 100% !important;
   padding-left: 20px !important;
   padding-right: 20px !important;
+  box-sizing: border-box !important;
+}
+.crumbbar {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 12px 0 6px 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.crumbbar .crumb {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+  font-size: 13px !important;
+  color: #64748b !important;
+}
+.crumbbar a {
+  color: #12395f !important;
+  text-decoration: none !important;
+  font-weight: 500 !important;
+}
+.crumbbar a:hover {
+  text-decoration: underline !important;
+}
+.crumbbar b {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+.crumb-sep {
+  margin: 0 8px !important;
+  color: #94a3b8 !important;
+  font-weight: 400 !important;
+}
+.shell,
+.ba-essci-dashboard .shell {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(30, 50, 70, 0.08) !important;
+  border: 1px solid var(--line, #e3e6ea) !important;
+  padding: 26px 28px 32px !important;
+  margin: 14px auto 36px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;
 }
 </style>
 
 <?php if (is_siteadmin($USER->id) || has_capability('local/batchanalytics:manage', $context)): ?>
-  <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 24px; background:#f0fdf4; border-bottom:1px solid #bbf7d0; font-size:12.5px; color:#166534;">
-    <div style="display:flex; align-items:center; gap:8px;">
-      <span style="font-weight:700;"><i class="fa fa-check-circle"></i> Preview Mode:</span>
-      <span>Viewing as Marvell &amp; ESSCI Program Sponsor.</span>
+  <div class="wrap" style="margin-bottom:0; padding-top:14px;">
+    <div style="padding:12px 20px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#166534; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-weight:700;"><i class="fa fa-check-circle"></i> Preview Mode:</span>
+        <span>Viewing as Marvell &amp; ESSCI Program Sponsor.</span>
+      </div>
+      <a href="<?= s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'internal']))->out(false)) ?>" class="btn btn-sm btn-outline-secondary" style="background:#fff; color:#1e293b; border:1px solid #cbd5e1; text-decoration:none; font-size:12px; padding:5px 14px; display:inline-flex; align-items:center; gap:6px; border-radius:6px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+        <i class="fa fa-exchange"></i> Switch to Internal Operations View
+      </a>
     </div>
-    <a href="<?= s((new moodle_url('/local/batchanalytics/index.php', ['viewmode' => 'internal']))->out(false)) ?>" class="viewbtn" style="background:#fff; color:#1e293b; border:1px solid #cbd5e1; text-decoration:none; font-size:12px; padding:5px 14px; display:inline-flex; align-items:center; gap:6px; border-radius:6px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-      <i class="fa fa-exchange"></i> Switch to Internal Operations View
-    </a>
   </div>
 <?php endif; ?>
 
-<style>
-  @media (min-width: 768px) {
-    body.pagelayout-standard #page.drawers .main-inner,
-    body.limitedwidth #page.drawers .main-inner,
-    #page.drawers .main-inner,
-    #topofscroll.main-inner,
-    .main-inner {
-      max-width: 100% !important;
-      width: 100% !important;
-      padding-left: 24px !important;
-      padding-right: 24px !important;
-    }
-  }
-  .wrap {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 0 24px !important;
-    margin: 10px auto 36px !important;
-  }
-  .shell {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    padding: 10px 0 36px !important;
-    max-width: 100% !important;
-    width: 100% !important;
-  }
-</style>
-
- <div class="crumbbar"><span class="crumb" id="crumb"><b>Home</b></span></div>
- <div class="wrap"><div class="shell">
+ <div class="local-batchanalytics-wrap ba-essci-dashboard" id="ba-sponsor-mis-container">
+   <div class="wrap">
+     <div class="shell">
 <!-- ================= HOME ================= -->
   <div class="view on" id="v-home">
    <script type="application/json" id="marvel_essci_cohorts_data"><?= json_encode($cohort_batches) ?></script>
@@ -564,10 +607,10 @@ echo $OUTPUT->header();
     </table>
    </div>
    <div class="readnote">Read-only Program MIS for Marvell &amp; ESSCI stakeholders.</div>
-  </div>
-
-  
- </div></div>
+  </div> <!-- /#v-home -->
+ </div> <!-- /.shell -->
+</div> <!-- /.wrap -->
+</div> <!-- /.local-batchanalytics-wrap -->
 
  <!-- GENERIC INFO MODAL (report hooks) -->
  <div class="ov" id="infoOv"><div class="ovbox infobox">

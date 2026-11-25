@@ -29,9 +29,10 @@ class biometric_service {
      *
      * @param int $sectionid
      * @param int $courseid
+     * @param array $allowed_student_uids Optional array of verified student user IDs (e.g. from module.php)
      * @return array
      */
-    public static function get_attendance_matrix(int $sectionid, int $courseid = 0): array {
+    public static function get_attendance_matrix(int $sectionid, int $courseid = 0, array $allowed_student_uids = []): array {
         global $DB;
 
         // 1. Resolve target courseid if not directly passed
@@ -81,47 +82,69 @@ class biometric_service {
                         }
                     }
 
-                    // Build session list
+                    // Build session list dynamically (S1 to Sn)
                     $sessions = [];
                     $sess_index = 1;
                     foreach ($sessions_records as $s) {
                         $code = 'S' . $sess_index;
                         $dt = new \DateTime("@{$s->sessdate}");
                         $dt->setTimezone($tz);
+                        $desc_clean = strip_tags($s->description ?? '');
+                        $is_lab = (strpos(strtolower($desc_clean), 'lab') !== false || strpos(strtolower($desc_clean), 'lap') !== false);
+                        $sess_type = $is_lab ? 'Lab' : 'Class';
+
                         $sessions[] = [
                             'id' => (int)$s->id,
                             'code' => $code,
-                            'date' => strtoupper($dt->format('d M')),
+                            'date' => $dt->format('d M'),
                             'raw_date' => $dt->format('Y-m-d'),
-                            'description' => strip_tags($s->description ?? ''),
+                            'description' => $desc_clean,
+                            'type' => $sess_type,
                             'duration' => (int)$s->duration,
                             'sessdate' => (int)$s->sessdate,
                         ];
                         $sess_index++;
                     }
 
-                    // Query enrolled students (cleanly exclude mentors, teachers, managers)
+                    // Query enrolled students (strictly isolate students - zero mentors, teachers, managers, PMs, or staff)
                     $course_context = \context_course::instance($target_courseid);
-                    $enrolled_users = get_enrolled_users($course_context, '', 0, 'u.*', 'u.lastname ASC, u.firstname ASC');
                     $student_users = [];
-                    foreach ($enrolled_users as $u) {
-                        $roles = get_user_roles($course_context, $u->id, true);
-                        $is_mentor = false;
-                        foreach ($roles as $r) {
-                            $short = strtolower($r->shortname ?? '');
-                            if (in_array($short, ['editingteacher', 'teacher', 'trainer', 'manager', 'coursecreator'])) {
-                                $is_mentor = true;
-                                break;
+
+                    if (!empty($allowed_student_uids)) {
+                        list($insql, $inparams) = $DB->get_in_or_equal($allowed_student_uids, SQL_PARAMS_NAMED, 'suid');
+                        $student_users = $DB->get_records_select('user', "id $insql AND deleted = 0", $inparams, 'lastname ASC, firstname ASC');
+                    } else {
+                        // Strict student discovery: role shortname = 'student' OR archetype = 'student' and active course enrolment
+                        $studentroles = $DB->get_records_select('role', "shortname = 'student' OR archetype = 'student'", null, '', 'id');
+                        $studentroleids = !empty($studentroles) ? array_map('intval', array_keys($studentroles)) : [];
+                        if (!empty($studentroleids)) {
+                            $role_users = get_role_users(
+                                $studentroleids,
+                                $course_context,
+                                false,
+                                'ra.id AS raid, u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email'
+                            );
+                            $valid_map = \local_batchanalytics\util::get_courses_student_uids([$target_courseid])[$target_courseid] ?? [];
+                            if (!empty($role_users)) {
+                                foreach ($role_users as $userrec) {
+                                    $uid = (int)$userrec->id;
+                                    $roles = get_user_roles($course_context, $uid, true);
+                                    $is_staff = false;
+                                    foreach ($roles as $r) {
+                                        $short = strtolower($r->shortname ?? '');
+                                        if (in_array($short, ['editingteacher', 'teacher', 'trainer', 'manager', 'coursecreator', 'program_manager', 'ss_team_member', 'mentor_resource_access'])) {
+                                            $is_staff = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!$is_staff && !has_capability('moodle/course:update', $course_context, $uid)) {
+                                        if (isset($valid_map[$uid]) && !isset($student_users[$uid])) {
+                                            $student_users[$uid] = $userrec;
+                                        }
+                                    }
+                                }
                             }
                         }
-                        if (!$is_mentor && !has_capability('moodle/course:update', $course_context, $u->id)) {
-                            $student_users[$u->id] = $u;
-                        }
-                    }
-
-                    // Fallback to all enrolled if none specifically have student-only roles
-                    if (empty($student_users)) {
-                        $student_users = $enrolled_users;
                     }
 
                     // Query attendance logs
@@ -323,7 +346,7 @@ class biometric_service {
                         $students[] = [
                             'id' => $uid,
                             'userid' => $uid,
-                            'name' => fullname($u),
+                            'name' => trim(($u->firstname ?? '') . ' ' . ($u->lastname ?? '')) ?: fullname($u),
                             'attendance_pct' => $att_pct,
                             'is_shortfall' => ($att_pct < 75),
                             'sessions' => $session_map,
@@ -361,24 +384,24 @@ class biometric_service {
 
         // 3. Fallback prototype students matching S1-S18 specification with rich Check-in & Check-out timing
         $sessions = [
-            ['code' => 'S1', 'date' => '17 AUG', 'raw_date' => '2026-08-17'],
-            ['code' => 'S2', 'date' => '18 AUG', 'raw_date' => '2026-08-18'],
-            ['code' => 'S3', 'date' => '19 AUG', 'raw_date' => '2026-08-19'],
-            ['code' => 'S4', 'date' => '20 AUG', 'raw_date' => '2026-08-20'],
-            ['code' => 'S5', 'date' => '21 AUG', 'raw_date' => '2026-08-21'],
-            ['code' => 'S6', 'date' => '22 AUG', 'raw_date' => '2026-08-22'],
-            ['code' => 'S7', 'date' => '24 AUG', 'raw_date' => '2026-08-24'],
-            ['code' => 'S8', 'date' => '25 AUG', 'raw_date' => '2026-08-25'],
-            ['code' => 'S9', 'date' => '26 AUG', 'raw_date' => '2026-08-26'],
-            ['code' => 'S10', 'date' => '27 AUG', 'raw_date' => '2026-08-27'],
-            ['code' => 'S11', 'date' => '28 AUG', 'raw_date' => '2026-08-28'],
-            ['code' => 'S12', 'date' => '29 AUG', 'raw_date' => '2026-08-29'],
-            ['code' => 'S13', 'date' => '31 AUG', 'raw_date' => '2026-08-31'],
-            ['code' => 'S14', 'date' => '01 SEPT', 'raw_date' => '2026-09-01'],
-            ['code' => 'S15', 'date' => '02 SEPT', 'raw_date' => '2026-09-02'],
-            ['code' => 'S16', 'date' => '03 SEPT', 'raw_date' => '2026-09-03'],
-            ['code' => 'S17', 'date' => '04 SEPT', 'raw_date' => '2026-09-04'],
-            ['code' => 'S18', 'date' => '05 SEPT', 'raw_date' => '2026-09-05'],
+            ['code' => 'S1', 'date' => '17 Aug', 'type' => 'Class', 'raw_date' => '2026-08-17'],
+            ['code' => 'S2', 'date' => '18 Aug', 'type' => 'Class', 'raw_date' => '2026-08-18'],
+            ['code' => 'S3', 'date' => '19 Aug', 'type' => 'Class', 'raw_date' => '2026-08-19'],
+            ['code' => 'S4', 'date' => '20 Aug', 'type' => 'Lab', 'raw_date' => '2026-08-20'],
+            ['code' => 'S5', 'date' => '21 Aug', 'type' => 'Class', 'raw_date' => '2026-08-21'],
+            ['code' => 'S6', 'date' => '22 Aug', 'type' => 'Lab', 'raw_date' => '2026-08-22'],
+            ['code' => 'S7', 'date' => '24 Aug', 'type' => 'Class', 'raw_date' => '2026-08-24'],
+            ['code' => 'S8', 'date' => '25 Aug', 'type' => 'Lab', 'raw_date' => '2026-08-25'],
+            ['code' => 'S9', 'date' => '26 Aug', 'type' => 'Class', 'raw_date' => '2026-08-26'],
+            ['code' => 'S10', 'date' => '27 Aug', 'type' => 'Lab', 'raw_date' => '2026-08-27'],
+            ['code' => 'S11', 'date' => '28 Aug', 'type' => 'Class', 'raw_date' => '2026-08-28'],
+            ['code' => 'S12', 'date' => '29 Aug', 'type' => 'Lab', 'raw_date' => '2026-08-29'],
+            ['code' => 'S13', 'date' => '31 Aug', 'type' => 'Class', 'raw_date' => '2026-08-31'],
+            ['code' => 'S14', 'date' => '01 Sep', 'type' => 'Lab', 'raw_date' => '2026-09-01'],
+            ['code' => 'S15', 'date' => '02 Sep', 'type' => 'Class', 'raw_date' => '2026-09-02'],
+            ['code' => 'S16', 'date' => '03 Sep', 'type' => 'Lab', 'raw_date' => '2026-09-03'],
+            ['code' => 'S17', 'date' => '04 Sep', 'type' => 'Class', 'raw_date' => '2026-09-04'],
+            ['code' => 'S18', 'date' => '05 Sep', 'type' => 'Lab', 'raw_date' => '2026-09-05'],
         ];
 
         // Sample prototype students
@@ -492,39 +515,493 @@ class biometric_service {
     }
 
     /**
-     * Retrieve daily attendance register for mentors and students on a specific date.
-     * Integrates directly with local_attendancepdf\attendance_helper.
+     * Retrieve daily attendance register for students on a specific date.
+     * Integrates with local_attendancepdf\attendance_helper when available, or
+     * compiles directly from mod_attendance and biometric punch sources.
+     * Strictly enforces student-only isolation (zero staff/mentor leakage).
      *
      * @param int $sectionid
      * @param int $courseid
      * @param string $target_date Date string e.g. '2026-11-16'
+     * @param array $allowed_student_uids Optional verified student user IDs
+     * @param int $target_session_id Optional specific session ID (e.g. Class vs Lab on same date)
      * @return array
      */
-    public static function get_daily_attendance_register(int $sectionid, int $courseid = 0, string $target_date = ''): array {
+    public static function get_daily_attendance_register(int $sectionid, int $courseid = 0, string $target_date = '', array $allowed_student_uids = [], int $target_session_id = 0): array {
         global $CFG, $DB;
 
         if (empty($target_date)) {
             $target_date = date('Y-m-d');
         }
 
+        $date_ts = strtotime($target_date);
+        $date_formatted = date('d-M-Y', $date_ts);
+        $day_name = date('l', $date_ts);
+
+        // 1. Resolve target courseid
+        $target_courseid = $courseid;
+        if ($target_courseid <= 0 && $sectionid > 0 && $DB->get_manager()->table_exists('local_bm_classsection')) {
+            $sec = $DB->get_record('local_bm_classsection', ['id' => $sectionid]);
+            if ($sec && !empty($sec->moduledata)) {
+                $mods = \local_batchanalytics\util::decode_module_data($sec->moduledata, true);
+                foreach ($mods as $m) {
+                    $cid = !empty($m['moodlecourseid']) ? (int)$m['moodlecourseid'] : (!empty($m['courseid']) ? (int)$m['courseid'] : 0);
+                    if ($cid > 0) {
+                        $target_courseid = $cid;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Try using local_attendancepdf helper if available
         if (file_exists($CFG->dirroot . '/local/attendancepdf/classes/attendance_helper.php')) {
             require_once($CFG->dirroot . '/local/attendancepdf/classes/attendance_helper.php');
-            return \local_attendancepdf\attendance_helper::get_daily_attendance_data($courseid, $target_date);
+            $data = \local_attendancepdf\attendance_helper::get_daily_attendance_data($target_courseid, $target_date);
+            if (!empty($data['students'])) {
+                // Strictly filter to allowed students if provided
+                if (!empty($allowed_student_uids)) {
+                    $allowed_map = array_fill_keys(array_map('intval', $allowed_student_uids), true);
+                    $data['students'] = array_values(array_filter($data['students'], function($s) use ($allowed_map) {
+                        $sid = (int)($s['id'] ?? ($s['userid'] ?? 0));
+                        return isset($allowed_map[$sid]);
+                    }));
+                }
+                if (!empty($data['students'])) {
+                    // Recalculate stats cleanly
+                    $data['stats']['total_students'] = count($data['students']);
+                    $data['stats']['students_present'] = count(array_filter($data['students'], function($s) {
+                        return in_array($s['day_status'] ?? '', ['Full Day', 'Present (Manual)', 'Late (Full Day)', 'Half Day']);
+                    }));
+                    $data['stats']['students_late'] = count(array_filter($data['students'], function($s) {
+                        return strpos($s['day_status'] ?? '', 'Late') !== false;
+                    }));
+                    $data['stats']['students_halfday'] = count(array_filter($data['students'], function($s) {
+                        return strpos($s['day_status'] ?? '', 'Half Day') !== false;
+                    }));
+                    $data['stats']['students_absent'] = count(array_filter($data['students'], function($s) {
+                        return ($s['day_status'] ?? '') === 'Absent';
+                    }));
+                    return $data;
+                }
+            }
+        }
+
+        // 2. Direct compilation from mod_attendance and punch records
+        $tz_str = get_config('local_attendancepdf', 'server_timezone') ?: (get_config('local_batchanalytics', 'server_timezone') ?: 'Asia/Kolkata');
+        try {
+            $tz = new \DateTimeZone($tz_str);
+        } catch (\Throwable $e) {
+            $tz = new \DateTimeZone('Asia/Kolkata');
+        }
+
+        $dstart = (new \DateTime($target_date . ' 00:00:00', $tz))->getTimestamp();
+        $dend   = (new \DateTime($target_date . ' 23:59:59', $tz))->getTimestamp();
+        $now = time();
+
+        // Resolve students
+        $student_users = [];
+        if (!empty($allowed_student_uids)) {
+            list($insql, $inparams) = $DB->get_in_or_equal($allowed_student_uids, SQL_PARAMS_NAMED, 'suid');
+            $student_users = $DB->get_records_select('user', "id $insql AND deleted = 0", $inparams, 'lastname ASC, firstname ASC');
+        } else if ($target_courseid > 0) {
+            $course_context = \context_course::instance($target_courseid);
+            $studentroles = $DB->get_records_select('role', "shortname = 'student' OR archetype = 'student'", null, '', 'id');
+            $studentroleids = !empty($studentroles) ? array_map('intval', array_keys($studentroles)) : [];
+            if (!empty($studentroleids)) {
+                $role_users = get_role_users($studentroleids, $course_context, false, 'ra.id AS raid, u.id, u.idnumber, u.username, u.firstname, u.lastname, u.email');
+                $valid_map = \local_batchanalytics\util::get_courses_student_uids([$target_courseid])[$target_courseid] ?? [];
+                if (!empty($role_users)) {
+                    foreach ($role_users as $userrec) {
+                        $uid = (int)$userrec->id;
+                        $roles = get_user_roles($course_context, $uid, true);
+                        $is_staff = false;
+                        foreach ($roles as $r) {
+                            $short = strtolower($r->shortname ?? '');
+                            if (in_array($short, ['editingteacher', 'teacher', 'trainer', 'manager', 'coursecreator', 'program_manager', 'ss_team_member', 'mentor_resource_access'])) {
+                                $is_staff = true;
+                                break;
+                            }
+                        }
+                        if (!$is_staff && !has_capability('moodle/course:update', $course_context, $uid)) {
+                            if (isset($valid_map[$uid]) && !isset($student_users[$uid])) {
+                                $student_users[$uid] = $userrec;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (empty($student_users)) {
+            return [
+                'date_formatted' => $date_formatted,
+                'day_name' => $day_name,
+                'mentors' => [],
+                'students' => [],
+                'stats' => [
+                    'total_mentors' => 0,
+                    'mentors_present' => 0,
+                    'total_students' => 0,
+                    'students_present' => 0,
+                    'students_late' => 0,
+                    'students_halfday' => 0,
+                    'students_absent' => 0,
+                ],
+            ];
+        }
+
+        // Query mod_attendance sessions for this date
+        $sess_ids = [];
+        $status_map = [];
+        if ($target_courseid > 0 && $DB->get_manager()->table_exists('attendance') && $DB->get_manager()->table_exists('attendance_sessions')) {
+            $att = $DB->get_record('attendance', ['course' => $target_courseid]);
+            if (!$att) {
+                $atts = $DB->get_records('attendance', ['course' => $target_courseid], 'id ASC', '*', 0, 1);
+                if (!empty($atts)) {
+                    $att = reset($atts);
+                }
+            }
+            if ($att) {
+                if ($DB->get_manager()->table_exists('attendance_statuses')) {
+                    $statuses = $DB->get_records('attendance_statuses', ['attendanceid' => $att->id]);
+                    foreach ($statuses as $st) {
+                        $status_map[(int)$st->id] = strtoupper(trim($st->acronym));
+                    }
+                }
+                if ($target_session_id > 0) {
+                    $matching_sessions = $DB->get_records_select(
+                        'attendance_sessions',
+                        'id = :sid AND attendanceid = :aid',
+                        ['sid' => $target_session_id, 'aid' => $att->id]
+                    );
+                } else {
+                    $matching_sessions = $DB->get_records_select(
+                        'attendance_sessions',
+                        'attendanceid = :aid AND sessdate >= :s AND sessdate <= :e',
+                        ['aid' => $att->id, 's' => $dstart, 'e' => $dend],
+                        'sessdate ASC'
+                    );
+                }
+                if (!empty($matching_sessions)) {
+                    $sess_ids = array_keys($matching_sessions);
+                }
+            }
+        }
+
+        // Query attendance logs
+        $user_logs = [];
+        if (!empty($sess_ids) && $DB->get_manager()->table_exists('attendance_log')) {
+            list($logsql, $logparams) = $DB->get_in_or_equal($sess_ids);
+            $logs = $DB->get_records_sql(
+                "SELECT id, sessionid, studentid, statusid, timetaken, remarks
+                 FROM {attendance_log}
+                 WHERE sessionid $logsql",
+                $logparams
+            );
+            foreach ($logs as $l) {
+                $user_logs[(int)$l->studentid][(int)$l->sessionid] = $l;
+            }
+        }
+
+        // Query physical biometric terminal punches if table exists
+        $user_punches = [];
+        if ($DB->get_manager()->table_exists('local_attpdf_punches')) {
+            $punch_recs = $DB->get_records_select(
+                'local_attpdf_punches',
+                "punch_time >= :dstart AND punch_time <= :dend",
+                ['dstart' => $dstart, 'dend' => $dend],
+                'punch_time ASC'
+            );
+            foreach ($punch_recs as $pr) {
+                $pin_key = strtolower(trim($pr->student_pin));
+                $user_punches[$pin_key][] = $pr;
+                $clean_pin = str_replace('_', '', $pin_key);
+                if ($clean_pin !== $pin_key) {
+                    $user_punches[$clean_pin][] = $pr;
+                }
+            }
+        }
+
+        // Query local_batchanalytics_bio_att table if present
+        $bio_att_cache = [];
+        if ($DB->get_manager()->table_exists(self::TABLE)) {
+            $bio_recs = $DB->get_records_select(
+                self::TABLE,
+                "(punch_in >= :dstart AND punch_in <= :dend) OR session_date = :sdate",
+                ['dstart' => $dstart, 'dend' => $dend, 'sdate' => date('d M Y', $date_ts)]
+            );
+            foreach ($bio_recs as $br) {
+                $bio_att_cache[(int)$br->userid] = $br;
+            }
+        }
+
+        $ordered_session_ids = !empty($matching_sessions) ? array_keys($matching_sessions) : [];
+        $students = [];
+        $present_count = 0;
+        $late_count = 0;
+        $halfday_count = 0;
+        $absent_count = 0;
+
+        foreach ($student_users as $u) {
+            $uid = (int)$u->id;
+            $pin = !empty($u->username) ? $u->username : ($u->idnumber ?? (string)$uid);
+            $user_pins = array_unique(array_filter([
+                strtolower(trim($u->username ?? '')),
+                strtolower(trim($u->idnumber ?? '')),
+                (string)$uid,
+                str_replace('_', '', strtolower(trim($u->username ?? ''))),
+            ]));
+
+            // Check physical punches
+            $matched_punches = [];
+            foreach ($user_pins as $upin) {
+                if (isset($user_punches[$upin])) {
+                    foreach ($user_punches[$upin] as $p_match) {
+                        $matched_punches[$p_match->id] = $p_match;
+                    }
+                }
+            }
+
+            $check_in = '--';
+            $check_out = '--';
+            $total_hours = '--';
+            $day_status = 'Absent';
+            $remarks = '';
+
+            if (!empty($matched_punches)) {
+                $all_p_times = [];
+                $in_punches = [];
+                $out_punches = [];
+                $midday_ts = (new \DateTime($target_date . ' 13:30:00', $tz))->getTimestamp();
+
+                foreach ($matched_punches as $p) {
+                    $pt = (int)$p->punch_time;
+                    $all_p_times[] = $pt;
+                    if ($p->punch_direction === 'IN') {
+                        $in_punches[] = $pt;
+                    } else if ($p->punch_direction === 'OUT') {
+                        $out_punches[] = $pt;
+                    } else {
+                        if ($pt < $midday_ts) {
+                            $in_punches[] = $pt;
+                        } else {
+                            $out_punches[] = $pt;
+                        }
+                    }
+                }
+
+                $first_in = !empty($in_punches) ? min($in_punches) : min($all_p_times);
+                $last_out = !empty($out_punches) ? max($out_punches) : (count($all_p_times) > 1 ? max($all_p_times) : null);
+
+                $in_dt = new \DateTime("@{$first_in}");
+                $in_dt->setTimezone($tz);
+                $check_in = $in_dt->format('h:i A');
+
+                if ($last_out && $last_out > $first_in) {
+                    $out_dt = new \DateTime("@{$last_out}");
+                    $out_dt->setTimezone($tz);
+                    $check_out = $out_dt->format('h:i A');
+                    $diff = $last_out - $first_in;
+                    $total_hours = sprintf('%dh %02dm', floor($diff / 3600), floor(($diff % 3600) / 60));
+                    $day_status = 'Full Day';
+                } else {
+                    $day_status = 'Half Day';
+                }
+
+                $late_threshold = (new \DateTime($target_date . ' 11:15:00', $tz))->getTimestamp();
+                if ($first_in > $late_threshold && $first_in < $midday_ts) {
+                    $day_status = 'Late (Full Day)';
+                    $remarks = "Late Check-in at {$check_in}";
+                } else {
+                    $remarks = "Checked in at {$check_in}";
+                }
+            } else if (!empty($user_logs[$uid])) {
+                $student_sess_logs = $user_logs[$uid];
+
+                if (count($ordered_session_ids) >= 2 && $target_session_id <= 0) {
+                    $sid1 = reset($ordered_session_ids);
+                    $sid2 = end($ordered_session_ids);
+                    $sess1 = $matching_sessions[$sid1] ?? null;
+                    $sess2 = $matching_sessions[$sid2] ?? null;
+
+                    $log1 = $student_sess_logs[$sid1] ?? null;
+                    $log2 = $student_sess_logs[$sid2] ?? null;
+
+                    $ac1 = $log1 ? ($status_map[(int)$log1->statusid] ?? 'P') : null;
+                    $ac2 = $log2 ? ($status_map[(int)$log2->statusid] ?? 'P') : null;
+
+                    $is_pres1 = ($ac1 === 'P' || $ac1 === 'L');
+                    $is_pres2 = ($ac2 === 'P' || $ac2 === 'L');
+
+                    $dt1 = null;
+                    $dt2 = null;
+
+                    if ($is_pres1 && $log1) {
+                        $ts1 = $log1->timetaken > 0 ? (int)$log1->timetaken : (int)$sess1->sessdate;
+                        $dt1 = new \DateTime("@{$ts1}");
+                        $dt1->setTimezone($tz);
+                        $check_in = $dt1->format('h:i A');
+                    }
+
+                    if ($is_pres2 && $log2) {
+                        $ts2 = $log2->timetaken > 0 ? (int)$log2->timetaken : (int)($sess2->sessdate + ($sess2->duration ?: 7200));
+                        $dt2 = new \DateTime("@{$ts2}");
+                        $dt2->setTimezone($tz);
+                        $check_out = $dt2->format('h:i A');
+                    }
+
+                    if ($is_pres1 && $is_pres2) {
+                        $day_status = 'Full Day';
+                        if ($dt1 && $dt2) {
+                            $sec1 = ((int)$dt1->format('H') * 3600) + ((int)$dt1->format('i') * 60) + (int)$dt1->format('s');
+                            $sec2 = ((int)$dt2->format('H') * 3600) + ((int)$dt2->format('i') * 60) + (int)$dt2->format('s');
+                            $diff = $sec2 - $sec1;
+                            if ($diff > 0) {
+                                $total_hours = sprintf('%dh %02dm', floor($diff / 3600), floor(($diff % 3600) / 60));
+                            } else {
+                                $comb_dur = (int)($sess1->duration ?? 7200) + (int)($sess2->duration ?? 7200);
+                                $total_hours = sprintf('%dh %02dm', floor($comb_dur / 3600), floor(($comb_dur % 3600) / 60));
+                            }
+                        } else {
+                            $comb_dur = (int)($sess1->duration ?? 7200) + (int)($sess2->duration ?? 7200);
+                            $total_hours = sprintf('%dh %02dm', floor($comb_dur / 3600), floor(($comb_dur % 3600) / 60));
+                        }
+                        $remarks = 'Marked Present';
+                        if (!empty($log1->remarks) || !empty($log2->remarks)) {
+                            $remarks = trim(($log1->remarks ?? '') . ' ' . ($log2->remarks ?? ''));
+                        }
+                    } else if ($is_pres1 && !$is_pres2) {
+                        $day_status = 'Half Day';
+                        $check_out = '--';
+                        $total_hours = '--';
+                        $remarks = ($log1 && !empty($log1->remarks)) ? $log1->remarks : 'Half Day';
+                    } else if (!$is_pres1 && $is_pres2) {
+                        $day_status = 'Half Day';
+                        $check_in = '--';
+                        $total_hours = '--';
+                        $remarks = ($log2 && !empty($log2->remarks)) ? $log2->remarks : 'Half Day';
+                    } else {
+                        $day_status = 'Absent';
+                        $check_in = '--';
+                        $check_out = '--';
+                        $total_hours = '--';
+                        $remarks = 'Absent';
+                    }
+                } else {
+                    $log_rec = reset($student_sess_logs);
+                    $acronym = $status_map[(int)$log_rec->statusid] ?? 'P';
+                    if ($acronym === 'P' || $acronym === 'L') {
+                        if ($log_rec->timetaken > 0) {
+                            $ldt = new \DateTime("@{$log_rec->timetaken}");
+                            $ldt->setTimezone($tz);
+                            $check_in = $ldt->format('h:i A');
+                        } else {
+                            $sess_fallback = reset($matching_sessions);
+                            if ($sess_fallback && $sess_fallback->sessdate > 0) {
+                                $ldt = new \DateTime("@{$sess_fallback->sessdate}");
+                                $ldt->setTimezone($tz);
+                                $check_in = $ldt->format('h:i A');
+                            }
+                        }
+                        $check_out = '--';
+                        $total_hours = '--';
+                        $day_status = ($acronym === 'L') ? 'Late (Full Day)' : 'Full Day';
+                        $remarks = $log_rec->remarks ?: ($acronym === 'L' ? "Late Check-in at {$check_in}" : "Marked Present");
+                    } else {
+                        $day_status = 'Absent';
+                        $check_in = '--';
+                        $check_out = '--';
+                        $total_hours = '--';
+                        $remarks = $log_rec->remarks ?: "Absent";
+                    }
+                }
+            } else if (isset($bio_att_cache[$uid])) {
+                $brec = $bio_att_cache[$uid];
+                if (strtoupper($brec->status) === 'P' || $brec->punch_in > 0) {
+                    if ($brec->punch_in > 0) {
+                        $p_dt = new \DateTime("@{$brec->punch_in}");
+                        $p_dt->setTimezone($tz);
+                        $check_in = $p_dt->format('h:i A');
+                    }
+                    if ($brec->punch_out > 0) {
+                        $p_dt = new \DateTime("@{$brec->punch_out}");
+                        $p_dt->setTimezone($tz);
+                        $check_out = $p_dt->format('h:i A');
+                    }
+                    if ($brec->total_hours > 0) {
+                        $th = (float)$brec->total_hours;
+                        $total_hours = sprintf('%dh %02dm', floor($th), floor(($th - floor($th)) * 60));
+                    }
+                    $day_status = ($brec->status === 'L') ? 'Late (Full Day)' : 'Full Day';
+                    $remarks = "Biometric punch verified";
+                } else {
+                    $day_status = 'Absent';
+                    $remarks = 'Absent';
+                }
+            } else {
+                if ($dstart > $now) {
+                    $day_status = 'Pending';
+                    $remarks = 'Upcoming session';
+                } else {
+                    $day_status = 'Absent';
+                    $remarks = 'No biometric punch recorded';
+                }
+            }
+
+            if ($day_status === 'Full Day' || $day_status === 'Present (Manual)') {
+                $present_count++;
+            } else if (strpos($day_status, 'Late') !== false) {
+                $present_count++;
+                $late_count++;
+            } else if (strpos($day_status, 'Half Day') !== false) {
+                $present_count++;
+                $halfday_count++;
+            } else if ($day_status === 'Absent') {
+                $absent_count++;
+            }
+
+            $students[] = [
+                'id' => $uid,
+                'userid' => $uid,
+                'name' => trim(($u->firstname ?? '') . ' ' . ($u->lastname ?? '')) ?: fullname($u),
+                'pin' => $pin,
+                'email' => $u->email ?? '',
+                'check_in' => $check_in,
+                'check_out' => $check_out,
+                'total_hours' => $total_hours,
+                'day_status' => $day_status,
+                'remarks' => $remarks,
+            ];
+        }
+
+        $target_session_info = null;
+        if (!empty($matching_sessions)) {
+            $first_ms = reset($matching_sessions);
+            $clean_desc = strip_tags($first_ms->description ?? '');
+            $is_lab = (strpos(strtolower($clean_desc), 'lab') !== false || strpos(strtolower($clean_desc), 'lap') !== false);
+            $target_session_info = [
+                'id' => (int)$first_ms->id,
+                'description' => $clean_desc,
+                'type' => $is_lab ? 'Lab' : 'Class',
+                'time' => date('h:i A', $first_ms->sessdate),
+            ];
         }
 
         return [
-            'date_formatted' => date('d-M-Y', strtotime($target_date)),
-            'day_name' => date('l', strtotime($target_date)),
+            'date_formatted' => $date_formatted,
+            'day_name' => $day_name,
+            'session_info' => $target_session_info,
             'mentors' => [],
-            'students' => [],
+            'students' => $students,
             'stats' => [
                 'total_mentors' => 0,
                 'mentors_present' => 0,
-                'total_students' => 0,
-                'students_present' => 0,
-                'students_late' => 0,
-                'students_halfday' => 0,
-                'students_absent' => 0,
+                'total_students' => count($students),
+                'students_present' => $present_count,
+                'students_late' => $late_count,
+                'students_halfday' => $halfday_count,
+                'students_absent' => $absent_count,
             ],
         ];
     }

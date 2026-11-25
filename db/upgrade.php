@@ -906,22 +906,7 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
             $dbman->create_table($table);
         }
 
-        // Table 2: local_batchanalytics_prog_batch
-        $table = new xmldb_table('local_batchanalytics_prog_batch');
-        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        $table->add_field('programid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $table->add_field('batchid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-        $table->add_field('site', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
-        $table->add_field('sponsor_batch_code', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, '');
-        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
-        $table->add_index('program_sec_ix', XMLDB_INDEX_NOTUNIQUE, ['programid', 'sectionid']);
-        $table->add_index('sectionid_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid']);
-        if (!$dbman->table_exists($table)) {
-            $dbman->create_table($table);
-        }
-
-        // Table 3: local_batchanalytics_lesson_plan
+        // Table 2: local_batchanalytics_lesson_plan
         $table = new xmldb_table('local_batchanalytics_lesson_plan');
         $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
         $table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
@@ -1023,5 +1008,96 @@ function xmldb_local_batchanalytics_upgrade($oldversion) {
         $create_essci_tables();
         upgrade_plugin_savepoint(true, 2026112012, 'local', 'batchanalytics');
     }
+
+    if ($oldversion < 2026112303) {
+        // Drop local_batchanalytics_prog_batch as batches are resolved dynamically by coursename in local_bm_batch.
+        $table = new xmldb_table('local_batchanalytics_prog_batch');
+        if ($dbman->table_exists($table)) {
+            $dbman->drop_table($table);
+        }
+        upgrade_plugin_savepoint(true, 2026112303, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026112401) {
+        // 1. Add fields to local_batchanalytics_evidence
+        $table = new xmldb_table('local_batchanalytics_evidence');
+        $field = new xmldb_field('day_index', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'week_index');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $field = new xmldb_field('topic', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '', 'caption');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $field = new xmldb_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timecreated');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // 2. Create local_batchanalytics_evidence_media
+        $media_table = new xmldb_table('local_batchanalytics_evidence_media');
+        $media_table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $media_table->add_field('evidenceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $media_table->add_field('media_type', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'image');
+        $media_table->add_field('mimetype', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+        $media_table->add_field('filename', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $media_table->add_field('filepath', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '/');
+        $media_table->add_field('fileurl', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $media_table->add_field('filesize', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $media_table->add_field('sortorder', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $media_table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $media_table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $media_table->add_index('evidenceid_ix', XMLDB_INDEX_NOTUNIQUE, ['evidenceid']);
+
+        if (!$dbman->table_exists($media_table)) {
+            $dbman->create_table($media_table);
+        }
+
+        // 3. Migrate any legacy flat records in local_batchanalytics_evidence
+        if ($dbman->table_exists($table) && $dbman->table_exists($media_table)) {
+            $existing = $DB->get_records_select('local_batchanalytics_evidence', "fileurl IS NOT NULL AND fileurl != ''");
+            foreach ($existing as $ex) {
+                if (!$DB->record_exists('local_batchanalytics_evidence_media', ['evidenceid' => $ex->id])) {
+                    $ext = strtolower(pathinfo($ex->filename, PATHINFO_EXTENSION));
+                    $is_vid = in_array($ext, ['mp4', 'webm', 'mov', 'ogg', 'avi', 'm4v']);
+                    $media_record = (object)[
+                        'evidenceid'   => $ex->id,
+                        'media_type'   => $is_vid ? 'video' : 'image',
+                        'mimetype'     => $is_vid ? 'video/' . $ext : 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext),
+                        'filename'     => $ex->filename,
+                        'filepath'     => '/',
+                        'fileurl'      => $ex->fileurl,
+                        'filesize'     => 0,
+                        'sortorder'    => 0,
+                        'timecreated'  => $ex->timecreated ?: time(),
+                    ];
+                    $DB->insert_record('local_batchanalytics_evidence_media', $media_record);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026112401, 'local', 'batchanalytics');
+    }
+
+    if ($oldversion < 2026112402) {
+        $weeks_table = new xmldb_table('local_batchanalytics_evidence_weeks');
+        $weeks_table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $weeks_table->add_field('sectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $weeks_table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $weeks_table->add_field('week_index', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '1');
+        $weeks_table->add_field('target_count', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '2');
+        $weeks_table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $weeks_table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $weeks_table->add_index('sec_course_week_ix', XMLDB_INDEX_NOTUNIQUE, ['sectionid', 'courseid', 'week_index']);
+
+        if (!$dbman->table_exists($weeks_table)) {
+            $dbman->create_table($weeks_table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026112402, 'local', 'batchanalytics');
+    }
+
     return true;
 }
